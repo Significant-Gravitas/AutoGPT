@@ -82,9 +82,7 @@ export function MobileNavBar({
                       src={avatarSrc}
                       alt={userName || "Unknown User"}
                     />
-                    <AvatarFallback>
-                      {userName?.charAt(0) || "U"}
-                    </AvatarFallback>
+                    <AvatarFallback>{userName}</AvatarFallback>
                   </Avatar>
                   <div className="relative h-14 w-full">
                     <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747]">

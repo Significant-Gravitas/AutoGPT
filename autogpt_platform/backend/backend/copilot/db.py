@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,9 +21,16 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.data import db
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSessionInfo, ChatSessionMetadata, cache_chat_session
+from .model import (
+    ChatMessage,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    _get_session_lock,
+    cache_chat_session,
+)
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
@@ -64,6 +72,32 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
         where={"id": session_id},
     )
     return ChatSessionInfo.from_db(session) if session else None
+
+
+async def chat_message_has_assistant_reply(
+    message_id: str,
+    session_id: str,
+) -> bool | None:
+    """Whether a persisted user message already has an assistant reply after it.
+
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
+    """
+    messages = PrismaChatMessage.prisma()
+    existing = await messages.find_first(
+        where={"id": message_id, "sessionId": session_id},
+    )
+    if existing is None:
+        return None
+    assistant_reply = await messages.find_first(
+        where={
+            "sessionId": session_id,
+            "role": "assistant",
+            "sequence": {"gt": existing.sequence},
+        },
+    )
+    return assistant_reply is not None
 
 
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
@@ -269,7 +303,58 @@ async def create_chat_session(
     metadata: ChatSessionMetadata | None = None,
     expert_id: str | None = None,
 ) -> ChatSessionInfo:
-    """Create a new chat session in the database."""
+    """Create a chat session, atomically validating expert attribution."""
+    requested_expert_id = expert_id
+    if requested_expert_id:
+        async with db.transaction() as tx:
+            expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                requested_expert_id,
+                lock_for_update=True,
+            )
+            prisma_session = await PrismaChatSession.prisma(tx).create(
+                data=_chat_session_create_input(
+                    session_id=session_id,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    metadata=metadata,
+                    expert_id=expert_id,
+                )
+            )
+        if expert_id is None:
+            logger.warning(
+                "Ignoring inactive/unowned expert %s while creating chat "
+                "session %s for user %s",
+                requested_expert_id,
+                session_id,
+                user_id,
+            )
+        return ChatSessionInfo.from_db(prisma_session)
+
+    prisma_session = await PrismaChatSession.prisma().create(
+        data=_chat_session_create_input(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=metadata,
+            expert_id=None,
+        )
+    )
+    return ChatSessionInfo.from_db(prisma_session)
+
+
+def _chat_session_create_input(
+    *,
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    metadata: ChatSessionMetadata | None,
+    expert_id: str | None,
+) -> ChatSessionCreateInput:
     data = ChatSessionCreateInput(
         id=session_id,
         userId=user_id,
@@ -282,8 +367,7 @@ async def create_chat_session(
         **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
-    prisma_session = await PrismaChatSession.prisma().create(data=data)
-    return ChatSessionInfo.from_db(prisma_session)
+    return data
 
 
 async def update_chat_session(
@@ -612,6 +696,7 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -626,6 +711,8 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``pinned_first=False`` provides strict recency ordering for internal
+    adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
@@ -641,10 +728,13 @@ async def get_user_chat_sessions(
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
     params.extend((limit, offset))
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+    )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions)
-        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f" ORDER BY {ordering} "
         + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
     sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
@@ -678,6 +768,22 @@ async def get_user_session_count(
         *params,
     )
     return rows[0]["count"] if rows else 0
+
+
+async def user_has_any_session(user_id: str) -> bool:
+    """Whether the user has at least one visible chat session.
+
+    The presence-only counterpart to :func:`get_user_session_count`, for
+    callers that only compare the total against zero: it stops at the
+    first matching row instead of scanning every session the user owns.
+    """
+    rows = await db.query_raw_with_schema(
+        'SELECT 1 FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        + " LIMIT 1",
+        user_id,
+    )
+    return bool(rows)
 
 
 def _escape_like(value: str) -> str:
@@ -1035,3 +1141,124 @@ async def update_chat_session_status(
         where=where, data={"chatStatus": status}
     )
     return updated > 0
+
+
+async def append_expert_run_message(
+    user_id: str,
+    expert_id: str,
+    content: str,
+    message_id: str,
+) -> str | None:
+    """Post an assistant message into the expert's latest thread, creating a
+    thread when none exists — run results land in her workspace, not a void.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    executor retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    session = await PrismaChatSession.prisma().find_first(
+        where={"userId": user_id, "expertId": expert_id},
+        order={"updatedAt": "desc"},
+    )
+    if session is not None:
+        session_id = session.id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+        )
+        session_id = created.session_id
+
+    # Same Redis NX lock as turn_queue.append_and_save_message: the
+    # sequence read + insert must not interleave with a concurrent turn
+    # writer picking the same sequence and PK-colliding on
+    # (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await add_chat_message(
+                session_id=session_id,
+                role="assistant",
+                sequence=await get_next_sequence(session_id),
+                content=content,
+                message_id=message_id,
+            )
+    return session_id
+
+
+async def append_plain_session_message(
+    user_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
+    """Post an assistant message into the user's latest non-expert (plain
+    Autopilot) session, creating one when none exists — this is the user's
+    "primary thread", e.g. where a morning briefing lands.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    retries and double-fires never produce duplicate posts.
+    Returns the session id the message landed in, or None when deduped.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    # Dream-pass sessions are also ``expertId IS NULL`` but are hidden from
+    # every listing surface (see :data:`_EXCLUDE_DREAM_SESSIONS_SQL`), so
+    # posting into one would drop the message somewhere the user can never
+    # open. Same exclusion as the listing queries.
+    sessions = await db.query_raw_with_schema(
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
+        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
+        'ORDER BY "updatedAt" DESC LIMIT 1',
+        user_id,
+        model=PrismaChatSession,
+    )
+    if sessions:
+        session_id = sessions[0].id
+    else:
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()), user_id=user_id
+        )
+        session_id = created.session_id
+
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=session_id,
+            role="assistant",
+            sequence=await get_next_sequence(session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+
+    # Same Redis NX lock as append_expert_run_message: the sequence read +
+    # insert must not interleave with a concurrent turn writer picking the
+    # same sequence and PK-colliding on (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await write_with_fresh_sequence()
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            # Reachable only in lock-degraded mode (Redis down yields the
+            # lock without acquiring); one retry with a fresh sequence is
+            # enough at this write volume.
+            await write_with_fresh_sequence()
+    return session_id

@@ -895,6 +895,7 @@ async def test_create_preset_inherits_graph_org(mocker):
     """A preset lives in the same org/team as the graph it runs
     (resource-follows-parent), regardless of the caller's active org."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-1",
         userId="test-user",
         name="My Preset",
@@ -948,6 +949,7 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     """Graphs predating org tagging have no org — the preset create must
     not write organizationId/teamId keys at all (backfill sweep owns them)."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-2",
         userId="test-user",
         name="My Preset",
@@ -1057,6 +1059,7 @@ async def test_create_preset_rejects_foreign_webhook(mocker):
 async def test_create_preset_accepts_own_webhook(mocker):
     """Binding the caller's OWN webhook is allowed and persisted."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-own-wh",
         userId="owner",
         name="My Preset",
@@ -1132,6 +1135,7 @@ async def test_set_preset_webhook_rejects_foreign_webhook(mocker):
     """set_preset_webhook must reject a webhook owned by another user
     (GHSA-4m2w-qfr5-9f3v)."""
     existing = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-1",
         userId="owner",
         name="p",

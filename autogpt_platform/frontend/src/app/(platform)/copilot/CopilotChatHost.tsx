@@ -48,6 +48,7 @@ export function CopilotChatHost({
     sessionChatStatus,
     expertIdentity,
     isAdoptingExpertSession,
+    isKickoffStarting,
   } = useCopilotPage();
 
   return (
@@ -90,6 +91,7 @@ export function CopilotChatHost({
           turnStats={turnStats}
           expertIdentity={expertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
+          isKickoffStarting={isKickoffStarting}
         />
       </div>
       <RateLimitGate

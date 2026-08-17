@@ -123,6 +123,9 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Experts (soul edits)
+    EXPERT_SOUL_UPDATED = "expert_soul_updated"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -484,6 +487,32 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
+class SoulFieldChange(BaseModel):
+    """One field's before/after values for an expert soul edit."""
+
+    field: SoulFieldName
+    before: str
+    after: str
+
+
+class ExpertSoulUpdatedResponse(ToolResponseBase):
+    """Response for the two-step Soul edit tools.
+
+    Carries the diff so the model must surface exactly what changed. ``applied``
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
+    applied: bool = False
+    changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
 
 
 # Agent generation models
@@ -984,12 +1013,38 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
+class MemoryForgetFailureCode(str, Enum):
+    """Stable, machine-switchable reason a forget delete failed.
+
+    The frontend/model can branch on this code (retry vs. give up) without
+    parsing the free-text ``reason``. New codes may be added over time, so
+    consumers must tolerate unknown values.
+    """
+
+    NO_MATCH = "no_match"
+    QUERY_ERROR = "query_error"
+
+
+class MemoryForgetFailure(BaseModel):
+    """One edge that could not be deleted, with an actionable reason.
+
+    Surfaced so the assistant (and user) can tell *why* a delete failed —
+    e.g. the edge was not found vs. the query itself errored — instead of a
+    bare "N failed" count that gives the model nothing to act on.
+    """
+
+    uuid: str
+    code: MemoryForgetFailureCode
+    reason: str
+
+
 class MemoryForgetConfirmResponse(ToolResponseBase):
     """Response after deleting specific memory edges."""
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+    failures: list[MemoryForgetFailure] = Field(default_factory=list)
 
 
 # --- Planning ---

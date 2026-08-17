@@ -43,6 +43,7 @@ export function SidebarUserActions() {
   const accountMenu = (
     <AccountMenu
       userName={profile?.name || profile?.username}
+      userHandle={profile?.username}
       userEmail={user?.email}
       avatarSrc={profile?.avatar_url ?? ""}
       menuItemGroups={dynamicMenuItems}

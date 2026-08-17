@@ -19,6 +19,45 @@ from backend.data.llm_registry.catalog_model import CatalogPayload
 
 logger = logging.getLogger(__name__)
 
+# The Claude 5 model family — one definition, shared by temperature
+# stripping and thinking-fragment suppression (tokenizer estimation keys
+# off the derived CLAUDE_5_TOKENIZER_GENERATION_PREFIXES below, which
+# additionally covers 4.7/4.8). SHIPPED members only: family members
+# don't all release at once, and an unreleased slug pre-listed here would
+# skip re-verification when it actually ships. Add each member here as
+# Anthropic releases it, after checking its documented behavior matches
+# the family.
+CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+# The tokenizer generation introduced with Opus 4.7 (shared by the whole
+# 5-family): ~30% denser than the 4.x tokenizer for the same text.
+CLAUDE_5_TOKENIZER_GENERATION_PREFIXES: tuple[str, ...] = CLAUDE_5_FAMILY_PREFIXES + (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+)
+
+
+def strip_anthropic_vendor_prefix(model: str) -> str:
+    """``anthropic/claude-x``, ``openrouter/anthropic/claude-x``,
+    ``anthropic.claude-x`` and ``us.anthropic.claude-x`` → ``claude-x``.
+
+    The single normalization used by every family-prefix check, so no
+    vendor-prefixed form (slash-routed or dotted Bedrock-style, with or
+    without a region prefix) can slip past one consumer while matching
+    another.
+    """
+    lowered = model.lower().split("/")[-1]
+    marker = "anthropic."
+    idx = lowered.find(marker)
+    if idx != -1:
+        return lowered[idx + len(marker) :]
+    return lowered
+
+
 # Anthropic snapshot-date suffix (claude-haiku-4-5-20251001 → -20251001).
 # Shared by every slug canonicalizer so the pattern can't drift.
 MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
@@ -134,6 +173,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
+    CLAUDE_5_SONNET = "claude-sonnet-5"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models

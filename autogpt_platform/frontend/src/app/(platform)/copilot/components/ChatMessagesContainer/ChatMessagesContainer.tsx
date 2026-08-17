@@ -20,6 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
+import { stripKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -35,6 +36,7 @@ import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
+import { ExpertSchedulesButton } from "./components/ExpertSchedulesButton/ExpertSchedulesButton";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
@@ -309,7 +311,7 @@ export function LoadMoreSentinel({
 }
 
 export function ChatMessagesContainer({
-  messages,
+  messages: allMessages,
   status,
   error,
   isLoading,
@@ -330,6 +332,12 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
 }: Props) {
+  // The expert-kickoff control prompt is filtered at the transcript renderer
+  // only so lifecycle, dedup and metadata-preserving retry logic still see it.
+  const messages = useMemo(
+    () => stripKickoffMessages(allMessages),
+    [allMessages],
+  );
   // The in-chat "progress in the sidebar" notice only applies to the old
   // sidebar surface — hide it entirely when the task bar is on.
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -520,7 +528,7 @@ export function ChatMessagesContainer({
         {expertIdentity && (
           <div
             data-testid="expert-thread-header"
-            className="flex items-center gap-2 border-b border-zinc-200/60 pb-3"
+            className="sticky top-0 z-10 -mx-6 -mt-4 flex items-center gap-2 border-b border-zinc-200/60 bg-[#fafafa]/80 px-6 pb-3 pt-4 backdrop-blur-md"
           >
             <ExpertAvatar
               name={expertIdentity.name}
@@ -529,6 +537,12 @@ export function ChatMessagesContainer({
             <span className="text-sm font-medium text-zinc-800">
               {expertIdentity.name}
             </span>
+            {!readOnly && (
+              <ExpertSchedulesButton
+                expertId={expertIdentity.id}
+                expertName={expertIdentity.name}
+              />
+            )}
           </div>
         )}
         {!readOnly && hasMoreMessages && onLoadMore && (
@@ -613,21 +627,6 @@ export function ChatMessagesContainer({
               data-message-id={message.id}
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
             >
-              {isAssistant && expertIdentity && (
-                <div
-                  data-testid="expert-assistant-identity"
-                  className="mb-1 flex items-center gap-1.5"
-                >
-                  <ExpertAvatar
-                    name={expertIdentity.name}
-                    avatarUrl={expertIdentity.avatarUrl}
-                    size="small"
-                  />
-                  <span className="text-xs font-medium text-zinc-500">
-                    {expertIdentity.name}
-                  </span>
-                </div>
-              )}
               <MessageContent
                 className={
                   "text-[1rem] leading-relaxed " +

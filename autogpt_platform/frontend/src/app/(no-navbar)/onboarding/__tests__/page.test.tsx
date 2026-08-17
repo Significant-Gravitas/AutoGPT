@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -23,8 +24,8 @@ vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
   SubscriptionStep: () => <div data-testid="step-subscription" />,
 }));
 vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete: _onComplete }: { onComplete: () => void }) => (
-    <div data-testid="step-preparing" />
+  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
+    <button data-testid="step-preparing" onClick={onComplete} />
   ),
 }));
 
@@ -63,13 +64,20 @@ function mockAuthUserRoute() {
   );
 }
 
+let mockCompletedSteps: string[] = [];
+const completeOnboardingStep = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ status: 200 })),
+);
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+    Promise.resolve({
+      status: 200,
+      data: { completedSteps: mockCompletedSteps },
+    }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
-  postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
+  postV1CompleteOnboardingStep: completeOnboardingStep,
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
 
@@ -120,7 +128,9 @@ beforeEach(() => {
   authUserPutBodies.length = 0;
   mockAuthUserRoute();
   mockRefreshSession.mockClear();
+  mockCompletedSteps = [];
   routerReplace.mockClear();
+  completeOnboardingStep.mockClear();
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
@@ -240,7 +250,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("skips SubscriptionStep when the user is already on a paid tier", async () => {
     // Regression for paying users (admin-granted Pro, or accounts that
-    // pre-date VISIT_COPILOT) being kicked through onboarding and asked to
+    // pre-date ONBOARDING_COMPLETE) being kicked through onboarding and asked to
     // pay again to escape. With ENABLE_PLATFORM_PAYMENT on and tier=PRO,
     // step 4 must render Preparing — not SubscriptionStep.
     mockFlagValue = true;
@@ -325,6 +335,33 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(authUserPutBodies).toEqual([]);
+  });
+
+  it("redirects straight to /copilot when onboarding is already complete", async () => {
+    mockCompletedSteps = ["ONBOARDING_COMPLETE"];
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    render(<OnboardingPage />);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    // The wizard never renders and the resume ceiling is cleared.
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("marks ONBOARDING_COMPLETE and redirects when Preparing finishes", async () => {
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    expect(completeOnboardingStep).toHaveBeenCalledWith({
+      step: "ONBOARDING_COMPLETE",
+    });
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {

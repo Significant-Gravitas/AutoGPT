@@ -8,6 +8,7 @@ from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import GraphExecutionEntry, NodeExecutionEntry
+from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
@@ -218,6 +219,9 @@ def charge_usage(
             )
         total_cost += cost
 
+    if total_cost > 0 and node_exec.execution_context.expert_id:
+        add_weekly_spend_sync(node_exec.execution_context.expert_id, total_cost)
+
     return total_cost, remaining_balance, block_pre_flight
 
 
@@ -329,6 +333,10 @@ async def charge_reconciled_usage(
                 remaining_balance,
                 delta,
             )
+        # Keep the expert's weekly meter honest for dynamic-cost blocks:
+        # positive deltas add spend, refunds subtract.
+        if node_exec.execution_context.expert_id:
+            await add_weekly_spend(node_exec.execution_context.expert_id, delta)
         return delta, remaining_balance
     except Exception:
         logger.exception(

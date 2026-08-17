@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
-from prisma.enums import NotificationType
+from prisma.enums import NotificationType, SubscriptionTier
 from prisma.errors import UniqueViolationError
 from prisma.models import AuthUser
 from prisma.models import User as PrismaUser
@@ -207,6 +207,14 @@ async def get_user_by_id(user_id: str) -> User:
     if not user:
         raise ValueError(f"User not found with ID: {user_id}")
     return User.from_db(user)
+
+
+async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
+    """Read the authoritative tier without using the cached full-user lookup."""
+    user = await prisma.user.find_unique(where={"id": user_id})
+    if not user:
+        raise ValueError(f"User not found with ID: {user_id}")
+    return user.subscriptionTier or SubscriptionTier.NO_TIER
 
 
 async def get_user_email_by_id(user_id: str) -> Optional[str]:
@@ -822,6 +830,37 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         except Exception:
             logger.warning(
                 "Failed to spawn dream-system re-register after timezone "
+                "update for user %s — lazy drift detection will catch it",
+                user_id[:12],
+                exc_info=True,
+            )
+
+        # Same rationale for the morning-briefing cron: clear the stored
+        # marker first, since its mere presence short-circuits the helper,
+        # then re-ensure so the profile change takes effect immediately
+        # instead of waiting out the marker's TTL. Fire-and-forget like the dream task
+        # above so the profile update doesn't block on Redis/scheduler
+        # I/O, and guard the import so a failure here can't surface as a
+        # false "failed to update timezone" after the row committed.
+        try:
+            from backend.copilot.briefing.scheduling import (
+                clear_briefing_registration_marker,
+                ensure_morning_briefing_scheduled,
+            )
+
+            async def _reregister_briefing() -> None:
+                await clear_briefing_registration_marker(user_id)
+                await ensure_morning_briefing_scheduled(user_id)
+
+            task = asyncio.create_task(
+                _reregister_briefing(),
+                name=f"briefing-tz-reregister-{user_id[:12]}",
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_on_background_task_done)
+        except Exception:
+            logger.warning(
+                "Failed to spawn morning-briefing re-register after timezone "
                 "update for user %s — lazy drift detection will catch it",
                 user_id[:12],
                 exc_info=True,

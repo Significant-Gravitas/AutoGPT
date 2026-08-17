@@ -100,6 +100,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
     )
+    codex_temp_root: str = Field(
+        default="",
+        description="Optional tmpfs root for isolated Codex runtime homes.",
+    )
+    codex_max_active_processes: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Maximum Codex App Server children per backend process.",
+    )
+    codex_capacity_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="Maximum wait for a free Codex App Server process slot.",
+    )
+    codex_startup_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Hard timeout for starting and initializing Codex App Server.",
+    )
+    codex_control_timeout_seconds: int = Field(
+        default=60,
+        ge=5,
+        le=300,
+        description="Hard timeout for Codex account and credential operations.",
+    )
+    codex_auth_checkpoint_interval_seconds: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=5,
+        description="Interval for checkpointing Codex-managed credential rotation.",
+    )
+    codex_invocation_timeout_seconds: int = Field(
+        default=180,
+        ge=10,
+        le=3600,
+        description="Hard timeout for one native Codex invocation.",
+    )
+    codex_copilot_turn_timeout_seconds: int = Field(
+        default=21600,
+        ge=60,
+        le=21600,
+        description="Hard timeout for one native Codex AutoPilot turn.",
+    )
+    codex_copilot_tool_timeout_seconds: int = Field(
+        default=900,
+        ge=10,
+        le=3600,
+        description="Maximum wait for one AutoPilot dynamic tool callback.",
+    )
+    codex_login_timeout_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=3600,
+        description="Lifetime of one ChatGPT device-code login attempt.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -146,6 +204,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     low_balance_threshold: int = Field(
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
+    )
+    expert_weekly_credit_budget_default: int = Field(
+        default=500,
+        ge=0,
+        description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",

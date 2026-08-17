@@ -131,13 +131,23 @@ async def test_get_pending_reviews_for_user(
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
     mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
-    # Mock get_node_execution to return node with node_id (async function)
+    # Mock the batched node_id resolution (AgentNodeExecution.prisma().find_many)
     mock_node_exec = Mock()
-    mock_node_exec.node_id = "test_node_def_789"
-    mocker.patch(
-        "backend.data.execution.get_node_execution",
-        new=AsyncMock(return_value=mock_node_exec),
+    mock_node_exec.id = "test_node_123"
+    mock_node_exec.agentNodeId = "test_node_def_789"
+    mock_node_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentNodeExecution.prisma"
     )
+    mock_node_exec_prisma.return_value.find_many = AsyncMock(
+        return_value=[mock_node_exec]
+    )
+
+    # Mock the batched graph-execution lookup empty, so the enrichment step's
+    # dependent LibraryAgent/ChatSession queries are skipped entirely.
+    mock_graph_exec_prisma = mocker.patch(
+        "backend.data.human_review.AgentGraphExecution.prisma"
+    )
+    mock_graph_exec_prisma.return_value.find_many = AsyncMock(return_value=[])
 
     result = await get_pending_reviews_for_user("test_user", page=2, page_size=10)
 

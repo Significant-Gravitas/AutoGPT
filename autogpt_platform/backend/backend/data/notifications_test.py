@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -462,3 +463,134 @@ async def test_get_all_batches_does_not_eager_load_events(server: SpinTestServer
         assert mine[0].notifications == []
     finally:
         await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio
+async def test_create_batch_born_tenanted_stamps_default_team(mocker):
+    """The create branch of the upsert stamps the batch with the user's default
+    org/team at creation; the update branch must not, so re-batching never
+    overwrites an existing batch's tenant. Mocked at the Prisma boundary."""
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(return_value=("org-notif", "team-notif")),
+    )
+
+    user_id = "notif-tenancy-user"
+    result = await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+    )
+
+    assert result == "dto-sentinel"
+    mock_get_default_team.assert_awaited_once_with(user_id)
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input["organizationId"] == "org-notif"
+    assert create_input["teamId"] == "team-notif"
+    # Re-batch (update) must leave tenancy alone — an existing batch keeps its
+    # tenant; only the create branch tenants.
+    update_input = mock_upsert.call_args.kwargs["data"]["update"]
+    assert "organizationId" not in update_input
+    assert "teamId" not in update_input
+
+
+@pytest.mark.asyncio
+async def test_create_batch_explicit_tenancy_not_overridden(mocker):
+    """An explicit org/team passed by a caller is used as-is; the default-team
+    resolver is not consulted."""
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(return_value=("fallback-org", "fallback-team")),
+    )
+
+    user_id = "notif-explicit-user"
+    await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+        organization_id="explicit-org",
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input["organizationId"] == "explicit-org"
+    assert create_input["teamId"] == "explicit-team"
+
+
+@pytest.mark.asyncio
+async def test_create_batch_default_team_lookup_failure_stays_untenanted(mocker):
+    """The default-team lookup is best-effort: if it RAISES, the batch is still
+    created (untenanted) rather than crashing the notification."""
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+    )
+
+    user_id = "notif-lookup-fail-user"
+    result = await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+    )
+
+    assert result == "dto-sentinel"
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input.get("organizationId") is None
+    assert create_input.get("teamId") is None
+
+
+@pytest.mark.asyncio
+async def test_create_batch_explicit_team_id_preserved_when_org_absent(mocker):
+    """An explicit team_id with no org must NOT be clobbered by the default-
+    team lookup — the guard only fires when BOTH fields are unset (mirrors the
+    executor-path guard)."""
+    mock_upsert = AsyncMock(return_value=object())
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatch.prisma"
+    ).return_value.upsert = mock_upsert
+    mocker.patch(
+        "backend.data.notifications.UserNotificationBatchDTO.from_db",
+        return_value="dto-sentinel",
+    )
+    mock_get_default_team = mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=AsyncMock(return_value=("fallback-org", "fallback-team")),
+    )
+
+    user_id = "notif-team-only-user"
+    await create_or_add_to_user_notification_batch(
+        user_id=user_id,
+        notification_type=NotificationType.AGENT_RUN,
+        notification_data=_make_agent_run_event(user_id),
+        team_id="explicit-team",
+    )
+
+    mock_get_default_team.assert_not_called()
+    create_input = mock_upsert.call_args.kwargs["data"]["create"]
+    assert create_input["teamId"] == "explicit-team"
+    assert create_input.get("organizationId") is None

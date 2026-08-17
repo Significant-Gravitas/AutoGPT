@@ -10,7 +10,7 @@ import { usePreparingStep } from "../usePreparingStep";
 const START_DELAY_MS = 300;
 const GENERIC_TOTAL_MS = 4_000;
 const DUMP_TOTAL_MS = 10_000;
-const RECOMMENDATIONS_MAX_WAIT_MS = 60_000;
+const RECOMMENDATIONS_MAX_WAIT_MS = 15_000;
 
 const GENERIC_CHECKLIST = [
   "Personalizing your experience",
@@ -214,7 +214,9 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     });
 
     await advance(START_DELAY_MS);
-    await advance(DUMP_TOTAL_MS + 5_000);
+    // Short of the ceiling, so this asserts the gate rather than the
+    // give-up timer that eventually overrides it.
+    await advance(DUMP_TOTAL_MS + 2_000);
 
     expect(onComplete).not.toHaveBeenCalled();
     expect(result.current.completedItems).toBe(DUMP_CHECKLIST.length - 1);
@@ -231,15 +233,16 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
     });
 
     await advance(START_DELAY_MS);
-    await advance(DUMP_TOTAL_MS + 2_000);
+    await advance(DUMP_TOTAL_MS + 500);
     expect(onComplete).not.toHaveBeenCalled();
 
     mockRecommendations(true);
     // Next poll (2.5s cadence) picks up ready=true; the response settles
     // at the end of the first window, so a second window lets the ticker
-    // observe it and complete the run.
+    // observe it and complete the run. Kept inside the give-up ceiling so
+    // the poll is what releases the gate, not the timer.
     await advance(3_000);
-    await advance(1_000);
+    await advance(500);
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(result.current.progress).toBe(100);

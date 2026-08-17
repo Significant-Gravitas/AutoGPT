@@ -76,7 +76,7 @@ function buildOnboarding(
   overrides: Partial<UserOnboarding> = {},
 ): UserOnboarding {
   return {
-    completedSteps: ["VISIT_COPILOT"],
+    completedSteps: ["ONBOARDING_COMPLETE"],
     walletShown: false,
     notified: [],
     rewardedFor: [],
@@ -210,7 +210,7 @@ describe("Wallet onboarding notifications", () => {
     expect(connectWebSocketMock).toHaveBeenCalledTimes(1);
 
     onboardingState.state = buildOnboarding({
-      completedSteps: ["VISIT_COPILOT", "SCHEDULE_AGENT"],
+      completedSteps: ["ONBOARDING_COMPLETE", "SCHEDULE_AGENT"],
     });
     rerender(<Wallet />);
 

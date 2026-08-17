@@ -13,6 +13,7 @@ import prisma.models
 import backend.api.features.library.model as library_model
 import backend.data.graph as graph_db
 from backend.api.features.library.db import _fetch_schedule_info
+from backend.api.features.orgs.db import resolve_default_tenancy
 from backend.data.graph import GraphModel, GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
@@ -96,6 +97,13 @@ async def add_graph_to_library(
     )
     marketplace = _marketplace_metadata(store_listing_version)
 
+    # A library entry is the adding user's bookmark, so tag it with their
+    # default org/team at creation (mirrors create_library_agent).
+    # resolve_default_tenancy is best-effort — an unresolvable org or a raised
+    # lookup yields (None, None) and the row is left untagged; never block a
+    # library add on tenancy resolution.
+    organization_id, team_id = await resolve_default_tenancy(user_id)
+
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
@@ -114,6 +122,8 @@ async def add_graph_to_library(
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
+                **({"organizationId": organization_id} if organization_id else {}),
+                **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
             },
             include=_include,
         )
@@ -135,6 +145,10 @@ async def add_graph_to_library(
                 "name": marketplace["name"],
                 "description": marketplace["description"],
                 "imageUrl": marketplace["imageUrl"],
+                # Deliberately leave organizationId/Team untouched on re-add:
+                # an existing bookmark already carries its tenancy. Only the
+                # create branch tenants; re-tagging here risked disconnecting
+                # an existing team when a default team couldn't be resolved.
             },
             include=_include,
         )

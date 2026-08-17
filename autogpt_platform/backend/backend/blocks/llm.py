@@ -293,9 +293,13 @@ async def _llm_call(
     context_window = llm_model.context_window
 
     if compress_prompt_to_fit:
+        # Pass the model so compaction measures in the same corrected token
+        # space as the max_tokens sizing below — or Claude-5 prompts pass
+        # compaction on raw counts and overflow at serve time.
         result = await compress_context(
             messages=prompt,
             target_tokens=llm_model.context_window // 2,
+            model=llm_model.value,
             client=None,  # Truncation-only, no LLM summarization
             reserve=0,  # Caller handles response token budget separately
         )
@@ -320,7 +324,7 @@ async def _llm_call(
                 )
 
     # Calculate available tokens based on context window and input length
-    estimated_input_tokens = estimate_token_count(prompt)
+    estimated_input_tokens = estimate_token_count(prompt, model=llm_model.value)
     model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)

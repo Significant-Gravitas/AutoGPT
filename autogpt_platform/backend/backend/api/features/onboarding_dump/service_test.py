@@ -48,6 +48,7 @@ class DumpStore:
         self.row: OnboardingBrainDump | None = None
         self.statuses: list[BrainDumpStatus] = []
         self.transcripts: list[str | None] = []
+        self.greeting_seen_writes = 0
 
     async def get_dump(self, user_id: str) -> OnboardingBrainDump | None:
         return self.row
@@ -141,6 +142,11 @@ class DumpStore:
             errorCode=error_code,
         )
 
+    async def mark_greeting_seen(self, user_id: str) -> None:
+        if self.row is not None:
+            self.row.greetingSeen = True
+        self.greeting_seen_writes += 1
+
 
 @pytest.fixture(autouse=True)
 def dumps(mocker: MockerFixture) -> DumpStore:
@@ -152,6 +158,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
+    mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
     return store
 
 
@@ -195,6 +202,18 @@ def extraction(mocker: MockerFixture) -> dict[str, AsyncMock]:
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
     return mocks
+
+
+@pytest.fixture(autouse=True)
+def quality_gate(mocker: MockerFixture) -> AsyncMock:
+    """The quality gate passes by default so pipeline tests stay about the
+    pipeline; rejection tests flip the return value."""
+    mock = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.onboarding_dump.quality.check_transcript_quality",
+        new=mock,
+    )
+    return mock
 
 
 async def start_voice_take(dumps: DumpStore) -> None:
@@ -803,6 +822,119 @@ async def test_intro_card_takes_path_a_with_the_stored_greeting(dumps: DumpStore
 
 
 @pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_user_who_already_has_a_session(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.return_value = True
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    # Recorded server-side so the count is only paid once.
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_withheld_from_a_chatting_user_without_a_dump_row(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.return_value = True
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+    assert dumps.greeting_seen_writes == 1
+
+
+@pytest.mark.asyncio
+async def test_intro_card_is_still_withheld_when_the_seen_flag_cannot_be_written(
+    has_session: AsyncMock, mocker: MockerFixture
+):
+    # The session lookup is the verdict; the flag only saves paying for it
+    # again. A failed write must not 500 the card it was retiring.
+    has_session.return_value = True
+    mocker.patch(
+        "backend.api.features.onboarding_dump.db.mark_greeting_seen",
+        new=AsyncMock(side_effect=RuntimeError("database down")),
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is True
+    assert card.greeting == ""
+
+
+@pytest.mark.asyncio
+async def test_intro_card_still_greets_when_the_session_lookup_fails(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    has_session.side_effect = RuntimeError("database down")
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.completed,
+        transcript=TRANSCRIPT,
+        greeting="You mentioned the weekly order emails.",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_done is False
+    assert card.greeting == "You mentioned the weekly order emails."
+
+
+@pytest.mark.asyncio
+async def test_intro_card_reports_pending_while_the_greeting_is_generating(
+    dumps: DumpStore,
+):
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.extracting,
+        transcript=TRANSCRIPT,
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_pending is True
+    assert card.greeting == ""
+    assert card.greeting_done is False
+
+
+@pytest.mark.asyncio
+async def test_intro_card_skips_the_session_lookup_while_the_greeting_is_pending(
+    dumps: DumpStore, has_session: AsyncMock
+):
+    # The client polls this endpoint every 1.5s while pending, and a
+    # mid-pipeline dump belongs to someone who just recorded it — asking
+    # the sessions table on every cycle would buy nothing.
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.extracting,
+        transcript=TRANSCRIPT,
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.greeting_pending is True
+    has_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_intro_card_takes_path_b_when_the_user_skipped(dumps: DumpStore):
     await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.skipped)
     await dumps.update_dump(USER_ID, RECORDING_ID, status=BrainDumpStatus.completed)
@@ -884,6 +1016,119 @@ async def test_intro_card_falls_back_when_the_greeting_was_never_generated(
 
 
 @pytest.mark.asyncio
+async def test_quality_rejected_voice_dump_keeps_data_and_queues_nothing(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    await start_voice_take(dumps)
+    quality_gate.return_value = "no_usable_speech"
+    background = BackgroundTasks()
+
+    response = await service.finalize_voice_dump(
+        USER_ID, RECORDING_ID, 12.0, "audio/webm", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "no_usable_speech"
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "no_usable_speech"
+    # Rejection is not deletion: audio and transcript both survive.
+    assert dumps.row.audioPath == AUDIO_PATH
+    assert dumps.row.transcript == TRANSCRIPT
+    # And nothing personalized was queued from the rejected content.
+    assert background.tasks == []
+    extraction["extract_business_understanding"].assert_not_awaited()
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_quality_rejected_typed_dump_records_the_error(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    quality_gate.return_value = "insufficient_content"
+    background = BackgroundTasks()
+
+    response = await service.finalize_typed_dump(
+        USER_ID, RECORDING_ID, "hello hello testing", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.failed
+    assert response.error_code == "insufficient_content"
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "insufficient_content"
+    assert dumps.row.transcript == "hello hello testing"
+    assert background.tasks == []
+    extraction["upsert_business_understanding"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repeating_finalize_after_quality_rejection_does_not_rerun_the_gate(
+    dumps: DumpStore, quality_gate: AsyncMock, storage_mocks: dict[str, AsyncMock]
+):
+    """A client retry of the same rejected take gets the stored verdict.
+
+    The part buffer is gone by then, so re-running the pipeline would
+    assemble nothing and mark the take lost; the claim guard answers with
+    the row's failure instead, without a second quality check.
+    """
+    await start_voice_take(dumps)
+    quality_gate.return_value = "no_usable_speech"
+    await finalize_voice()
+
+    response = await finalize_voice()
+
+    assert response.status == BrainDumpStatus.failed
+    assert quality_gate.await_count == 1
+    storage_mocks["assemble_parts"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_new_take_after_quality_rejection_runs_the_pipeline(
+    dumps: DumpStore, quality_gate: AsyncMock, extraction: dict[str, AsyncMock]
+):
+    await start_voice_take(dumps)
+    quality_gate.return_value = "insufficient_content"
+    await finalize_voice()
+
+    quality_gate.return_value = None
+    await dumps.start_dump(USER_ID, "rec-2", BrainDumpInputMode.voice)
+    background = BackgroundTasks()
+    response = await service.finalize_voice_dump(
+        USER_ID, "rec-2", 30.0, "audio/webm", background
+    )
+    await background()
+
+    assert response.status == BrainDumpStatus.transcribed
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.errorCode is None
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_intro_card_takes_path_b_for_a_quality_rejected_dump(dumps: DumpStore):
+    """The preserved transcript of a rejected dump must never leak into a
+    Path A greeting — the gate already decided it isn't worth reflecting."""
+    await dumps.start_dump(USER_ID, RECORDING_ID, BrainDumpInputMode.voice)
+    await dumps.update_dump(
+        USER_ID,
+        RECORDING_ID,
+        status=BrainDumpStatus.failed,
+        transcript="Thank you for watching.",
+        errorCode="insufficient_content",
+    )
+
+    card = await service.get_intro_card(USER_ID)
+
+    assert card.path == "B"
+    assert card.greeting == prompts.PATH_B_GREETING
+    assert card.transcript is None
+
+
+@pytest.mark.asyncio
 async def test_intro_generation_degrades_instead_of_raising(mocker: MockerFixture):
     # The greeting must never be the reason onboarding fails, so a broken
     # LLM call resolves to the template rather than propagating.
@@ -896,3 +1141,66 @@ async def test_intro_generation_degrades_instead_of_raising(mocker: MockerFixtur
 
     assert greeting == intro.fallback_intro(TRANSCRIPT)[0]
     assert suggested == intro.fallback_prompts()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_extraction_does_not_cost_the_greeting(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # Extraction and the greeting run gathered, so a raise on either side
+    # would abandon the other's result. Each is supposed to answer with a
+    # fallback instead — this holds the extraction half to that.
+    extraction["extract_business_understanding"].side_effect = RuntimeError("llm down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+    # The transcript still reaches the understanding without the fields.
+    extraction["upsert_business_understanding"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_understanding_does_not_cost_the_greeting(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # The same contract one call earlier: reading the existing
+    # understanding is a database round trip that can fail on its own.
+    extraction["get_business_understanding"].side_effect = RuntimeError("database down")
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.generate_intro",
+        new=AsyncMock(return_value=("You mentioned the order emails.", [])),
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == "You mentioned the order emails."
+
+
+@pytest.mark.asyncio
+async def test_a_failed_greeting_does_not_cost_the_extraction(
+    dumps: DumpStore, extraction: dict[str, AsyncMock], mocker: MockerFixture
+):
+    # The greeting half of the same contract: a broken LLM call resolves
+    # to the template, and the extraction alongside it still lands.
+    mocker.patch(
+        "backend.api.features.onboarding_dump.intro.get_openai_client",
+        return_value=None,
+    )
+    await start_voice_take(dumps)
+
+    await finalize_voice()
+
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == intro.fallback_intro(TRANSCRIPT)[0]
+    extraction["upsert_business_understanding"].assert_awaited_once()

@@ -135,8 +135,12 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
             self.shared_event_loop.close()  # ensure held resources are released
 
-    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
-        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
+    def run_and_wait(
+        self, coro: Coroutine[Any, Any, T], timeout: float | None = None
+    ) -> T:
+        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result(
+            timeout
+        )
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
@@ -152,8 +156,21 @@ class BaseAppService(AppProcess, ABC):
         **Note:** if you override this method in a subclass, it must call
         `super().cleanup()` *at the end*!
         """
-        # Stop the shared event loop to allow resource clean-up
-        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+        # Stop the shared event loop to allow resource clean-up. The loop
+        # thread closes the loop right after run_forever() returns, so a
+        # closed loop here means that thread is already gone (loop crash or
+        # repeated cleanup) and there is nothing left to stop — scheduling
+        # onto it would raise "Event loop is closed" mid-shutdown.
+        if not self.shared_event_loop.is_closed():
+            try:
+                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+            except RuntimeError:
+                # The loop thread closed the loop between the check above and
+                # the scheduling call; equivalent to the is_closed() case.
+                logger.warning(
+                    f"[{self.service_name}] event loop closed before its stop "
+                    "could be scheduled; continuing cleanup"
+                )
 
         super().cleanup()
 

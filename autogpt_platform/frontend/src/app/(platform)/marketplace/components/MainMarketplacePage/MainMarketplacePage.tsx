@@ -9,6 +9,8 @@ import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
+import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
+import { AGENTS_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
 export const MainMarkeplacePage = () => {
@@ -22,7 +24,7 @@ export const MainMarkeplacePage = () => {
 
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -45,7 +47,7 @@ export const MainMarkeplacePage = () => {
         <HeroSection />
         {isHireExpertsEnabled ? <ExpertsSection /> : null}
         {topAgents && (
-          <div className="mb-20">
+          <div className="mb-20" id={AGENTS_SECTION_ID}>
             <AgentsSection
               sectionTitle="All AI Workflows"
               titleIcon={<AICatalogIcon size={30} />}
@@ -73,6 +75,7 @@ export const MainMarkeplacePage = () => {
           buttonText="Become a Creator"
         />
       </main>
+      <MarketplaceTabIntro />
     </div>
   );
 };
