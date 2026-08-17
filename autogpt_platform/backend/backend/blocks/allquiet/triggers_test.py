@@ -140,10 +140,72 @@ def _render(template: str, *, attributes: list[dict]) -> str:
         item = body
         separator = "" if index == len(attributes) - 1 else ","
         item = re.sub(r"\{\{#unless @last\}\},\{\{/unless\}\}", separator, item)
-        item = item.replace("{{this.name}}", attribute["name"])
-        item = item.replace("{{this.value}}", attribute["value"])
+        item = item.replace("{{{this.name}}}", attribute["name"])
+        item = item.replace("{{{this.value}}}", attribute["value"])
         rendered_items.append(item.strip())
 
     out = template[: each.start()] + "".join(rendered_items) + template[each.end() :]
     # Fill the remaining scalar placeholders with something JSON-safe.
-    return re.sub(r"\{\{[^}]+\}\}", "x", out)
+    return re.sub(r"\{\{+[^}]+\}\}+", "x", out)
+
+
+class TestHtmlEscaping:
+    """All Quiet's stock template (and its "test alert" button) HTML-escapes values.
+
+    Handlebars escapes `{{ }}` by default, so `RAM > 60%` arrives as
+    `RAM &gt; 60%`. Captured from a real test-alert delivery.
+    """
+
+    async def test_unescapes_attribute_values_from_the_test_alert(self):
+        out = await _outputs(
+            {
+                "eventId": "b4d2a6a9-be50-45ff-863a-b0ee1a77494e",
+                "incidentId": "81cd20be-5837-4dd8-a951-2207a025a231",
+                "incidentTitle": "",
+                "incidentProperties": [
+                    {"name": "Environment", "value": "prod"},
+                    {"name": "Alert", "value": "RAM &gt; 60%1"},
+                ],
+            }
+        )
+
+        assert out["attributes"] == {
+            "Environment": "prod",
+            "Alert": "RAM > 60%1",
+        }
+
+    async def test_unescapes_the_incident_title(self):
+        out = await _outputs({"incidentTitle": "Disk &gt; 90% &amp; climbing"})
+
+        assert out["incident_title"] == "Disk > 90% & climbing"
+
+    async def test_omits_an_empty_title(self):
+        # The test alert sends incidentTitle: "" — emitting an empty string
+        # would look like a real (blank) title downstream.
+        out = await _outputs({"incidentId": "x", "incidentTitle": ""})
+
+        assert "incident_title" not in out
+
+    async def test_round_trips_a_literal_entity(self):
+        # A value containing a literal "&gt;" is double-escaped by Handlebars,
+        # so unescaping recovers exactly what was typed.
+        out = await _outputs({"attributes": [{"name": "n", "value": "&amp;gt;"}]})
+
+        assert out["attributes"]["n"] == "&gt;"
+
+    async def test_unescapes_attribute_names_too(self):
+        out = await _outputs({"attributes": [{"name": "A &amp; B", "value": "v"}]})
+
+        assert out["attributes"] == {"A & B": "v"}
+
+
+class TestRecommendedTemplateDoesNotEscape:
+    def test_uses_triple_stash_for_every_placeholder(self):
+        # Double-stash would re-introduce the escaping this block now undoes.
+        double_stash = re.findall(
+            r"(?<!\{)\{\{(?!\{)(?![#/])[^}]+\}\}", RECOMMENDED_BODY_TEMPLATE
+        )
+
+        assert (
+            not double_stash
+        ), f"non-escaping triple-stash required, found: {double_stash}"

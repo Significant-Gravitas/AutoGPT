@@ -1,5 +1,6 @@
 """Trigger block fired by an All Quiet outbound webhook."""
 
+import html
 from typing import Any, Optional
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -22,16 +23,18 @@ from ._webhook import AllQuietWebhookType
 # Body template to paste into the All Quiet outbound webhook. It forwards the
 # whole incident rather than a flattened subset, so the block can emit status,
 # severity and attributes as well as the IDs.
+# Triple-stash ({{{ }}}) throughout: Handlebars HTML-escapes {{ }} by default,
+# which turns a value like `RAM > 60%` into `RAM &gt; 60%` on the wire.
 RECOMMENDED_BODY_TEMPLATE = """{
-  "id": "{{id}}",
-  "title": "{{title}}",
-  "eventId": "{{events.[0].id}}",
-  "status": "{{events.[0].status}}",
-  "severity": "{{events.[0].severity}}",
-  "intent": "{{events.[0].modification.intent}}",
+  "id": "{{{id}}}",
+  "title": "{{{title}}}",
+  "eventId": "{{{events.[0].id}}}",
+  "status": "{{{events.[0].status}}}",
+  "severity": "{{{events.[0].severity}}}",
+  "intent": "{{{events.[0].modification.intent}}}",
   "attributes": [
     {{#each attributes}}
-      { "name": "{{this.name}}", "value": "{{this.value}}" }{{#unless @last}},{{/unless}}
+      { "name": "{{{this.name}}}", "value": "{{{this.value}}}" }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
 }"""
@@ -168,8 +171,21 @@ def _first_str(payload: dict[str, Any], *keys: str) -> str:
     for key in keys:
         value = payload.get(key)
         if value:
-            return str(value)
+            return _unescape(str(value))
     return ""
+
+
+def _unescape(value: str) -> str:
+    """Undo the HTML escaping Handlebars applies to ``{{ }}`` placeholders.
+
+    All Quiet's stock body template uses the escaping form, so a value like
+    ``RAM > 60%`` arrives as ``RAM &gt; 60%``. Unescaping is the correct inverse
+    for anything that came through that path: a value containing a literal
+    ``&gt;`` would have been double-escaped to ``&amp;gt;`` and round-trips
+    cleanly. Templates using the triple-stash form send raw values, where this
+    is a no-op unless the value genuinely contains an entity.
+    """
+    return html.unescape(value)
 
 
 def _attributes(payload: dict[str, Any]) -> dict[str, str]:
@@ -194,5 +210,5 @@ def _attributes(payload: dict[str, Any]) -> dict[str, str]:
         except ValidationError:
             continue
         if attribute.name:
-            flattened[attribute.name] = attribute.value
+            flattened[_unescape(attribute.name)] = _unescape(attribute.value)
     return flattened
