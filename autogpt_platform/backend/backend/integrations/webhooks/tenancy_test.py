@@ -125,6 +125,16 @@ async def test_auto_webhook_does_not_reuse_mismatched_tenant(monkeypatch) -> Non
         )
 
     assert result == replacement
+    find_webhook.assert_awaited_once_with(
+        user_id="user-1",
+        credentials_id="cred-1",
+        webhook_type=manager.WebhookType.REPO,
+        resource="owner/repo",
+        organization_id="org-1",
+        team_id="team-1",
+        events=["push"],
+    )
+    create_webhook.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -177,16 +187,6 @@ async def test_auto_webhook_rehomes_legacy_null_tenancy_row(monkeypatch) -> None
         legacy.id, organization_id="org-1", team_id="team-1"
     )
     create_webhook.assert_not_awaited()
-    find_webhook.assert_awaited_once_with(
-        user_id="user-1",
-        credentials_id="cred-1",
-        webhook_type=manager.WebhookType.REPO,
-        resource="owner/repo",
-        organization_id="org-1",
-        team_id="team-1",
-        events=["push"],
-    )
-    create_webhook.assert_awaited_once()
 
 
 @pytest.mark.asyncio
