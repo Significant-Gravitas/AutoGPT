@@ -105,9 +105,7 @@ async def test_results_without_value_are_excluded_from_values():
         SearchFilterTypeaheadBlock,
         "typeahead",
         new=AsyncMock(
-            return_value={
-                "results": [{"value": "Google"}, {"label": "no value here"}]
-            }
+            return_value={"results": [{"value": "Google"}, {"label": "no value here"}]}
         ),
     ):
         async for name, value in block.run(input_data, credentials=TEST_CREDENTIALS):
