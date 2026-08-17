@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
+from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, sanitize_string
 
 from .model import (
@@ -327,6 +328,13 @@ async def create_chat_session(
                 requested_expert_id,
                 lock_for_update=True,
             )
+            if expert_id is None:
+                # Fail closed: the expert vanished (archived/deleted/shared)
+                # between the caller's tenancy pre-check and this locked
+                # re-check. Creating an unattributed session would silently
+                # land the chat in AutoPilot memory scope — the opposite of
+                # what the caller asked for.
+                raise ExpertNotFoundError(requested_expert_id)
             prisma_session = await PrismaChatSession.prisma(tx).create(
                 data=_chat_session_create_input(
                     session_id=session_id,
@@ -336,14 +344,6 @@ async def create_chat_session(
                     metadata=metadata,
                     expert_id=expert_id,
                 )
-            )
-        if expert_id is None:
-            logger.warning(
-                "Ignoring inactive/unowned expert %s while creating chat "
-                "session %s for user %s",
-                requested_expert_id,
-                session_id,
-                user_id,
             )
         return ChatSessionInfo.from_db(prisma_session)
 

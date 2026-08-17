@@ -28,7 +28,12 @@ from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    NotFoundError,
+    RedisError,
+)
 
 from .config import ChatConfig, CopilotLlmAuthProvider
 
@@ -1251,6 +1256,11 @@ async def create_chat_session(
             expert_id=expert_id,
         )
         session.expert_id = persisted.expert_id
+    except ExpertNotFoundError:
+        # Domain error, not a persistence failure: the expert lost the
+        # attribution race. Propagate so callers (scheduler skip path,
+        # interactive 404) handle it as fail-closed, not as a 500.
+        raise
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(
