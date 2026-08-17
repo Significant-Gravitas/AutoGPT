@@ -27,15 +27,18 @@ rejected with `400`. If a delivery passes verification but its subscription obje
 can't be parsed, the block fails with a parse error rather than emitting partial
 outputs.
 
-Stripe caps each account at 16 webhook endpoints, and every trigger registers its
-own — an account with many Stripe triggers can exhaust that limit.
+Endpoints are shared, not one per trigger: the platform reuses an existing webhook
+whose registered events already cover the ones you asked for, keyed on your
+credentials. Stripe caps an account at 16 endpoints, so that ceiling is reached
+only with many distinct event-filter combinations on the same key, not with many
+triggers.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| events | Subscription lifecycle events to subscribe to | Events | No |
+| events | Subscription lifecycle events to subscribe to. Cancellation and churn workflows need `deleted`, which is off by default. | Events | No |
 
 ### Outputs
 
@@ -50,8 +53,8 @@ own — an account with many Stripe triggers can exhaust that limit.
 | cancel_at_period_end | True if the subscription is scheduled to end when the current billing period does, rather than having ended already | bool |
 | canceled_at | Unix timestamp of when the subscription was canceled, or 0 if it has not been canceled | int |
 | plan_name | Nickname of the subscription's first item price. Prices without a nickname fall back to the raw price ID (price_...). | str |
-| plan_interval | Billing interval: month or year | str |
-| amount_cents | Plan unit amount in the smallest currency unit (e.g. cents for USD) | int |
+| plan_interval | Billing interval: day, week, month or year | str |
+| amount_cents | Plan unit amount in the smallest currency unit — cents for USD, but whole units for zero-decimal currencies like JPY and KRW | int |
 | currency | Three-letter ISO currency code | str |
 | livemode | True for live Stripe data, False for test mode | bool |
 

@@ -19,10 +19,21 @@ logger = logging.getLogger(__name__)
 STRIPE_API_URL = "https://api.stripe.com/v1"
 # Tolerance window for Stripe timestamp verification (5 minutes)
 STRIPE_TIMESTAMP_TOLERANCE = 300
+# `webhook.config` key holding the secret Stripe returns at endpoint creation.
+# Shared by the writer (`_register_webhook`) and the reader (`verify_signature`).
+SIGNING_SECRET_KEY = "signing_secret"  # pragma: allowlist secret
 
 
 class StripeWebhookType(StrEnum):
     ACCOUNT = "account"
+
+
+def _signatures_match(expected: str, candidate: str) -> bool:
+    """Constant-time compare that treats a non-ASCII candidate as a mismatch."""
+    try:
+        return hmac.compare_digest(expected, candidate)
+    except TypeError:
+        return False
 
 
 def _error_message(response: Response) -> str:
@@ -57,7 +68,7 @@ class StripeWebhooksManager(BaseWebhooksManager):
             )
 
         # Stripe stores its signing secret in config, not the platform-generated secret
-        signing_secret = webhook.config.get("signing_secret", "")
+        signing_secret = webhook.config.get(SIGNING_SECRET_KEY, "")
         if not signing_secret:
             raise HTTPException(
                 status_code=500, detail="Stripe signing secret not configured"
@@ -71,9 +82,9 @@ class StripeWebhooksManager(BaseWebhooksManager):
         for part in sig_header.split(","):
             key, _, value = part.partition("=")
             if key.strip() == "t":
-                timestamp = value
+                timestamp = value.strip()
             elif key.strip() == "v1":
-                v1_sigs.append(value)
+                v1_sigs.append(value.strip())
         if not timestamp or not v1_sigs:
             raise HTTPException(
                 status_code=403, detail="Invalid Stripe-Signature format"
@@ -100,7 +111,10 @@ class StripeWebhooksManager(BaseWebhooksManager):
             digestmod=hashlib.sha256,
         ).hexdigest()
 
-        if not any(hmac.compare_digest(expected, sig) for sig in v1_sigs):
+        # `compare_digest` raises TypeError on a non-ASCII str, and Starlette
+        # decodes headers as latin-1 — so an arbitrary `v1=<non-ascii>` would
+        # turn a 403 into an unhandled 500 on a public endpoint.
+        if not any(_signatures_match(expected, sig) for sig in v1_sigs):
             raise HTTPException(
                 status_code=403, detail="Stripe webhook signature mismatch"
             )
@@ -155,7 +169,7 @@ class StripeWebhooksManager(BaseWebhooksManager):
 
         data = response.json()
         # Store Stripe's signing secret in config — it's only returned on creation
-        return data["id"], {"signing_secret": data["secret"]}
+        return data["id"], {SIGNING_SECRET_KEY: data["secret"]}
 
     async def _deregister_webhook(
         self, webhook: integrations.Webhook, credentials: Credentials

@@ -92,6 +92,17 @@ async def test_plan_name_falls_back_to_price_id_without_a_nickname():
 
 
 @pytest.mark.asyncio
+async def test_missing_unit_amount_falls_back_to_zero():
+    """Metered prices carry no `unit_amount`; the output is typed `int`."""
+    payload = copy.deepcopy(load_example_payload("customer.subscription.created"))
+    payload["data"]["object"]["items"]["data"][0]["price"]["unit_amount"] = None
+
+    outputs = await run_block(payload)
+
+    assert outputs["amount_cents"] == 0
+
+
+@pytest.mark.asyncio
 async def test_malformed_payload_emits_no_partial_output():
     """Yielding "error" aborts the block, so nothing may be emitted before it."""
     outputs = await run_block({"type": "customer.subscription.created"})

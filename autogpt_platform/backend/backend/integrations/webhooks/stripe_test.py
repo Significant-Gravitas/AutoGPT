@@ -142,6 +142,25 @@ async def test_verify_signature_rejects_malformed_header(sig_header: str) -> Non
 
 
 @pytest.mark.asyncio
+async def test_verify_signature_rejects_non_ascii_signature() -> None:
+    """Starlette decodes headers as latin-1, and compare_digest rejects
+    non-ASCII str with a TypeError — which would 500 a public endpoint."""
+    now = int(time.time())
+    request = make_request({"Stripe-Signature": f"t={now},v1=ÿ"})
+    with pytest.raises(HTTPException) as exc_info:
+        await StripeWebhooksManager.verify_signature(make_webhook(), request)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_verify_signature_tolerates_whitespace_around_values() -> None:
+    now = int(time.time())
+    signature = sign(now).split(",", 1)[1].removeprefix("v1=")
+    request = make_request({"Stripe-Signature": f"t= {now} , v1= {signature} "})
+    await StripeWebhooksManager.verify_signature(make_webhook(), request)
+
+
+@pytest.mark.asyncio
 async def test_verify_signature_rejects_missing_header() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await StripeWebhooksManager.verify_signature(make_webhook(), make_request({}))
@@ -282,3 +301,57 @@ async def test_deregister_webhook_deletes_endpoint() -> None:
         )
 
     assert mock_delete.call_args.args[0].endswith("/webhook_endpoints/we_123")
+
+
+@pytest.mark.asyncio
+async def test_deregister_webhook_warns_on_delete_failure(caplog) -> None:
+    """A failed teardown must be visible: it leaves a live endpoint at Stripe."""
+    response = AsyncMock()
+    response.status = 500
+    response.json = lambda: {"error": {"message": "Something went wrong"}}
+
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.delete",
+        new=AsyncMock(return_value=response),
+    ):
+        await StripeWebhooksManager()._deregister_webhook(
+            make_webhook(), api_key_credentials()
+        )
+
+    assert "Something went wrong" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_deregister_webhook_skips_non_api_key_credentials() -> None:
+    oauth_credentials = OAuth2Credentials(
+        id="creds_123",
+        provider="stripe",
+        title="Stripe OAuth",
+        access_token=SecretStr("token"),
+        scopes=[],
+    )
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.delete",
+        new=AsyncMock(),
+    ) as mock_delete:
+        await StripeWebhooksManager()._deregister_webhook(
+            make_webhook(), oauth_credentials
+        )
+
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_deregister_webhook_without_endpoint_id_makes_no_request() -> None:
+    webhook = make_webhook()
+    webhook.provider_webhook_id = ""
+
+    with patch(
+        "backend.integrations.webhooks.stripe.Requests.delete",
+        new=AsyncMock(),
+    ) as mock_delete:
+        await StripeWebhooksManager()._deregister_webhook(
+            webhook, api_key_credentials()
+        )
+
+    mock_delete.assert_not_called()

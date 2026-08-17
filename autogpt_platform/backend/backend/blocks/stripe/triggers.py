@@ -46,6 +46,7 @@ class StripeSubscriptionTriggerBlock(Block):
 
         class EventsFilter(BaseModel):
             """
+            The `customer.subscription.*` lifecycle events:
             https://docs.stripe.com/api/events/types#event_types-customer.subscription.created
             """
 
@@ -55,7 +56,8 @@ class StripeSubscriptionTriggerBlock(Block):
 
         events: EventsFilter = SchemaField(
             title="Events",
-            description="Subscription lifecycle events to subscribe to",
+            description="Subscription lifecycle events to subscribe to. "
+            "Cancellation and churn workflows need `deleted`, which is off by default.",
             default_factory=EventsFilter,
             advanced=False,
         )
@@ -88,9 +90,12 @@ class StripeSubscriptionTriggerBlock(Block):
                 "a nickname fall back to the raw price ID (price_...)."
             )
         )
-        plan_interval: str = SchemaField(description="Billing interval: month or year")
+        plan_interval: str = SchemaField(
+            description="Billing interval: day, week, month or year"
+        )
         amount_cents: int = SchemaField(
-            description="Plan unit amount in the smallest currency unit (e.g. cents for USD)"
+            description="Plan unit amount in the smallest currency unit — cents for "
+            "USD, but whole units for zero-decimal currencies like JPY and KRW"
         )
         currency: str = SchemaField(description="Three-letter ISO currency code")
         livemode: bool = SchemaField(
@@ -157,14 +162,14 @@ class StripeSubscriptionTriggerBlock(Block):
             # versions only expose it as a top-level `plan`. The two shapes
             # differ only in where the interval and amount live.
             if items := subscription.get("items", {}).get("data", []):
-                price = items[0].get("price", {})
-                plan_interval = price.get("recurring", {}).get("interval", "")
-                amount_cents = price.get("unit_amount") or 0
+                price_source = items[0].get("price", {})
+                plan_interval = price_source.get("recurring", {}).get("interval", "")
+                amount_cents = price_source.get("unit_amount") or 0
             else:
-                price = subscription.get("plan", {})
-                plan_interval = price.get("interval", "")
-                amount_cents = price.get("amount") or 0
-            plan_name = price.get("nickname") or price.get("id", "")
+                price_source = subscription.get("plan", {})
+                plan_interval = price_source.get("interval", "")
+                amount_cents = price_source.get("amount") or 0
+            plan_name = price_source.get("nickname") or price_source.get("id", "")
         except (KeyError, TypeError) as e:
             yield "error", f"Failed to parse Stripe subscription payload: {e}"
             return
