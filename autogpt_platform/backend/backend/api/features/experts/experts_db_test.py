@@ -472,6 +472,7 @@ async def test_get_expert_scopes_by_owner(
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert await experts_db.get_expert(test_user.id, template.id) is None
     assert await experts_db.get_expert(other_user.id, hired.expert.id) is None
     assert await experts_db.get_expert(test_user.id, hired.expert.id) is not None
 
