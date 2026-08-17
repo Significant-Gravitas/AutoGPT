@@ -1,9 +1,9 @@
 import asyncio
 import re
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from test import load_store_agents as store_assets
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
