@@ -25,6 +25,7 @@ import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.data.db_accessors import experts_db
+from backend.util.exceptions import ExpertNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,11 @@ def escape_prompt_xml_tags(value: str) -> str:
 
 
 async def build_expert_identity_suffix(
-    user_id: str | None, expert_id: str | None
+    user_id: str | None,
+    expert_id: str | None,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
 ) -> str:
     """Build the ``<expert_identity>`` system-prompt suffix for an expert
     session.
@@ -69,6 +74,23 @@ async def build_expert_identity_suffix(
     if expert is None or expert.is_archived:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE)
 
+    db = experts_db()
+    try:
+        personal_org_id, personal_team_id = await db.resolve_private_expert_tenancy(
+            user_id, expert_id
+        )
+    except ExpertNotFoundError as e:
+        # Permanent: archived, deleted, or no longer PRIVATE — retrying
+        # can never succeed, so don't tell the user to try again.
+        logger.warning(f"Expert session tenancy owner check failed: {e}")
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
+    except Exception as e:
+        logger.warning(f"Failed to validate expert session tenancy: {e}")
+        raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    if (organization_id, team_id) != (personal_org_id, personal_team_id):
+        raise ExpertSessionUnavailableError(
+            "This private expert session must be reopened in its personal workspace."
+        )
     name = escape_prompt_xml_tags(expert.name)
     identity = escape_prompt_xml_tags(expert.identity)
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))

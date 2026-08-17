@@ -789,15 +789,23 @@ async def create_session(
             llm_credential_id=llm_credential_id,
         )
     else:
-        session = await create_chat_session(
-            user_id,
-            dry_run=dry_run,
-            organization_id=ctx.org_id,
-            team_id=ctx.team_id,
-            llm_auth_provider=llm_auth_provider,
-            llm_credential_id=llm_credential_id,
-            expert_id=expert_id,
-        )
+        try:
+            session = await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+            )
+        except experts_db.ExpertNotFoundError as e:
+            raise HTTPException(status_code=404, detail="Expert not found") from e
+        except experts_db.ExpertPrivateTenancyNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail="Your expert workspace is still being set up. Try again shortly.",
+            ) from e
 
     return CreateSessionResponse(
         id=session.session_id,

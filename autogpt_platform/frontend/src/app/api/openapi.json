@@ -5900,7 +5900,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert template not found" },
+          "404": { "description": "Expert or expert template not found" },
           "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
@@ -5909,7 +5909,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -22876,10 +22877,12 @@
             "type": "array",
             "title": "Presets"
           },
-          "total_count": { "type": "integer", "title": "Total Count" }
+          "total_count": { "type": "integer", "title": "Total Count" },
+          "page": { "type": "integer", "title": "Page" },
+          "page_size": { "type": "integer", "title": "Page Size" }
         },
         "type": "object",
-        "required": ["message", "presets", "total_count"],
+        "required": ["message", "presets", "total_count", "page", "page_size"],
         "title": "PresetListResponse",
         "description": "Response listing the user's presets."
       },

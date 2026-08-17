@@ -1622,7 +1622,10 @@ async def stream_chat_completion_baseline(
         )
 
     expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
     )
 
     # The session row is the tenancy anchor; the turn entry's org/team only
