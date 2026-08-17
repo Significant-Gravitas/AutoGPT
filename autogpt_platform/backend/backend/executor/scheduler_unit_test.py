@@ -175,9 +175,7 @@ def _patched_experts_db(get_expert: AsyncMock):
     # ruling "missing"; default it to False so get_expert=None means the
     # row is truly gone.
     accessor.return_value.expert_row_exists = AsyncMock(return_value=False)
-
-
-return patch(f"{_SCHEDULER_PATH}.experts_db", new=accessor)
+    return patch(f"{_SCHEDULER_PATH}.experts_db", new=accessor)
 
 
 def _expert_row(*, is_archived: bool = False, schedules_paused_at=None) -> MagicMock:
@@ -531,8 +529,8 @@ async def test_fresh_expert_one_shot_retries_when_workspace_is_unavailable():
     mock_reschedule.assert_awaited_once_with(args)
 
 
-@pytest.mark.asyncioasync
-def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
     args = _args(session_id=None)
     payload = args.model_dump(mode="json", exclude={"expert_id"})
     mock_schedule_turn = AsyncMock()
