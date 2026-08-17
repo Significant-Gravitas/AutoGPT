@@ -208,14 +208,6 @@ class TestReplayProtection:
             await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
         assert "window" in exc.value.detail
 
-    async def test_allows_an_unparseable_timestamp_that_signs_correctly(self):
-        # The signature already covers the timestamp, so an unfamiliar format
-        # must not lock out genuine deliveries.
-        odd = "17/12/2023 11:51:08"
-        request = _request({"x-aq-signature": _sign(BODY, odd), "x-aq-timestamp": odd})
-
-        await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
-
 
 class TestSecretDiscovery:
     async def test_reads_the_secret_from_a_preset(self):
@@ -242,5 +234,95 @@ class TestSecretDiscovery:
             {"x-aq-signature": _sign(BODY, timestamp), "x-aq-timestamp": timestamp}
         )
         webhook = _webhook(node_inputs=[{}, {"signing_secret": SECRET}])
+
+        await AllQuietWebhooksManager.verify_signature(webhook, request)
+
+
+class TestSigningSecretFieldCoupling:
+    """`SIGNING_SECRET_INPUT` is matched against the block's field name by string.
+
+    A rename on either side would silently downgrade every signed webhook to
+    "accept anything", with no type or test failure anywhere else.
+    """
+
+    def test_names_a_real_field_on_the_trigger_block(self):
+        from backend.blocks.allquiet.triggers import AllQuietIncidentTriggerBlock
+
+        fields = AllQuietIncidentTriggerBlock().input_schema.model_fields
+
+        assert AllQuietWebhooksManager.SIGNING_SECRET_INPUT in fields
+
+    def test_that_field_is_marked_secret(self):
+        from backend.blocks.allquiet.triggers import AllQuietIncidentTriggerBlock
+
+        schema = AllQuietIncidentTriggerBlock().input_schema.model_json_schema()
+        field = schema["properties"][AllQuietWebhooksManager.SIGNING_SECRET_INPUT]
+
+        assert field.get("secret") is True
+
+
+class TestTimestampFormats:
+    """All Quiet's two header pairs don't share a timestamp format."""
+
+    @pytest.mark.parametrize(
+        "stamp",
+        [
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            datetime.now(timezone.utc).isoformat(),
+            str(int(datetime.now(timezone.utc).timestamp())),
+            str(int(datetime.now(timezone.utc).timestamp() * 1000)),
+        ],
+        ids=["aq-millis", "aws-iso", "iso-offset", "epoch-seconds", "epoch-millis"],
+    )
+    async def test_accepts_each_format_all_quiet_may_send(self, stamp: str):
+        request = _request(
+            {"x-aq-signature": _sign(BODY, stamp), "x-aq-timestamp": stamp}
+        )
+
+        await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+
+    async def test_fails_closed_on_an_unrecognized_format(self):
+        # Previously this was waved through, which left the replay window
+        # permanently open for any sender using an unusual timestamp format.
+        odd = "17/12/2023 11:51:08"
+        request = _request({"x-aq-signature": _sign(BODY, odd), "x-aq-timestamp": odd})
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+        assert "recognized format" in exc.value.detail
+
+    async def test_rejects_a_stale_epoch_timestamp(self):
+        old = str(int(datetime.now(timezone.utc).timestamp()) - 3600)
+        request = _request({"x-aq-signature": _sign(BODY, old), "x-aq-timestamp": old})
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+        assert "window" in exc.value.detail
+
+
+class TestAmbiguousSecrets:
+    async def test_refuses_when_targets_disagree_on_the_secret(self):
+        # Picking a winner would make verification depend on node ordering.
+        timestamp = _now()
+        request = _request(
+            {"x-aq-signature": _sign(BODY, timestamp), "x-aq-timestamp": timestamp}
+        )
+        webhook = _webhook(
+            node_inputs=[{"signing_secret": SECRET}, {"signing_secret": "other"}]
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(webhook, request)
+        assert "different signing secrets" in exc.value.detail
+
+    async def test_allows_targets_that_agree(self):
+        timestamp = _now()
+        request = _request(
+            {"x-aq-signature": _sign(BODY, timestamp), "x-aq-timestamp": timestamp}
+        )
+        webhook = _webhook(
+            node_inputs=[{"signing_secret": SECRET}, {"signing_secret": SECRET}]
+        )
 
         await AllQuietWebhooksManager.verify_signature(webhook, request)

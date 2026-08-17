@@ -2,6 +2,8 @@
 
 from typing import Any, Optional
 
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
 from backend.sdk import APIKeyCredentials, Requests, json
 
 from ._types import (
@@ -18,6 +20,17 @@ REGION_HOSTS: dict[AllQuietRegion, str] = {
     AllQuietRegion.US: "https://allquiet.app",
     AllQuietRegion.EU: "https://allquiet.eu",
 }
+
+
+class _ListedError(BaseModel):
+    """One entry of All Quiet's list-shaped ``errors`` envelope."""
+
+    description: str = ""
+
+
+_JSON_OBJECT = TypeAdapter(dict[str, Any])
+_FIELD_ERRORS = TypeAdapter(dict[str, list[str]])
+_LISTED_ERRORS = TypeAdapter(list[_ListedError])
 
 
 class AllQuietClient:
@@ -57,9 +70,10 @@ class AllQuietClient:
             params=_clean_params(params or {}),
             json=body,
         )
+        body_text = response.text()
         if not response.ok:
-            raise RuntimeError(_error_message(response.status, response.text()))
-        if not response.text():
+            raise RuntimeError(_error_message(response.status, body_text))
+        if not body_text:
             return None
         return response.json()
 
@@ -245,23 +259,61 @@ def _to_incident(data: Optional[dict[str, Any]]) -> Incident:
 
 
 def _error_message(status: int, body: str) -> str:
-    """Turn All Quiet's RFC 9110 problem details into a single readable line."""
-    detail = body.strip()
-    parsed = json.loads(body, fallback={}) if body else {}
+    """Turn an All Quiet error body into a single readable line."""
+    detail = _error_detail(body) or body.strip()
 
-    if isinstance(parsed, dict):
-        field_errors = parsed.get("errors")
-        if isinstance(field_errors, dict):
-            detail = "; ".join(
-                f"{field}: {' '.join(messages)}"
-                for field, messages in field_errors.items()
-            )
-        elif parsed.get("title"):
-            detail = str(parsed["title"])
-
-    if status == 401 or status == 403:
+    if status in (401, 403):
         return (
             f"All Quiet rejected the API key ({status}). Check the key is valid and "
             f"that your plan includes the Public API. {detail}".strip()
         )
     return f"All Quiet API error {status}: {detail}"
+
+
+def _error_detail(body: str) -> str:
+    """Extract the human-readable part of an All Quiet error body.
+
+    All Quiet uses two different error shapes, so both are handled:
+
+    * RFC 9110 problem details for request validation, where ``errors`` maps a
+      field to its messages --
+      ``{"errors": {"Statuses": ["Values must be one of Open,Resolved"]}}``
+    * a result envelope for auth and similar failures, where ``errors`` is a
+      list of objects --
+      ``{"succeeded": false, "errors": [{"description": "Provided API key is invalid."}]}``
+
+    Returns an empty string when nothing useful can be pulled out, so the caller
+    can fall back to the raw body.
+    """
+    try:
+        parsed = _JSON_OBJECT.validate_python(
+            json.loads(body, fallback={}) if body else {}
+        )
+    except ValidationError:
+        # Body parsed as JSON but isn't an object (e.g. a bare string or array).
+        return ""
+    if not parsed:
+        return ""
+
+    raw_errors = parsed.get("errors")
+
+    try:
+        field_errors = _FIELD_ERRORS.validate_python(raw_errors)
+    except ValidationError:
+        pass
+    else:
+        return "; ".join(
+            f"{field}: {' '.join(messages)}" for field, messages in field_errors.items()
+        )
+
+    try:
+        listed_errors = _LISTED_ERRORS.validate_python(raw_errors)
+    except ValidationError:
+        pass
+    else:
+        described = [e.description for e in listed_errors if e.description]
+        if described:
+            return "; ".join(described)
+
+    title = parsed.get("title")
+    return str(title) if title else ""

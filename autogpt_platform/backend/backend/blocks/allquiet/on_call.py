@@ -13,25 +13,8 @@ from backend.sdk import (
 
 from ._api import AllQuietClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, allquiet, region_field
-from ._types import (
-    AllQuietEntity,
-    AllQuietRegion,
-    AllQuietUser,
-    OnCallAvailability,
-    OnCallShift,
-)
-
-TEST_SHIFT = OnCallShift(
-    user=AllQuietUser(
-        id="b7c8d9e0-0000-4000-8000-000000000002",
-        displayName="Ada Lovelace",
-        email="ada@example.com",
-    ),
-    team=AllQuietEntity(
-        id="7da9d74c-0000-4000-8000-000000000003", displayName="Platform"
-    ),
-    availabilities=[OnCallAvailability(tier=1, isOnline=True, fillUp=False)],
-)
+from ._testdata import TEST_SHIFT
+from ._types import AllQuietRegion, AllQuietUser, OnCallShift
 
 
 class AllQuietGetOnCallBlock(Block):
@@ -44,6 +27,7 @@ class AllQuietGetOnCallBlock(Block):
         team_ids: list[str] = SchemaField(
             description="Limit to these teams. Leave empty for every team.",
             default_factory=list,
+            advanced=False,
         )
         user_ids: list[str] = SchemaField(
             description="Limit to these users. Leave empty for every user.",
@@ -74,6 +58,12 @@ class AllQuietGetOnCallBlock(Block):
         emails: list[str] = SchemaField(
             description="Email addresses of the on-call users"
         )
+        has_coverage: bool = SchemaField(
+            description=(
+                "False when nobody is on call for the requested teams/time, so a "
+                "graph can branch to a fallback instead of silently paging no one"
+            )
+        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -91,6 +81,7 @@ class AllQuietGetOnCallBlock(Block):
                 ("users", [TEST_SHIFT.user]),
                 ("user_ids", [TEST_SHIFT.user.id if TEST_SHIFT.user else ""]),
                 ("emails", ["ada@example.com"]),
+                ("has_coverage", True),
             ],
             test_mock={"get_on_call": lambda *args, **kwargs: [TEST_SHIFT]},
         )
@@ -125,3 +116,4 @@ class AllQuietGetOnCallBlock(Block):
         yield "users", users
         yield "user_ids", list(users_by_id)
         yield "emails", [user.email for user in users if user.email]
+        yield "has_coverage", bool(users)

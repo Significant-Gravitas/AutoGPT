@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -29,10 +31,24 @@ RECOMMENDED_BODY_TEMPLATE = """{
   "intent": "{{events.[0].modification.intent}}",
   "attributes": [
     {{#each attributes}}
-      { "name": "{{this.name}}", "value": "{{this.value}}" },
+      { "name": "{{this.name}}", "value": "{{this.value}}" }{{#unless @last}},{{/unless}}
     {{/each}}
   ]
 }"""
+
+
+class _Attribute(BaseModel):
+    """One entry of an All Quiet attribute list, as rendered by a body template."""
+
+    name: str = ""
+    value: str = ""
+
+
+_ATTRIBUTE_LIST = TypeAdapter(list[Any])
+
+# Precomputed so `run()` doesn't rebuild them on every delivery.
+_STATUS_VALUES = {member.value for member in IncidentStatus}
+_SEVERITY_VALUES = {member.value for member in IncidentSeverity}
 
 EXAMPLE_PAYLOAD = {
     "id": "81cd20be-5837-4dd8-a951-2207a025a231",
@@ -71,6 +87,7 @@ class AllQuietIncidentTriggerBlock(Block):
             ),
             default=None,
             secret=True,
+            advanced=False,
         )
 
     class Output(BlockSchemaOutput):
@@ -136,18 +153,18 @@ class AllQuietIncidentTriggerBlock(Block):
             yield "event_id", event_id
 
         status = _first_str(payload, "status")
-        if status in {member.value for member in IncidentStatus}:
+        if status in _STATUS_VALUES:
             yield "status", IncidentStatus(status)
 
         severity = _first_str(payload, "severity")
-        if severity in {member.value for member in IncidentSeverity}:
+        if severity in _SEVERITY_VALUES:
             yield "severity", IncidentSeverity(severity)
 
         yield "attributes", _attributes(payload)
 
 
 def _first_str(payload: dict[str, Any], *keys: str) -> str:
-    """Return the first key present in the payload as a string."""
+    """Return the first of ``keys`` with a non-empty value, as a string."""
     for key in keys:
         value = payload.get(key)
         if value:
@@ -156,11 +173,26 @@ def _first_str(payload: dict[str, Any], *keys: str) -> str:
 
 
 def _attributes(payload: dict[str, Any]) -> dict[str, str]:
-    """Flatten All Quiet's ``[{name, value}]`` attribute lists to a mapping."""
-    entries = payload.get("attributes") or payload.get("incidentProperties") or []
+    """Flatten All Quiet's ``[{name, value}]`` attribute lists to a mapping.
+
+    The body is rendered from a user-editable template, so the value may be any
+    JSON shape. Anything that isn't a list of name/value objects is skipped
+    rather than raising, so one bad template field can't fail the whole trigger.
+    """
+    raw = payload.get("attributes") or payload.get("incidentProperties") or []
+    try:
+        entries = _ATTRIBUTE_LIST.validate_python(raw)
+    except ValidationError:
+        return {}
+
     flattened: dict[str, str] = {}
     for entry in entries:
-        name = (entry or {}).get("name")
-        if name:
-            flattened[str(name)] = str((entry or {}).get("value", ""))
+        # Validate entries one at a time so a single malformed item is dropped
+        # instead of discarding every attribute alongside it.
+        try:
+            attribute = _Attribute.model_validate(entry)
+        except ValidationError:
+            continue
+        if attribute.name:
+            flattened[attribute.name] = attribute.value
     return flattened

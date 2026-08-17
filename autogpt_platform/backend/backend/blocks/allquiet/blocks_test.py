@@ -1,0 +1,153 @@
+"""Block-level `run()` tests for behaviour the standard harness can't reach.
+
+The harness exercises one canned input per block. These cover the paths it
+misses: the optional markdown report, and on-call de-duplication across teams,
+which is the whole point of that block and can't be seen with a single-team
+fixture.
+"""
+
+from typing import Any
+from unittest.mock import AsyncMock
+
+import pytest
+
+from backend.blocks.allquiet._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.allquiet._testdata import (
+    TEST_INCIDENT,
+    TEST_MARKDOWN,
+    TEST_SHIFT,
+    TEST_USER,
+)
+from backend.blocks.allquiet._types import (
+    AllQuietEntity,
+    AllQuietUser,
+    OnCallAvailability,
+    OnCallShift,
+)
+from backend.blocks.allquiet.incident_search import AllQuietGetIncidentBlock
+from backend.blocks.allquiet.on_call import AllQuietGetOnCallBlock
+
+
+async def _run(block, **inputs) -> dict[str, Any]:
+    collected: dict[str, Any] = {}
+    async for name, value in block.run(
+        block.input_schema(credentials=TEST_CREDENTIALS_INPUT, **inputs),
+        credentials=TEST_CREDENTIALS,
+    ):
+        collected.setdefault(name, value)
+    return collected
+
+
+class TestGetIncidentMarkdown:
+    async def test_omits_markdown_by_default(self, monkeypatch: pytest.MonkeyPatch):
+        block = AllQuietGetIncidentBlock()
+        monkeypatch.setattr(
+            block,
+            "get_incident",
+            AsyncMock(return_value=(TEST_INCIDENT, "")),
+        )
+
+        out = await _run(block, incident_id=TEST_INCIDENT.id)
+
+        assert "markdown" not in out
+
+    async def test_emits_markdown_when_requested(self, monkeypatch: pytest.MonkeyPatch):
+        block = AllQuietGetIncidentBlock()
+        monkeypatch.setattr(
+            block,
+            "get_incident",
+            AsyncMock(return_value=(TEST_INCIDENT, TEST_MARKDOWN)),
+        )
+
+        out = await _run(block, incident_id=TEST_INCIDENT.id, include_markdown=True)
+
+        assert out["markdown"] == TEST_MARKDOWN
+
+    async def test_passes_the_flag_through_to_the_fetcher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = AllQuietGetIncidentBlock()
+        fetch = AsyncMock(return_value=(TEST_INCIDENT, TEST_MARKDOWN))
+        monkeypatch.setattr(block, "get_incident", fetch)
+
+        await _run(block, incident_id=TEST_INCIDENT.id, include_markdown=True)
+
+        assert fetch.await_args.args[3] is True
+
+
+def _shift_for(user: AllQuietUser, team_name: str, team_id: str) -> OnCallShift:
+    return OnCallShift(
+        user=user,
+        team=AllQuietEntity(id=team_id, displayName=team_name),
+        availabilities=[OnCallAvailability(tier=1, isOnline=True, fillUp=False)],
+    )
+
+
+class TestOnCallDeduplication:
+    async def test_a_user_on_two_teams_is_emitted_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        # Someone covering two rotations must not be paged twice.
+        block = AllQuietGetOnCallBlock()
+        shifts = [
+            _shift_for(TEST_USER, "Platform", "team-1"),
+            _shift_for(TEST_USER, "Website", "team-2"),
+        ]
+        monkeypatch.setattr(block, "get_on_call", AsyncMock(return_value=shifts))
+
+        out = await _run(block)
+
+        assert len(out["shifts"]) == 2, "every shift is still reported"
+        assert out["user_ids"] == [TEST_USER.id]
+        assert out["emails"] == [TEST_USER.email]
+        assert len(out["users"]) == 1
+
+    async def test_distinct_users_are_all_kept(self, monkeypatch: pytest.MonkeyPatch):
+        block = AllQuietGetOnCallBlock()
+        other = AllQuietUser(
+            id="c0ffee00-0000-4000-8000-000000000009",
+            displayName="Grace Hopper",
+            email="grace@example.com",
+        )
+        monkeypatch.setattr(
+            block,
+            "get_on_call",
+            AsyncMock(
+                return_value=[
+                    _shift_for(TEST_USER, "Platform", "team-1"),
+                    _shift_for(other, "Platform", "team-1"),
+                ]
+            ),
+        )
+
+        out = await _run(block)
+
+        assert out["user_ids"] == [TEST_USER.id, other.id]
+        assert out["has_coverage"] is True
+
+    async def test_reports_no_coverage_when_nobody_is_on_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = AllQuietGetOnCallBlock()
+        monkeypatch.setattr(block, "get_on_call", AsyncMock(return_value=[]))
+
+        out = await _run(block)
+
+        assert out["has_coverage"] is False
+        assert out["users"] == []
+        assert out["emails"] == []
+
+    async def test_skips_shifts_with_no_user(self, monkeypatch: pytest.MonkeyPatch):
+        block = AllQuietGetOnCallBlock()
+        headless = OnCallShift(
+            user=None,
+            team=AllQuietEntity(id="team-1", displayName="Platform"),
+            availabilities=[],
+        )
+        monkeypatch.setattr(
+            block, "get_on_call", AsyncMock(return_value=[headless, TEST_SHIFT])
+        )
+
+        out = await _run(block)
+
+        assert out["user_ids"] == [TEST_SHIFT.user.id if TEST_SHIFT.user else ""]

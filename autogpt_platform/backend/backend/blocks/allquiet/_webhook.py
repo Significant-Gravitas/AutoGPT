@@ -130,20 +130,20 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
     def _reject_stale_timestamp(cls, timestamp: str) -> None:
         """Reject replays of an otherwise validly signed delivery.
 
-        An unparseable timestamp is allowed through: it is already covered by
-        the signature, and All Quiet's two formats differ enough that being
-        strict here would reject genuine deliveries.
+        Fails closed: a signing secret is configured, so a timestamp we cannot
+        place in time is treated as a failed check rather than waved through.
+        Letting it pass would leave the replay window permanently open for any
+        sender that varies its timestamp format.
         """
-        try:
-            sent_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        except ValueError:
-            logger.debug(
-                "Unparseable webhook timestamp %s; skipping skew check", timestamp
+        sent_at = _parse_timestamp(timestamp)
+        if sent_at is None:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Webhook timestamp is not in a recognized format, so the "
+                    "delivery cannot be checked for replay."
+                ),
             )
-            return
-
-        if sent_at.tzinfo is None:
-            sent_at = sent_at.replace(tzinfo=timezone.utc)
 
         if abs(datetime.now(timezone.utc) - sent_at) > MAX_TIMESTAMP_SKEW:
             raise HTTPException(
@@ -178,11 +178,55 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
         # flows into the logger call args.
         distinct_count = len(set(found))
         if distinct_count > 1:
+            # Only one signature can be checked, so picking a winner would make
+            # verification depend on node ordering. Refuse instead of silently
+            # enforcing one target's secret against every delivery.
             logger.warning(
                 "Webhook %s has %d distinct signing_secret values across "
-                "attached targets; using the first one. All targets attached "
-                "to the same webhook must share the same secret.",
+                "attached targets; refusing the delivery.",
                 webhook.id,
                 distinct_count,
             )
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This webhook is attached to targets configured with "
+                    "different signing secrets. All targets sharing a webhook "
+                    "must use the same secret."
+                ),
+            )
         return found[0]
+
+
+def _parse_timestamp(timestamp: str) -> Optional[datetime]:
+    """Parse the timestamp formats All Quiet signs with, as an aware UTC datetime.
+
+    Covers the ISO-8601 spellings used by the All Quiet header pair
+    (``2023-12-17T11:51:08.844Z``, and the ``...T11:51:08.000Z`` form the AWS
+    pair documents) plus epoch seconds/milliseconds, which AWS-style senders
+    commonly use. Returns None when the value matches none of them.
+    """
+    candidate = timestamp.strip()
+    if not candidate:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    else:
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    try:
+        epoch = float(candidate)
+    except ValueError:
+        return None
+
+    # Heuristic: values this large can only be milliseconds. 1e11 seconds is
+    # year 5138, while 1e11 ms is 1973, so the split is unambiguous in practice.
+    if abs(epoch) >= 1e11:
+        epoch /= 1000.0
+    try:
+        return datetime.fromtimestamp(epoch, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None

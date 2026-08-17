@@ -13,14 +13,8 @@ from backend.sdk import (
 
 from ._api import AllQuietClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, allquiet, region_field
+from ._testdata import TEST_TEAM
 from ._types import AllQuietRegion, Team
-
-TEST_TEAM = Team(
-    id="7da9d74c-0000-4000-8000-000000000003",
-    displayName="Platform",
-    timeZoneId="UTC",
-    labels=["Engineering"],
-)
 
 
 class AllQuietListTeamsBlock(Block):
@@ -33,12 +27,14 @@ class AllQuietListTeamsBlock(Block):
         display_name: str = SchemaField(
             description="Filter to teams whose name matches this text.",
             default="",
+            advanced=False,
         )
         limit: int = SchemaField(
             description="Maximum number of teams to return.",
             default=50,
             ge=1,
             le=100,
+            advanced=False,
         )
         offset: int = SchemaField(
             description="Number of teams to skip, for paging.",

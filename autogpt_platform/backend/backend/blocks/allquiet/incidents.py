@@ -15,6 +15,7 @@ from backend.sdk import (
 
 from ._api import AllQuietClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, allquiet, region_field
+from ._testdata import TEST_INCIDENT
 from ._types import (
     AllQuietRegion,
     AllQuietUser,
@@ -22,16 +23,6 @@ from ._types import (
     IncidentIntent,
     IncidentSeverity,
     IncidentStatus,
-)
-
-TEST_INCIDENT = Incident(
-    id="a1b2c3d4-0000-4000-8000-000000000001",
-    title="Checkout latency above SLO",
-    status=IncidentStatus.OPEN,
-    severity=IncidentSeverity.CRITICAL,
-    createdAt="2026-08-16T23:42:17.274Z",
-    lastUpdatedAt="2026-08-16T23:42:17.274Z",
-    allowedIntents=["Investigated", "Resolved", "Escalated"],
 )
 
 
@@ -48,7 +39,8 @@ class AllQuietCreateIncidentBlock(Block):
         )
         severity: IncidentSeverity = SchemaField(
             description="How urgent the incident is.",
-            default=IncidentSeverity.CRITICAL,
+            default=IncidentSeverity.WARNING,
+            advanced=False,
         )
         status: IncidentStatus = SchemaField(
             description=(
@@ -56,10 +48,12 @@ class AllQuietCreateIncidentBlock(Block):
                 "without paging anyone."
             ),
             default=IncidentStatus.OPEN,
+            advanced=False,
         )
         message: str = SchemaField(
             description="Longer description with context for the responder.",
             default="",
+            advanced=False,
         )
         team_ids: list[str] = SchemaField(
             description=(
@@ -67,6 +61,7 @@ class AllQuietCreateIncidentBlock(Block):
                 "integration's default routing."
             ),
             default_factory=list,
+            advanced=False,
         )
         service_ids: list[str] = SchemaField(
             description="Affected services, used for status pages and uptime.",
@@ -169,10 +164,12 @@ class AllQuietUpdateIncidentBlock(Block):
                 "open incident, Unresolved on a resolved one."
             ),
             default=IncidentIntent.INVESTIGATED,
+            advanced=False,
         )
         message: str = SchemaField(
             description="Note recorded on the incident timeline with this change.",
             default="",
+            advanced=False,
         )
         severity: Optional[IncidentSeverity] = SchemaField(
             description="Optionally change the severity at the same time.",
@@ -188,6 +185,12 @@ class AllQuietUpdateIncidentBlock(Block):
 
     class Output(BlockSchemaOutput):
         incident: Incident = SchemaField(description="The incident after the update")
+        allowed_intents: list[str] = SchemaField(
+            description=(
+                "Transitions the incident accepts after this update, so a graph "
+                "can pick its next intent without re-reading the incident"
+            )
+        )
         status: IncidentStatus = SchemaField(description="Status after the update")
         severity: IncidentSeverity = SchemaField(
             description="Severity after the update"
@@ -210,6 +213,7 @@ class AllQuietUpdateIncidentBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("incident", TEST_INCIDENT),
+                ("allowed_intents", TEST_INCIDENT.allowed_intents),
                 ("status", IncidentStatus.OPEN),
                 ("severity", IncidentSeverity.CRITICAL),
             ],
@@ -238,6 +242,7 @@ class AllQuietUpdateIncidentBlock(Block):
             credentials, input_data.region, input_data
         )
         yield "incident", incident
+        yield "allowed_intents", incident.allowed_intents
         if incident.status:
             yield "status", incident.status
         if incident.severity:

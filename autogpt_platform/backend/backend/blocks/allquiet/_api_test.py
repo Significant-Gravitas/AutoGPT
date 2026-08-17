@@ -329,3 +329,61 @@ class TestOnCallAndTeams:
         assert teams[0].display_name == "Platform"
         assert teams[0].time_zone_id == "UTC"
         assert has_more is False
+
+
+class TestListShapedErrors:
+    """All Quiet returns `errors` as a list for auth failures, not a dict."""
+
+    def test_flattens_the_list_envelope_used_by_auth_failures(self):
+        # Captured verbatim from a real 401 against the live API.
+        body = (
+            '{"succeeded":false,'
+            '"errors":[{"description":"Provided API key is invalid."}]}'
+        )
+
+        message = _error_message(401, body)
+
+        assert "Provided API key is invalid." in message
+        assert "rejected the API key" in message
+
+    def test_joins_multiple_listed_errors(self):
+        body = '{"errors":[{"description":"first"},{"description":"second"}]}'
+
+        assert "first; second" in _error_message(400, body)
+
+    def test_still_flattens_the_dict_envelope_used_by_validation(self):
+        body = '{"errors":{"Statuses":["Values must be one of Open,Resolved"]}}'
+
+        assert "Statuses: Values must be one of Open,Resolved" in _error_message(
+            400, body
+        )
+
+    def test_falls_back_to_title_when_errors_is_unusable(self):
+        body = '{"title":"One or more validation errors occurred.","errors":42}'
+
+        assert "One or more validation errors occurred." in _error_message(400, body)
+
+    def test_falls_back_to_the_raw_body_for_a_non_object_payload(self):
+        assert "just a string" in _error_message(500, '"just a string"')
+
+
+class TestGetIncidentMarkdown:
+    async def test_returns_the_markdown_report(self):
+        report = "# Checkout latency above SLO\n\n- **Status**: Open\n"
+        client = AllQuietClient(_credentials())
+        get = AsyncMock(return_value=_FakeResponse(body=report))
+        requests: Any = client.requests
+        requests.get = get
+
+        assert await client.get_incident_markdown("inc-1") == report
+        assert get.await_args.args[0].endswith("/incident/search/inc-1/markdown")
+
+    async def test_raises_a_readable_error_when_the_report_fails(self):
+        client = AllQuietClient(_credentials())
+        requests: Any = client.requests
+        requests.get = AsyncMock(
+            return_value=_FakeResponse(status=404, body='{"title":"Not found"}')
+        )
+
+        with pytest.raises(RuntimeError, match="Not found"):
+            await client.get_incident_markdown("nope")

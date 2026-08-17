@@ -15,6 +15,7 @@ from backend.sdk import (
 
 from ._api import AllQuietClient
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, allquiet, region_field
+from ._testdata import TEST_INCIDENT
 from ._types import (
     AllQuietRegion,
     Incident,
@@ -22,9 +23,6 @@ from ._types import (
     IncidentSortBy,
     IncidentStatus,
 )
-from .incidents import TEST_INCIDENT
-
-TEST_MARKDOWN = "# Checkout latency above SLO\n\n- **Status**: Open\n"
 
 
 class AllQuietGetIncidentBlock(Block):
@@ -124,28 +122,34 @@ class AllQuietListIncidentsBlock(Block):
         statuses: list[IncidentStatus] = SchemaField(
             description="Only return incidents in these statuses.",
             default_factory=lambda: [IncidentStatus.OPEN],
+            advanced=False,
         )
         severities: list[IncidentSeverity] = SchemaField(
             description="Only return incidents at these severities.",
             default_factory=list,
+            advanced=False,
         )
         team_ids: list[str] = SchemaField(
             description="Only return incidents routed to these teams.",
             default_factory=list,
+            advanced=False,
         )
         search_term: str = SchemaField(
             description="Free-text match against the incident title.",
             default="",
+            advanced=False,
         )
         unattended: Optional[bool] = SchemaField(
             description="Set true to return only incidents nobody has picked up.",
             default=None,
+            advanced=False,
         )
         limit: int = SchemaField(
             description="Maximum number of incidents to return.",
             default=25,
             ge=1,
             le=100,
+            advanced=False,
         )
         offset: int = SchemaField(
             description="Number of incidents to skip, for paging.",

@@ -1,8 +1,12 @@
 """Tests that the trigger block reads both All Quiet webhook payload shapes."""
 
+import json
+import re
+
 from backend.blocks.allquiet._types import IncidentSeverity, IncidentStatus
 from backend.blocks.allquiet.triggers import (
     EXAMPLE_PAYLOAD,
+    RECOMMENDED_BODY_TEMPLATE,
     AllQuietIncidentTriggerBlock,
 )
 
@@ -85,3 +89,61 @@ class TestUnexpectedPayloads:
         out = await _outputs({"attributes": [{"value": "orphan"}, {"name": "ok"}]})
 
         assert out["attributes"] == {"ok": ""}
+
+
+class TestRecommendedTemplateIsValid:
+    """The template is copy-paste guidance, so it must render valid JSON."""
+
+    def test_renders_valid_json_for_multiple_attributes(self):
+        rendered = _render(
+            RECOMMENDED_BODY_TEMPLATE,
+            attributes=[
+                {"name": "Environment", "value": "prod"},
+                {"name": "Alert", "value": "RAM > 60%"},
+            ],
+        )
+
+        # Regression: the loop previously emitted a trailing comma, so anyone
+        # pasting the recommended template got a body All Quiet rejects.
+        parsed = json.loads(rendered)
+        assert parsed["attributes"] == [
+            {"name": "Environment", "value": "prod"},
+            {"name": "Alert", "value": "RAM > 60%"},
+        ]
+
+    def test_renders_valid_json_for_one_attribute(self):
+        rendered = _render(
+            RECOMMENDED_BODY_TEMPLATE, attributes=[{"name": "Env", "value": "prod"}]
+        )
+
+        assert json.loads(rendered)["attributes"] == [{"name": "Env", "value": "prod"}]
+
+    def test_renders_valid_json_for_no_attributes(self):
+        assert (
+            json.loads(_render(RECOMMENDED_BODY_TEMPLATE, attributes=[]))["attributes"]
+            == []
+        )
+
+
+def _render(template: str, *, attributes: list[dict]) -> str:
+    """Minimal Handlebars stand-in for the subset the template uses.
+
+    Only `{{#each}}` / `{{#unless @last}}` / `{{field}}` are needed, so this
+    avoids adding a Handlebars dependency just to assert the template is valid.
+    """
+    each = re.search(r"\{\{#each attributes\}\}(.*?)\{\{/each\}\}", template, re.S)
+    assert each, "template no longer contains the attributes loop"
+
+    body = each.group(1)
+    rendered_items = []
+    for index, attribute in enumerate(attributes):
+        item = body
+        separator = "" if index == len(attributes) - 1 else ","
+        item = re.sub(r"\{\{#unless @last\}\},\{\{/unless\}\}", separator, item)
+        item = item.replace("{{this.name}}", attribute["name"])
+        item = item.replace("{{this.value}}", attribute["value"])
+        rendered_items.append(item.strip())
+
+    out = template[: each.start()] + "".join(rendered_items) + template[each.end() :]
+    # Fill the remaining scalar placeholders with something JSON-safe.
+    return re.sub(r"\{\{[^}]+\}\}", "x", out)
