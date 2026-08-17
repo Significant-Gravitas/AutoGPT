@@ -16,9 +16,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-# Conservative ceiling for `limit`, mirroring search.py's MAX_COUNT: the
-# vendor's documented cap is not verifiable from this repo, so this bounds
-# response size without blocking legitimate use.
+# DataForB2B caps typeahead suggestions at 20 per call.
 MAX_LIMIT = 20
 
 
