@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -25,7 +26,8 @@ def _strip_optional_soul_field(value: str) -> str:
 
 class VoiceSample(BaseModel):
     """A short writing sample in a persona's own voice, offered as a pick in
-    the hire flow. The first sample is choice "a", the second choice "b"."""
+    the hire or raise flow. The first sample is choice "a", the second choice
+    "b"."""
 
     label: str
     text: str
@@ -94,6 +96,18 @@ class ExpertDetachPreview(BaseModel):
 class HireResult(BaseModel):
     expert: Expert
     failed_preloads: list[str]
+
+
+class RaiseResult(BaseModel):
+    """Result of raising a blank expert. ``first_job_installed`` is only
+    True when a first job was requested and its install succeeded, so the
+    client can surface partial success instead of a silent no-op. The stable
+    failure reason distinguishes a listing withdrawn mid-flow from an install
+    failure."""
+
+    expert: Expert
+    first_job_installed: bool
+    first_job_failure_reason: Literal["unavailable", "installation_failed"] | None
 
 
 class ExpertSoulUpdate(BaseModel):
