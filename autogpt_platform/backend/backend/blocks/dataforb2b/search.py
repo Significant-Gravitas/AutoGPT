@@ -27,6 +27,11 @@ NUM_SLOTS = 5
 # paginate with `offset` instead of raising this cap.
 MAX_COUNT = 100
 
+# Shown as shadow text in the first filter slot so the expected shape of a value
+# is obvious without opening the docs.
+PEOPLE_VALUE_PLACEHOLDER = "e.g. Marketing Director"
+COMPANY_VALUE_PLACEHOLDER = "e.g. software development"
+
 TEXT_OPERATORS = {
     FilterOperator.EQUALS,
     FilterOperator.NOT_EQUALS,
@@ -84,13 +89,13 @@ class _CommonSearchFields:
 
     filters_json: dict = SchemaField(
         description=(
-            "Raw filter JSON {op, conditions:[{column,type,value,value2?}]}. "
-            "Paste 'applied_filters' from Smart Search and set 'offset' "
-            "to paginate beyond the first page. Used alone, or merged (AND) with "
-            "the filter slots above."
+            "Escape hatch for filter shapes the slots cannot express, such as nested "
+            "and/or groups. Paste 'applied_filters' from Smart Search here with an "
+            "'offset' to paginate its results. Used alone, or merged (AND) with the "
+            "filter slots above."
         ),
         default_factory=dict,
-        advanced=False,
+        advanced=True,
     )
     match: str = SchemaField(
         description="Combine slot conditions with 'and' or 'or'",
@@ -105,7 +110,7 @@ class _CommonSearchFields:
     offset: int = SchemaField(
         description="Pagination offset — 0 for page 1, then 25, 50, … to page through results",
         default=0,
-        advanced=False,
+        advanced=True,
     )
     enrich_live: bool = SchemaField(
         description="Fetch fresh live data (uses more credits)",
@@ -130,22 +135,29 @@ class _PeopleFilterFields(_CommonSearchFields):
         advanced=False,
     )
     filter_1_value: str = SchemaField(
-        title="Filter 1 Value", description="Filter 1 value", default="", advanced=False
+        title="Filter 1 Value",
+        description=(
+            "Filter 1 value. Search matches stored values exactly, so resolve it with "
+            "Search Filter Typeahead rather than guessing"
+        ),
+        default="",
+        placeholder=PEOPLE_VALUE_PLACEHOLDER,
+        advanced=False,
     )
     filter_2_column: Optional[PeopleColumn] = SchemaField(
         title="Filter 2 Column",
         description="Filter 2 column",
         default=None,
-        advanced=False,
+        advanced=True,
     )
     filter_2_operator: FilterOperator = SchemaField(
         title="Filter 2 Operator",
         description="Filter 2 operator",
         default=FilterOperator.EQUALS,
-        advanced=False,
+        advanced=True,
     )
     filter_2_value: str = SchemaField(
-        title="Filter 2 Value", description="Filter 2 value", default="", advanced=False
+        title="Filter 2 Value", description="Filter 2 value", default="", advanced=True
     )
     filter_3_column: Optional[PeopleColumn] = SchemaField(
         title="Filter 3 Column",
@@ -210,22 +222,29 @@ class _CompanyFilterFields(_CommonSearchFields):
         advanced=False,
     )
     filter_1_value: str = SchemaField(
-        title="Filter 1 Value", description="Filter 1 value", default="", advanced=False
+        title="Filter 1 Value",
+        description=(
+            "Filter 1 value. Search matches stored values exactly, so resolve it with "
+            "Search Filter Typeahead rather than guessing"
+        ),
+        default="",
+        placeholder=COMPANY_VALUE_PLACEHOLDER,
+        advanced=False,
     )
     filter_2_column: Optional[CompanyColumn] = SchemaField(
         title="Filter 2 Column",
         description="Filter 2 column",
         default=None,
-        advanced=False,
+        advanced=True,
     )
     filter_2_operator: FilterOperator = SchemaField(
         title="Filter 2 Operator",
         description="Filter 2 operator",
         default=FilterOperator.EQUALS,
-        advanced=False,
+        advanced=True,
     )
     filter_2_value: str = SchemaField(
-        title="Filter 2 Value", description="Filter 2 value", default="", advanced=False
+        title="Filter 2 Value", description="Filter 2 value", default="", advanced=True
     )
     filter_3_column: Optional[CompanyColumn] = SchemaField(
         title="Filter 3 Column",
