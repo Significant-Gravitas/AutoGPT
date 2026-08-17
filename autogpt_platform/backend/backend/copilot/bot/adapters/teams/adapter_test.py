@@ -8,7 +8,11 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from backend.copilot.bot.adapters.teams import auth, commands, config
-from backend.copilot.bot.adapters.teams.adapter import MESSAGES_PATH, TeamsAdapter
+from backend.copilot.bot.adapters.teams.adapter import (
+    MESSAGES_PATH,
+    TeamsAdapter,
+    _inbound_files,
+)
 from backend.copilot.bot.adapters.teams.text import mention_entities, to_teams_markdown
 from backend.util.settings import AppEnvironment
 
@@ -1000,8 +1004,6 @@ def _file_attachment(name: str, **content) -> dict:
 
 
 def test_inbound_files_are_not_capped_before_the_shared_bookkeeping(app_id):
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     # Teams puts a non-file text/html attachment in the same array; it must
     # not consume cap slots, and the cap itself belongs to
     # collect_attachments, which owns the "too many files" note.
@@ -1014,8 +1016,6 @@ def test_inbound_files_are_not_capped_before_the_shared_bookkeeping(app_id):
 
 
 def test_pasted_image_is_ingested(app_id):
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(
         attachments=[
             {
@@ -1036,8 +1036,6 @@ def test_pasted_image_on_a_foreign_host_never_sees_the_bearer(app_id):
     Fetching it with the bot's Connector bearer would hand that token to
     whatever host the sender names, within the token's whole validity window.
     """
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(
         attachments=[
             {
@@ -1053,8 +1051,6 @@ def test_pasted_image_on_a_foreign_host_never_sees_the_bearer(app_id):
 def test_pasted_image_host_must_be_a_connector_host_not_merely_public(app_id):
     # A public HTTPS host passes the looser attachment check; the bearer path
     # has to be stricter than that.
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(
         attachments=[
             {"contentType": "image/png", "contentUrl": "https://example.com/x.png"}
@@ -1077,8 +1073,6 @@ def test_pasted_image_host_must_be_a_connector_host_not_merely_public(app_id):
     ],
 )
 def test_file_download_urls_that_point_inward_are_skipped(app_id, url):
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(
         attachments=[
             {
@@ -1104,18 +1098,20 @@ def test_file_download_urls_that_point_inward_are_skipped(app_id, url):
 )
 async def test_attachment_hosts_that_resolve_inward_are_refused(app_id, host):
     """The URL text cannot say where a name points — only resolving can."""
-    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
-        with pytest.raises(ValueError):
-            await auth.ensure_attachment_host_is_external(f"https://{host}/x")
+    with (
+        patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False),
+        pytest.raises(ValueError),
+    ):
+        await auth.ensure_attachment_host_is_external(f"https://{host}/x")
 
 
 @pytest.mark.asyncio
 async def test_an_unresolvable_attachment_host_is_refused(app_id):
-    with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
-        with pytest.raises(ValueError):
-            await auth.ensure_attachment_host_is_external(
-                "https://no-such-host.invalid/x"
-            )
+    with (
+        patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False),
+        pytest.raises(ValueError),
+    ):
+        await auth.ensure_attachment_host_is_external("https://no-such-host.invalid/x")
 
 
 @pytest.mark.asyncio
@@ -1125,8 +1121,6 @@ async def test_the_playground_may_still_serve_attachments_from_loopback(app_id):
 
 
 def test_a_normal_sharepoint_download_still_works(app_id):
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(attachments=[_file_attachment("notes.txt")])
     with patch(f"{_CONFIG_PATH}.allow_unverified_requests", return_value=False):
         files = _inbound_files(activity, MagicMock())
@@ -1134,8 +1128,6 @@ def test_a_normal_sharepoint_download_still_works(app_id):
 
 
 def test_file_attachment_without_download_url_is_skipped(app_id):
-    from backend.copilot.bot.adapters.teams.adapter import _inbound_files
-
     activity = _activity(
         attachments=[
             {
