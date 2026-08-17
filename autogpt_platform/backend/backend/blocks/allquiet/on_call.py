@@ -70,7 +70,7 @@ class AllQuietGetOnCallBlock(Block):
         super().__init__(
             id="8e5d3b27-1a94-4c6f-b7e0-5f9c2d8a4b16",
             description="Looks up who is on call in All Quiet, now or at a given time",
-            categories={BlockCategory.DEVELOPER_TOOLS},
+            categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.ISSUE_TRACKING},
             input_schema=AllQuietGetOnCallBlock.Input,
             output_schema=AllQuietGetOnCallBlock.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},

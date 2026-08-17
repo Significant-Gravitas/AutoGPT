@@ -1,6 +1,6 @@
 """Trigger block fired by an All Quiet outbound webhook."""
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -97,10 +97,10 @@ class AllQuietIncidentTriggerBlock(Block):
         event_id: str = SchemaField(
             description="ID of the timeline event that triggered this delivery"
         )
-        status: IncidentStatus = SchemaField(
+        status: Optional[IncidentStatus] = SchemaField(
             description="Incident status, if the payload template includes it"
         )
-        severity: IncidentSeverity = SchemaField(
+        severity: Optional[IncidentSeverity] = SchemaField(
             description="Incident severity, if the payload template includes it"
         )
         attributes: dict[str, str] = SchemaField(

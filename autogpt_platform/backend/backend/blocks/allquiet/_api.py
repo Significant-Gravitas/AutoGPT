@@ -5,6 +5,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from backend.sdk import APIKeyCredentials, Requests, json
+from backend.util.request import Response
 
 from ._types import (
     AllQuietRegion,
@@ -31,6 +32,10 @@ class _ListedError(BaseModel):
 _JSON_OBJECT = TypeAdapter(dict[str, Any])
 _FIELD_ERRORS = TypeAdapter(dict[str, list[str]])
 _LISTED_ERRORS = TypeAdapter(list[_ListedError])
+
+# Membership sets for defensive coercion of live event data.
+_STATUS_VALUES = {member.value for member in IncidentStatus}
+_SEVERITY_VALUES = {member.value for member in IncidentSeverity}
 
 
 class AllQuietClient:
@@ -70,9 +75,7 @@ class AllQuietClient:
             params=_clean_params(params or {}),
             json=body,
         )
-        body_text = response.text()
-        if not response.ok:
-            raise RuntimeError(_error_message(response.status, body_text))
+        body_text = _raise_for_status(response)
         if not body_text:
             return None
         return response.json()
@@ -120,9 +123,7 @@ class AllQuietClient:
         response = await self.requests.get(
             f"{self.base_url}/incident/search/{incident_id}/markdown"
         )
-        if not response.ok:
-            raise RuntimeError(_error_message(response.status, response.text()))
-        return response.text()
+        return _raise_for_status(response)
 
     async def list_incidents(
         self,
@@ -217,6 +218,14 @@ class AllQuietClient:
         return teams, bool((data or {}).get("hasMore", False))
 
 
+def _raise_for_status(response: Response) -> str:
+    """Return the body text, raising a readable error on any non-2xx status."""
+    body_text = response.text()
+    if not response.ok:
+        raise RuntimeError(_error_message(response.status, body_text))
+    return body_text
+
+
 def _clean_params(params: dict[str, Any]) -> dict[str, Any]:
     """Drop unset params so All Quiet does not reject empty filter values."""
     return {
@@ -251,9 +260,13 @@ def _to_incident(data: Optional[dict[str, Any]]) -> Incident:
     events = data.get("events") or []
     if events:
         latest = events[0]
-        if latest.get("status"):
+        # Coerce defensively: an unmodeled value would otherwise raise
+        # ValueError on every read of that incident. The rest of the incident is
+        # still useful, so leave the field unset rather than failing the call.
+        # This mirrors the guard the trigger block already applies to payloads.
+        if latest.get("status") in _STATUS_VALUES:
             incident.status = IncidentStatus(latest["status"])
-        if latest.get("severity"):
+        if latest.get("severity") in _SEVERITY_VALUES:
             incident.severity = IncidentSeverity(latest["severity"])
     return incident
 

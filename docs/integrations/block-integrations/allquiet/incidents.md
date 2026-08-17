@@ -72,8 +72,8 @@ Applies an *intent* to an existing incident — All Quiet's term for a state tra
 | error | Error message if the request failed | str |
 | incident | The incident after the update | Incident |
 | allowed_intents | Transitions the incident accepts after this update, so a graph can pick its next intent without re-reading the incident | List[str] |
-| status | Status after the update | "Open" \| "Resolved" |
-| severity | Severity after the update | "Critical" \| "Warning" \| "Minor" |
+| status | Status after the update, when the incident reports one | "Open" \| "Resolved" |
+| severity | Severity after the update, when the incident reports one | "Critical" \| "Warning" \| "Minor" |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

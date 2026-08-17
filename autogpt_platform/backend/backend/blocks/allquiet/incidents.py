@@ -191,9 +191,11 @@ class AllQuietUpdateIncidentBlock(Block):
                 "can pick its next intent without re-reading the incident"
             )
         )
-        status: IncidentStatus = SchemaField(description="Status after the update")
-        severity: IncidentSeverity = SchemaField(
-            description="Severity after the update"
+        status: Optional[IncidentStatus] = SchemaField(
+            description="Status after the update, when the incident reports one"
+        )
+        severity: Optional[IncidentSeverity] = SchemaField(
+            description="Severity after the update, when the incident reports one"
         )
         error: str = SchemaField(description="Error message if the request failed")
 

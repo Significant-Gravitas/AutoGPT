@@ -1,5 +1,6 @@
 """Blocks that read All Quiet incidents."""
 
+import asyncio
 from typing import Optional
 
 from backend.sdk import (
@@ -46,8 +47,12 @@ class AllQuietGetIncidentBlock(Block):
 
     class Output(BlockSchemaOutput):
         incident: Incident = SchemaField(description="The incident")
-        status: IncidentStatus = SchemaField(description="Current status")
-        severity: IncidentSeverity = SchemaField(description="Current severity")
+        status: Optional[IncidentStatus] = SchemaField(
+            description="Current status, when the incident reports one"
+        )
+        severity: Optional[IncidentSeverity] = SchemaField(
+            description="Current severity, when the incident reports one"
+        )
         allowed_intents: list[str] = SchemaField(
             description="Transitions this incident currently accepts"
         )
@@ -81,15 +86,17 @@ class AllQuietGetIncidentBlock(Block):
 
     @staticmethod
     async def get_incident(
-        credentials: APIKeyCredentials,
-        region: AllQuietRegion,
-        incident_id: str,
-        include_markdown: bool,
+        credentials: APIKeyCredentials, region: AllQuietRegion, input_data: Input
     ) -> tuple[Incident, str]:
         client = AllQuietClient(credentials, region)
-        incident = await client.get_incident(incident_id)
-        markdown = (
-            await client.get_incident_markdown(incident_id) if include_markdown else ""
+        if not input_data.include_markdown:
+            return await client.get_incident(input_data.incident_id), ""
+
+        # Two independent reads of the same incident; run them concurrently
+        # rather than paying both round-trips in series.
+        incident, markdown = await asyncio.gather(
+            client.get_incident(input_data.incident_id),
+            client.get_incident_markdown(input_data.incident_id),
         )
         return incident, markdown
 
@@ -97,10 +104,7 @@ class AllQuietGetIncidentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         incident, markdown = await self.get_incident(
-            credentials,
-            input_data.region,
-            input_data.incident_id,
-            input_data.include_markdown,
+            credentials, input_data.region, input_data
         )
         yield "incident", incident
         if incident.status:

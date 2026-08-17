@@ -1,8 +1,6 @@
 """Shared block test fixtures.
 
-Kept in its own module so block files don't import fixtures from each other —
-`incident_search.py` previously pulled `TEST_INCIDENT` out of `incidents.py`,
-which coupled two unrelated block modules purely for test data.
+Kept in its own module so block files never import test data from each other.
 """
 
 from ._types import (

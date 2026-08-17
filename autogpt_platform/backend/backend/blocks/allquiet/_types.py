@@ -73,7 +73,7 @@ class AllQuietEntity(BaseModel):
 
 
 class AllQuietUser(BaseModel):
-    id: Optional[str] = None
+    id: str = ""
     display_name: str = Field(default="", alias="displayName")
     email: str = ""
     avatar_url: str = Field(default="", alias="avatarUrl")

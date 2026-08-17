@@ -25,6 +25,7 @@ from backend.blocks.allquiet._types import (
     OnCallShift,
 )
 from backend.blocks.allquiet.incident_search import AllQuietGetIncidentBlock
+from backend.blocks.allquiet.incidents import AllQuietCreateIncidentBlock
 from backend.blocks.allquiet.on_call import AllQuietGetOnCallBlock
 
 
@@ -72,7 +73,7 @@ class TestGetIncidentMarkdown:
 
         await _run(block, incident_id=TEST_INCIDENT.id, include_markdown=True)
 
-        assert fetch.await_args.args[3] is True
+        assert fetch.await_args.args[2].include_markdown is True
 
 
 def _shift_for(user: AllQuietUser, team_name: str, team_id: str) -> OnCallShift:
@@ -150,4 +151,63 @@ class TestOnCallDeduplication:
 
         out = await _run(block)
 
-        assert out["user_ids"] == [TEST_SHIFT.user.id if TEST_SHIFT.user else ""]
+        assert out["user_ids"] == ["b7c8d9e0-0000-4000-8000-000000000002"]
+
+
+class TestBlockErrorPaths:
+    """A client failure must surface on the block's declared `error` output.
+
+    The client is proven to raise on 4xx/5xx elsewhere; this wires that raise
+    to the block boundary a graph actually sees.
+    """
+
+    async def test_get_incident_surfaces_a_client_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = AllQuietGetIncidentBlock()
+        monkeypatch.setattr(
+            block,
+            "get_incident",
+            AsyncMock(side_effect=RuntimeError("All Quiet API error 404: Not found")),
+        )
+
+        with pytest.raises(RuntimeError, match="Not found"):
+            await _run(block, incident_id="missing")
+
+    async def test_create_incident_surfaces_a_client_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = AllQuietCreateIncidentBlock()
+        monkeypatch.setattr(
+            block,
+            "create_incident",
+            AsyncMock(
+                side_effect=RuntimeError(
+                    "All Quiet rejected the API key (401). Check the key is valid"
+                )
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="rejected the API key"):
+            await _run(block, title="anything")
+
+    async def test_on_call_surfaces_a_client_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        block = AllQuietGetOnCallBlock()
+        monkeypatch.setattr(
+            block, "get_on_call", AsyncMock(side_effect=RuntimeError("upstream down"))
+        )
+
+        with pytest.raises(RuntimeError, match="upstream down"):
+            await _run(block)
+
+    def test_every_block_declares_an_error_output(self):
+        # The platform routes a raised exception to this output, so a block
+        # without it would swallow failures in the builder.
+        for block_cls in (
+            AllQuietGetIncidentBlock,
+            AllQuietCreateIncidentBlock,
+            AllQuietGetOnCallBlock,
+        ):
+            assert "error" in block_cls().output_schema.model_fields

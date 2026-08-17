@@ -326,3 +326,29 @@ class TestAmbiguousSecrets:
         )
 
         await AllQuietWebhooksManager.verify_signature(webhook, request)
+
+
+class TestFutureSkew:
+    async def test_rejects_a_timestamp_from_the_future(self):
+        # A clock-skewed or forged forward timestamp is as much a replay risk
+        # as a stale one; the window is symmetric.
+        ahead = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
+        request = _request(
+            {"x-aq-signature": _sign(BODY, ahead), "x-aq-timestamp": ahead}
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
+        assert "window" in exc.value.detail
+
+    async def test_allows_small_clock_skew(self):
+        near = (datetime.now(timezone.utc) + timedelta(seconds=30)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
+        request = _request(
+            {"x-aq-signature": _sign(BODY, near), "x-aq-timestamp": near}
+        )
+
+        await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)

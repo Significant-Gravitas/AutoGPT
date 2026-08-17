@@ -61,7 +61,7 @@ class AllQuietListTeamsBlock(Block):
         super().__init__(
             id="2a6f8d13-4b70-4e29-8c5d-9e1b3f7a0c48",
             description="Lists All Quiet teams and their IDs",
-            categories={BlockCategory.DEVELOPER_TOOLS},
+            categories={BlockCategory.DEVELOPER_TOOLS, BlockCategory.ISSUE_TRACKING},
             input_schema=AllQuietListTeamsBlock.Input,
             output_schema=AllQuietListTeamsBlock.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},

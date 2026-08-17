@@ -387,3 +387,29 @@ class TestGetIncidentMarkdown:
 
         with pytest.raises(RuntimeError, match="Not found"):
             await client.get_incident_markdown("nope")
+
+
+class TestUnmodeledEnumValues:
+    """Live event data may carry values beyond what the enums model."""
+
+    def test_ignores_an_unmodeled_status_instead_of_raising(self):
+        # Regression: bare IncidentStatus(...) coercion raised ValueError on
+        # every read of such an incident, losing an otherwise usable payload.
+        incident = _to_incident(_incident_payload(status="Acknowledged"))
+
+        assert incident.status is None
+        assert incident.title == "Checkout latency above SLO"
+
+    def test_ignores_an_unmodeled_severity_instead_of_raising(self):
+        incident = _to_incident(_incident_payload(severity="Fatal"))
+
+        assert incident.severity is None
+        assert incident.id == "inc-1"
+
+    def test_still_maps_the_half_it_recognizes(self):
+        incident = _to_incident(
+            _incident_payload(status="Resolved", severity="Catastrophic")
+        )
+
+        assert incident.status == IncidentStatus.RESOLVED
+        assert incident.severity is None

@@ -18,14 +18,22 @@ from typing import Type
 
 import pytest
 
+import backend.integrations.webhooks as webhooks
 from backend.blocks import get_blocks
 from backend.blocks._base import Block
-from backend.integrations.webhooks import (
-    get_webhook_manager,
-    load_webhook_managers,
-    supports_webhooks,
-)
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 from backend.integrations.webhooks._base import BaseWebhooksManager
+
+
+def load_webhook_managers():
+    """Resolve the loader off the module at call time.
+
+    `AutoRegistry.patch_integrations()` replaces the module attribute, so a
+    `from ... import load_webhook_managers` binding taken at import time can
+    keep pointing at the unpatched original and miss every SDK-registered
+    manager — which would make these checks pass vacuously.
+    """
+    return webhooks.load_webhook_managers()
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -27,8 +27,8 @@ Fetches one incident by ID and flattens its current status and severity onto the
 |--------|-------------|------|
 | error | Error message if the request failed | str |
 | incident | The incident | Incident |
-| status | Current status | "Open" \| "Resolved" |
-| severity | Current severity | "Critical" \| "Warning" \| "Minor" |
+| status | Current status, when the incident reports one | "Open" \| "Resolved" |
+| severity | Current severity, when the incident reports one | "Critical" \| "Warning" \| "Minor" |
 | allowed_intents | Transitions this incident currently accepts | List[str] |
 | markdown | Markdown report, if include_markdown was set | str |
 
