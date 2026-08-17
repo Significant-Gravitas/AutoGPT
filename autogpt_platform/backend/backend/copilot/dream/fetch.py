@@ -51,6 +51,56 @@ class FactRow(BaseModel):
     confidence: float | None
     status: str | None
     created_at: str | None
+    # Usage signal stamped on the edge by the warm-context hit hook
+    # (``ratification.try_ratify_on_hit``). Standing contract: an absent
+    # prop reads as None, which IS "never recalled" — the correct default
+    # for any unstamped edge, so no edge ever requires a backfill.
+    # ``prev_recalled_at`` is the second-latest deduped stamp; the
+    # protection predicate reads it to require two recalls WITHIN the
+    # window (see ``usage.protected_fact_uuids``).
+    recall_count: int | None = None
+    last_recalled_at: str | None = None  # ISO timestamp
+    prev_recalled_at: str | None = None  # ISO timestamp
+
+    @classmethod
+    def usage_only(
+        cls,
+        *,
+        uuid: str,
+        recall_count: int | None,
+        last_recalled_at: str | None,
+        prev_recalled_at: str | None,
+    ) -> FactRow:
+        """A row carrying ONLY usage stamps, for the demotion guard.
+
+        Identity and content fields are null by construction: the
+        ``fetch_usage_rows`` projection never reads them. Centralising the
+        null-filling here keeps a future required field on ``FactRow`` from
+        silently producing a half-built row at the call site.
+        """
+        return cls(
+            uuid=uuid,
+            source=None,
+            target=None,
+            name=None,
+            fact=None,
+            scope=None,
+            confidence=None,
+            status=None,
+            created_at=None,
+            recall_count=recall_count,
+            last_recalled_at=last_recalled_at,
+            prev_recalled_at=prev_recalled_at,
+        )
+
+
+# Shared by the full-fact fetch and the usage-only refresh: a prop added
+# to one projection must reach the other, or the demotion guard silently
+# loses that signal on whichever path missed it.
+USAGE_PROJECTION = """
+                   e.recall_count AS recall_count,
+                   toString(e.last_recalled_at) AS last_recalled_at,
+                   toString(e.prev_recalled_at) AS prev_recalled_at"""
 
 
 class SessionRow(BaseModel):
@@ -100,7 +150,7 @@ def parse_episode_timestamp(episode: EpisodeRow) -> datetime | None:
         ts
         for raw in (episode.valid_at, episode.created_at)
         if raw
-        if (ts := _parse_iso_timestamp(raw)) is not None
+        if (ts := parse_iso_timestamp(raw)) is not None
     ]
     return max(parsed) if parsed else None
 
@@ -123,7 +173,7 @@ def is_dream_authored_episode(episode: EpisodeRow) -> bool:
     return description is not None and description.startswith("dream-pass")
 
 
-def _parse_iso_timestamp(raw: str) -> datetime | None:
+def parse_iso_timestamp(raw: str) -> datetime | None:
     """ISO 8601 parse tolerating Cypher's ``toString(datetime)`` output
     (trailing ``Z``); naive values are assumed UTC so the result always
     compares safely against tz-aware datetimes."""
@@ -220,7 +270,9 @@ async def _fetch_active_facts(
                    e.scope AS scope,
                    e.confidence AS confidence,
                    e.status AS status,
-                   toString(e.created_at) AS created_at
+                   toString(e.created_at) AS created_at,"""
+            + USAGE_PROJECTION
+            + """
             ORDER BY e.created_at DESC
             LIMIT $limit
             """,
@@ -246,8 +298,88 @@ async def _fetch_active_facts(
             confidence=r.get("confidence"),
             status=r.get("status"),
             created_at=r.get("created_at"),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
         )
         for r in rows
+    ]
+
+
+async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow] | None:
+    """Current usage stamps for the given edges, fetched at call time.
+
+    The demotion guard's usage data otherwise comes from the pass's
+    input bundle, which the batch path persisted hours before apply —
+    a fact recalled since submission would look unprotected. This
+    re-reads ``recall_count`` / ``last_recalled_at`` for just the
+    demotion targets right before the guard runs.
+
+    Returns ``None`` on any failure (guard falls back to bundle data);
+    rows for edges never stamped carry ``None`` props, which the guard
+    already reads as "never recalled".
+    """
+    # Tri-state return, deliberately: ``[]`` means "nothing to fetch, not
+    # an error" and leaves the snapshot as the only usage source; ``None``
+    # means "lookup FAILED" and is what makes the guard fall back to the
+    # snapshot rather than treat an empty result as "never recalled".
+    # Collapsing the two would turn a failed refresh into a licence to
+    # demote.
+    if not edge_uuids:
+        return []
+    try:
+        group_id = derive_group_id(user_id)
+    except ValueError:
+        return None
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=group_id,
+        build_indices=False,
+    )
+    try:
+        result = await driver.execute_query(
+            """
+            UNWIND $uuids AS target_uuid
+            MATCH ()-[e:RELATES_TO]->()
+            WHERE e.uuid = target_uuid AND e.expired_at IS NULL
+            RETURN e.uuid AS uuid,"""
+            + USAGE_PROJECTION
+            + """
+            """,
+            uuids=edge_uuids,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to refresh usage stamps for %d edge(s) of user %s — "
+            "demotion guard falls back to bundle usage data",
+            len(edge_uuids),
+            user_id[:12],
+            exc_info=True,
+        )
+        return None
+    finally:
+        await driver.close()
+    rows = result[0] if result else []
+    # A row without a uuid can never match a demotion target, so emitting
+    # one as an empty-uuid FactRow would silently pad the guard's input
+    # instead of surfacing the anomaly. Drop and count it.
+    usable = [r for r in rows if r.get("uuid")]
+    if len(usable) != len(rows):
+        logger.warning(
+            "Dropped %d usage row(s) with no uuid for user %s",
+            len(rows) - len(usable),
+            user_id[:12],
+        )
+    return [
+        FactRow.usage_only(
+            uuid=str(r["uuid"]),
+            recall_count=r.get("recall_count"),
+            last_recalled_at=r.get("last_recalled_at"),
+            prev_recalled_at=r.get("prev_recalled_at"),
+        )
+        for r in usable
     ]
 
 

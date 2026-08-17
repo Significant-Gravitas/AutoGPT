@@ -35,6 +35,7 @@ from .ratification_hits import (
     parse_created_at,
     record_memory_hit,
 )
+from .usage import RECALL_DEDUPE_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,12 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
       1. Bump the ``mem:hits:{user_id}:{edge_uuid}`` Redis counter
          (so the nightly ratification sweep also sees the hit and
          agrees on promotion if Cypher fails here).
-      2. Issue a targeted Cypher ``SET status='active'`` filtered by
+      2. Stamp ``recall_count`` / ``last_recalled_at`` on EVERY
+         retrieved edge (see ``_stamp_recall``). The Redis counter
+         above expires with the ratification grace period; these
+         graph props are the durable usage signal the nightly dream
+         pass reads to avoid demoting facts the user actually uses.
+      3. Issue a targeted Cypher ``SET status='active'`` filtered by
          ``status='tentative' AND expired_at IS NULL`` — already-active
          and already-retracted edges are no-ops via the WHERE clause.
 
@@ -309,6 +315,7 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
         build_indices=False,
     )
     try:
+        await _stamp_recall(driver, edge_uuids, user_id)
         for uuid in edge_uuids:
             try:
                 if await _promote_if_tentative(driver, uuid):
@@ -332,6 +339,87 @@ async def try_ratify_on_hit(user_id: str, edge_uuids: list[str]) -> int:
             user_id[:12],
         )
     return promoted_count
+
+
+async def _stamp_recall(
+    driver: AutoGPTFalkorDriver, edge_uuids: list[str], user_id: str
+) -> int:
+    """Record a recall on every retrieved edge, in one round-trip.
+
+    Stamps are **deduped**: an edge whose ``last_recalled_at`` is
+    younger than ``RECALL_DEDUPE_INTERVAL`` is skipped, so warm context
+    re-pulling the same fact turn after turn inside one conversation
+    counts as a single use. The previous stamp is shifted into
+    ``prev_recalled_at`` on every accepted stamp — the (last, prev)
+    pair is what lets ``usage.protected_fact_uuids`` require two
+    recalls *within* the protection window. The dedupe comparison is
+    plain string ``<``: every stamp is a fixed-format UTC ISO string,
+    for which lexicographic order IS chronological order.
+
+    ``recall_count`` is incremented via ``COALESCE(…, 0) + 1`` so an
+    edge written before this hook existed starts from zero instead of
+    NULL — no backfill migration is needed. ``last_recalled_at`` is
+    generated in Python because FalkorDB does not implement Cypher's
+    no-arg ``datetime()``.
+
+    Unlike promotion, this applies to edges of ANY status (a long-lived
+    active fact is exactly the kind of memory whose usage we want to
+    know about); only retracted edges (``expired_at IS NOT NULL``) are
+    skipped, since re-stamping a superseded edge would misrepresent it
+    as live.
+
+    Batched with ``UNWIND`` rather than looped per uuid: this runs on
+    the fire-and-forget retrieval path once per chat turn, and one
+    query for the whole retrieved set keeps that cost flat. The uuid
+    lookup rides graphiti's standard range index on
+    ``()-[e:RELATES_TO]-() ON (e.uuid, e.group_id, …)``, built by the
+    long-lived chat-write client (this driver passes
+    ``build_indices=False`` to avoid re-firing that background task) —
+    the same index every other targeted edge write here depends on.
+    Failures are swallowed — the usage signal is an optimization, never
+    a reason to disturb the chat turn.
+
+    Returns the number of edges stamped (0 on failure).
+    """
+    # INVARIANT: the dedupe comparison below is a LEXICOGRAPHIC string
+    # compare, which orders correctly only because every write to
+    # ``last_recalled_at`` goes through the ``$now`` binding — a UTC
+    # ``datetime.isoformat()``, so fixed-width with a "+00:00" suffix. A
+    # future writer using a "Z" suffix, a non-UTC offset, or a
+    # variable-precision format would silently break the ordering (and
+    # with it the dedupe) without any query error. Keep this function
+    # the only writer of that property.
+    query = """
+    UNWIND $uuids AS target_uuid
+    MATCH ()-[e:RELATES_TO]->()
+    WHERE e.uuid = target_uuid AND e.expired_at IS NULL
+      AND (e.last_recalled_at IS NULL OR e.last_recalled_at < $dedupe_cutoff)
+    SET e.recall_count = COALESCE(e.recall_count, 0) + 1,
+        e.prev_recalled_at = e.last_recalled_at,
+        e.last_recalled_at = $now
+    RETURN count(e) AS stamped
+    """
+    now = datetime.now(timezone.utc)
+    try:
+        result = await driver.execute_query(
+            query,
+            uuids=edge_uuids,
+            now=now.isoformat(),
+            dedupe_cutoff=(now - RECALL_DEDUPE_INTERVAL).isoformat(),
+        )
+    except Exception:
+        logger.debug(
+            "try_ratify_on_hit: recall stamping failed for user %s (%d edge(s))",
+            user_id[:12],
+            len(edge_uuids),
+            exc_info=True,
+        )
+        return 0
+    records = result[0] if result else []
+    if not records:
+        return 0
+    stamped = records[0].get("stamped")
+    return stamped if isinstance(stamped, int) else 0
 
 
 async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:

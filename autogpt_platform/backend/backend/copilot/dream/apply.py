@@ -45,7 +45,7 @@ from backend.copilot.tools.graphiti_forget import (
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
-from .fetch import DREAM_EPISODE_NAME_PREFIX
+from .fetch import DREAM_EPISODE_NAME_PREFIX, DreamInput, FactRow, fetch_usage_rows
 from .locks import DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
@@ -59,6 +59,7 @@ from .schemas import (
     ProposedFinding,
     WriteSummary,
 )
+from .usage import drop_recently_used_demotions, protected_fact_uuids
 
 logger = logging.getLogger(__name__)
 
@@ -224,32 +225,44 @@ async def _write_proposed_finding(
     )
 
 
-async def _filter_demotions_to_known_facts(
+async def _filter_demotions(
+    user_id: str,
     pass_id: str,
     demotions: list[DreamDemotion],
     known_fact_uuids: set[str] | None,
+    *,
+    facts: list[FactRow] | None,
+    refresh_usage: bool,
 ) -> list[DreamDemotion]:
     """Code-level pre-flight for LLM-proposed demotion targets.
 
-    The sanitize prompt tells the model only ``known_fact_uuids`` are
-    valid demotion targets, but prompt text isn't enforcement — a
-    hallucinated or injected uuid would otherwise reach Cypher and
-    could demote edges the dream pass never fetched. Both the sync
-    orchestrator and the batch callback converge on
-    ``apply_operations``, so this is the one chokepoint that covers
-    both paths.
+    Two independent guards, both deterministic:
 
-    The sync path passes ``known_fact_uuids`` from its in-memory
-    ``DreamInput``; the batch path calls ``apply_operations`` without
-    it, so we fall back to the input bundle persisted at submit time.
-    If neither source exists (bundle expired/corrupted, or the Redis
-    read itself fails) we keep the demotions rather than zeroing the
-    pass — the same fail-open posture as the clamp's
-    unknown-fact-count fallback — and log that validation was skipped.
-    The Redis error MUST NOT propagate: by the time apply runs on the
-    batch path the at-most-once apply gate is already claimed, so an
-    exception here would permanently lose the dream (a retry hits the
-    "duplicate" branch and skips apply entirely).
+      * **Known-fact allowlist.** The sanitize prompt tells the model
+        only ``known_fact_uuids`` are valid demotion targets, but prompt
+        text isn't enforcement — a hallucinated or injected uuid would
+        otherwise reach Cypher and could demote edges the dream pass
+        never fetched.
+      * **Recently-used protection.** ``facts`` carries the per-edge
+        ``recall_count`` / ``last_recalled_at`` stamped by warm-context
+        retrieval; demotions targeting facts the user demonstrably still
+        uses are dropped (see ``usage.drop_recently_used_demotions``).
+        Because those rows are a snapshot from gather time — hours old
+        on the batch path — the guard also re-reads the stamps for just
+        the surviving demotion targets (``fetch_usage_rows``); a fact
+        recalled after submission is still protected. The refresh is
+        additive: protection from either source wins, and a failed
+        refresh falls back to the snapshot alone.
+
+    Both the sync orchestrator and the batch callback converge on
+    ``apply_operations``, so this is the one chokepoint covering both
+    paths. The sync path passes both arguments from its in-memory
+    ``DreamInput``; the batch path passes them from the bundle it
+    already read, and falls back to the bundle persisted at submit time
+    when it has none. If no source exists (bundle expired/corrupted, or
+    the Redis read itself fails) both guards fail open and keep the
+    demotions rather than zeroing the pass — the same posture as the
+    clamp's unknown-fact-count fallback.
 
     Entity invalidations are NOT filtered here: the input bundle
     carries no entity-uuid allowlist (``FactRow.source``/``target``
@@ -258,37 +271,96 @@ async def _filter_demotions_to_known_facts(
     if not demotions:
         return demotions
     if known_fact_uuids is None:
-        try:
-            bundle = await read_input_bundle(pass_id)
-        except Exception as exc:
+        bundle = await _read_bundle_for_filter(pass_id, len(demotions))
+        if bundle is not None:
+            known_fact_uuids = bundle.known_fact_uuids
+            if facts is None:
+                facts = bundle.facts
+
+    if known_fact_uuids is None:
+        kept = demotions
+    else:
+        kept = [d for d in demotions if d.edge_uuid in known_fact_uuids]
+        dropped = len(demotions) - len(kept)
+        if dropped:
             logger.warning(
-                "Dream pass %s: input bundle read failed (%s) — failing open "
-                "and skipping known-fact validation for %d demotion(s)",
+                "Dream pass %s: dropped %d demotion(s) targeting edge uuids "
+                "outside the pass's known_fact_uuids (prompt-only constraint "
+                "violated by the model)",
                 pass_id,
-                exc,
-                len(demotions),
+                dropped,
             )
-            return demotions
-        if bundle is None:
-            logger.warning(
-                "Dream pass %s: no input bundle available — skipping "
-                "known-fact validation for %d demotion(s)",
-                pass_id,
-                len(demotions),
-            )
-            return demotions
-        known_fact_uuids = bundle.known_fact_uuids
-    kept = [d for d in demotions if d.edge_uuid in known_fact_uuids]
-    dropped = len(demotions) - len(kept)
-    if dropped:
+    if not kept:
+        return kept
+    return await _drop_usage_protected(user_id, pass_id, kept, facts, refresh_usage)
+
+
+async def _drop_usage_protected(
+    user_id: str,
+    pass_id: str,
+    demotions: list[DreamDemotion],
+    facts: list[FactRow] | None,
+    refresh_usage: bool,
+) -> list[DreamDemotion]:
+    """Usage guard over the snapshot, optionally re-reading the stamps.
+
+    ``refresh_usage`` is the batch path only. There, submission and
+    callback are hours apart, so a fact recalled in between is protected
+    only by re-reading its stamps. The sync path's snapshot is seconds
+    old and ``_clamp_operations`` has already applied this same guard
+    against it, so a re-read there would cost a driver open plus a query
+    on every pass to catch a recall that happened within those seconds —
+    all cost, no signal.
+
+    When it does refresh, facts the snapshot ALREADY protects are left
+    out of the re-read: their demotions are dropped either way.
+    """
+    snapshot_protected = protected_fact_uuids(facts) if facts else set()
+    if not refresh_usage:
+        return drop_recently_used_demotions(pass_id, demotions, facts)
+    targets_needing_refresh = [
+        d.edge_uuid for d in demotions if d.edge_uuid not in snapshot_protected
+    ]
+    fresh = (
+        await fetch_usage_rows(user_id, targets_needing_refresh)
+        if targets_needing_refresh
+        else []
+    )
+    combined = (facts or []) + (fresh or [])
+    return drop_recently_used_demotions(pass_id, demotions, combined or None)
+
+
+async def _read_bundle_for_filter(
+    pass_id: str, demotion_count: int
+) -> DreamInput | None:
+    """Persisted ``DreamInput`` for the demotion filters, or None.
+
+    The Redis error MUST NOT propagate: by the time apply runs on the
+    batch path the at-most-once apply gate is already claimed, so an
+    exception here would permanently lose the dream (a retry hits the
+    "duplicate" branch and skips apply entirely).
+    """
+    try:
+        bundle = await read_input_bundle(pass_id)
+    except Exception as exc:
         logger.warning(
-            "Dream pass %s: dropped %d demotion(s) targeting edge uuids "
-            "outside the pass's known_fact_uuids (prompt-only constraint "
-            "violated by the model)",
+            "Dream pass %s: input bundle read failed (%s) — failing open "
+            "and skipping both demotion guards (known-fact allowlist and "
+            "usage protection) for %d demotion(s)",
             pass_id,
-            dropped,
+            exc,
+            demotion_count,
         )
-    return kept
+        return None
+    if bundle is None:
+        logger.warning(
+            "Dream pass %s: no input bundle available — skipping both "
+            "demotion guards (known-fact allowlist and usage protection) "
+            "for %d demotion(s)",
+            pass_id,
+            demotion_count,
+        )
+    return bundle
 
 
 async def _apply_demotions(
@@ -538,6 +610,8 @@ async def apply_operations(
     ops: DreamOperations,
     *,
     known_fact_uuids: set[str] | None = None,
+    facts: list[FactRow] | None = None,
+    refresh_usage: bool = False,
     ingestion_drain_timeout: float = INGESTION_DRAIN_TIMEOUT_SECONDS,
     lock_handle: DreamLockHandle | None = None,
 ) -> dict[str, int | str | IngestionDrainStatus | DreamOperationsSnapshot]:
@@ -565,9 +639,20 @@ async def apply_operations(
     ``known_fact_uuids`` is the set of edge uuids the dream pass
     actually fetched (``DreamInput.known_fact_uuids``); demotions
     targeting anything outside it are dropped before any Cypher runs
-    (see ``_filter_demotions_to_known_facts``). ``None`` means "look
-    up the persisted input bundle by pass_id" — the batch path's
-    callbacks rely on that fallback.
+    (see ``_filter_demotions``). ``None`` means "look up the persisted
+    input bundle by pass_id" — the batch path's callbacks rely on that
+    fallback.
+
+    ``facts`` is the same pass's fetched fact rows
+    (``DreamInput.facts``), carrying the per-edge recall stamps warm
+    context writes. Demotions targeting recently-and-repeatedly
+    recalled facts are dropped alongside the unknown-uuid ones.
+    ``None`` means "no usage data" and the guard fails open.
+
+    ``refresh_usage`` re-reads those stamps from the graph right before
+    the guard runs. The batch path sets it because its bundle is hours
+    stale by callback time; the sync path leaves it off, its bundle
+    being seconds old (see ``_drop_usage_protected``).
 
     ``ingestion_drain_timeout`` bounds the in-line wait for the enqueued
     episodes to land (see ``_drain_ingestion``). The sync path keeps the
@@ -707,8 +792,13 @@ async def apply_operations(
         pass_id, completion, ingestion_drain_timeout
     )
 
-    demotions = await _filter_demotions_to_known_facts(
-        pass_id, ops.demotions, known_fact_uuids
+    demotions = await _filter_demotions(
+        user_id,
+        pass_id,
+        ops.demotions,
+        known_fact_uuids,
+        facts=facts,
+        refresh_usage=refresh_usage,
     )
     demoted_ok, demoted_fail, demotion_summaries = await _apply_demotions(
         user_id, group_id, demotions

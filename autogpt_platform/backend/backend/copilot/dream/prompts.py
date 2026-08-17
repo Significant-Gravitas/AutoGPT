@@ -17,9 +17,11 @@ both OpenAI and OpenRouter without provider-specific shenanigans.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from .fetch import DreamInput
 from .staleness import identify_stale_candidates
+from .usage import RECENT_RECALL_WINDOW, format_usage
 
 # Hard cap shared across phases — phase 3 must reject demotion lists
 # longer than this regardless of what phase 1/2 produced. Mirrors the
@@ -39,17 +41,36 @@ def _format_episodes(input_bundle: DreamInput, max_chars_per_episode: int = 500)
     return "\n".join(lines)
 
 
+def _inline(value: str | None) -> str:
+    """Collapse untrusted free text onto one line for the fact listing.
+
+    Every free-text field here — the fact, but equally the entity and
+    relation NAMES, which the extractor lifts out of the same
+    user/tool/web content — could otherwise embed a newline and forge a
+    ``- uuid=… recalls=…`` line for a different fact, faking usage
+    stats to steer the sanitizer's demotions.
+    """
+    return " ".join((value or "?").split()) or "?"
+
+
 def _format_facts(input_bundle: DreamInput) -> str:
     if not input_bundle.facts:
         return "(no active facts)"
+    # One reference time for the whole listing: otherwise each fact is
+    # judged against its own datetime.now(), so two facts sitting on the
+    # window boundary can render inconsistent verdicts within a single
+    # prompt — and a ~500-fact bundle pays the syscall once per fact per
+    # phase.
+    now = datetime.now(timezone.utc)
     by_scope: dict[str, list[str]] = {}
     for f in input_bundle.facts:
         scope = f.scope or "real:global"
         bucket = by_scope.setdefault(scope, [])
         bucket.append(
-            f"  - uuid={f.uuid} confidence={f.confidence} "
-            f"{(f.source or '?')} —[{f.name or '?'}]→ {(f.target or '?')}: "
-            f"{(f.fact or '').strip()}"
+            f"  - uuid={_inline(f.uuid)} confidence={f.confidence} "
+            f"{format_usage(f, now=now)} "
+            f"{_inline(f.source)} —[{_inline(f.name)}]→ {_inline(f.target)}: "
+            f"{_inline(f.fact)}"
         )
     parts: list[str] = []
     for scope, bucket in sorted(by_scope.items()):
@@ -223,6 +244,21 @@ SANITIZE_SYSTEM = (
     "stale). For each candidate, demote only when general knowledge or "
     "a phase-1 consolidated fact contradicts it. When in doubt, "
     "preserve.\n"
+    " * USAGE SIGNAL: every active fact carries a `recalls=` count — "
+    "on how many distinct occasions warm-context retrieval has pulled "
+    "it into a live conversation (same-day repeats collapse into one) "
+    "— plus, when non-zero, `last_recall=`/`prior_recall=` timestamps "
+    "and a `usage=` verdict. Prefer demoting facts with "
+    "`recalls=0(never)`: nothing has ever needed them, so a stale one "
+    "costs nothing to drop. `usage=protected` means the fact was "
+    f"recalled twice within the last {RECENT_RECALL_WINDOW.days} days "
+    "and is in active use — do not demote it on staleness grounds "
+    "alone (a direct contradiction or an explicit user retraction "
+    "still wins). Those demotions are dropped by a code-level guard "
+    "anyway, wasting a slot against the per-pass cap. "
+    "`usage=demotable-on-staleness` means the guard will NOT block a "
+    "staleness demotion, however high the recall count looks — the "
+    "fact's second-most-recent recall is outside the window.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "
@@ -273,7 +309,7 @@ def _format_stale_candidates(input_bundle: DreamInput) -> str:
         lines.append(
             f"- uuid={fact.uuid} score={score:.2f} "
             f"created_at={fact.created_at or '?'}: "
-            f"{(fact.fact or '').strip()}"
+            f"{_inline(fact.fact)}"
         )
     return "\n".join(lines)
 
