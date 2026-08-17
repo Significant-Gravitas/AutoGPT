@@ -23,8 +23,19 @@ from ._webhook import AllQuietWebhookType
 # Body template to paste into the All Quiet outbound webhook. It forwards the
 # whole incident rather than a flattened subset, so the block can emit status,
 # severity and attributes as well as the IDs.
-# Triple-stash ({{{ }}}) throughout: Handlebars HTML-escapes {{ }} by default,
-# which turns a value like `RAM > 60%` into `RAM &gt; 60%` on the wire.
+# Goes in the `body.json` slot of an All Quiet outbound webhook, whose config is
+#     {"method": "POST", "url": "<this block's ingress URL>",
+#      "headers": {"Content-Type": "application/json"},
+#      "body": {"json": <this template>}}
+#
+# All Quiet renders it with Handlebars. Triple-stash ({{{ }}}) throughout,
+# because Handlebars HTML-escapes {{ }} by default and turns a value like
+# `RAM > 60%` into `RAM &gt; 60%` on the wire. All Quiet's stock template uses
+# the escaping form, which is why the block also unescapes on the way in.
+#
+# All Quiet additionally exposes `attributesByName` (a map) if you'd rather pull
+# named attributes directly than iterate: {{{attributesByName.Environment.value}}},
+# or {{{attributesByName.[My Attribute].value}}} when the name has spaces.
 RECOMMENDED_BODY_TEMPLATE = """{
   "id": "{{{id}}}",
   "title": "{{{title}}}",
