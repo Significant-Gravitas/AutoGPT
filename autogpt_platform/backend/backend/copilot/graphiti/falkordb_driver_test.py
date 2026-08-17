@@ -77,9 +77,11 @@ def test_query_without_group_ids_returns_parenthesized_query(
 
 
 # ---------------------------------------------------------------------------
-# build_indices opt-out — pins the contract that suppresses graphiti-core's
-# per-driver background indexing task on read-only / per-request paths.
-# Regression coverage for the "Buffer is closed" log spam on admin viz loads.
+# build_indices — pins the contract that suppresses graphiti-core's per-driver
+# background indexing task. Default is OFF because CREATE INDEX materializes
+# the graph; only explicit write paths (``ensure_indices``) may create one.
+# Regression coverage for the 13.7k-empty-graph FalkorDB maxmemory wedge, and
+# for the "Buffer is closed" log spam on admin viz loads.
 # ---------------------------------------------------------------------------
 
 
@@ -116,10 +118,15 @@ async def test_build_indices_true_delegates_to_super() -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_build_indices_is_upstream_compat() -> None:
-    """Omitting the kwarg keeps the upstream-default behaviour so
-    existing call sites (long-lived chat client) don't silently lose
-    their index-build path."""
+async def test_default_build_indices_does_not_create_graph() -> None:
+    """Omitting the kwarg must NOT build indices.
+
+    ``CREATE INDEX`` is a write, and a write materializes the graph in
+    FalkorDB. An index-building default meant every driver construction —
+    including read-only searches and the AGENTS.md debugging cookbook —
+    minted a permanent empty graph for that user. Prod accumulated 13,732
+    graphs, ~99.7% of them empty, which pinned FalkorDB at maxmemory.
+    """
     with patch(
         "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
         return_value=None,
@@ -129,6 +136,24 @@ async def test_default_build_indices_is_upstream_compat() -> None:
     ) as super_build:
         driver = AutoGPTFalkorDriver()
         await driver.build_indices_and_constraints()
+    super_build.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_indices_builds_despite_default_optout() -> None:
+    """``ensure_indices()`` is the write path's explicit opt-in — it must
+    delegate to upstream even though the init-time task is suppressed."""
+    with patch(
+        "graphiti_core.driver.falkordb_driver.FalkorDriver.__init__",
+        return_value=None,
+    ), patch(
+        "graphiti_core.driver.falkordb_driver.FalkorDriver.build_indices_and_constraints",
+        new=AsyncMock(),
+    ) as super_build:
+        driver = AutoGPTFalkorDriver()
+        await driver.build_indices_and_constraints()
+        super_build.assert_not_called()
+        await driver.ensure_indices()
     super_build.assert_awaited_once()
 
 

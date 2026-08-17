@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from graphiti_core.nodes import EpisodeType
 
-from .client import derive_group_id, get_graphiti_client
+from .client import derive_group_id, ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
@@ -259,6 +259,10 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
             try:
                 group_id = derive_group_id(user_id)
                 client = await get_graphiti_client(group_id)
+                # This is the write path, so materializing the graph is
+                # intended here — unlike driver construction, which must
+                # never create one. Once per group per loop.
+                await ensure_indices_once(group_id, client)
                 # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
                 # pop it before the **payload spread. Present only for dream
                 # writes; None for conversation turns / memory-store calls.
