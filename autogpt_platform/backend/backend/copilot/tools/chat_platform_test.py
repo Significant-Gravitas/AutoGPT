@@ -233,7 +233,7 @@ async def test_teams_post_defaults_to_the_users_dm(session):
 async def test_teams_rejects_an_explicit_channel_target(session):
     bridge = _bridge()
     with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
-        result = await PostToChatPlatformTool().execute(
+        result = await PostToChatPlatformTool()._execute(
             user_id=_USER,
             session=session,
             platform="teams",
