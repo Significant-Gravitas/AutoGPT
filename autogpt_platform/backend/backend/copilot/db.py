@@ -74,6 +74,32 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     return ChatSessionInfo.from_db(session) if session else None
 
 
+async def chat_message_has_assistant_reply(
+    message_id: str,
+    session_id: str,
+) -> bool | None:
+    """Whether a persisted user message already has an assistant reply after it.
+
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
+    """
+    messages = PrismaChatMessage.prisma()
+    existing = await messages.find_first(
+        where={"id": message_id, "sessionId": session_id},
+    )
+    if existing is None:
+        return None
+    assistant_reply = await messages.find_first(
+        where={
+            "sessionId": session_id,
+            "role": "assistant",
+            "sequence": {"gt": existing.sequence},
+        },
+    )
+    return assistant_reply is not None
+
+
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 
@@ -670,6 +696,8 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
+    pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -684,7 +712,18 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL.
+    The explicit flag is necessary because ``expert_id=None`` retains the
+    existing meaning of "all expert scopes" for user-facing session lists.
+
+    ``pinned_first=False`` provides strict recency ordering for internal
+    adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
@@ -695,14 +734,19 @@ async def get_user_chat_sessions(
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")
         conditions.append(f'"title" ILIKE ${len(params)}')
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     params.extend((limit, offset))
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+    )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions)
-        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f" ORDER BY {ordering} "
         + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
     sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
@@ -713,6 +757,7 @@ async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
 ) -> int:
     """Get the total number of chat sessions for a user.
 
@@ -720,6 +765,11 @@ async def get_user_session_count(
     filter as :func:`get_user_chat_sessions` so pagination totals always
     match the visible list.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
@@ -727,9 +777,11 @@ async def get_user_session_count(
         conditions.append(
             f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
         )
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     rows = await db.query_raw_with_schema(
         'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions),

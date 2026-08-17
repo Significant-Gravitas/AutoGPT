@@ -28,6 +28,7 @@ export interface SessionOverride {
   messages?: SessionDetailResponse["messages"];
   has_more_messages?: boolean;
   chat_status?: string;
+  expert_id?: string | null;
 }
 
 /**
@@ -47,6 +48,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     oldest_sequence: null,
     active_stream: opts.active_stream ?? null,
     metadata: { dry_run: false, builder_graph_id: null },
+    expert_id: opts.expert_id ?? null,
   });
 }
 
@@ -106,7 +108,9 @@ function Wrapper({
  * messages). The default Orval mocks return random faker data that flips the
  * input into "limit reached" or injects ghost queued chips, so we pin them.
  */
-export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
+export function renderHost(
+  opts: { sessionOverride?: SessionOverride; searchParams?: string } = {},
+) {
   server.use(
     sessionHandler(opts.sessionOverride),
     getGetV2GetCopilotUsageMockHandler200({
@@ -139,7 +143,9 @@ export function renderHost(opts: { sessionOverride?: SessionOverride } = {}) {
     <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />,
     {
       wrapper: ({ children }) => (
-        <Wrapper searchParams={`?sessionId=${TEST_SESSION_ID}`}>
+        <Wrapper
+          searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
+        >
           {children}
         </Wrapper>
       ),

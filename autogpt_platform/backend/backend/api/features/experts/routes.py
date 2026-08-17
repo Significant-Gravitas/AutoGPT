@@ -7,6 +7,7 @@ from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
+    ExpertIdentity,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -116,7 +117,16 @@ async def create_raised_expert(
 async def list_experts(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[Expert]:
+    """List the user's active hired experts."""
     return await experts_db.list_experts(user_id)
+
+
+@router.get("/identities", operation_id="list_expert_identities")
+async def list_expert_identities(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertIdentity]:
+    """List the lightweight active and archived identity projection for chat."""
+    return await experts_db.list_expert_identities(user_id)
 
 
 @router.get(
