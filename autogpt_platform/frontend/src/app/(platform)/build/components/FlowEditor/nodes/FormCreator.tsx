@@ -33,8 +33,17 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
     const isAgent = uiType === BlockUIType.AGENT;
 
     const handleChange = ({ formData }: any) => {
-      if ("credentials" in formData && !formData.credentials?.id) {
-        delete formData.credentials;
+      // RJSF seeds `const` provider/type into default form state, so an
+      // untouched credential field arrives as {provider, type} with no id.
+      // That half object must never reach input_default: graph activation
+      // indexes creds_meta["id"] and would raise KeyError. Field names follow
+      // the backend rule in data/model.py:is_credentials_field_name.
+      for (const key of Object.keys(formData)) {
+        const isCredentialField =
+          key === "credentials" || key.endsWith("_credentials");
+        if (isCredentialField && !formData[key]?.id) {
+          delete formData[key];
+        }
       }
 
       let updatedValues;

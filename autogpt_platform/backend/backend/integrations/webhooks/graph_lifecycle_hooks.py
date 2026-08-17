@@ -71,7 +71,12 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
         for creds_field_name in block_input_schema.get_credentials_fields().keys():
             creds_meta = new_node.input_default.get(creds_field_name)
-            if not creds_meta:
+            # A meta without `id` means no credential was selected. The form
+            # can emit provider/type on their own, so this shape is reachable
+            # without any user action; treat it as unset instead of indexing
+            # it. Required-but-unset is caught by execution-time validation,
+            # which can name the block and field.
+            if not creds_meta or not creds_meta.get("id"):
                 continue
             refs.append((new_node, creds_field_name, creds_meta, block_input_schema))
 
