@@ -57,6 +57,8 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
     ExpertRunPausedError,
     GraphNotFoundError,
     GraphNotInLibraryError,
@@ -231,6 +233,20 @@ async def _execute_graph(**kwargs):
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except ExpertPrivateTenancyNotFoundError:
+        # Graph schedules are recurring, so the next cron tick is the retry.
+        logger.warning(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert workspace unavailable; next schedule tick will retry"
+        )
+    except ExpertNotFoundError:
+        # The schedule can outlive an archived, deleted, or no-longer-private
+        # expert. Keep it registered for recovery without logging an error on
+        # every tick.
+        logger.info(
+            f"Skipping scheduled expert run for graph #{args.graph_id}: "
+            "expert unavailable"
+        )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -256,15 +272,24 @@ async def _expert_scope_status(
     Mirrors ``enforce_expert_run_budget``'s gate: ``archived`` and ``paused``
     (``schedulesPausedAt`` — set by a manual pause or a budget breach) both
     block the firing, but reversibly, so the schedule must survive them.
-    ``missing`` is reserved for IDs that don't exist for this owner at all —
-    the only state that deletes the schedule. ``unavailable`` is kept
-    distinct so a transient DB/RPC failure skips the turn without
-    permanently deleting a valid recurring schedule.
-    """
+    ``missing`` means the row is truly gone (deleted, or a wrong-owner
+    probe): the strict lookup misses AND a lenient existence check (which
+    ignores visibility/archive state) misses too — the only state allowed
+    to delete the schedule. An expert that still exists but is hidden from
+    the strict lookup (no longer PRIVATE) maps to ``unavailable`` so the
+    schedule survives for recovery; ``unavailable`` also covers a
+    transient DB/RPC failure for the same reason."""
     try:
         expert = await experts_db().get_expert(
             user_id, expert_id, include_workflows=False, include_archived=True
         )
+        if expert is None:
+            # The strict lookup hides non-PRIVATE experts. Only true
+            # deletion may delete the schedule, so rule it out with the
+            # visibility-blind existence check before returning "missing".
+            if await experts_db().expert_row_exists(user_id, expert_id):
+                return "unavailable"
+            return "missing"
     except Exception:
         logger.warning(
             "Could not validate expert scope %s for scheduled copilot turn",
@@ -272,8 +297,6 @@ async def _expert_scope_status(
             exc_info=True,
         )
         return "unavailable"
-    if expert is None:
-        return "missing"
     if expert.is_archived:
         return "archived"
     if expert.schedules_paused_at is not None:
@@ -287,11 +310,11 @@ async def _skip_inactive_expert_scope(
 ) -> None:
     """Shared skip path for a firing whose expert scope is not active.
 
-    Only ``missing`` deletes the schedule: archive and pause are reversible,
-    and copilot-turn schedules have no persisted cadence to revive from, so
-    they must outlive both. A transient lookup failure re-schedules a
-    one-shot because APScheduler drops it after the fire regardless.
-    """
+    Only ``missing`` deletes the schedule: archive, pause, and a visibility
+    change are reversible, and copilot-turn schedules have no persisted
+    cadence to revive from, so they must outlive all three. A transient
+    lookup failure re-schedules a one-shot because APScheduler drops it
+    after the fire regardless."""
     logger.warning(
         "Copilot turn schedule %s skipped — expert scope %s is %s",
         args.schedule_id,
@@ -410,6 +433,17 @@ async def _execute_copilot_turn(**kwargs):
             f"Dispatched scheduled copilot turn for session "
             f"{target_session_id[:12]} (took {elapsed:.2f}s)"
         )
+    except (ExpertPrivateTenancyNotFoundError, ExpertNotFoundError):
+        # ExpertNotFoundError covers the race where the expert is archived,
+        # deleted, or loses PRIVATE visibility between the scope pre-check
+        # and create_chat_session's own tenancy resolution — same reversible
+        # skip as the pre-check: never delete the schedule from this window.
+        logger.warning(
+            f"Scheduled copilot turn for session {_session_id_label(args)} "
+            "skipped because the expert workspace is unavailable"
+        )
+        if args.run_at is not None:
+            await _reschedule_one_shot_after_expert_unavailable(args)
     except ConcurrentTurnLimitError as e:
         # User is at their per-user concurrency cap. For cron schedules the
         # next tick retries automatically; for one-shot (run_at) schedules
@@ -1909,6 +1943,11 @@ class Scheduler(AppService):
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+            )
+
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
         run_async(
@@ -1974,6 +2013,15 @@ class Scheduler(AppService):
         to bound their respective transient retry paths; normal callers should
         leave both at 0.
         """
+        # Mirror add_graph_execution_schedule: validate the expert scope at
+        # creation (active, owned, PRIVATE) and pin the schedule to the
+        # owner's personal tenancy, instead of persisting a job that can only
+        # ever skip at fire time.
+        if expert_id is not None:
+            organization_id, team_id = run_async(
+                experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+            )
+
         user_timezone = _resolve_timezone(user_timezone, user_id)
         trigger = _build_trigger(cron=cron, run_at=run_at, user_timezone=user_timezone)
         job_args = CopilotTurnJobArgs(
@@ -2184,7 +2232,9 @@ class Scheduler(AppService):
         With *organization_id* (from a membership-verified RequestContext)
         the org/team visibility rules apply instead of strict ownership:
         own schedules + org-home schedules + schedules of teams in
-        *team_ids* (resolved by the caller, who has async DB access).
+        *team_ids* (resolved by the caller, who has async DB access). Expert
+        schedules remain owner-only for scoped calls. Trusted global callers
+        that provide neither *user_id* nor *organization_id* receive all jobs.
 
         Paused jobs (``next_run_time is None``) are hidden by default, which
         is what keeps a fired expert's suspended schedules out of every user
@@ -2203,7 +2253,12 @@ class Scheduler(AppService):
                 continue
             if kind is not None and info.kind != kind:
                 continue
-            if organization_id is not None:
+            if info.expert_id is not None:
+                if (
+                    user_id is not None or organization_id is not None
+                ) and info.user_id != user_id:
+                    continue
+            elif organization_id is not None:
                 # GraphExecutionJobArgs defaults organization_id to "" —
                 # normalise so untagged rows never match an org clause.
                 info_org = info.organization_id or None

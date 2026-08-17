@@ -1577,7 +1577,10 @@ async def _apply_building_mode_restart(
             f"empty — continuing without prompt upgrade"
         )
     expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
     )
     system_prompt = (
         base_system_prompt
@@ -4027,7 +4030,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session = cast(ChatSession, session)
 
     expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
     )
     expert_identity_validated = True
 
