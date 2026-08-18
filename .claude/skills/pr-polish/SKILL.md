@@ -18,6 +18,7 @@ metadata:
 4. Every non-bot, non-author issue comment has been acknowledged (replied-to).
 5. Every CI check is `conclusion: "success"` or `"skipped"` / `"neutral"` — none `"failure"` or still pending.
 6. **Two consecutive post-CI polls** (≥60s apart) stay clean — no new threads, no new non-empty reviews, no new issue comments. Bots (coderabbitai, sentry, autogpt-reviewer) frequently post late after CI settles; a single green snapshot is not sufficient.
+7. **No requested-but-unanswered review.** If a `/review` comment was posted on the PR and the review bot has not replied yet, quiet polls do **not** count toward condition 6 — keep polling until the review lands or the wait budget expires. See [Waiting on a requested bot review](#waiting-on-a-requested-bot-review).
 
 **Do not stop at a fixed number of rounds.** If round N introduces new comments, round N+1 is required. Cap at `_MAX_ROUNDS = 10` as a safety valve, but expect 2–5 in practice.
 
@@ -61,6 +62,16 @@ while round < _MAX_ROUNDS:
 # Post-loop: polish polling (see below).
 polish_polling(PR)
 ```
+
+### Optional: the review bot
+
+`invoke_skill("pr-review", PR)` is the agent's **own** review and always runs every round. In addition to it, the repo's review bot can be summoned on demand by commenting `/review` on the PR (see the `open-pr` skill):
+
+```bash
+gh pr comment "${PR}" --body "/review"
+```
+
+This is an **option, not a required step**, and it is **not** a substitute for the `/pr-review` round — use it when you want a second opinion the outer loop cannot produce itself, or when the PR carries no bot findings at all yet. Bot findings land as inline threads and top-level reviews, exactly like the agent's own findings, so both feed the same `invoke_skill("pr-address", PR)` step — no separate handling is needed. If you do request one, the exit conditions must wait for it; see [Waiting on a requested bot review](#waiting-on-a-requested-bot-review).
 
 ### Snapshotting state
 
@@ -154,6 +165,12 @@ while clean_polls < required_clean:
     if mergeable is null (UNKNOWN):
         sleep 60; continue
 
+    # 4. Pending-review gate — a /review with no bot answer yet.
+    # Quiet is exactly what a bot still thinking looks like, so don't bank
+    # a clean poll on it. Bounded by REVIEW_WAIT_BUDGET so it can't hang.
+    if review_requested_but_unanswered(PR) and elapsed_since_review_request < REVIEW_WAIT_BUDGET:
+        sleep 60; continue
+
     clean_polls += 1
     sleep 60
 ```
@@ -177,6 +194,26 @@ failed=$(echo "$ci_json" | jq '[.[] | select(.bucket == "fail" or .bucket == "ca
 ```
 
 Map back to the pseudocode above: `bucket == "pending"` is `ci.conclusion is None (still in_progress)`; `bucket in {"fail", "cancel"}` is `ci.conclusion in NON_SUCCESS_TERMINAL`; `bucket in {"pass", "skipping"}` is clean.
+
+### Waiting on a requested bot review
+
+`autogpt-reviewer` typically takes ~30 minutes to answer a `/review` — far longer than the 60-second poll interval, so without this gate two clean polls would report `ORCHESTRATOR:DONE` while the requested review is still in flight.
+
+`review_requested_but_unanswered(PR)` is:
+
+1. Newest `/review` trigger comment (the `created_at` is the request time):
+   ```bash
+   gh api "repos/Significant-Gravitas/AutoGPT/issues/${PR}/comments" --paginate \
+     --jq '[.[] | select((.body // "") | test("^\\s*/review\\s*$"))] | last | {id, created_at}'
+   ```
+2. Newest review from the bot:
+   ```bash
+   gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/reviews" --paginate \
+     --jq '[.[] | select(.user.login == "autogpt-reviewer")] | last | {id, submitted_at}'
+   ```
+3. **Unanswered** iff step 1 returned a comment and step 2 returned nothing, or returned a review whose `submitted_at` is **not** later than that comment's `created_at`. New inline threads whose latest comment `author.login` is `autogpt-reviewer` count as an answer too — they are already picked up by the comment / thread gate above.
+
+`REVIEW_WAIT_BUDGET = 45 minutes` measured from the `/review` comment's `created_at` (≈45 polls). Past the budget, stop waiting, resume counting clean polls normally, and note in the final report that the requested bot review never arrived. The loop must never hang on a bot.
 
 ### Why 2 clean polls, not 1
 

@@ -96,7 +96,7 @@ Once the review bot or human reviewers leave comments:
 |---|---|
 | `/pr-test` | E2E testing with docker compose, agent-browser, API calls — use when you have a running workspace |
 | `/pr-review` | Review for correctness, security, code quality — use before requesting human review |
-| `/pr-address` | Address reviewer comments and loop until CI green — use after reviews come in |
+| `/pr-address` | Address reviewer comments and loop until CI green — use after reviews come in; it can also post the `/review` trigger itself if the PR has no review yet |
 
 ## Step 6: Post-creation
 

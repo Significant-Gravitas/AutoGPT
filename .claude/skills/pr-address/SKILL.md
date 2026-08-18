@@ -27,6 +27,18 @@ gh pr view {N} --json body --jq '.body'
 
 > If GraphQL is rate-limited, `gh pr view` fails. See [GitHub rate limits](#github-rate-limits) for REST fallbacks.
 
+## Optional: trigger the review bot
+
+**Only relevant if the PR has no review yet.** If the fetch steps below turn up no reviews and no inline threads, there is nothing to address *yet* — that is not the same as being done. You can summon the repo's review bot yourself:
+
+```bash
+gh pr comment {N} --body "/review"
+```
+
+This is an **option, not a required step**. Skip it whenever the PR already has reviews (bot or human) — those are what you are here to address. See the `open-pr` skill's "Review workflow" step for the same trigger in the PR-creation flow.
+
+`autogpt-reviewer` typically responds within ~30 minutes. **Poll for it rather than sleeping** — the loop in [Polling for CI + new comments](#polling-for-ci--new-comments) already re-checks every source every 30 seconds, so run that loop and react the moment the review lands. Note the `id` and `created_at` of the `/review` comment you posted; [Waiting on a requested review](#waiting-on-a-requested-review) needs them for the exit condition.
+
 ## Fetch comments (all sources)
 
 ### 1. Inline review threads — GraphQL (primary source of actionable items)
@@ -142,6 +154,8 @@ gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
 > **Already REST — unaffected by GraphQL rate limits.**
 
 Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`github-actions[bot]`), and author status updates. Scan for non-empty messages from non-bot human reviewers that aren't the PR author — those are the ones that need a response.
+
+**Slash-command trigger comments are never actionable items — skip them.** A comment whose entire body is a slash command (`/review` being the common one) exists to summon the review bot; it is not a request directed at you. Do not reply to it, do not treat it as feedback, and do not count it as a "new comment" that restarts the loop. The non-author filter above happens to hide the usual case where the PR author posted it, but that is incidental — a maintainer can post `/review` on someone else's PR, and it must still be skipped. The actionable content is the review it produces, which arrives as a top-level review and/or inline threads, not as a conversation comment.
 
 ## For each unaddressed comment
 
@@ -300,10 +314,20 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 | Mergeability is `UNKNOWN` | GitHub is still computing mergeability. Sleep 30 seconds, then restart polling from the top. |
 | New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
 | CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
+| CI green + no new comments, but a requested `/review` is unanswered | The bot is still working — quiet polls are exactly what that looks like. Keep polling; do **not** count these as the quiet polls below. See "Waiting on a requested review". |
 | CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
 | CI pending + no new comments | Sleep 30 seconds, then poll again. |
 
-**The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled.**
+**The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled** + no requested-but-unanswered `/review` (see below).
+
+### Waiting on a requested review
+
+If a `/review` comment was posted on this PR and the bot has not answered it yet, the "2 consecutive green+quiet polls" exit is **premature** — a pending bot review looks identical to a quiet PR. Keep polling until one of these is true:
+
+- **The review arrived.** In `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate`, a review with `user.login == "autogpt-reviewer"` has a `submitted_at` later than the `created_at` of the `/review` comment in `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate`. New inline threads whose `comments(last: 1)` node has `author.login == "autogpt-reviewer"` count as arrival too. Once it lands, treat it as "New comments detected" and address it normally.
+- **The budget ran out.** Stop waiting **45 minutes** after the `/review` comment's `created_at` (90 polls at 30s). Then exit per the normal rule and tell the user the requested review never arrived. Never hang indefinitely on a bot.
+
+A `/review` posted before this session still counts as pending if no `autogpt-reviewer` review has been submitted after it. If the newest `autogpt-reviewer` review is already newer than the newest `/review` comment, nothing is pending and the normal exit rule applies unchanged.
 
 ### Resolving merge conflicts
 
