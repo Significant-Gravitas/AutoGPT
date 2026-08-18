@@ -308,19 +308,35 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             description="ID of the spend request to retrieve (e.g., lsrq_...)"
         )
         include_card: bool = SchemaField(
-            description="Include unmasked card details in the response",
-            default=True,
+            description=(
+                "Fetch the unmasked virtual card number and CVC. Off by "
+                "default: these are emitted as block outputs, which are "
+                "persisted with the execution, so only turn it on for a graph "
+                "that actually completes a card checkout."
+            ),
+            default=False,
         )
 
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Current status of the spend request")
         card_number: str = SchemaField(
-            description="Virtual card number (only if approved and include_card=True)",
+            description=(
+                "Virtual card number. Single-use, capped at the approved "
+                "amount, and expires at `valid_until`. Emitted only when "
+                "`include_card` is on. Block outputs are persisted, so treat "
+                "this as sensitive and avoid wiring it anywhere that logs."
+            ),
             default="",
+            secret=True,
         )
         card_cvc: str = SchemaField(
-            description="Virtual card CVC",
+            description=(
+                "Virtual card CVC. Emitted only when `include_card` is on. "
+                "See the note on `card_number`: this is persisted with the "
+                "execution record."
+            ),
             default="",
+            secret=True,
         )
         card_exp_month: int = SchemaField(
             description="Card expiry month",
@@ -353,6 +369,9 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "spend_request_id": "lsrq_test123",
+                # Explicit now that it is opt-in, so the fixture still
+                # exercises the card-detail path.
+                "include_card": True,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[

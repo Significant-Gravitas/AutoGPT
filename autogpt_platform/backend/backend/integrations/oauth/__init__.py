@@ -30,10 +30,10 @@ _ORIGINAL_HANDLERS = [
 
 # Start with original handlers
 _handlers_dict = {
+    # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
+    # registry key matches either form.
     (
-        handler.PROVIDER_NAME.value
-        if hasattr(handler.PROVIDER_NAME, "value")
-        else str(handler.PROVIDER_NAME)
+        getattr(handler.PROVIDER_NAME, "value", None) or str(handler.PROVIDER_NAME)
     ): handler
     for handler in _ORIGINAL_HANDLERS
 }
@@ -237,10 +237,10 @@ _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
 ]
 
 _device_handlers_dict: dict[str, type[BaseDeviceAuthHandler]] = {
+    # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
+    # registry key matches either form.
     (
-        handler.PROVIDER_NAME.value
-        if hasattr(handler.PROVIDER_NAME, "value")
-        else str(handler.PROVIDER_NAME)
+        getattr(handler.PROVIDER_NAME, "value", None) or str(handler.PROVIDER_NAME)
     ): handler
     for handler in _ORIGINAL_DEVICE_HANDLERS
 }
