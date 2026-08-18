@@ -86,7 +86,7 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | spend_request_id | ID of the spend request to retrieve (e.g., lsrq_...) | str | Yes |
-| include_card | Include unmasked card details in the response | bool | No |
+| include_card | Fetch the unmasked virtual card number and CVC. Off by default: these are emitted as block outputs, which are persisted with the execution, so only turn it on for a graph that actually completes a card checkout. | bool | No |
 | include_shared_payment_token | Include the Shared Payment Token, for spend requests created with `credential_type: shared_payment_token`. | bool | No |
 
 ### Outputs
@@ -95,8 +95,8 @@ _Add technical explanation here._
 |--------|-------------|------|
 | error | Error message if the request failed | str |
 | status | Current status of the spend request | str |
-| card_number | Virtual card number (only if approved and include_card=True) | str |
-| card_cvc | Virtual card CVC | str |
+| card_number | Virtual card number. Single-use, capped at the approved amount, and expires at `valid_until`. Emitted only when `include_card` is on. Block outputs are persisted, so treat this as sensitive and avoid wiring it anywhere that logs. | str |
+| card_cvc | Virtual card CVC. Emitted only when `include_card` is on. See the note on `card_number`: this is persisted with the execution record. | str |
 | card_exp_month | Card expiry month | int |
 | card_exp_year | Card expiry year | int |
 | card_brand | Card brand (visa, mastercard, etc.) | str |
