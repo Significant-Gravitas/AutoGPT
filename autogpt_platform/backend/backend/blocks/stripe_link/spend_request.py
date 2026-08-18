@@ -101,8 +101,9 @@ class StripeLinkListPaymentMethodsBlock(Block):
                     [
                         {
                             "id": "csmrpd_test",
-                            "type": "card",
-                            "is_default": True,
+                            "type": "CARD",
+                            "name": "Test Debit Card",
+                            "is_default": False,
                             "card_details": {
                                 "brand": "visa",
                                 "last4": "4242",
@@ -114,19 +115,22 @@ class StripeLinkListPaymentMethodsBlock(Block):
                 )
             ],
             test_mock={
-                "_link_api_request": lambda *args, **kwargs: [
-                    {
-                        "id": "csmrpd_test",
-                        "type": "card",
-                        "is_default": True,
-                        "card_details": {
-                            "brand": "visa",
-                            "last4": "4242",
-                            "exp_month": 12,
-                            "exp_year": 2030,
-                        },
-                    }
-                ]
+                "_link_api_request": lambda *args, **kwargs: {
+                    "payment_details": [
+                        {
+                            "id": "csmrpd_test",
+                            "type": "CARD",
+                            "name": "Test Debit Card",
+                            "is_default": False,
+                            "card_details": {
+                                "brand": "visa",
+                                "last4": "4242",
+                                "exp_month": 12,
+                                "exp_year": 2030,
+                            },
+                        }
+                    ]
+                }
             },
         )
 
@@ -138,10 +142,13 @@ class StripeLinkListPaymentMethodsBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            methods = await self._link_api_request(
-                credentials, "GET", "/payment_methods"
+            # `/payment-details`, not `/payment_methods` — the latter 404s. The
+            # list is nested under `payment_details`, matching @stripe/link-cli's
+            # SDK (packages/sdk/src/resources/payment-methods.ts).
+            response = await self._link_api_request(
+                credentials, "GET", "/payment-details"
             )
-            yield "payment_methods", methods
+            yield "payment_methods", response.get("payment_details", [])
         except Exception as e:
             yield "error", str(e)
 
