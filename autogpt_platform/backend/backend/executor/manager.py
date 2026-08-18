@@ -132,8 +132,25 @@ def _record_execution_failure(
     execution_stats: GraphExecutionStats,
     error: BaseException,
 ) -> None:
-    """Record an error without erasing a trusted reason promoted by a node."""
-    # Later untyped graph errors update the message but keep an earlier typed node reason sticky.
+    """Record an error without erasing a trusted reason promoted by a node.
+
+    Precedence is deliberately asymmetric between the two fields:
+
+    ``error`` always reflects the *latest* failure, so the message a user sees
+    describes what actually terminated the run.
+
+    ``failure_reason`` is *sticky*: once a typed failure (currently only
+    :class:`InsufficientBalanceError`) has been promoted from a node via
+    :func:`_propagate_node_failure`, a later untyped error cannot clear it.
+    An exhausted wallet is the root cause of whatever fails next, and losing
+    that reason would send the run back to LLM analysis — the exact cost this
+    module exists to avoid. Only another typed classification may replace it.
+
+    The trade-off: when a run hits a credit failure *and* a later unrelated
+    typed-less terminal error, the deterministic summary attributes the run to
+    the credit failure while ``error`` names the later one. That is intended;
+    the credit condition is the actionable one for the user.
+    """
     if failure_reason := get_execution_failure_reason(error):
         execution_stats.failure_reason = failure_reason
     execution_stats.error = str(error) or type(error).__name__

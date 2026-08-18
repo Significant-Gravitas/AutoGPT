@@ -14,12 +14,8 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 
-_GRAPH_EXECUTION_SQL = (
-    Path(__file__).resolve().parents[3]
-    / "analytics"
-    / "queries"
-    / "graph_execution.sql"
-)
+_ANALYTICS_QUERIES_DIR = Path(__file__).resolve().parents[3] / "analytics" / "queries"
+_GRAPH_EXECUTION_SQL = _ANALYTICS_QUERIES_DIR / "graph_execution.sql"
 _SQL_LEGACY_ERROR_PREDICATE = re.compile(
     r"""ge\."stats"::jsonb->>'error'\s*(?P<operator>=|~)\s*'(?P<pattern>(?:''|[^'])*)'"""
 )
@@ -58,9 +54,23 @@ _LEGACY_BALANCE_CORPUS = (
 
 
 def _read_graph_execution_sql() -> str:
-    if not _GRAPH_EXECUTION_SQL.exists():
-        pytest.skip("analytics SQL is not included in this backend package")
-    return _GRAPH_EXECUTION_SQL.read_text(encoding="utf-8")
+    """Load the analytics SQL, failing closed on drift inside a source checkout.
+
+    Skipping is only legitimate when the whole ``analytics/queries`` tree is
+    absent, i.e. the backend is running from a packaged install (the runtime
+    container ships no analytics SQL). When that directory *is* present the
+    parity guarantee is in force, so a missing or renamed file is drift and
+    must fail rather than silently dropping the Python<->SQL check.
+    """
+    if _GRAPH_EXECUTION_SQL.exists():
+        return _GRAPH_EXECUTION_SQL.read_text(encoding="utf-8")
+    if _ANALYTICS_QUERIES_DIR.is_dir():
+        pytest.fail(
+            f"{_GRAPH_EXECUTION_SQL} is missing while {_ANALYTICS_QUERIES_DIR} "
+            "exists: the Python<->SQL legacy-classifier parity check cannot be "
+            "verified. Update the path if the query moved."
+        )
+    pytest.skip("analytics SQL is not included in this backend package")
 
 
 def _matches_analytics_sql_legacy_predicate(message: str) -> bool:
