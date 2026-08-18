@@ -131,6 +131,17 @@ export function useCredentialsInput({
     }
   }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
+  // Clear the removal notice once a real credential is selected. Without
+  // this the warning outlived the problem it described: the user picked a new
+  // connection and was still told the old one was removed.
+  useEffect(() => {
+    if (!credentials || !("savedCredentials" in credentials)) return;
+    const id = selectedCredential?.id;
+    if (id && credentials.savedCredentials.some((c) => c.id === id)) {
+      setRemovedCredentialTitle(null);
+    }
+  }, [credentials, selectedCredential]);
+
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
   useEffect(
