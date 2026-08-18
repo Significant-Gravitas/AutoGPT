@@ -4,6 +4,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from backend.data.expert_run_output import OutputType
+
+ExpertRunStatus = Literal[
+    "incomplete",
+    "queued",
+    "running",
+    "completed",
+    "terminated",
+    "failed",
+    "review",
+]
+
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
@@ -96,6 +108,23 @@ class ExpertPod(BaseModel):
     id: str
     name: str
     created_at: datetime
+
+
+class ExpertRun(BaseModel):
+    """One expert-attributed execution, for the /team Work surface."""
+
+    execution_id: str
+    graph_id: str
+    agent_name: str
+    library_agent_id: str | None
+    status: ExpertRunStatus
+    output_type: OutputType
+    # Which output pin was classified, so the viewer opens exactly that value.
+    output_key: str | None
+    needs_review: bool
+    started_at: datetime | None
+    ended_at: datetime | None
+    link: str | None
 
 
 class ExpertDetachPreview(BaseModel):
