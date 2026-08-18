@@ -29,16 +29,16 @@ export default function RaisePage() {
 function RaiseSkeleton() {
   return (
     <main
-      className="min-h-screen bg-muted/30 px-4 pb-16 pt-6 sm:px-6 lg:px-8"
+      className="min-h-screen bg-background lg:h-screen lg:overflow-hidden"
       aria-label="Loading…"
     >
-      <div className="mx-auto grid w-full max-w-[1000px] gap-6 lg:grid-cols-[1fr_minmax(300px,360px)]">
-        <div className="order-2 flex flex-col gap-4 lg:order-1">
+      <div className="grid w-full items-stretch lg:h-full lg:grid-cols-2">
+        <div className="order-2 flex flex-col gap-4 px-4 pb-16 pt-6 sm:px-6 lg:order-1 lg:h-screen lg:overflow-y-auto lg:px-8">
           <Skeleton className="h-16 w-3/4 rounded-3xl" />
           <Skeleton className="h-40 w-full rounded-2xl" />
         </div>
-        <div className="order-1 lg:order-2">
-          <Skeleton className="h-80 w-full rounded-3xl" />
+        <div className="order-1 m-2 overflow-hidden rounded-[2.5rem] bg-muted/40 p-4 sm:p-6 lg:order-2">
+          <Skeleton className="h-80 w-full rounded-[2rem]" />
         </div>
       </div>
     </main>

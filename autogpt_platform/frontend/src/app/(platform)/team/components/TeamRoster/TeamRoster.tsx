@@ -1,10 +1,10 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
 import { TEAM_GRID_CLASS } from "../../helpers";
 import { AutopilotCard } from "../AutopilotCard";
+import { ExpertTeamCardSkeleton } from "../ExpertTeamCardSkeleton";
 
 interface Props {
   isLoading: boolean;
@@ -29,7 +29,7 @@ export function TeamRoster({
       <div className={TEAM_GRID_CLASS}>
         <AutopilotCard />
         {[0, 1, 2].map((index) => (
-          <Skeleton key={index} className="h-48 w-full rounded-2xl" />
+          <ExpertTeamCardSkeleton key={index} />
         ))}
       </div>
     );

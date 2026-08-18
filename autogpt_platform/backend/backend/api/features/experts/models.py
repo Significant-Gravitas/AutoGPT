@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -21,19 +22,57 @@ EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 _EXPERT_NAME_MAX_LENGTH = 100
-_EXPERT_IDENTITY_MAX_LENGTH = 10_000
+EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
+EXPERT_COLOR_MAX_LENGTH = 32
+EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
+
+# Avatars come from our own upload (an absolute https URL) or ship with a
+# roster template (a path under /public). Anything else — notably data:,
+# javascript: and plaintext http: — is refused so a stored value can never
+# carry script or be fetched unencrypted.
+# Backslashes and tab/CR/LF are refused outright: browsers strip the control
+# characters and treat "\" as "/" for special schemes, so "/\evil.example/a.png"
+# would resolve to a third-party origin despite looking site-relative.
+_AVATAR_URL_FORBIDDEN_CHARS = ("\\", "\t", "\r", "\n")
 
 
-def _strip_required_soul_field(value: str) -> str:
+def validate_avatar_url(value: str | None) -> str | None:
+    """Accept an absolute https URL or a site-relative path, else reject."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if any(char in stripped for char in _AVATAR_URL_FORBIDDEN_CHARS):
+        raise ValueError(
+            "Avatar URL must not contain backslashes or control characters"
+        )
+    if stripped.startswith("//"):
+        raise ValueError("Avatar URL must not be protocol-relative")
+    if stripped.startswith("/"):
+        return stripped
+    parsed = urlparse(stripped)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("Avatar URL must be an https URL or a relative path")
+    return stripped
+
+
+# The soul strippers run as "before" validators, ahead of the length
+# constraints, so a padded value is measured after trimming and a blank one
+# fails with the field's own message. Non-str input passes through untouched
+# for Pydantic to reject with its type error.
+def _strip_required_soul_field(value: object) -> object:
+    if not isinstance(value, str):
+        return value
     stripped = value.strip()
     if not stripped:
         raise ValueError("Field must not be blank")
     return stripped
 
 
-def _strip_optional_soul_field(value: str) -> str:
-    return value.strip()
+def _strip_optional_soul_field(value: object) -> object:
+    return value.strip() if isinstance(value, str) else value
 
 
 class VoiceSample(BaseModel):
@@ -71,6 +110,8 @@ class Expert(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    # Accent color token chosen while raising; "" when unset.
+    color: str = ""
     role: str
     tagline: str | None
     bio: str | None
@@ -139,32 +180,73 @@ class HireResult(BaseModel):
     failed_preloads: list[str]
 
 
+RaiseAttachmentKind = Literal["workflow", "skill"]
+RaiseAttachmentSource = Literal["marketplace", "library"]
+RaiseAttachmentFailureReason = Literal["unavailable", "installation_failed"]
+MAX_RAISE_ATTACHMENTS = 20
+WEEKLY_BUDGET_MAX_CREDITS = 1_000_000
+
+
+class RaiseAttachment(BaseModel):
+    """One workflow or skill to attach while raising an expert.
+
+    ``id`` is a store listing version UUID (marketplace), a library agent
+    UUID (library workflow), or a copilot skill slug (library skill).
+    Marketplace skills use a store listing version UUID; the listing's
+    public name is stored on ``Expert.skills``.
+    """
+
+    kind: RaiseAttachmentKind
+    source: RaiseAttachmentSource
+    id: str = Field(min_length=1, max_length=100)
+
+    # "before" so the length bounds apply to the trimmed id: a padded but
+    # in-range id is accepted, and a whitespace-only one fails with the
+    # message below instead of the generic min_length error.
+    @field_validator("id", mode="before")
+    @classmethod
+    def strip_id(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Attachment id must not be blank")
+        return stripped
+
+
+class RaiseAttachmentFailure(BaseModel):
+    kind: RaiseAttachmentKind
+    source: RaiseAttachmentSource
+    id: str
+    reason: RaiseAttachmentFailureReason
+
+
 class RaiseResult(BaseModel):
-    """Result of raising a blank expert. ``first_job_installed`` is only
-    True when a first job was requested and its install succeeded, so the
-    client can surface partial success instead of a silent no-op. The stable
-    failure reason distinguishes a listing withdrawn mid-flow from an install
-    failure."""
+    """Result of raising a blank expert.
+
+    Attachments are validated before the expert row is created. A later
+    install failure is non-fatal and listed in ``failed_attachments`` so
+    the client can surface partial success.
+    """
 
     expert: Expert
-    first_job_installed: bool
-    first_job_failure_reason: Literal["unavailable", "installation_failed"] | None
+    failed_attachments: list[RaiseAttachmentFailure] = []
 
 
 class ExpertSoulUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=_EXPERT_NAME_MAX_LENGTH)
-    identity: str = Field(min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH)
+    identity: str = Field(min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH)
     voice_preferences: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
     boundaries: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
 
-    @field_validator("name", "identity")
+    @field_validator("name", "identity", mode="before")
     @classmethod
-    def strip_required_fields(cls, value: str) -> str:
+    def strip_required_fields(cls, value: object) -> object:
         return _strip_required_soul_field(value)
 
-    @field_validator("voice_preferences", "boundaries")
+    @field_validator("voice_preferences", "boundaries", mode="before")
     @classmethod
-    def strip_optional_fields(cls, value: str) -> str:
+    def strip_optional_fields(cls, value: object) -> object:
         return _strip_optional_soul_field(value)
 
 
@@ -177,7 +259,7 @@ class ExpertSoulFieldsPatch(BaseModel):
     """
 
     identity: str | None = Field(
-        default=None, min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH
+        default=None, min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH
     )
     voice_preferences: str | None = Field(
         default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH
@@ -186,17 +268,15 @@ class ExpertSoulFieldsPatch(BaseModel):
         default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH
     )
 
-    @field_validator("identity")
+    @field_validator("identity", mode="before")
     @classmethod
-    def strip_required_fields(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def strip_required_fields(cls, value: object) -> object:
         return _strip_required_soul_field(value)
 
-    @field_validator("voice_preferences", "boundaries")
+    @field_validator("voice_preferences", "boundaries", mode="before")
     @classmethod
-    def strip_optional_fields(cls, value: str | None) -> str | None:
-        return None if value is None else _strip_optional_soul_field(value)
+    def strip_optional_fields(cls, value: object) -> object:
+        return _strip_optional_soul_field(value)
 
 
 def encode_voice_preferences(description: str, samples: list[VoiceSample]) -> str:

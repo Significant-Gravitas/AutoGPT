@@ -5,7 +5,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function EmptyTeamState() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-white p-10 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-[1.75rem] border border-dashed border-zinc-300 bg-white p-10 text-center">
       <Icon icon={UserGroupIcon} size={32} className="text-zinc-400" />
       <Text variant="large-medium">No hired experts yet</Text>
       <Text variant="body" className="max-w-prose text-zinc-600">

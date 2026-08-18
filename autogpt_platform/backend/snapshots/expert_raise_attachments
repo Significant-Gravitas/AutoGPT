@@ -3,6 +3,7 @@
     "avatar_url": null,
     "bio": null,
     "boundaries": "",
+    "color": "",
     "id": "raised-2",
     "identity": "I'm Nova, raised by you. I learn how you work and grow with you.",
     "is_archived": false,
@@ -37,6 +38,5 @@
       }
     ]
   },
-  "first_job_failure_reason": null,
-  "first_job_installed": true
+  "failed_attachments": []
 }
