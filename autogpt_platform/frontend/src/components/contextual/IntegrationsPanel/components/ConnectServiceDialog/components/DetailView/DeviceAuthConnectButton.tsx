@@ -24,7 +24,7 @@ export function DeviceAuthConnectButton({
   providerName,
   onSuccess,
 }: Props) {
-  const { connect, cancel, phase, userCode, verificationUrl, isPending } =
+  const { connect, cancel, phase, userCode, verificationUrl } =
     useDeviceAuthConnect({ provider, onSuccess });
 
   if (phase === "idle" || phase === "error" || phase === "done") {

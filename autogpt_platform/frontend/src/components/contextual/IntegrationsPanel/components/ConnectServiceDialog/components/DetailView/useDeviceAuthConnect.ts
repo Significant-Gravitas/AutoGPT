@@ -3,23 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { customMutator } from "@/app/api/mutators/custom-mutator";
+import {
+  getGetV1ListCredentialsQueryKey,
+  postV1InitiateDeviceCodeOauthFlow,
+  postV1PollDeviceCodeOauthFlowForCompletion,
+} from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
-
-interface DeviceAuthInitiateResponse {
-  state_token: string;
-  user_code: string;
-  verification_url: string;
-  verification_url_complete: string | null;
-  expires_in: number;
-  interval: number;
-}
-
-interface DeviceAuthPollResponse {
-  status: "pending" | "slow_down" | "approved" | "denied" | "expired";
-  credentials: unknown | null;
-}
 
 interface Args {
   provider: string;
@@ -33,7 +22,7 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [userCode, setUserCode] = useState("");
   const [verificationUrl, setVerificationUrl] = useState("");
-  const [stateToken, setStateToken] = useState("");
+  const [, setStateToken] = useState("");
 
   const isUnmountedRef = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,18 +47,16 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
       if (isUnmountedRef.current) return;
 
       try {
-        const response = await customMutator<{
-          data: DeviceAuthPollResponse;
-          status: number;
-          headers: Headers;
-        }>(`/integrations/${provider}/device-auth/poll`, {
-          method: "POST",
-          body: JSON.stringify({ state_token: token }),
-          headers: { "Content-Type": "application/json" },
-        });
+        const response = await postV1PollDeviceCodeOauthFlowForCompletion(
+          provider,
+          { state_token: token },
+        );
 
         if (isUnmountedRef.current) return;
 
+        if (response.status !== 200) {
+          throw new Error("Device auth poll failed");
+        }
         const { status } = response.data;
 
         if (status === "approved") {
@@ -127,17 +114,13 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   async function connect() {
     setPhase("awaiting_user");
     try {
-      const response = await customMutator<{
-        data: DeviceAuthInitiateResponse;
-        status: number;
-        headers: Headers;
-      }>(`/integrations/${provider}/device-auth/initiate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const response = await postV1InitiateDeviceCodeOauthFlow(provider);
 
       if (isUnmountedRef.current) return;
 
+      if (response.status !== 200) {
+        throw new Error("Device auth initiation failed");
+      }
       const data = response.data;
       setUserCode(data.user_code);
       setVerificationUrl(

@@ -440,11 +440,15 @@ async def device_auth_initiate(
             detail=f"Failed to initiate device auth: {str(e)}",
         )
 
-    # Store state with the provider's expiry (not hardcoded 10 min)
+    # Outlive the provider's device code by a minute. If the state token
+    # expired first the poll loop would die with "Invalid or expired state
+    # token" while the user could still legitimately approve; the extra grace
+    # also lets the final poll consume the token and report `expired` properly.
     state_token, _ = await creds_manager.store.store_state_token(
         user_id=user_id,
-        provider=provider.value if hasattr(provider, "value") else str(provider),
+        provider=getattr(provider, "value", None) or str(provider),
         scopes=requested_scopes,
+        expires_in_seconds=initiation.expires_in + 60,
         state_metadata={
             "flow_type": "device_code",
             "device_code": initiation.device_code,
