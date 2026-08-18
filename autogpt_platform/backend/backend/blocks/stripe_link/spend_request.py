@@ -532,7 +532,8 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
         shared_payment_token: str = SchemaField(
             description=(
                 "One-time Shared Payment Token, when the request was created "
-                "with `credential_type: shared_payment_token`. Empty otherwise. "
+                "with `credential_type: shared_payment_token`. Emitted only "
+                "when `include_shared_payment_token` is on; empty otherwise. "
                 "This is a bearer credential that can authorize a charge, and "
                 "block outputs are persisted — treat it like the card fields."
             ),
