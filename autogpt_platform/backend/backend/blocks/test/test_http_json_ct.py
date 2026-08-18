@@ -1,4 +1,4 @@
-"""Tests for JSON content-type fix in SendWebRequestBlock (issue #14007)."""
+"""Tests for JSON content-type parsing in SendWebRequestBlock (issue #14007)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,40 +27,40 @@ class TestJsonContentTypeParsing:
     @pytest.mark.asyncio
     @patch("backend.blocks.http.Requests")
     async def test_plus_json_suffix_parsed_as_json(self, mock_req_cls):
-        """application/*+json types like vnd.api+json, hal+json are parsed as JSON."""
+        """application/*+json types are parsed as JSON, including parameters."""
         block = SendWebRequestBlock()
-        types = [
+        content_types = [
             "application/vnd.api+json",
             "application/hal+json",
             "application/merge-patch+json",
-            "application/problem+json",
-            "application/json-patch+json",
+            "application/problem+json; charset=utf-8",
+            "Application/JSON-Patch+JSON; Charset=UTF-8",
         ]
-        for ct in types:
-            resp = make_response(200, ct, json_data={"key": "value"})
+
+        for content_type in content_types:
+            resp = make_response(200, content_type, json_data={"key": "value"})
             mock_req = AsyncMock()
             mock_req.request.return_value = resp
             mock_req_cls.return_value = mock_req
 
-        result = []
-        async for name, data in block.run(
-            SendWebRequestBlock.Input(
-                url="https://api.example.com",
-                method=HttpMethod.GET,
-            ),
-            execution_context=make_test_context(),
-        ):
-            result.append((name, data))
+            result = []
+            async for name, data in block.run(
+                SendWebRequestBlock.Input(
+                    url="https://api.example.com",
+                    method=HttpMethod.GET,
+                ),
+                execution_context=make_test_context(),
+            ):
+                result.append((name, data))
 
-        assert len(result) == 1
-        assert result[0] == ("response", {"key": "value"})
-        resp.json.assert_called_once()
-        resp.text.assert_not_called()
+            assert result == [("response", {"key": "value"})]
+            resp.json.assert_called_once()
+            resp.text.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("backend.blocks.http.Requests")
     async def test_non_json_plus_suffix_returns_text(self, mock_req_cls):
-        """Plain text types like text/plain should NOT be parsed as JSON."""
+        """Plain text types like text/plain should not be parsed as JSON."""
         block = SendWebRequestBlock()
         resp = make_response(200, "text/plain", text_data="hello world")
         mock_req = AsyncMock()
@@ -77,17 +77,16 @@ class TestJsonContentTypeParsing:
         ):
             result.append((name, data))
 
-        assert len(result) == 1
-        assert result[0] == ("response", "hello world")
+        assert result == [("response", "hello world")]
         resp.text.assert_called_once()
         resp.json.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("backend.blocks.http.Requests")
     async def test_plus_json_204_returns_none(self, mock_req_cls):
-        """204 with +json content type should return None, not try to parse body."""
+        """204 with +json content type returns None without parsing a body."""
         block = SendWebRequestBlock()
-        resp = make_response(204, "application/vnd.api+json")
+        resp = make_response(204, "application/vnd.api+json; charset=utf-8")
         mock_req = AsyncMock()
         mock_req.request.return_value = resp
         mock_req_cls.return_value = mock_req
@@ -102,7 +101,6 @@ class TestJsonContentTypeParsing:
         ):
             result.append((name, data))
 
-        assert len(result) == 1
-        assert result[0] == ("response", None)
+        assert result == [("response", None)]
         resp.json.assert_not_called()
         resp.text.assert_not_called()
