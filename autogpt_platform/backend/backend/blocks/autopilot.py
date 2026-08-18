@@ -5,6 +5,7 @@ import contextvars
 import json
 import logging
 import uuid
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import field_validator
@@ -95,6 +96,20 @@ CodexAutoPilotCredentials = CredentialsMetaInput[
 ]
 
 
+class AutoPilotTransport(str, Enum):
+    """Which account pays for the model calls this block makes.
+
+    Modelled as an explicit choice rather than inferred from whether a codex
+    credential happens to be set, because the two options bill differently:
+    `platform` spends AutoGPT credits, `codex_app_server` spends the user's own
+    ChatGPT subscription. That distinction was previously visible only as an
+    empty credential field.
+    """
+
+    PLATFORM = "platform"
+    CODEX_APP_SERVER = "codex_app_server"
+
+
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
@@ -133,14 +148,28 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
+        transport: AutoPilotTransport = SchemaField(
+            title="Transport",
+            default=AutoPilotTransport.PLATFORM,
+            description=(
+                "Run on platform credits, or on your connected ChatGPT "
+                "subscription if supported by your plan."
+            ),
+            advanced=False,
+        )
+
         codex_credentials: CodexAutoPilotCredentials = CredentialsField(
             title="ChatGPT / Codex connection",
-            description=(
-                "Optional connected ChatGPT plan. Leave empty to use the "
-                "normal platform-funded AutoPilot transport."
-            ),
+            description="Connected ChatGPT subscription used by the Codex transport.",
             default=None,
             credential_reference_only=True,
+            discriminator="transport",
+            # `platform` is deliberately absent: it needs no credential at all,
+            # and an unmapped discriminator value makes the credential input
+            # hide itself rather than asking for something that does not exist.
+            discriminator_mapping={
+                AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
             json_schema_extra={
                 "secret": True,
                 "advanced": False,
@@ -501,6 +530,23 @@ class AutoPilotBlock(Block):
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
         codex_connection = input_data.codex_credentials
+        if (
+            input_data.transport == AutoPilotTransport.PLATFORM
+            and codex_connection is not None
+        ):
+            # A node saved before `transport` existed carries a codex
+            # connection but no transport, so pydantic fills the `platform`
+            # default and the two disagree. Honour the connection: treating
+            # the default as a real choice would move those agents onto
+            # platform credits — a billing change nobody asked for. The
+            # backfill in `migrate_autopilot_transport` removes this case;
+            # the error is here so a skipped backfill is loud, not silent.
+            logger.error(
+                "AutoPilot node has a ChatGPT connection but no explicit "
+                "transport — treating it as codex_app_server. Run "
+                "`python -m backend.blocks.autopilot_migrate` to backfill."
+            )
+        use_codex = codex_connection is not None
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
@@ -508,14 +554,10 @@ class AutoPilotBlock(Block):
                 dry_run=input_data.dry_run or execution_context.dry_run,
                 organization_id=execution_context.organization_id,
                 team_id=execution_context.team_id,
-                llm_auth_provider=(
-                    "codex" if codex_connection is not None else "platform"
-                ),
-                llm_credential_id=(
-                    codex_connection.id if codex_connection is not None else None
-                ),
+                llm_auth_provider=("codex" if use_codex else "platform"),
+                llm_credential_id=(codex_connection.id if use_codex else None),
             )
-        elif codex_connection is not None:
+        elif use_codex:
             from backend.copilot.model import get_chat_session
 
             existing_session = await get_chat_session(

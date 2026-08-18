@@ -1,0 +1,87 @@
+"""Backfill `transport` on AutoPilot nodes saved before the field existed.
+
+Those nodes encode "use my ChatGPT subscription" as the mere presence of a
+codex credential. Once `transport` exists, pydantic fills its `platform`
+default for them, so the builder would show a transport the node does not
+actually use. The block honours the credential regardless (see
+`AutoPilotBlock.run`), so this migration corrects what is displayed and
+removes the divergence — it does not change which account pays.
+
+Dry-run by default; pass --apply to write.
+"""
+
+import argparse
+import asyncio
+import logging
+from typing import Any, cast
+
+from prisma.models import AgentNode
+
+from backend.blocks.autopilot import AutoPilotBlock, AutoPilotTransport
+from backend.data.db import connect, disconnect
+
+logger = logging.getLogger(__name__)
+
+AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+
+
+async def migrate_autopilot_transport(*, apply: bool) -> int:
+    """Set transport=codex_app_server on nodes carrying a codex credential.
+
+    Returns the number of nodes that needed the backfill.
+    """
+    nodes = await AgentNode.prisma().find_many(
+        where={"agentBlockId": AUTOPILOT_BLOCK_ID}
+    )
+
+    stale = []
+    for node in nodes:
+        constants = dict(node.constantInput or {})
+        credential = constants.get("codex_credentials")
+        # Only a real selection counts; an id-less meta means nothing was set.
+        if not isinstance(credential, dict):
+            continue
+        if not cast(dict[str, Any], credential).get("id"):
+            continue
+        if constants.get("transport") == AutoPilotTransport.CODEX_APP_SERVER.value:
+            continue
+        stale.append((node, constants))
+
+    for node, constants in stale:
+        constants["transport"] = AutoPilotTransport.CODEX_APP_SERVER.value
+        logger.info(
+            "%s node #%s -> transport=codex_app_server",
+            "migrating" if apply else "would migrate",
+            node.id,
+        )
+        if apply:
+            await AgentNode.prisma().update(
+                where={"id": node.id}, data={"constantInput": constants}
+            )
+
+    logger.info(
+        "%d AutoPilot node(s) need backfill%s",
+        len(stale),
+        "" if apply else " (dry run — pass --apply to write)",
+    )
+    return len(stale)
+
+
+async def _main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true", help="write the changes")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Import for its side effect of registering the block id used above.
+    assert AutoPilotBlock().id == AUTOPILOT_BLOCK_ID
+
+    await connect()
+    try:
+        await migrate_autopilot_transport(apply=args.apply)
+    finally:
+        await disconnect()
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())
