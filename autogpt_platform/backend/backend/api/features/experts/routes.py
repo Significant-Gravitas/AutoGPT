@@ -11,6 +11,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
     ExpertIdentity,
+    ExpertRun,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -181,6 +182,23 @@ async def get_expert(
     if expert is None:
         raise fastapi.HTTPException(status_code=404, detail="Expert not found")
     return expert
+
+
+@router.get(
+    "/{expert_id}/runs",
+    operation_id="list_expert_runs",
+    responses={404: {"description": "Expert not found"}},
+)
+async def list_expert_runs(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertRun]:
+    """Recent executions attributed to this expert, with a classified output
+    type for the Work surface's typed viewer."""
+    try:
+        return await experts_db.list_expert_runs(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
 @router.patch(

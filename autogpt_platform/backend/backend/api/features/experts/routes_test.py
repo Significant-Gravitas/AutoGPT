@@ -21,6 +21,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertRun,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -697,6 +698,71 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)
+
+
+# ─── Runs ──────────────────────────────────────────────────────────────
+
+
+def _make_run(**overrides) -> ExpertRun:
+    values = {
+        "execution_id": "exec-1",
+        "graph_id": "graph-1",
+        "agent_name": "SEO Blog Writer",
+        "library_agent_id": "library-agent-1",
+        "status": "completed",
+        "output_type": "table",
+        "output_key": "result",
+        "needs_review": False,
+        "started_at": None,
+        "ended_at": None,
+    }
+    values.update(overrides)
+    values["link"] = overrides.get(
+        "link",
+        "/library/agents/"
+        f"{values['library_agent_id']}?activeTab=runs&activeItem="
+        f"{values['execution_id']}",
+    )
+    return ExpertRun(**values)
+
+
+def test_list_expert_runs_forwards_authenticated_user_and_serializes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    runs = [_make_run(), _make_run(execution_id="exec-2", output_type="doc")]
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_expert_runs",
+        new_callable=AsyncMock,
+        return_value=runs,
+    )
+
+    response = client.get("/experts/expert-1/runs")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [r["execution_id"] for r in data] == ["exec-1", "exec-2"]
+    assert data[0]["output_type"] == "table"
+    mock_list.assert_awaited_once_with(test_user_id, "expert-1")
+
+    configured_snapshot.assert_match(
+        f"{json.dumps(data, indent=2, sort_keys=True)}\n", "expert_runs_list"
+    )
+
+
+def test_list_expert_runs_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_expert_runs",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+
+    response = client.get("/experts/nope/runs")
+
+    assert response.status_code == 404
 
 
 # ─── Soul ──────────────────────────────────────────────────────────────

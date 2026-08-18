@@ -47,6 +47,7 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
 from backend.util.exceptions import (
@@ -413,14 +414,12 @@ class GraphExecution(GraphExecutionMeta):
             },
         }
 
-        outputs: CompletedBlockOutput = defaultdict(list)
-        for exec in complete_node_executions:
-            if (
-                (block := get_block(exec.block_id))
-                and block.block_type == BlockType.OUTPUT
-                and "name" in exec.input_data
-            ):
-                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
+        outputs: CompletedBlockOutput = reconstruct_run_outputs(
+            (exec.queue_time, exec.add_time, exec.input_data)
+            for exec in complete_node_executions
+            if (block := get_block(exec.block_id))
+            and block.block_type == BlockType.OUTPUT
+        )
 
         return GraphExecution(
             **{
