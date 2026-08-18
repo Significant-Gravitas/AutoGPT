@@ -9,7 +9,15 @@ card or shared payment token from the user's Link wallet.
 import logging
 from typing import Any
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+import httpx
+
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.stripe_link._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -44,8 +52,6 @@ async def link_api_request(
     lock, and persists the rotated tokens. Refreshing inside the block would
     bypass both and let concurrent nodes stampede the token endpoint.
     """
-    import httpx
-
     headers = {
         "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
         "Content-Type": "application/json",
@@ -88,7 +94,7 @@ class StripeLinkListPaymentMethodsBlock(Block):
         super().__init__(
             id="6eacc954-2218-4dc7-a485-5bf21549ecbe",
             description="List payment methods from a Stripe Link wallet",
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -225,7 +231,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
         super().__init__(
             id="932c3c12-1e80-4392-8fb3-37824eb8a427",
             description="Create a Stripe Link spend request for a one-time payment credential",
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -363,7 +369,7 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
         super().__init__(
             id="1aff59ef-e8a2-413e-9410-4ce7e4849337",
             description="Retrieve a Stripe Link spend request and card credentials",
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

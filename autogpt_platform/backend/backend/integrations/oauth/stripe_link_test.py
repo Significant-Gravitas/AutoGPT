@@ -144,9 +144,8 @@ async def test_poll_slow_down_backs_off():
 async def test_poll_raises_on_an_unrecognised_response():
     """An unknown failure must be loud, not silently treated as pending."""
     patcher, _ = mock_http(500, {}, text="upstream exploded")
-    with patcher:
-        with pytest.raises(RuntimeError, match="Unexpected response"):
-            await StripeLinkDeviceAuthHandler().poll_for_tokens("dc")
+    with patcher, pytest.raises(RuntimeError, match="Unexpected response"):
+        await StripeLinkDeviceAuthHandler().poll_for_tokens("dc")
 
 
 @pytest.mark.asyncio

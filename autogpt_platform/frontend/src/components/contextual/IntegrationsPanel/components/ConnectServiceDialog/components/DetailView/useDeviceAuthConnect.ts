@@ -29,6 +29,9 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const intervalRef = useRef(5);
 
   useEffect(() => {
+    // Reset on mount: the ref survives a remount (StrictMode, or reopening the
+    // dialog), and a stale  would make every callback below no-op.
+    isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
       if (pollingRef.current) clearTimeout(pollingRef.current);
@@ -112,6 +115,9 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   );
 
   async function connect() {
+    // A second click would strand the first poll loop, which keeps polling a
+    // token nothing reads any more.
+    stopPolling();
     setPhase("awaiting_user");
     try {
       const response = await postV1InitiateDeviceCodeOauthFlow(provider);
@@ -127,7 +133,9 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         data.verification_url_complete || data.verification_url,
       );
       setStateToken(data.state_token);
-      intervalRef.current = data.interval;
+      // Clamp: this drives a setTimeout, so a 0 or absurd value from the
+      // provider would either spin the loop or stall it forever.
+      intervalRef.current = Math.min(Math.max(data.interval || 5, 1), 60);
 
       // Start polling
       setPhase("polling");
