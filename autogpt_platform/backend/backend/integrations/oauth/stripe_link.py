@@ -29,7 +29,7 @@ LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
     """Device code handler for Stripe Link."""
 
-    PROVIDER_NAME: ClassVar[ProviderName] = ProviderName.STRIPE_LINK
+    PROVIDER_NAME: ClassVar[ProviderName | str] = ProviderName.STRIPE_LINK
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "userinfo:read",
         "payment_methods.agentic",

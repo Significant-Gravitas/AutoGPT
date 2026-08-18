@@ -238,10 +238,10 @@ class IntegrationCredentialsManager:
             return create_mcp_oauth_handler(credentials)
 
         # Try device handlers first (they don't need client_id/secret lookup)
-        provider_key = (
-            credentials.provider.value
-            if hasattr(credentials.provider, "value")
-            else str(credentials.provider)
+        # `provider` is typed `str` but carries a ProviderName at runtime; prefer the
+        # enum value so the registry lookup matches either form.
+        provider_key = getattr(credentials.provider, "value", None) or str(
+            credentials.provider
         )
         if provider_key in DEVICE_HANDLERS_BY_NAME:
             handler_class = DEVICE_HANDLERS_BY_NAME[provider_key]

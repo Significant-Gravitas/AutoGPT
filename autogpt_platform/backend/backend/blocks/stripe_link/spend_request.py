@@ -9,6 +9,7 @@ card or shared payment token from the user's Link wallet.
 import logging
 from typing import Any
 
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.blocks.stripe_link._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -16,7 +17,6 @@ from backend.blocks.stripe_link._auth import (
     StripeLinkCredentialsField,
     StripeLinkCredentialsInput,
 )
-from backend.data.block import Block, BlockOutput, BlockSchemaInput
 from backend.data.model import SchemaField
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 LINK_API_BASE = "https://api.link.com"
 
 
-async def _link_api_request(
+async def link_api_request(
     credentials: StripeLinkCredentials,
     method: str,
     path: str,
@@ -64,10 +64,14 @@ async def _link_api_request(
 class StripeLinkListPaymentMethodsBlock(Block):
     """List payment methods (cards and bank accounts) from the user's Link wallet."""
 
+    # Exposed as a class attribute so `test_mock` can patch it; the harness
+    # only replaces names it can find on the block instance.
+    _link_api_request = staticmethod(link_api_request)
+
     class Input(BlockSchemaInput):
         credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchemaOutput):
         payment_methods: list[dict[str, Any]] = SchemaField(
             description="List of payment methods in the Link wallet"
         )
@@ -130,7 +134,9 @@ class StripeLinkListPaymentMethodsBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            methods = await _link_api_request(credentials, "GET", "/payment_methods")
+            methods = await self._link_api_request(
+                credentials, "GET", "/payment_methods"
+            )
             yield "payment_methods", methods
         except Exception as e:
             yield "error", str(e)
@@ -147,6 +153,10 @@ class StripeLinkCreateSpendRequestBlock(Block):
     are available. Use StripeLinkRetrieveSpendRequestBlock to check status
     and get the credential once approved.
     """
+
+    # Exposed as a class attribute so `test_mock` can patch it; the harness
+    # only replaces names it can find on the block instance.
+    _link_api_request = staticmethod(link_api_request)
 
     class Input(BlockSchemaInput):
         credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
@@ -181,7 +191,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchemaOutput):
         spend_request_id: str = SchemaField(
             description="ID of the created spend request"
         )
@@ -234,7 +244,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            result = await _link_api_request(
+            result = await self._link_api_request(
                 credentials,
                 "POST",
                 "/spend_requests",
@@ -269,6 +279,10 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
     can be used for a one-time purchase.
     """
 
+    # Exposed as a class attribute so `test_mock` can patch it; the harness
+    # only replaces names it can find on the block instance.
+    _link_api_request = staticmethod(link_api_request)
+
     class Input(BlockSchemaInput):
         credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
         spend_request_id: str = SchemaField(
@@ -279,7 +293,7 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             default=True,
         )
 
-    class Output(BlockSchemaInput):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Current status of the spend request")
         card_number: str = SchemaField(
             description="Virtual card number (only if approved and include_card=True)",
@@ -325,6 +339,11 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             test_output=[
                 ("status", "approved"),
                 ("card_number", "4242424242424242"),
+                ("card_cvc", "123"),
+                ("card_exp_month", 12),
+                ("card_exp_year", 2030),
+                ("card_brand", "visa"),
+                ("valid_until", "2025-12-31T23:59:59Z"),
             ],
             test_mock={
                 "_link_api_request": lambda *args, **kwargs: {
@@ -354,7 +373,7 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             if include:
                 path += f"?include={','.join(include)}"
 
-            result = await _link_api_request(credentials, "GET", path)
+            result = await self._link_api_request(credentials, "GET", path)
 
             yield "status", result["status"]
 
