@@ -65,7 +65,6 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
-    ExecutionFailureReason,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
@@ -139,9 +138,10 @@ def _record_execution_failure(
     ``error`` always reflects the *latest* failure, so the message a user sees
     describes what actually terminated the run.
 
-    ``failure_reason`` is *sticky*: once a typed failure (currently only
-    :class:`InsufficientBalanceError`) has been promoted from a node via
-    :func:`_propagate_node_failure`, a later untyped error cannot clear it.
+    ``failure_reason`` is *sticky*: once a typed failure
+    (:class:`InsufficientBalanceError` or :class:`UserPaywalledError`) has been
+    promoted from a node via :func:`_propagate_node_failure`, a later untyped
+    error cannot clear it.
     An exhausted wallet is the root cause of whatever fails next, and losing
     that reason would send the run back to LLM analysis — the exact cost this
     module exists to avoid. Only another typed classification may replace it.
@@ -1326,11 +1326,14 @@ class ExecutionProcessor:
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
-            elif (
-                error is not None
-                or execution_stats.failure_reason
-                == ExecutionFailureReason.INSUFFICIENT_BALANCE
-            ):
+            elif error is not None or execution_stats.failure_reason is not None:
+                # Any typed failure reason means the run is terminally broken,
+                # not merely that a node errored. Untyped node errors stay
+                # non-fatal, since a graph may deliberately wire an error
+                # output onward; only classified, trusted failures promote to
+                # graph stats via `_propagate_node_failure`. Before this, a
+                # paywalled run reported COMPLETED with error=null while the
+                # node inside carried the real denial.
                 execution_status = ExecutionStatus.FAILED
             else:
                 if db_client.has_pending_reviews_for_graph_exec(
