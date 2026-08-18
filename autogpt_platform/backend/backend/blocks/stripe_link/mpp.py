@@ -340,8 +340,13 @@ class StripeLinkMPPPayBlock(Block):
             spend_request = await self._link_api_request(
                 credentials,
                 "GET",
-                f"/spend_requests/{quote(input_data.spend_request_id, safe='')}"
-                "?include=shared_payment_token",
+                # No `?include=` here. Link returns `shared_payment_token` on
+                # the plain representation, and passing it as an include
+                # *suppresses* the field rather than expanding it — verified
+                # against the live API, where the include silently returned a
+                # trimmed object and payment failed with "no shared payment
+                # token". `card` is a valid include; this is not.
+                f"/spend_requests/{quote(input_data.spend_request_id, safe='')}",
             )
             if spend_request.get("status") != "approved":
                 yield "error", (

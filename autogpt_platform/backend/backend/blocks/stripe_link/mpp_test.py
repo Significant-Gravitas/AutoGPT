@@ -472,3 +472,50 @@ async def test_a_plain_success_still_reports_a_non_mpp_merchant():
 
     assert outputs["supports_mpp"] is False
     assert "error" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_the_pay_path_does_not_send_an_include_for_the_token():
+    """Regression: `?include=shared_payment_token` SUPPRESSES the field.
+
+    Link returns `shared_payment_token` on the plain spend-request
+    representation. Naming it as an include does not expand it — Link
+    silently returns a trimmed object with the field absent, so the pay block
+    reported "Spend request has no shared payment token ... likely created for
+    a virtual card" on a request that was correctly created as a token
+    request. `card` IS a valid include, which is why Retrieve Card worked and
+    hid the asymmetry. Found only by paying a live merchant; the mocked tests
+    agreed with the wrong assumption.
+    """
+    seen: dict = {}
+
+    async def _fake(credentials, method, path, body=None):
+        seen["path"] = path
+        return {
+            "status": "approved",
+            "shared_payment_token": {"id": "spt_live_abc"},
+        }
+
+    block = StripeLinkMPPPayBlock()
+    object.__setattr__(block, "_link_api_request", _fake)
+
+    captured = {}
+
+    async def _pay(spt, url, method, body, headers):
+        captured["spt"] = spt
+        return 200, {"ok": True}
+
+    object.__setattr__(block, "_pay_with_token", _pay)
+
+    inp = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "spend_request_id": "lsrq_test",
+            "url": "https://merchant.example/buy",
+        }
+    )
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+
+    assert "include" not in seen["path"]
+    assert captured["spt"] == "spt_live_abc"
+    assert outputs["paid"] is True
