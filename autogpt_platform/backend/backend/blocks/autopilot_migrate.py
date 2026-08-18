@@ -7,7 +7,9 @@ actually use. The block honours the credential regardless (see
 `AutoPilotBlock.run`), so this migration corrects what is displayed and
 removes the divergence — it does not change which account pays.
 
-Dry-run by default; pass --apply to write.
+Runs automatically at API startup (see `api/rest_api.py`), and is idempotent —
+nodes already carrying the right transport are skipped, so repeated boots are
+a no-op. Also runnable by hand; dry-run by default, pass --apply to write.
 """
 
 import argparse
@@ -59,11 +61,14 @@ async def migrate_autopilot_transport(*, apply: bool) -> int:
                 where={"id": node.id}, data={"constantInput": constants}
             )
 
-    logger.info(
-        "%d AutoPilot node(s) need backfill%s",
-        len(stale),
-        "" if apply else " (dry run — pass --apply to write)",
-    )
+    # Silent when there is nothing to do: this runs on every boot, and a
+    # steady "0 nodes" line would be pure noise.
+    if stale:
+        logger.info(
+            "%d AutoPilot node(s) %s backfill",
+            len(stale),
+            "given" if apply else "need (dry run — pass --apply to write)",
+        )
     return len(stale)
 
 
