@@ -6,7 +6,7 @@ MPP merchants answer an unauthenticated request with HTTP 402 and a
 into a credential for that challenge and retries. No checkout form, no card
 number, nothing for a human to type.
 
-Pair these with `credential_type: shared_payment_token` on the spend request.
+Pair these with the Create Token Spend Request block.
 For ordinary merchants that need a card typed into a checkout form, use the
 virtual-card flow instead — see `spend_request.py`.
 """
