@@ -18,8 +18,8 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | payment_method_id | ID of the payment method to use (from list payment methods) | str | Yes |
-| merchant_name | Name of the merchant for this purchase | str | Yes |
-| merchant_url | URL of the merchant website | str | Yes |
+| merchant_name | Name of the merchant, shown on the approval sheet. Required for a card request; leave empty for `shared_payment_token`, where the merchant comes from `network_id` and Link rejects these fields outright. | str | No |
+| merchant_url | URL of the merchant. Required for a card request; leave empty for `shared_payment_token` — see `merchant_name`. | str | No |
 | context | Description of the purchase context (min 100 characters). Shown to the user when they approve the request. | str | Yes |
 | amount | Amount in cents (max 50000) | int | Yes |
 | currency | 3-letter ISO currency code | str | No |

@@ -7,8 +7,11 @@ presentation fields that reach the user's approval sheet, and the
 
 from typing import Any
 
+import httpx
 import pytest
+from pydantic import ValidationError
 
+from backend.blocks.stripe_link import spend_request as sr
 from backend.blocks.stripe_link._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.stripe_link.spend_request import (
     StripeLinkCreateSpendRequestBlock,
@@ -33,7 +36,7 @@ def capture_body(captured: dict) -> Any:
 async def run_create(**overrides) -> dict:
     captured: dict = {}
     block = StripeLinkCreateSpendRequestBlock()
-    block._link_api_request = capture_body(captured)  # type: ignore[method-assign]
+    object.__setattr__(block, "_link_api_request", capture_body(captured))
     payload = {
         "credentials": TEST_CREDENTIALS_INPUT,
         "payment_method_id": "csmrpd_test",
@@ -73,7 +76,7 @@ async def test_line_items_and_totals_reach_the_request():
 @pytest.mark.asyncio
 async def test_context_below_the_minimum_is_rejected():
     """This string is what the user reads before approving a charge."""
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         await run_create(context="too short")
 
 
@@ -83,7 +86,7 @@ def retrieve_returning(payload: dict) -> StripeLinkRetrieveSpendRequestBlock:
     async def _fake(credentials, method, path, body=None):
         return payload
 
-    block._link_api_request = _fake  # type: ignore[method-assign]
+    object.__setattr__(block, "_link_api_request", _fake)
     return block
 
 
@@ -185,7 +188,7 @@ async def test_card_request_keeps_merchant_fields_and_omits_credential_type():
 @pytest.mark.asyncio
 async def test_spt_without_a_network_id_is_rejected_before_the_request():
     """Otherwise Link gets a request with no merchant identity at all."""
-    with pytest.raises(Exception, match="network_id is required"):
+    with pytest.raises(ValidationError, match="network_id is required"):
         await run_create(credential_type="shared_payment_token")
 
 
@@ -193,9 +196,6 @@ async def test_spt_without_a_network_id_is_rejected_before_the_request():
 async def test_link_error_message_is_surfaced_not_swallowed():
     """`raise_for_status()` alone reports "400 Bad Request" and discards the
     explanation, which is how the SPT merchant-field constraint stayed hidden."""
-    import httpx
-
-    from backend.blocks.stripe_link import spend_request as sr
 
     class _Resp:
         is_error = True
@@ -226,9 +226,6 @@ async def test_link_error_message_is_surfaced_not_swallowed():
 @pytest.mark.asyncio
 async def test_link_error_falls_back_when_the_body_is_not_json():
     """A proxy in front of Link can answer with HTML; don't mask it."""
-    import httpx
-
-    from backend.blocks.stripe_link import spend_request as sr
 
     class _Resp:
         is_error = True

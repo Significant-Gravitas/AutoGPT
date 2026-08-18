@@ -72,7 +72,10 @@ async def link_api_request(
             # reports "400 Bad Request" and throws that explanation away.
             try:
                 detail = response.json().get("error", {}).get("message")
-            except Exception:
+            # ValueError: not JSON. AttributeError/TypeError: JSON, but not the
+            # object shape we index into. Anything else is our bug, and masking
+            # it as "API text" would hide it.
+            except (ValueError, AttributeError, TypeError):
                 detail = None
             raise RuntimeError(
                 f"Link API {response.status_code} on {method} {path}: "
@@ -194,9 +197,21 @@ class StripeLinkCreateSpendRequestBlock(Block):
             description="ID of the payment method to use (from list payment methods)"
         )
         merchant_name: str = SchemaField(
-            description="Name of the merchant for this purchase"
+            description=(
+                "Name of the merchant, shown on the approval sheet. Required "
+                "for a card request; leave empty for `shared_payment_token`, "
+                "where the merchant comes from `network_id` and Link rejects "
+                "these fields outright."
+            ),
+            default="",
         )
-        merchant_url: str = SchemaField(description="URL of the merchant website")
+        merchant_url: str = SchemaField(
+            description=(
+                "URL of the merchant. Required for a card request; leave empty "
+                "for `shared_payment_token` — see `merchant_name`."
+            ),
+            default="",
+        )
         context: str = SchemaField(
             description=(
                 "Description of the purchase context (min 100 characters). "
@@ -271,11 +286,19 @@ class StripeLinkCreateSpendRequestBlock(Block):
             network_id, so Link receives a request with no merchant at all and
             fails obscurely. Catch it at the boundary instead.
             """
-            if self.credential_type == CREDENTIAL_TYPE_SPT and not self.network_id:
+            if self.credential_type == CREDENTIAL_TYPE_SPT:
+                if not self.network_id.strip():
+                    raise ValueError(
+                        "network_id is required when credential_type is "
+                        "'shared_payment_token' — read it from the merchant's "
+                        "HTTP 402 challenge (see the Get Payment Challenge block)"
+                    )
+            elif not (self.merchant_name.strip() and self.merchant_url.strip()):
+                # Only enforced for the card path: Link rejects these outright
+                # for SPT, so requiring them there would be unsatisfiable.
                 raise ValueError(
-                    "network_id is required when credential_type is "
-                    "'shared_payment_token' — read it from the merchant's "
-                    "HTTP 402 challenge (see the Get Payment Challenge block)"
+                    "merchant_name and merchant_url are required for a "
+                    "'card' spend request"
                 )
             return self
 
