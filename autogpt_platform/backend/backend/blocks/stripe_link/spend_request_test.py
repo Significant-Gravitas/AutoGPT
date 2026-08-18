@@ -154,3 +154,104 @@ async def test_approved_request_emits_no_action_fields():
     assert outputs["status"] == "approved"
     assert outputs["card_number"] == "4242424242424242"
     assert "next_action_type" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_spt_request_drops_merchant_fields_and_sends_network_id():
+    """Link rejects merchant_name/merchant_url outright for SPT; the merchant
+    is identified by network_id from the 402 challenge instead."""
+    body = await run_create(
+        credential_type="shared_payment_token",
+        network_id="profile_abc",
+    )
+
+    assert "merchant_name" not in body
+    assert "merchant_url" not in body
+    assert body["credential_type"] == "shared_payment_token"
+    assert body["network_id"] == "profile_abc"
+
+
+@pytest.mark.asyncio
+async def test_card_request_keeps_merchant_fields_and_omits_credential_type():
+    """`card` is the default; sending it explicitly is noise on the wire."""
+    body = await run_create()
+
+    assert body["merchant_name"] == "Test Merchant"
+    assert body["merchant_url"] == "https://example.com"
+    assert "credential_type" not in body
+    assert "network_id" not in body
+
+
+@pytest.mark.asyncio
+async def test_spt_without_a_network_id_is_rejected_before_the_request():
+    """Otherwise Link gets a request with no merchant identity at all."""
+    with pytest.raises(Exception, match="network_id is required"):
+        await run_create(credential_type="shared_payment_token")
+
+
+@pytest.mark.asyncio
+async def test_link_error_message_is_surfaced_not_swallowed():
+    """`raise_for_status()` alone reports "400 Bad Request" and discards the
+    explanation, which is how the SPT merchant-field constraint stayed hidden."""
+    import httpx
+
+    from backend.blocks.stripe_link import spend_request as sr
+
+    class _Resp:
+        is_error = True
+        status_code = 400
+
+        def json(self):
+            return {"error": {"message": "amount below minimum"}}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, *a, **kw):
+            return _Resp()
+
+    original = httpx.AsyncClient
+    httpx.AsyncClient = lambda *a, **kw: _Client()  # type: ignore[assignment]
+    try:
+        with pytest.raises(RuntimeError, match="amount below minimum"):
+            await sr.link_api_request(TEST_CREDENTIALS, "POST", "/spend_requests")
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
+
+
+@pytest.mark.asyncio
+async def test_link_error_falls_back_when_the_body_is_not_json():
+    """A proxy in front of Link can answer with HTML; don't mask it."""
+    import httpx
+
+    from backend.blocks.stripe_link import spend_request as sr
+
+    class _Resp:
+        is_error = True
+        status_code = 502
+        text = "<html>bad gateway</html>"
+
+        def json(self):
+            raise ValueError("not json")
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, *a, **kw):
+            return _Resp()
+
+    original = httpx.AsyncClient
+    httpx.AsyncClient = lambda *a, **kw: _Client()  # type: ignore[assignment]
+    try:
+        with pytest.raises(RuntimeError, match="502"):
+            await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests")
+    finally:
+        httpx.AsyncClient = original  # type: ignore[assignment]
