@@ -510,8 +510,21 @@ async def device_auth_poll(
     if result.status in ("pending", "slow_down"):
         return DeviceAuthPollResponse(status=result.status)
 
-    # Terminal state — consume the token so it can't be reused
-    await creds_manager.store.consume_state_token(user_id, body.state_token, provider)
+    # Terminal state — consume the token so it can't be reused. The consume is
+    # the serialization point: `peek` is deliberately non-consuming, so two
+    # concurrent polls can both reach here after an approval. Only the caller
+    # that actually consumes the token may store credentials; the loser would
+    # otherwise create a duplicate for the same authorization.
+    consumed = await creds_manager.store.consume_state_token(
+        user_id, body.state_token, provider
+    )
+    if consumed is None:
+        logger.debug(
+            "Device auth poll for user %s lost the race to consume the state "
+            "token; another poll already handled this terminal state",
+            user_id,
+        )
+        return DeviceAuthPollResponse(status=result.status)
 
     if result.status == "approved" and result.credentials:
         credentials = result.credentials

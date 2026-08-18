@@ -6,7 +6,7 @@ _Add a description of this category of blocks._
 ## Stripe Link Get Shipping Address
 
 ### What it is
-Get the shipping addresses saved on a Link wallet, so an agent can complete a checkout that needs delivery.
+Get the delivery addresses saved on the user's Link wallet, with the default one resolved for you. Use it for any purchase that ships something.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -31,7 +31,7 @@ _Add practical use case examples here._
 ## Stripe Link Get User Info
 
 ### What it is
-Get the Link account holder's name and contact details. Needed to fill in a checkout — most merchants require a name.
+Get the Link account holder's name, email and phone. Use it to fill in a checkout that asks who the buyer is. Pairs with Get Shipping Address for anything physical.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

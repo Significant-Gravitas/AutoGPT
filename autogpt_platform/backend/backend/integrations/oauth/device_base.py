@@ -110,6 +110,6 @@ class BaseDeviceAuthHandler(ABC):
     def handle_default_scopes(self, scopes: list[str]) -> list[str]:
         """Uses default scopes when none are provided."""
         if not scopes:
-            logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
+            logger.debug("Using default scopes for provider %s", self.PROVIDER_NAME)
             scopes = self.DEFAULT_SCOPES
         return scopes
