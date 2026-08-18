@@ -19,6 +19,8 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.stripe_link._auth import (
+    LINK_API_BASE_URL,
+    LINK_HTTP_TIMEOUT,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     StripeLinkCredentials,
@@ -33,7 +35,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-LINK_API_BASE = "https://api.link.com"
 
 
 async def link_api_request(
@@ -57,10 +58,10 @@ async def link_api_request(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
         response = await client.request(
             method=method,
-            url=f"{LINK_API_BASE}{path}",
+            url=f"{LINK_API_BASE_URL}{path}",
             headers=headers,
             json=body,
         )

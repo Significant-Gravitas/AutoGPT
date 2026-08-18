@@ -9,6 +9,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaResponse,
   CredentialsProviderName,
+  CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
 
@@ -70,6 +71,7 @@ export type CredentialsData =
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsDeviceCode: boolean;
       supportsUserPassword: boolean;
       supportsHostScoped: boolean;
       isLoading: true;
@@ -79,6 +81,7 @@ export type CredentialsData =
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
+      supportsDeviceCode: boolean;
       supportsUserPassword: boolean;
       supportsHostScoped: boolean;
       isLoading: false;
@@ -97,6 +100,28 @@ export function getSupportedCredentialTypes(
     );
   }
   return schema.credentials_types;
+}
+
+/**
+ * Maps a block's accepted credential types to the connect methods its UI
+ * should offer.
+ *
+ * These are usually the same list, but a device-code grant produces an
+ * ordinary OAuth2 credential — so such a block accepts `oauth2` (otherwise
+ * saved credentials stop matching) while `device_code` is what the user must
+ * actually go through. Letting `device_code` shadow `oauth2` keeps the UI
+ * from offering an authorization-code redirect the provider has no client
+ * secret for, which is what made these blocks unconnectable.
+ */
+export function deriveAuthMethods(supportedTypes: readonly CredentialsType[]) {
+  const supportsDeviceCode = supportedTypes.includes("device_code");
+  return {
+    supportsApiKey: supportedTypes.includes("api_key"),
+    supportsDeviceCode,
+    supportsOAuth2: supportedTypes.includes("oauth2") && !supportsDeviceCode,
+    supportsUserPassword: supportedTypes.includes("user_password"),
+    supportsHostScoped: supportedTypes.includes("host_scoped"),
+  };
 }
 
 export default function useCredentials(
@@ -149,10 +174,13 @@ export default function useCredentials(
     ...credsInputSchema,
     credentials_types: supportedTypes,
   };
-  const supportsApiKey = supportedTypes.includes("api_key");
-  const supportsOAuth2 = supportedTypes.includes("oauth2");
-  const supportsUserPassword = supportedTypes.includes("user_password");
-  const supportsHostScoped = supportedTypes.includes("host_scoped");
+  const {
+    supportsApiKey,
+    supportsDeviceCode,
+    supportsOAuth2,
+    supportsUserPassword,
+    supportsHostScoped,
+  } = deriveAuthMethods(supportedTypes);
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -171,6 +199,7 @@ export default function useCredentials(
     schema: effectiveSchema,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,

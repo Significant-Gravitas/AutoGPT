@@ -29,6 +29,11 @@ LINK_AUTH_BASE_URL = "https://login.link.com"
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 LINK_CLIENT_NAME = "AutoGPT"
 
+# The initiate/poll endpoints await these calls inline, so an upstream that
+# accepts a connection and then stalls would pin a request worker for as long
+# as it cares to hold the socket. Bound every hop.
+LINK_HTTP_TIMEOUT = 15.0
+
 
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
     """Device code handler for Stripe Link."""
@@ -75,7 +80,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             "authorization_details[][actions][]": self.SOURCE_ACTIONS,
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/code",
                 data=form,
@@ -94,7 +99,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         )
 
     async def poll_for_tokens(self, device_code: str) -> DeviceAuthPollResult:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/token",
                 data={
@@ -147,7 +152,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         if not credentials.refresh_token:
             raise RuntimeError("No refresh token available")
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/token",
                 data={
@@ -169,7 +174,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         if not credentials.refresh_token:
             return False
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/revoke",
                 data={

@@ -56,4 +56,17 @@ describe("DeviceAuthConnectButton", () => {
     const code = screen.getByText("glow-relish-chaste-soft");
     expect(code.className).not.toContain("sentry-unmask");
   });
+
+  // Between clicking Connect and the initiate call returning there is no code
+  // and no URL yet. Rendering the code panel then showed an empty box above an
+  // "Open Stripe Link" link with href="" that just reloaded the builder.
+  it("shows a starting state instead of an empty code and a dead link", () => {
+    state.phase = "awaiting_user";
+    state.userCode = "";
+    state.verificationUrl = "";
+    const { container } = renderButton();
+
+    expect(screen.getByText(/Starting device authorization/)).toBeTruthy();
+    expect(container.querySelector("a")).toBeNull();
+  });
 });

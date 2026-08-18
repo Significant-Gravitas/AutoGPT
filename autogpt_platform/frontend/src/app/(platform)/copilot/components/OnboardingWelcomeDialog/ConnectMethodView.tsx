@@ -31,8 +31,12 @@ interface Props {
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
 }
 
+// Every method a provider can advertise has to appear here — the list below
+// is filtered by it, so anything missing renders no method at all rather than
+// falling back to a default.
 const METHOD_ORDER: AuthMethod[] = [
   AuthType.oauth2,
+  AuthType.device_code,
   AuthType.api_key,
   AuthType.user_password,
   AuthType.host_scoped,
