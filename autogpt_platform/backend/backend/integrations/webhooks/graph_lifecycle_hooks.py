@@ -69,7 +69,7 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+        for creds_field_name in block_input_schema.get_credentials_fields():
             creds_meta = new_node.input_default.get(creds_field_name)
             # A meta without `id` means no credential was selected. The form
             # can emit provider/type on their own, so this shape is reachable
@@ -208,7 +208,7 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
         # one, and a failed lookup on that last field discarded a credential
         # an earlier field had resolved successfully.
         node_credentials = None
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+        for creds_field_name in block_input_schema.get_credentials_fields():
             # Same shape guard as activation: a meta without `id` means no
             # credential was selected, and indexing it would raise KeyError.
             # Persisted graphs can carry this id-less shape, so deactivation
