@@ -16,8 +16,10 @@ import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
-const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
+  "container min-h-screen space-y-6 pb-20 pt-8 sm:px-8 md:px-12";
+// Auto-fill so a wider row simply takes another card instead of stretching them.
+const GRID_CLASS =
+  "grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-6 [&>*]:max-w-[24rem]";
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
@@ -42,7 +44,7 @@ export default function TeamPage() {
       <main className={MAIN_CLASS}>
         <div className={GRID_CLASS}>
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+            <Skeleton key={i} className="h-48 w-full rounded-[1.75rem]" />
           ))}
         </div>
       </main>
@@ -71,7 +73,7 @@ export default function TeamPage() {
         <AutopilotCard />
         {isLoading
           ? [0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+              <Skeleton key={i} className="h-48 w-full rounded-[1.75rem]" />
             ))
           : hiredExperts.map((expert) => (
               <ExpertTeamCard

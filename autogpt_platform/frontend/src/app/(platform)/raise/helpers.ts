@@ -4,9 +4,26 @@ import {
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 
-export type RaiseStep = "name" | "voice" | "firstJob" | "review";
+export type RaiseStep =
+  | "role"
+  | "name"
+  | "color"
+  | "avatar"
+  | "about"
+  | "voice"
+  | "firstTask"
+  | "done";
 
-export const NAME_CHIPS = ["Otto", "Nova", "Juno"];
+export const STEP_ORDER: RaiseStep[] = [
+  "role",
+  "name",
+  "color",
+  "avatar",
+  "about",
+  "voice",
+  "firstTask",
+  "done",
+];
 
 export const VOICE_SAMPLES: VoiceSample[] = [
   {
@@ -20,6 +37,18 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
+  greeting: "Hello, I'm AutoGPT. I'll help you raise your own expert.",
+  roleQuestion: "First — what should your expert do for you?",
+  nameQuestion: "Good pick. What do you want to call them?",
+  colorQuestion: "Nice. Now choose a color for them.",
+  avatarQuestion: (name: string) =>
+    `Want to give ${name || "them"} a face? Upload a picture, let me generate one, or skip it.`,
+  aboutQuestion:
+    "Anything else I should know about them? How they should work, what matters to you — or skip it.",
+  voiceQuestion: (name: string) =>
+    `How should ${name || "your expert"} sound when they write? Pick the one that feels right.`,
+  firstTaskQuestion: (name: string) =>
+    `Last thing — what should ${name || "your expert"} start on? I'll open your first chat with it.`,
   name: "Hi. I don't have a name yet — that's where you come in.",
   voice: (name: string) =>
     `Nice to meet you, ${name}. How should I sound when I write?`,
@@ -28,23 +57,37 @@ export const RAISE_PROMPTS = {
   review: "That's me so far. Ready when you are — I'll open our first chat.",
 };
 
+// Beat before each question lands, so the control that triggered it settles
+// into its new state first.
+export const PROMPT_DELAY_MS = 500;
+
 export const VOICE_SKIPPED_LABEL = "I'll decide the voice later";
-export const FIRST_JOB_SKIPPED_LABEL = "Skip for now";
 
 export interface RaiseDraft {
   step: RaiseStep;
+  hasStarted: boolean;
+  role: string | null;
   name: string;
+  color: string | null;
+  // "" once the user skips, so the question is not asked again on restore.
+  avatarUrl: string | null;
+  about: string | null;
   voicePreferences: string;
   voiceLabel: string | null;
-  firstJob: { id: string; name: string } | null;
+  firstTask: string | null;
 }
 
 export const EMPTY_DRAFT: RaiseDraft = {
-  step: "name",
+  step: "role",
+  hasStarted: false,
+  role: null,
   name: "",
+  color: null,
+  avatarUrl: null,
+  about: null,
   voicePreferences: "",
   voiceLabel: null,
-  firstJob: null,
+  firstTask: null,
 };
 
 const DRAFT_STORAGE_KEY = "raise-expert-draft";
@@ -77,66 +120,9 @@ export function clearDraft() {
   }
 }
 
-interface RaiseMessage {
-  id: string;
-  role: "assistant" | "user";
-  text: string;
-}
-
-const STEP_ORDER: RaiseStep[] = ["name", "voice", "firstJob", "review"];
-
 export function previousStep(step: RaiseStep): RaiseStep {
   const index = STEP_ORDER.indexOf(step);
   return STEP_ORDER[Math.max(index - 1, 0)];
-}
-
-// The transcript is derived from the draft rather than accumulated, so
-// back transitions and refresh restores always rebuild it consistently.
-export function buildTranscript(draft: RaiseDraft): RaiseMessage[] {
-  const messages: RaiseMessage[] = [
-    { id: "assistant-name", role: "assistant", text: RAISE_PROMPTS.name },
-  ];
-  const stepIndex = STEP_ORDER.indexOf(draft.step);
-
-  if (stepIndex >= 1) {
-    messages.push(
-      { id: "user-name", role: "user", text: draft.name },
-      {
-        id: "assistant-voice",
-        role: "assistant",
-        text: RAISE_PROMPTS.voice(draft.name),
-      },
-    );
-  }
-  if (stepIndex >= 2) {
-    messages.push(
-      {
-        id: "user-voice",
-        role: "user",
-        text: draft.voiceLabel ?? VOICE_SKIPPED_LABEL,
-      },
-      {
-        id: "assistant-first-job",
-        role: "assistant",
-        text: RAISE_PROMPTS.firstJob,
-      },
-    );
-  }
-  if (stepIndex >= 3) {
-    messages.push(
-      {
-        id: "user-first-job",
-        role: "user",
-        text: draft.firstJob?.name ?? FIRST_JOB_SKIPPED_LABEL,
-      },
-      {
-        id: "assistant-review",
-        role: "assistant",
-        text: RAISE_PROMPTS.review,
-      },
-    );
-  }
-  return messages;
 }
 
 export function voiceSummaryLabel(

@@ -16919,12 +16919,33 @@
             ],
             "title": "Role"
           },
+          "avatar_url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
           "voice_preferences": {
             "anyOf": [
               { "type": "string", "maxLength": 4000 },
               { "type": "null" }
             ],
             "title": "Voice Preferences"
+          },
+          "about": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "About"
           },
           "first_job_store_listing_version_id": {
             "anyOf": [
@@ -18191,6 +18212,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

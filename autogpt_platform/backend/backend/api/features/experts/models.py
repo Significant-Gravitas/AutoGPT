@@ -9,8 +9,31 @@ EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 _EXPERT_NAME_MAX_LENGTH = 100
-_EXPERT_IDENTITY_MAX_LENGTH = 10_000
+EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
+EXPERT_COLOR_MAX_LENGTH = 32
+EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
+
+# Avatars come from our own upload (an absolute storage URL) or ship with a
+# roster template (a path under /public). Anything else — notably data: and
+# javascript: — is refused so a stored value can never carry script.
+_ALLOWED_AVATAR_URL_SCHEMES = ("https://", "http://")
+
+
+def validate_avatar_url(value: str | None) -> str | None:
+    """Accept an absolute http(s) URL or a site-relative path, else reject."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("//"):
+        raise ValueError("Avatar URL must not be protocol-relative")
+    if stripped.startswith("/"):
+        return stripped
+    if stripped.startswith(_ALLOWED_AVATAR_URL_SCHEMES):
+        return stripped
+    raise ValueError("Avatar URL must be an http(s) URL or a relative path")
 
 
 def _strip_required_soul_field(value: str) -> str:
@@ -59,6 +82,8 @@ class Expert(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    # Accent color token chosen while raising; "" when unset.
+    color: str = ""
     role: str
     tagline: str | None
     bio: str | None
@@ -112,7 +137,7 @@ class RaiseResult(BaseModel):
 
 class ExpertSoulUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=_EXPERT_NAME_MAX_LENGTH)
-    identity: str = Field(min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH)
+    identity: str = Field(min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH)
     voice_preferences: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
     boundaries: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
 
@@ -136,7 +161,7 @@ class ExpertSoulFieldsPatch(BaseModel):
     """
 
     identity: str | None = Field(
-        default=None, min_length=1, max_length=_EXPERT_IDENTITY_MAX_LENGTH
+        default=None, min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH
     )
     voice_preferences: str | None = Field(
         default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH

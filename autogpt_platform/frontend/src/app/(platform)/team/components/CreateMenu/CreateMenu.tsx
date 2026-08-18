@@ -12,6 +12,7 @@ import { MARKETPLACE_EXPERTS_HREF } from "@/lib/constants";
 import {
   FlowIcon,
   PlusSignIcon,
+  SparklesIcon,
   UserAdd01Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
@@ -32,6 +33,12 @@ export function CreateMenu() {
           <Link href={MARKETPLACE_EXPERTS_HREF}>
             <Icon icon={UserAdd01Icon} className="mr-2 size-4" />
             Hire an expert
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/raise">
+            <Icon icon={SparklesIcon} className="mr-2 size-4" />
+            Raise your own expert
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

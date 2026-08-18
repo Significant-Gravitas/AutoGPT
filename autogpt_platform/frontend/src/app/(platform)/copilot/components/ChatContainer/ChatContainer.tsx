@@ -220,8 +220,11 @@ export const ChatContainer = ({
     <CopilotChatActionsProvider onSend={guardedOnSend}>
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+          {/* The chat column runs full width: the max-w-3xl cap lives on the
+              message list and the input instead, so the expert thread header
+              can span edge to edge while staying aligned with the messages. */}
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#fafafa]">
+            <div className="flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
@@ -251,7 +254,7 @@ export const ChatContainer = ({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="relative px-3 pb-6 pt-2"
+                  className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
                 >
                   {isLimitReached && (
                     <div

@@ -1,79 +1,90 @@
 "use client";
 
-import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
-import { raisedIdentity } from "../../helpers";
-import { expertInitials } from "./helpers";
+import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
+import Image from "next/image";
+import { findRoleOption } from "../RoleStep/helpers";
+import { SoulDetailCard } from "./SoulDetailCard";
+
+const REVEAL =
+  "duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 type Props = {
   name: string;
+  role: string | null;
+  avatarUrl: string | null;
+  color: string | null;
+  about: string | null;
   voiceLabel: string | null;
-  firstJobName: string | null;
+  firstTask: string | null;
 };
 
-export function SoulPreviewPanel({ name, voiceLabel, firstJobName }: Props) {
+// Starts as just the orb — an expert with nothing to say about itself yet.
+// Answers stack beneath it, which pushes the identity card up as they land.
+export function SoulPreviewPanel({
+  name,
+  role,
+  avatarUrl,
+  color,
+  about,
+  voiceLabel,
+  firstTask,
+}: Props) {
+  const roleLabel = findRoleOption(role)?.label;
+  const details = [
+    { label: "About", value: about },
+    { label: "Voice", value: voiceLabel },
+    { label: "First task", value: firstTask },
+  ].filter((detail) => Boolean(detail.value));
+
   return (
-    <aside className="flex flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-sm">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-5">
-        <Avatar className="h-11 w-11">
-          <AvatarFallback>{expertInitials(name)}</AvatarFallback>
-        </Avatar>
-        <div>
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
-            {name ? `${name}'s Soul` : "A new Soul"}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Edit any line, anytime.
-          </p>
+    <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
+      <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border bg-background px-8 py-12 shadow-2xl">
+        <span className="size-28 shrink-0 overflow-hidden rounded-full">
+          {avatarUrl ? (
+            <Image
+              src={avatarUrl}
+              alt={`${name || "Your expert"}'s picture`}
+              width={112}
+              height={112}
+              className="size-28 rounded-full object-cover"
+              unoptimized
+            />
+          ) : (
+            <GlassOrb params={DEFAULT_GLASS_PARAMS} showRim={false} />
+          )}
+        </span>
+
+        <div className="flex flex-col items-center gap-1.5">
+          {name ? (
+            <h2
+              className={`text-center text-2xl font-semibold tracking-[-0.02em] text-foreground ${REVEAL}`}
+            >
+              {name}
+            </h2>
+          ) : (
+            <p className="text-center text-2xl font-semibold tracking-[-0.02em] text-muted-foreground/50">
+              No name yet
+            </p>
+          )}
+          {roleLabel ? (
+            <p
+              className={`text-sm uppercase tracking-[0.12em] text-muted-foreground ${REVEAL}`}
+            >
+              {roleLabel}
+            </p>
+          ) : null}
         </div>
-      </div>
+      </aside>
 
-      <dl className="flex flex-col gap-5 px-6 py-6">
-        <SoulLine
-          label="Name"
-          value={name || null}
-          placeholder="Waiting for a name…"
+      {details.map((detail) => (
+        <SoulDetailCard
+          key={detail.label}
+          label={detail.label}
+          value={detail.value as string}
+          color={color}
         />
-        <SoulLine
-          label="Identity"
-          value={name ? raisedIdentity(name) : null}
-          placeholder="Takes shape once you name me."
-        />
-        <SoulLine
-          label="Voice"
-          value={voiceLabel}
-          placeholder="However you'd like me to sound."
-        />
-        <SoulLine
-          label="First job"
-          value={firstJobName}
-          placeholder="Something to get started on."
-        />
-      </dl>
-    </aside>
-  );
-}
-
-type SoulLineProps = {
-  label: string;
-  value: string | null;
-  placeholder: string;
-};
-
-function SoulLine({ label, value, placeholder }: SoulLineProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <dt className="text-xs font-medium uppercase tracking-[0.12em] text-accent">
-        {label}
-      </dt>
-      <dd
-        className={
-          value
-            ? "text-[15px] text-foreground"
-            : "text-[15px] italic text-muted-foreground"
-        }
-      >
-        {value ?? placeholder}
-      </dd>
+      ))}
     </div>
   );
 }

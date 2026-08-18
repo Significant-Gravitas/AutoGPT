@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
+    EXPERT_AVATAR_URL_MAX_LENGTH,
+    EXPERT_COLOR_MAX_LENGTH,
+    EXPERT_IDENTITY_MAX_LENGTH,
     Expert,
     ExpertDetachPreview,
     ExpertIdentity,
@@ -12,6 +15,7 @@ from backend.api.features.experts.models import (
     ExpertWorkflowRef,
     HireResult,
     RaiseResult,
+    validate_avatar_url,
 )
 
 router = APIRouter(
@@ -33,7 +37,14 @@ class InstallWorkflowRequest(BaseModel):
 class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
+    avatar_url: str | None = Field(
+        default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
+    )
+    # Opaque design token (e.g. "sky-300"); the client maps it to a palette.
+    color: str | None = Field(default=None, max_length=EXPERT_COLOR_MAX_LENGTH)
     voice_preferences: str | None = Field(default=None, max_length=4_000)
+    # Free-text "about them" answer from the raise flow; becomes the identity.
+    about: str | None = Field(default=None, max_length=EXPERT_IDENTITY_MAX_LENGTH)
     first_job_store_listing_version_id: str | None = Field(default=None, max_length=100)
 
     @field_validator("name")
@@ -43,6 +54,18 @@ class CreateRaisedExpertRequest(BaseModel):
         if not stripped:
             raise ValueError("Name must not be blank")
         return stripped
+
+    @field_validator("avatar_url")
+    @classmethod
+    def check_avatar_url(cls, value: str | None) -> str | None:
+        return validate_avatar_url(value)
+
+    @field_validator("color", "about")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 @router.get("/templates", operation_id="list_expert_templates")
@@ -105,6 +128,9 @@ async def create_raised_expert(
             request.role,
             request.voice_preferences,
             request.first_job_store_listing_version_id,
+            avatar_url=request.avatar_url,
+            color=request.color,
+            about=request.about,
         )
     except experts_db.FirstJobUnavailableError as e:
         raise fastapi.HTTPException(

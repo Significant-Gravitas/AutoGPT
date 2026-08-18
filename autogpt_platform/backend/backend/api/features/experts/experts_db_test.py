@@ -364,6 +364,76 @@ async def test_raise_expert_creates_blank_owned_expert(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        first_job_store_listing_version_id=None,
+        avatar_url="https://storage.googleapis.com/bucket/nova.png",
+        color="sky-300",
+    )
+    assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
+    assert raised.expert.color == "sky-300"
+
+    reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
+    assert reloaded is not None
+    assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
+    assert reloaded.color == "sky-300"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_stores_about_as_identity(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        first_job_store_listing_version_id=None,
+        about="Keeps replies short and always cites a source.",
+    )
+    assert raised.expert.identity == "Keeps replies short and always cites a source."
+
+    reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
+    assert reloaded is not None
+    assert reloaded.identity == "Keeps replies short and always cites a source."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_falls_back_to_default_identity_without_about(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Otto",
+        role=None,
+        voice_preferences=None,
+        first_job_store_listing_version_id=None,
+    )
+    assert raised.expert.identity == experts_db._raised_identity("Otto")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_defaults_avatar_and_color_when_omitted(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Otto",
+        role=None,
+        voice_preferences=None,
+        first_job_store_listing_version_id=None,
+    )
+    assert raised.expert.avatar_url is None
+    assert raised.expert.color == ""
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_allows_multiple_per_owner(server: SpinTestServer):
     owner = await _create_seed_user()
     first = await experts_db.create_raised_expert(owner.id, "Otto", None, None, None)

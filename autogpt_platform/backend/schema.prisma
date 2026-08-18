@@ -867,6 +867,8 @@ model Expert {
 
   name      String
   avatarUrl String?
+  // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
+  color     String   @default("")
   role      String
   tagline   String?
   identity  String

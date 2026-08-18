@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { SidebarSearch } from "../SidebarSearch/SidebarSearch";
 
 export function AppSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
@@ -33,29 +34,35 @@ export function AppSidebarHeader() {
         )}
       </Link>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={toggleSidebar}
-            className={cn(
-              "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
-              isCollapsed
-                ? "hidden group-focus-within:flex group-hover:flex"
-                : "flex",
-            )}
-          >
-            <Icon
-              icon={SidebarLeftIcon}
-              className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        </TooltipContent>
-      </Tooltip>
+      <div className="flex shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col">
+        <SidebarSearch />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onClick={toggleSidebar}
+              className={cn(
+                "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+                // Collapsed, it replaces the hidden logo, so it belongs on top.
+                "group-data-[collapsible=icon]:order-first",
+                isCollapsed
+                  ? "hidden group-focus-within:flex group-hover:flex"
+                  : "flex",
+              )}
+            >
+              <Icon
+                icon={SidebarLeftIcon}
+                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </SidebarHeader>
   );
 }

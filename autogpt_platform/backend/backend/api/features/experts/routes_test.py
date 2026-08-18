@@ -239,7 +239,16 @@ def test_create_raised_expert_returns_expert(
     assert data["expert"]["source_template_id"] is None
     assert data["first_job_installed"] is False
     assert data["first_job_failure_reason"] is None
-    mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Otto",
+        None,
+        None,
+        None,
+        avatar_url=None,
+        color=None,
+        about=None,
+    )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_default"
     )
@@ -285,9 +294,44 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
         "Research Assistant",
         "Warm and detailed.",
         "listing-version-1",
+        avatar_url=None,
+        color=None,
+        about=None,
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_first_job"
+    )
+
+
+def test_create_raised_expert_forwards_about(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-4", name="Nova"),
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "about": "  Always cites a source.  "},
+    )
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        None,
+        None,
+        None,
+        avatar_url=None,
+        color=None,
+        about="Always cites a source.",
     )
 
 
@@ -324,6 +368,9 @@ def test_create_raised_expert_reports_first_job_installation_failure(
         None,
         None,
         "listing-version-1",
+        avatar_url=None,
+        color=None,
+        about=None,
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True),
@@ -350,6 +397,117 @@ def test_create_raised_expert_requires_name(
     )
 
 
+def test_create_raised_expert_passes_avatar_and_color(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={
+            "name": "Nova",
+            "avatar_url": "  https://storage.googleapis.com/bucket/nova.png  ",
+            "color": "  sky-300  ",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        None,
+        None,
+        None,
+        avatar_url="https://storage.googleapis.com/bucket/nova.png",
+        color="sky-300",
+        about=None,
+    )
+
+
+def test_create_raised_expert_accepts_relative_avatar_path(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-4", name="Otto"),
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": "/experts/maria.svg"},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["avatar_url"] == "/experts/maria.svg"
+
+
+@pytest.mark.parametrize(
+    "avatar_url",
+    [
+        "javascript:alert(1)",
+        "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        "//evil.example.com/x.png",
+        "ftp://example.com/x.png",
+    ],
+)
+def test_create_raised_expert_rejects_unsafe_avatar_url(
+    mocker: pytest_mock.MockerFixture,
+    avatar_url: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": avatar_url},
+    )
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-5", name="Otto"),
+            first_job_installed=False,
+            first_job_failure_reason=None,
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": "   ", "color": "   "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs == {
+        "avatar_url": None,
+        "color": None,
+        "about": None,
+    }
+
+
 @pytest.mark.parametrize(
     ("field", "value", "snapshot_name"),
     [
@@ -364,6 +522,13 @@ def test_create_raised_expert_requires_name(
             "first_job_store_listing_version_id",
             "l" * 101,
             "expert_raise_first_job_id_too_long",
+        ),
+        ("color", "c" * 33, "expert_raise_color_too_long"),
+        ("about", "a" * 10_001, "expert_raise_about_too_long"),
+        (
+            "avatar_url",
+            f"https://cdn.example.com/{'a' * 2_001}.png",
+            "expert_raise_avatar_url_too_long",
         ),
     ],
 )

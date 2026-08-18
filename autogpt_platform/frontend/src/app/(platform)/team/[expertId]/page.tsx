@@ -26,7 +26,7 @@ import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-8 pb-20 pt-16 sm:px-8 md:px-12";
+  "container min-h-screen space-y-8 pb-20 pt-8 sm:px-8 md:px-12";
 
 function BackToTeamLink() {
   return (

@@ -507,29 +507,16 @@ export function ChatMessagesContainer({
   });
 
   return (
-    <Conversation
-      key={sessionID ?? "new"}
-      resize="instant"
-      className={
-        "min-h-0 flex-1 " +
-        (hideForScroll
-          ? "opacity-0"
-          : "opacity-100 transition-opacity duration-100 ease-out")
-      }
-    >
-      <ConversationContent
-        className="flex min-h-full flex-1 flex-col gap-6 px-6 py-4"
-        style={
-          bottomContentPadding
-            ? { paddingBottom: bottomContentPadding + 24 }
-            : undefined
-        }
-      >
-        {expertIdentity && (
-          <div
-            data-testid="expert-thread-header"
-            className="sticky top-0 z-10 -mx-6 -mt-4 flex items-center gap-2 border-b border-zinc-200/60 bg-[#fafafa]/80 px-6 pb-3 pt-4 backdrop-blur-md"
-          >
+    <>
+      {/* Sits above the scroller rather than sticky inside it, so the bar
+          spans the full chat width while its row stays aligned with the
+          max-w-3xl message column. */}
+      {expertIdentity && (
+        <div
+          data-testid="expert-thread-header"
+          className="z-10 w-full border-b border-zinc-200/60 bg-[#fafafa]/80 backdrop-blur-md"
+        >
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 pb-3 pt-4">
             <ExpertAvatar
               name={expertIdentity.name}
               avatarUrl={expertIdentity.avatarUrl}
@@ -544,273 +531,298 @@ export function ChatMessagesContainer({
               />
             )}
           </div>
-        )}
-        {!readOnly && hasMoreMessages && onLoadMore && (
-          <LoadMoreSentinel
-            hasMore={hasMoreMessages}
-            isLoading={!!isLoadingMore}
-            messageCount={messages.length}
-            onLoadMore={onLoadMore}
-          />
-        )}
-        {isLoading && messages.length === 0 && !isRestoringActiveSession && (
-          <div className="flex flex-1 items-center justify-center">
-            <LoadingSpinner className="text-neutral-600" />
-          </div>
-        )}
-        {messages.map((message, messageIndex) => {
-          const isLastAssistant =
-            messageIndex === messages.length - 1 &&
-            message.role === "assistant";
+        </div>
+      )}
+      <Conversation
+        key={sessionID ?? "new"}
+        resize="instant"
+        className={
+          "min-h-0 flex-1 " +
+          (hideForScroll
+            ? "opacity-0"
+            : "opacity-100 transition-opacity duration-100 ease-out")
+        }
+      >
+        <ConversationContent
+          className="mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-4"
+          style={
+            bottomContentPadding
+              ? { paddingBottom: bottomContentPadding + 24 }
+              : undefined
+          }
+        >
+          {!readOnly && hasMoreMessages && onLoadMore && (
+            <LoadMoreSentinel
+              hasMore={hasMoreMessages}
+              isLoading={!!isLoadingMore}
+              messageCount={messages.length}
+              onLoadMore={onLoadMore}
+            />
+          )}
+          {isLoading && messages.length === 0 && !isRestoringActiveSession && (
+            <div className="flex flex-1 items-center justify-center">
+              <LoadingSpinner className="text-neutral-600" />
+            </div>
+          )}
+          {messages.map((message, messageIndex) => {
+            const isLastAssistant =
+              messageIndex === messages.length - 1 &&
+              message.role === "assistant";
 
-          const isCurrentlyStreaming =
-            isLastAssistant &&
-            (status === "streaming" || status === "submitted");
+            const isCurrentlyStreaming =
+              isLastAssistant &&
+              (status === "streaming" || status === "submitted");
 
-          const isAssistant = message.role === "assistant";
+            const isAssistant = message.role === "assistant";
 
-          const nextMessage = messages[messageIndex + 1];
-          const isLastInTurn =
-            isAssistant &&
-            messageIndex <= messages.length - 1 &&
-            (!nextMessage || nextMessage.role === "user");
-          // data-cursor / data-status parts are internal bookkeeping —
-          // strip them before any render/split logic so they never reach
-          // the user UI. data-status surfaces via ThinkingIndicator.
-          const renderableParts = message.parts.filter(
-            (p) => p.type !== "data-cursor" && p.type !== "data-status",
-          );
-          const textParts = renderableParts.filter(
-            (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
-          );
-          const lastTextPart = textParts[textParts.length - 1];
-          const markerType =
-            lastTextPart !== undefined
-              ? parseSpecialMarkers(lastTextPart.text).markerType
+            const nextMessage = messages[messageIndex + 1];
+            const isLastInTurn =
+              isAssistant &&
+              messageIndex <= messages.length - 1 &&
+              (!nextMessage || nextMessage.role === "user");
+            // data-cursor / data-status parts are internal bookkeeping —
+            // strip them before any render/split logic so they never reach
+            // the user UI. data-status surfaces via ThinkingIndicator.
+            const renderableParts = message.parts.filter(
+              (p) => p.type !== "data-cursor" && p.type !== "data-status",
+            );
+            const textParts = renderableParts.filter(
+              (p): p is Extract<typeof p, { type: "text" }> =>
+                p.type === "text",
+            );
+            const lastTextPart = textParts[textParts.length - 1];
+            const markerType =
+              lastTextPart !== undefined
+                ? parseSpecialMarkers(lastTextPart.text).markerType
+                : null;
+            const hasErrorMarker =
+              markerType === "error" || markerType === "retryable_error";
+            const showActions =
+              isLastInTurn &&
+              !isCurrentlyStreaming &&
+              textParts.length > 0 &&
+              !hasErrorMarker;
+
+            const fileParts = renderableParts.filter(
+              (p): p is FileUIPart => p.type === "file",
+            );
+
+            // For finalized assistant messages, split into reasoning + response.
+            // During streaming, show everything normally with tool collapsing.
+            const isFinalized =
+              message.role === "assistant" && !isCurrentlyStreaming;
+            const { reasoning, response } = isFinalized
+              ? splitReasoningAndResponse(renderableParts)
+              : { reasoning: [] as MessagePart[], response: renderableParts };
+            const hasReasoning = reasoning.length > 0;
+
+            // Note: when interactive tools are pinned from reasoning into response,
+            // this index approximates their position (used only for React keys).
+            const responseStartIndex = renderableParts.length - response.length;
+            const responseSegments =
+              message.role === "assistant"
+                ? buildRenderSegments(response, responseStartIndex)
+                : null;
+            const reasoningSegments = hasReasoning
+              ? buildRenderSegments(reasoning, 0)
               : null;
-          const hasErrorMarker =
-            markerType === "error" || markerType === "retryable_error";
-          const showActions =
-            isLastInTurn &&
-            !isCurrentlyStreaming &&
-            textParts.length > 0 &&
-            !hasErrorMarker;
 
-          const fileParts = renderableParts.filter(
-            (p): p is FileUIPart => p.type === "file",
-          );
-
-          // For finalized assistant messages, split into reasoning + response.
-          // During streaming, show everything normally with tool collapsing.
-          const isFinalized =
-            message.role === "assistant" && !isCurrentlyStreaming;
-          const { reasoning, response } = isFinalized
-            ? splitReasoningAndResponse(renderableParts)
-            : { reasoning: [] as MessagePart[], response: renderableParts };
-          const hasReasoning = reasoning.length > 0;
-
-          // Note: when interactive tools are pinned from reasoning into response,
-          // this index approximates their position (used only for React keys).
-          const responseStartIndex = renderableParts.length - response.length;
-          const responseSegments =
-            message.role === "assistant"
-              ? buildRenderSegments(response, responseStartIndex)
-              : null;
-          const reasoningSegments = hasReasoning
-            ? buildRenderSegments(reasoning, 0)
-            : null;
-
-          return (
-            <Message
-              from={message.role}
-              key={message.id}
-              data-message-id={message.id}
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
-            >
-              <MessageContent
-                className={
-                  "text-[1rem] leading-relaxed " +
-                  (isBrainDumpEnabled
-                    ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
-                    : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
-                  "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
-                  "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
-                }
+            return (
+              <Message
+                from={message.role}
+                key={message.id}
+                data-message-id={message.id}
+                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
-                {hasReasoning && reasoningSegments && (
-                  <StepsCollapse>
-                    {renderSegments(reasoningSegments, message.id, {
-                      fileUrlBuilder,
-                      forceArtifacts: readOnly,
-                      readOnly,
-                    })}
-                  </StepsCollapse>
-                )}
-                {responseSegments
-                  ? renderSegments(responseSegments, message.id, {
-                      onRetry: isLastAssistant ? onRetry : undefined,
-                      fileUrlBuilder,
-                      forceArtifacts: readOnly,
-                      readOnly,
-                    })
-                  : renderableParts.map((part, i) => (
-                      <MessagePartRenderer
-                        key={`${message.id}-${i}`}
-                        part={part}
-                        messageID={message.id}
-                        partIndex={i}
-                        onRetry={isLastAssistant ? onRetry : undefined}
-                        fileUrlBuilder={fileUrlBuilder}
-                        forceArtifacts={readOnly}
-                        readOnly={readOnly}
-                      />
-                    ))}
-                {isLastInTurn && !isCurrentlyStreaming && (
-                  <TurnStatsBar
-                    turnMessages={getTurnMessages(messages, messageIndex)}
-                    elapsedSeconds={
-                      messageIndex === messages.length - 1
-                        ? frozenElapsedRef.current
-                        : undefined
-                    }
-                    stats={turnStats?.get(message.id)}
-                  />
-                )}
-                {isLastAssistant && showIndicator && indicator}
-              </MessageContent>
-              {!readOnly &&
-                message.role === "user" &&
-                sessionChatStatus === "queued" &&
-                (() => {
-                  const stats = turnStats?.get(message.id);
-                  if (!stats?.isLatestUserMessage) {
-                    return null;
+                <MessageContent
+                  className={
+                    "text-[1rem] leading-relaxed " +
+                    (isBrainDumpEnabled
+                      ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
+                      : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
+                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
+                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                   }
-                  return (
-                    <MessageActions
-                      className="mt-1 items-center justify-end gap-1.5"
-                      data-testid="queue-status-row"
-                    >
-                      <QueueBadge sessionID={sessionID ?? null} />
-                    </MessageActions>
-                  );
-                })()}
-              {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  {(() => {
-                    const createdAt = turnStats?.get(message.id)?.createdAt;
-                    if (!createdAt) return null;
-                    const date = new Date(createdAt);
-                    if (Number.isNaN(date.getTime())) return null;
+                >
+                  {hasReasoning && reasoningSegments && (
+                    <StepsCollapse>
+                      {renderSegments(reasoningSegments, message.id, {
+                        fileUrlBuilder,
+                        forceArtifacts: readOnly,
+                        readOnly,
+                      })}
+                    </StepsCollapse>
+                  )}
+                  {responseSegments
+                    ? renderSegments(responseSegments, message.id, {
+                        onRetry: isLastAssistant ? onRetry : undefined,
+                        fileUrlBuilder,
+                        forceArtifacts: readOnly,
+                        readOnly,
+                      })
+                    : renderableParts.map((part, i) => (
+                        <MessagePartRenderer
+                          key={`${message.id}-${i}`}
+                          part={part}
+                          messageID={message.id}
+                          partIndex={i}
+                          onRetry={isLastAssistant ? onRetry : undefined}
+                          fileUrlBuilder={fileUrlBuilder}
+                          forceArtifacts={readOnly}
+                          readOnly={readOnly}
+                        />
+                      ))}
+                  {isLastInTurn && !isCurrentlyStreaming && (
+                    <TurnStatsBar
+                      turnMessages={getTurnMessages(messages, messageIndex)}
+                      elapsedSeconds={
+                        messageIndex === messages.length - 1
+                          ? frozenElapsedRef.current
+                          : undefined
+                      }
+                      stats={turnStats?.get(message.id)}
+                    />
+                  )}
+                  {isLastAssistant && showIndicator && indicator}
+                </MessageContent>
+                {!readOnly &&
+                  message.role === "user" &&
+                  sessionChatStatus === "queued" &&
+                  (() => {
+                    const stats = turnStats?.get(message.id);
+                    if (!stats?.isLatestUserMessage) {
+                      return null;
+                    }
                     return (
-                      <span className="text-[11px] tabular-nums text-neutral-500">
-                        {date.toLocaleString(undefined, {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </span>
+                      <MessageActions
+                        className="mt-1 items-center justify-end gap-1.5"
+                        data-testid="queue-status-row"
+                      >
+                        <QueueBadge sessionID={sessionID ?? null} />
+                      </MessageActions>
                     );
                   })()}
-                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
-                </MessageActions>
-              )}
-              {fileParts.length > 0 && (
-                <MessageAttachments
-                  files={fileParts}
-                  isUser={message.role === "user"}
-                  forceArtifacts={readOnly}
-                  filePattern={filePattern}
-                  readOnly={readOnly}
-                />
-              )}
-              {!readOnly && showActions && (
-                <AssistantMessageActions
-                  message={message}
-                  sessionID={sessionID ?? null}
-                />
-              )}
-              {readOnly && showActions && (
-                <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
-                </MessageActions>
-              )}
-            </Message>
-          );
-        })}
-        {!readOnly && hasActiveTaskList && (
-          <div className="px-1">
-            <TaskListNotice />
-          </div>
-        )}
-        {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
-          <Message
-            from="assistant"
-            className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
-          >
-            <MessageContent className="text-[1rem] leading-relaxed">
-              {indicator}
-            </MessageContent>
-          </Message>
-        )}
-        {!readOnly && isRestoringActiveSession && (
-          <Message from="assistant">
-            <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
-              {showRestoreFallback ? (
-                <div className="flex flex-col gap-1 text-sm text-slate-500">
-                  <ThinkingIndicator
-                    active
-                    elapsedSeconds={restoreElapsedSeconds}
-                    statusMessage={
-                      restoreStatusMessage ?? "Reconnecting to live stream..."
-                    }
+                {message.role === "user" && textParts.length > 0 && (
+                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                    {(() => {
+                      const createdAt = turnStats?.get(message.id)?.createdAt;
+                      if (!createdAt) return null;
+                      const date = new Date(createdAt);
+                      if (Number.isNaN(date.getTime())) return null;
+                      return (
+                        <span className="text-[11px] tabular-nums text-neutral-500">
+                          {date.toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      );
+                    })()}
+                    <CopyButton
+                      text={textParts.map((p) => p.text).join("\n")}
+                    />
+                  </MessageActions>
+                )}
+                {fileParts.length > 0 && (
+                  <MessageAttachments
+                    files={fileParts}
+                    isUser={message.role === "user"}
+                    forceArtifacts={readOnly}
+                    filePattern={filePattern}
+                    readOnly={readOnly}
                   />
-                  <span className="pl-6 text-xs text-slate-400">
-                    Still syncing the latest progress.
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <LoadingSpinner className="h-4 w-4 text-neutral-500" />
-                  <span>Retrieving latest messages</span>
-                </div>
-              )}
-            </MessageContent>
-          </Message>
-        )}
-        {!readOnly && graphExecId && (
-          <CopilotPendingReviews graphExecId={graphExecId} />
-        )}
-        {!readOnly &&
-          queuedMessages?.map((msg, idx) => (
-            <Message key={idx} from="user">
-              <MessageContent
-                className={
-                  isBrainDumpEnabled
-                    ? "flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]"
-                    : "flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]"
-                }
-              >
-                <span>{msg}</span>
-                <span className="flex items-center gap-1 text-xs text-slate-500">
-                  <Icon icon={Clock01Icon} className="size-3" />
-                  Queued
-                </span>
+                )}
+                {!readOnly && showActions && (
+                  <AssistantMessageActions
+                    message={message}
+                    sessionID={sessionID ?? null}
+                  />
+                )}
+                {readOnly && showActions && (
+                  <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                    <CopyButton
+                      text={textParts.map((p) => p.text).join("\n")}
+                    />
+                  </MessageActions>
+                )}
+              </Message>
+            );
+          })}
+          {!readOnly && hasActiveTaskList && (
+            <div className="px-1">
+              <TaskListNotice />
+            </div>
+          )}
+          {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
+            <Message
+              from="assistant"
+              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+            >
+              <MessageContent className="text-[1rem] leading-relaxed">
+                {indicator}
               </MessageContent>
             </Message>
-          ))}
-        {!readOnly && error && !lastAssistantHasErrorMarker && (
-          <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            <summary className="cursor-pointer font-medium">
-              The assistant encountered an error. Please try sending your
-              message again.
-            </summary>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-              {error instanceof Error ? error.message : String(error)}
-            </pre>
-          </details>
-        )}
-      </ConversationContent>
-      <ConversationScrollButton />
-    </Conversation>
+          )}
+          {!readOnly && isRestoringActiveSession && (
+            <Message from="assistant">
+              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+                {showRestoreFallback ? (
+                  <div className="flex flex-col gap-1 text-sm text-slate-500">
+                    <ThinkingIndicator
+                      active
+                      elapsedSeconds={restoreElapsedSeconds}
+                      statusMessage={
+                        restoreStatusMessage ?? "Reconnecting to live stream..."
+                      }
+                    />
+                    <span className="pl-6 text-xs text-slate-400">
+                      Still syncing the latest progress.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                    <span>Retrieving latest messages</span>
+                  </div>
+                )}
+              </MessageContent>
+            </Message>
+          )}
+          {!readOnly && graphExecId && (
+            <CopilotPendingReviews graphExecId={graphExecId} />
+          )}
+          {!readOnly &&
+            queuedMessages?.map((msg, idx) => (
+              <Message key={idx} from="user">
+                <MessageContent
+                  className={
+                    isBrainDumpEnabled
+                      ? "flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]"
+                      : "flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]"
+                  }
+                >
+                  <span>{msg}</span>
+                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <Icon icon={Clock01Icon} className="size-3" />
+                    Queued
+                  </span>
+                </MessageContent>
+              </Message>
+            ))}
+          {!readOnly && error && !lastAssistantHasErrorMarker && (
+            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+              <summary className="cursor-pointer font-medium">
+                The assistant encountered an error. Please try sending your
+                message again.
+              </summary>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+                {error instanceof Error ? error.message : String(error)}
+              </pre>
+            </details>
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
+    </>
   );
 }

@@ -155,36 +155,25 @@ describe("AppSidebar", () => {
     expect(hire.getAttribute("href")).toBe("/marketplace#experts");
   });
 
-  it("maps each member status to its presence colour", async () => {
+  // One member per case: the preview caps the list below the number of statuses.
+  it.each([
+    ["working" as const, "Working", "bg-amber-500"],
+    ["ready" as const, "Ready", "bg-emerald-500"],
+    ["paused" as const, "Paused", "bg-zinc-300"],
+    ["needs_setup" as const, "Needs setup", "bg-zinc-300"],
+    ["failed" as const, "Needs attention", "bg-red-500"],
+  ])("maps the %s status to its presence colour", async (status, label, colour) => {
     useGetFlagMock.mockReturnValue(true);
     server.use(
       getGetHomeDashboardMockHandler200(
-        dashboardWith([
-          makeAgent("e-working", "Working Expert", "working"),
-          makeAgent("e-ready", "Ready Expert", "ready"),
-          makeAgent("e-paused", "Paused Expert", "paused"),
-          makeAgent("e-setup", "Setup Expert", "needs_setup"),
-          makeAgent("e-failed", "Failed Expert", "failed"),
-        ]),
+        dashboardWith([makeAgent(`e-${status}`, `${label} Expert`, status)]),
       ),
     );
     renderSidebar();
 
-    expect(
-      (await screen.findByRole("img", { name: "Working" })).className,
-    ).toContain("bg-amber-500");
-    expect(screen.getByRole("img", { name: "Ready" }).className).toContain(
-      "bg-emerald-500",
+    expect((await screen.findByRole("img", { name: label })).className).toContain(
+      colour,
     );
-    expect(screen.getByRole("img", { name: "Paused" }).className).toContain(
-      "bg-zinc-300",
-    );
-    expect(
-      screen.getByRole("img", { name: "Needs setup" }).className,
-    ).toContain("bg-zinc-300");
-    expect(
-      screen.getByRole("img", { name: "Needs attention" }).className,
-    ).toContain("bg-red-500");
   });
 
   it("keeps Your AI and Hire visible when the user has no hired experts", async () => {
@@ -234,8 +223,16 @@ describe("AppSidebar", () => {
     );
     renderSidebar();
 
-    expect(await screen.findByRole("link", { name: /Expert 4/ })).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Expert 5/ })).toBeNull();
+    expect(
+      await screen.findByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT - 1}`),
+      }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT}`),
+      }),
+    ).toBeNull();
 
     const viewAll = screen.getByRole("link", { name: /view all \(8\)/i });
     expect(viewAll.getAttribute("href")).toBe("/team");

@@ -123,6 +123,7 @@ def _to_model(
         id=row.id,
         name=row.name,
         avatar_url=row.avatarUrl,
+        color=row.color,
         role=row.role,
         tagline=row.tagline,
         bio=row.bio,
@@ -357,6 +358,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "ownerUserId": user_id,
         "name": name or template.name,
         "avatarUrl": template.avatarUrl,
+        "color": template.color,
         "role": template.role,
         "tagline": template.tagline,
         "bio": template.bio,
@@ -512,6 +514,10 @@ async def create_raised_expert(
     role: str | None,
     voice_preferences: str | None,
     first_job_store_listing_version_id: str | None,
+    *,
+    avatar_url: str | None = None,
+    color: str | None = None,
+    about: str | None = None,
 ) -> RaiseResult:
     """Raise a blank expert owned by *user_id*.
 
@@ -524,7 +530,15 @@ async def create_raised_expert(
     if first_job_store_listing_version_id is not None:
         await _validate_first_job_listing(first_job_store_listing_version_id)
 
-    expert = await _create_raised_expert_row(user_id, name, role, voice_preferences)
+    expert = await _create_raised_expert_row(
+        user_id,
+        name,
+        role,
+        voice_preferences,
+        avatar_url=avatar_url,
+        color=color,
+        about=about,
+    )
     first_job_installed = False
     failure_reason: Literal["unavailable", "installation_failed"] | None = None
     if first_job_store_listing_version_id is not None:
@@ -568,6 +582,10 @@ async def _create_raised_expert_row(
     name: str,
     role: str | None,
     voice_preferences: str | None,
+    *,
+    avatar_url: str | None,
+    color: str | None,
+    about: str | None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
         await _lock_expert_creation(tx, user_id)
@@ -585,8 +603,10 @@ async def _create_raised_expert_row(
             data={
                 "ownerUserId": user_id,
                 "name": name,
+                "avatarUrl": avatar_url,
+                "color": color or "",
                 "role": role or "",
-                "identity": _raised_identity(name),
+                "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
             },
             include=_WORKFLOW_INCLUDE,
