@@ -2,6 +2,7 @@ import asyncio
 import re
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
@@ -2593,6 +2594,274 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+# ─── Work surface: run composition (pure, no DB) ────────────────────────
+
+
+def _run_execution(**overrides) -> SimpleNamespace:
+    values = {
+        "id": "exec-1",
+        "agentGraphId": "graph-1",
+        "executionStatus": "COMPLETED",
+        "startedAt": None,
+        "endedAt": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def test_to_expert_run_uses_workflow_name_and_deep_link():
+    run = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", "result", needs_review=True
+    )
+    assert run.execution_id == "exec-1"
+    assert run.agent_name == "SEO Blog Writer"
+    assert run.output_type == "table"
+    assert run.output_key == "result"
+    assert run.needs_review is True
+    assert run.link == (
+        "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
+    )
+
+
+def test_to_expert_run_falls_back_when_workflow_unresolved():
+    run = experts_db._to_expert_run(
+        _run_execution(), None, "unknown", None, needs_review=False
+    )
+    assert run.agent_name == "Agent task"
+    assert run.library_agent_id is None
+    assert run.output_key is None
+    assert run.link is None
+
+
+def _output_node_exec(
+    name: str,
+    value,
+    *,
+    execution_data: dict | None = None,
+    added_minutes: int = 0,
+    queued_minutes: int | None = None,
+    stats: dict | None = None,
+) -> SimpleNamespace:
+    base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
+    return SimpleNamespace(
+        stats=stats,
+        executionData=execution_data,
+        queuedTime=(
+            base + timedelta(minutes=queued_minutes)
+            if queued_minutes is not None
+            else None
+        ),
+        addedTime=base + timedelta(minutes=added_minutes),
+        Input=(
+            [
+                SimpleNamespace(name="name", data=name),
+                SimpleNamespace(name="value", data=value),
+            ]
+            if execution_data is None
+            else []
+        ),
+    )
+
+
+def test_outputs_from_node_execs_builds_pin_map_from_input_rows():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("status", "ok", added_minutes=0),
+            _output_node_exec("results", [{"metric": "signups"}], added_minutes=1),
+        ]
+    )
+    assert outputs == {"status": ["ok"], "results": [[{"metric": "signups"}]]}
+
+
+def test_outputs_from_node_execs_prefers_execution_data_and_orders_by_time():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 2}, added_minutes=5
+            ),
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 1}, added_minutes=1
+            ),
+        ]
+    )
+    assert outputs == {"rows": [1, 2]}
+
+
+def test_outputs_from_node_execs_orders_queued_rows_before_unqueued_rows():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("rows", 2, added_minutes=0, queued_minutes=5),
+            _output_node_exec("rows", 1, added_minutes=1),
+        ]
+    )
+    assert outputs == {"rows": [2, 1]}
+
+
+def test_outputs_from_node_execs_skips_rows_without_name():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("", None, execution_data={"other": "x"})]
+    )
+    assert outputs == {}
+
+
+def test_outputs_from_node_execs_prefers_moderation_cleared_inputs():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                execution_data={"name": "stale", "value": "stale"},
+                stats={"cleared_inputs": {"name": ["report"], "value": ["cleared"]}},
+            )
+        ]
+    )
+    assert outputs == {"report": ["cleared"]}
+
+
+def test_outputs_from_node_execs_uses_last_cleared_input_message():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                stats={"cleared_inputs": {"name": ["rows"], "value": ["a", "b"]}},
+            )
+        ]
+    )
+    assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("status", "ok", stats={"cleared_inputs": "not-a-dict"})]
+    )
+    assert outputs == {"status": ["ok"]}
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
+    expert_client = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(Workflows=[]))
+    )
+    execution_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                _run_execution(id="exec-1"),
+                _run_execution(id="exec-2", executionStatus="REVIEW"),
+            ]
+        )
+    )
+    review_client = SimpleNamespace(
+        find_many=AsyncMock(return_value=[SimpleNamespace(graphExecId="exec-2")])
+    )
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            prisma.models.AgentGraphExecution,
+            "prisma",
+            return_value=execution_client,
+        ),
+        patch.object(
+            prisma.models.PendingHumanReview,
+            "prisma",
+            return_value=review_client,
+        ),
+        patch.object(
+            experts_db,
+            "_classify_run_outputs",
+            new=AsyncMock(
+                return_value={
+                    "exec-1": ("table", "rows"),
+                    "exec-2": ("unknown", None),
+                }
+            ),
+        ),
+    ):
+        runs = await experts_db.list_expert_runs("owner-1", "expert-1")
+
+    expert_where = expert_client.find_first.await_args.kwargs["where"]
+    assert expert_where == {
+        "id": "expert-1",
+        "ownerUserId": "owner-1",
+        "isTemplate": False,
+        "isArchived": False,
+        "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+    }
+    execution_where = execution_client.find_many.await_args.kwargs["where"]
+    assert execution_where == {
+        "userId": "owner-1",
+        "expertId": "expert-1",
+        "isDeleted": False,
+    }
+    review_where = review_client.find_many.await_args.kwargs["where"]
+    assert review_where["userId"] == "owner-1"
+    assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
+    assert [run.status for run in runs] == ["completed", "review"]
+    assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_rejects_missing_or_foreign_expert():
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=None))
+
+    with patch.object(
+        prisma.models.Expert,
+        "prisma",
+        return_value=expert_client,
+    ):
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.list_expert_runs("owner-1", "foreign-expert")
+
+    assert expert_client.find_first.await_args.kwargs["where"]["ownerUserId"] == (
+        "owner-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_classify_run_outputs_degrades_only_corrupt_execution():
+    node_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-bad",
+                    **vars(_output_node_exec("broken", {"bad": True})),
+                ),
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-good",
+                    **vars(_output_node_exec("report", "word " * 100)),
+                ),
+            ]
+        )
+    )
+
+    with (
+        patch.object(
+            prisma.models.AgentNodeExecution,
+            "prisma",
+            return_value=node_client,
+        ),
+        patch.object(
+            experts_db,
+            "classify_run_output",
+            side_effect=[ValueError("corrupt output"), ("doc", "report")],
+        ),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-bad", "exec-good"])
+
+    assert classified == {
+        "exec-bad": ("unknown", None),
+        "exec-good": ("doc", "report"),
+    }
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -6115,6 +6115,49 @@
         }
       }
     },
+    "/api/experts/{expert_id}/runs": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Runs",
+        "description": "Recent executions attributed to this expert, with a classified output\ntype for the Work surface's typed viewer.",
+        "operationId": "list_expert_runs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertRun" },
+                  "title": "Response List Expert Runs"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/schedules/resume": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -18313,6 +18356,74 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "incomplete",
+              "queued",
+              "running",
+              "completed",
+              "terminated",
+              "failed",
+              "review"
+            ],
+            "title": "Status"
+          },
+          "output_type": {
+            "type": "string",
+            "enum": ["table", "doc", "image", "unknown"],
+            "title": "Output Type"
+          },
+          "output_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Output Key"
+          },
+          "needs_review": { "type": "boolean", "title": "Needs Review" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "agent_name",
+          "library_agent_id",
+          "status",
+          "output_type",
+          "output_key",
+          "needs_review",
+          "started_at",
+          "ended_at",
+          "link"
+        ],
+        "title": "ExpertRun",
+        "description": "One expert-attributed execution, for the /team Work surface."
       },
       "ExpertSoulUpdate": {
         "properties": {
