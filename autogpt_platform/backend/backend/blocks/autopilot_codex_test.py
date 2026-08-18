@@ -150,3 +150,68 @@ async def test_autopilot_block_rejects_codex_connection_change_on_resume():
         ("error", "codex_session_route_mismatch"),
     ]
     execute_copilot.assert_not_awaited()
+
+
+def test_transport_is_an_explicit_choice_not_inferred_from_the_credential():
+    """Which account pays used to be encoded as "is a credential set", visible
+    only by noticing an empty field. `platform` spends AutoGPT credits;
+    `codex_app_server` spends the user's own ChatGPT subscription."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    schema = AutoPilotBlock.Input.jsonschema()
+    transport = schema["properties"]["transport"]
+
+    assert transport["enum"] == ["platform", "codex_app_server"]
+    assert transport["default"] == AutoPilotTransport.PLATFORM.value
+    assert transport["advanced"] is False
+
+
+def test_platform_transport_maps_to_no_provider():
+    """`platform` is deliberately absent from the mapping: it needs no
+    credential, and an unmapped value makes the credential input hide itself
+    rather than asking for something that does not exist."""
+    schema = AutoPilotBlock.Input.jsonschema()
+    field_schema = schema["properties"]["codex_credentials"]
+
+    assert field_schema["discriminator"] == "transport"
+    assert field_schema["discriminator_mapping"] == {"codex_app_server": "codex"}
+    assert "platform" not in field_schema["discriminator_mapping"]
+
+
+def test_codex_credentials_stays_optional_under_the_discriminator():
+    """Adding the discriminator must not make the connection mandatory —
+    the platform transport is the default and needs nothing."""
+    assert "codex_credentials" not in AutoPilotBlock.Input.get_required_fields()
+
+
+def test_autopilot_does_not_use_discriminator_type_mapping():
+    """Both of its options are a single credential type (or none), so the
+    graph-aggregation fallback that CodeGeneration needs does not apply here.
+    Pinned because `test_only_known_blocks_use_discriminator_type_mapping`
+    asserts CodeGeneration is the sole user."""
+    info = AutoPilotBlock.Input.get_credentials_fields_info()["codex_credentials"]
+
+    assert not info.discriminator_type_mapping
+
+
+def test_legacy_node_without_transport_still_bills_to_its_connection():
+    """A node saved before `transport` existed carries a connection but no
+    transport, so pydantic fills the `platform` default and the two disagree.
+    Treating that default as a real choice would silently move the agent onto
+    platform credits."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    legacy = AutoPilotBlock.Input(
+        prompt="do the thing",
+        codex_credentials={
+            "id": "codex-1",
+            "provider": "codex",
+            "type": "oauth2",
+            "title": "ChatGPT for Codex",
+        },
+    )
+
+    # The disagreement the runtime has to detect and resolve in favour of the
+    # connection, rather than in favour of the filled-in default.
+    assert legacy.transport == AutoPilotTransport.PLATFORM
+    assert legacy.codex_credentials is not None
