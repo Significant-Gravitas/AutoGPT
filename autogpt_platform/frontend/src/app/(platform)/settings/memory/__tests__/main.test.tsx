@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
-import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getListExpertsMockHandler200,
+  getListExpertsResponseMock200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetV2GetSessionMockHandler200,
   getGetV2GetSessionResponseMock200,
@@ -15,7 +18,9 @@ import {
 import {
   getEraseMyMemoryMockHandler200,
   getForgetMyMemoryFactMockHandler200,
+  getGetMyExpertMemoryOverviewMockHandler200,
   getGetMyMemoryOverviewMockHandler200,
+  getListMyExpertMemoryFactsMockHandler200,
   getListMyMemoryFactsMockHandler200,
 } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import { server } from "@/mocks/mock-server";
@@ -185,6 +190,68 @@ describe("Settings memory page", () => {
 
     await user.click(confirm);
     await waitFor(() => expect(erased).toBe(true));
+  });
+
+  it("switches scope to an expert through the scope selector", async () => {
+    const maria = {
+      ...getListExpertsResponseMock200()[0],
+      id: "expert-maria",
+      name: "Maria",
+      role: "Growth Marketer",
+      avatar_url: null,
+      is_archived: false,
+    };
+    const expertFactRequests: string[] = [];
+    server.use(
+      getListExpertsMockHandler200([maria]),
+      getListMyMemoryFactsMockHandler200(FACTS),
+      getGetMyMemoryOverviewMockHandler200({
+        expert_id: null,
+        facts: 214,
+        entities: 90,
+        episodes: 41,
+      }),
+      getListMyExpertMemoryFactsMockHandler200((info) => {
+        expertFactRequests.push(String(info.params.expertId));
+        return {
+          expert_id: "expert-maria",
+          items: [
+            {
+              uuid: "edge-m1",
+              fact: "Q4 campaign brief is due Friday",
+              name: "due",
+              source: "Campaign",
+              target: "Friday",
+              created_at: "2026-08-17T00:00:00Z",
+            },
+          ],
+        };
+      }),
+      getGetMyExpertMemoryOverviewMockHandler200({
+        expert_id: "expert-maria",
+        facts: 12,
+        entities: 8,
+        episodes: 3,
+      }),
+    );
+    render(<SettingsMemoryPage />);
+
+    await screen.findByText("Runs a DTC candle brand called Emberline");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Memory scope" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: /Growth Marketer/ }),
+    );
+
+    expect(
+      await screen.findByText("Q4 campaign brief is due Friday"),
+    ).toBeDefined();
+    expect(expertFactRequests).toEqual(["expert-maria"]);
+    expect(
+      screen.getByRole("button", { name: "View Maria's summary" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Erase memory" })).toBeDefined();
+    expect(screen.getByText(/Erase Maria's memory/)).toBeDefined();
   });
 
   it("opens the summary chat in-pane and auto-sends the seeded prompt", async () => {
