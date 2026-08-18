@@ -48,8 +48,9 @@ class StripeLinkGetUserInfoBlock(Block):
         super().__init__(
             id="780daefe-be88-457d-af4b-c8c931daaad0",
             description=(
-                "Get the Link account holder's name and contact details. "
-                "Needed to fill in a checkout — most merchants require a name."
+                "Get the Link account holder's name, email and phone. Use it "
+                "to fill in a checkout that asks who the buyer is. Pairs with "
+                "Get Shipping Address for anything physical."
             ),
             categories=set(),
             input_schema=self.Input,
@@ -128,8 +129,9 @@ class StripeLinkGetShippingAddressBlock(Block):
         super().__init__(
             id="4ace99c4-5b0d-4f2d-a371-397c65acfcd2",
             description=(
-                "Get the shipping addresses saved on a Link wallet, so an "
-                "agent can complete a checkout that needs delivery."
+                "Get the delivery addresses saved on the user's Link wallet, "
+                "with the default one resolved for you. Use it for any "
+                "purchase that ships something."
             ),
             categories=set(),
             input_schema=self.Input,

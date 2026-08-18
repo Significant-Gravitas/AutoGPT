@@ -6,7 +6,7 @@ _Add a description of this category of blocks._
 ## Stripe Link Create Spend Request
 
 ### What it is
-Create a Stripe Link spend request for a one-time payment credential
+Ask the user to authorize a payment, then provision a single-use credential for it. Pick the credential type by how the merchant takes payment: 'card' (default) gives a virtual card number to type into a normal checkout form; 'shared_payment_token' is for merchants that answer HTTP 402 (Machine Payments Protocol), and needs the network ID from the Get Payment Challenge block. The user approves on their phone before anything is spendable.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -50,7 +50,7 @@ _Add practical use case examples here._
 ## Stripe Link List Payment Methods
 
 ### What it is
-List payment methods from a Stripe Link wallet
+List the cards and bank accounts in the user's Link wallet. Use this first to pick a payment method ID for Create Spend Request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -74,7 +74,7 @@ _Add practical use case examples here._
 ## Stripe Link Retrieve Spend Request
 
 ### What it is
-Retrieve a Stripe Link spend request and card credentials
+Check a spend request and collect its credential once the user has approved. Returns virtual card details for a 'card' request, or the Shared Payment Token for a 'shared_payment_token' one. If the status is 'requires_action', the payment method needs attention first — poll again when `auto_resumes` is true, otherwise resolve the action and create a new request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

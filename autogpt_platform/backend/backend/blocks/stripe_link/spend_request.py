@@ -97,7 +97,11 @@ class StripeLinkListPaymentMethodsBlock(Block):
     def __init__(self):
         super().__init__(
             id="6eacc954-2218-4dc7-a485-5bf21549ecbe",
-            description="List payment methods from a Stripe Link wallet",
+            description=(
+                "List the cards and bank accounts in the user's Link wallet. "
+                "Use this first to pick a payment method ID for Create Spend "
+                "Request."
+            ),
             categories=set(),
             input_schema=self.Input,
             output_schema=self.Output,
@@ -281,7 +285,16 @@ class StripeLinkCreateSpendRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="932c3c12-1e80-4392-8fb3-37824eb8a427",
-            description="Create a Stripe Link spend request for a one-time payment credential",
+            description=(
+                "Ask the user to authorize a payment, then provision a "
+                "single-use credential for it. Pick the credential type by how "
+                "the merchant takes payment: 'card' (default) gives a virtual "
+                "card number to type into a normal checkout form; "
+                "'shared_payment_token' is for merchants that answer HTTP 402 "
+                "(Machine Payments Protocol), and needs the network ID from "
+                "the Get Payment Challenge block. The user approves on their "
+                "phone before anything is spendable."
+            ),
             categories=set(),
             input_schema=self.Input,
             output_schema=self.Output,
@@ -473,7 +486,15 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="1aff59ef-e8a2-413e-9410-4ce7e4849337",
-            description="Retrieve a Stripe Link spend request and card credentials",
+            description=(
+                "Check a spend request and collect its credential once the "
+                "user has approved. Returns virtual card details for a 'card' "
+                "request, or the Shared Payment Token for a "
+                "'shared_payment_token' one. If the status is "
+                "'requires_action', the payment method needs attention first — "
+                "poll again when `auto_resumes` is true, otherwise resolve the "
+                "action and create a new request."
+            ),
             categories=set(),
             input_schema=self.Input,
             output_schema=self.Output,

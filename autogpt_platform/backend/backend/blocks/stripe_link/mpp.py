@@ -1,0 +1,369 @@
+"""
+Stripe Link — Machine Payments Protocol (MPP) blocks.
+
+MPP merchants answer an unauthenticated request with HTTP 402 and a
+`WWW-Authenticate: Payment` challenge. The agent turns a Shared Payment Token
+into a credential for that challenge and retries. No checkout form, no card
+number, nothing for a human to type.
+
+Pair these with `credential_type: shared_payment_token` on the spend request.
+For ordinary merchants that need a card typed into a checkout form, use the
+virtual-card flow instead — see `spend_request.py`.
+"""
+
+import base64
+import json
+import logging
+import re
+from typing import Any
+
+import httpx
+
+from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks.stripe_link._auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    StripeLinkCredentials,
+    StripeLinkCredentialsField,
+    StripeLinkCredentialsInput,
+)
+from backend.blocks.stripe_link.spend_request import link_api_request
+from backend.data.model import SchemaField
+
+logger = logging.getLogger(__name__)
+
+PAYMENT_SCHEME = "Payment"
+# Fields `mppx` keeps on the wire challenge; anything else the server sends is
+# dropped rather than echoed back.
+CHALLENGE_FIELDS = frozenset(
+    {
+        "description",
+        "digest",
+        "expires",
+        "id",
+        "intent",
+        "method",
+        "opaque",
+        "realm",
+        "request",
+    }
+)
+
+
+def parse_payment_challenges(header: str) -> list[dict[str, str]]:
+    """Split a `WWW-Authenticate` value into its `Payment` challenges.
+
+    A merchant may offer several (Stripe and an onchain method, say), so this
+    returns all of them and the caller picks.
+    """
+    challenges: list[dict[str, str]] = []
+    for chunk in re.split(r"(?i)(?=Payment\s+id=)", header):
+        chunk = chunk.strip().rstrip(",")
+        if not chunk.lower().startswith(PAYMENT_SCHEME.lower()):
+            continue
+        fields = dict(re.findall(r'(\w+)="([^"]*)"', chunk))
+        if fields:
+            challenges.append(fields)
+    return challenges
+
+
+def decode_payment_request(encoded: str) -> dict[str, Any]:
+    """Decode a challenge's base64url `request` blob."""
+    padded = encoded + "=" * (-len(encoded) % 4)
+    return json.loads(base64.urlsafe_b64decode(padded))
+
+
+def build_credential(challenge: dict[str, str], spt: str) -> str:
+    """Build the `Authorization: Payment ...` value for a challenge.
+
+    Mirrors `Credential.serialize` in `mppx`: base64url (unpadded) of
+    `{challenge, payload}`, with the challenge's `request` passed through
+    exactly as the server sent it.
+    """
+    wire = {
+        "challenge": {k: v for k, v in challenge.items() if k in CHALLENGE_FIELDS},
+        "payload": {"spt": spt},
+    }
+    encoded = (
+        base64.urlsafe_b64encode(json.dumps(wire, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+    )
+    return f"{PAYMENT_SCHEME} {encoded}"
+
+
+class StripeLinkGetPaymentChallengeBlock(Block):
+    """Ask an MPP merchant what it wants paid, before creating a spend request."""
+
+    class Input(BlockSchemaInput):
+        url: str = SchemaField(description="The merchant endpoint to purchase from")
+        method: str = SchemaField(
+            description="HTTP method the purchase uses", default="POST"
+        )
+        body: dict[str, Any] = SchemaField(
+            description="JSON body for the purchase request",
+            default_factory=dict,
+        )
+
+    class Output(BlockSchemaOutput):
+        supports_mpp: bool = SchemaField(
+            description="True when the merchant answered 402 with a Stripe "
+            "payment challenge. False means it is not an MPP merchant and you "
+            "should use the virtual-card flow instead."
+        )
+        network_id: str = SchemaField(
+            description="Merchant network ID — pass this to Create Spend "
+            "Request as `network_id`",
+            default="",
+        )
+        amount: int = SchemaField(
+            description="Amount the merchant wants, in the smallest currency unit",
+            default=0,
+        )
+        currency: str = SchemaField(
+            description="Three-letter currency code", default=""
+        )
+        description: str = SchemaField(
+            description="What the merchant says the charge is for", default=""
+        )
+        error: str = SchemaField(description="Error message on failure", default="")
+
+    def __init__(self):
+        super().__init__(
+            id="0518625e-5c08-40d4-b1fe-7953250cbe80",
+            description=(
+                "Step 1 of paying an MPP merchant: read its HTTP 402 payment "
+                "challenge to learn the network ID and amount. Feed those into "
+                "Create Spend Request with credential type 'shared_payment_token'."
+            ),
+            categories=set(),
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_input={"url": "https://merchant.example/api/buy"},
+            test_output=[
+                ("supports_mpp", True),
+                ("network_id", "profile_test"),
+                ("amount", 100),
+                ("currency", "usd"),
+                ("description", "Test charge"),
+            ],
+            test_mock={
+                "_probe": lambda *args, **kwargs: (
+                    402,
+                    'Payment id="ch_1", realm="merchant.example", method="stripe", '
+                    'intent="charge", request="'
+                    + base64.urlsafe_b64encode(
+                        json.dumps(
+                            {
+                                "amount": "100",
+                                "currency": "usd",
+                                "methodDetails": {"networkId": "profile_test"},
+                            }
+                        ).encode()
+                    )
+                    .decode()
+                    .rstrip("=")
+                    + '", description="Test charge"',
+                )
+            },
+        )
+
+    @staticmethod
+    async def _probe(url: str, method: str, body: dict) -> tuple[int, str]:
+        """Make the unauthenticated request and return (status, challenge header)."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.request(
+                method,
+                url,
+                json=body or None,
+                headers={"Content-Type": "application/json"},
+            )
+        return response.status_code, response.headers.get("www-authenticate", "")
+
+    async def run(self, input_data: Input, **kwargs: Any) -> BlockOutput:
+        try:
+            status, header = await self._probe(
+                input_data.url, input_data.method, input_data.body
+            )
+            if status != 402 or not header:
+                yield "supports_mpp", False
+                return
+
+            stripe_challenge = next(
+                (
+                    c
+                    for c in parse_payment_challenges(header)
+                    if c.get("method") == "stripe"
+                ),
+                None,
+            )
+            if not stripe_challenge:
+                # 402 but no Stripe method — e.g. onchain-only merchants.
+                yield "supports_mpp", False
+                return
+
+            request = decode_payment_request(stripe_challenge.get("request", ""))
+            yield "supports_mpp", True
+            yield "network_id", request.get("methodDetails", {}).get("networkId", "")
+            yield "amount", int(request.get("amount", 0))
+            yield "currency", request.get("currency", "")
+            yield "description", stripe_challenge.get("description", "")
+        except Exception as e:
+            yield "error", str(e)
+
+
+class StripeLinkMPPPayBlock(Block):
+    """Complete a purchase at an MPP merchant using an approved spend request."""
+
+    _link_api_request = staticmethod(link_api_request)
+
+    class Input(BlockSchemaInput):
+        credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
+        spend_request_id: str = SchemaField(
+            description="An approved spend request created with credential "
+            "type 'shared_payment_token'"
+        )
+        url: str = SchemaField(description="The merchant endpoint to purchase from")
+        method: str = SchemaField(description="HTTP method", default="POST")
+        body: dict[str, Any] = SchemaField(
+            description="JSON body for the purchase request", default_factory=dict
+        )
+        headers: dict[str, str] = SchemaField(
+            description="Extra headers to send to the merchant",
+            default_factory=dict,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        status_code: int = SchemaField(description="HTTP status the merchant returned")
+        paid: bool = SchemaField(
+            description="True when the merchant accepted the payment (2xx)"
+        )
+        response: dict[str, Any] = SchemaField(
+            description="Merchant's JSON response, e.g. an order or receipt",
+            default_factory=dict,
+        )
+        error: str = SchemaField(description="Error message on failure", default="")
+
+    def __init__(self):
+        super().__init__(
+            id="b219415c-8b36-4f49-937b-f11b1bbddfb2",
+            description=(
+                "Step 3 of paying an MPP merchant: spend an approved Shared "
+                "Payment Token at the merchant's endpoint. No card number and "
+                "no checkout form. The token is single-use — a failed payment "
+                "needs a fresh spend request."
+            ),
+            categories=set(),
+            input_schema=self.Input,
+            output_schema=self.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spend_request_id": "lsrq_test",
+                "url": "https://merchant.example/api/buy",
+                "body": {"amount": 100},
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("status_code", 200),
+                ("paid", True),
+                ("response", {"ok": True}),
+            ],
+            test_mock={
+                "_link_api_request": lambda *args, **kwargs: {
+                    "status": "approved",
+                    "shared_payment_token": {"id": "spt_test"},
+                },
+                "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}),
+            },
+        )
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: StripeLinkCredentials,
+        **kwargs: Any,
+    ) -> BlockOutput:
+        try:
+            spend_request = await self._link_api_request(
+                credentials,
+                "GET",
+                f"/spend_requests/{input_data.spend_request_id}"
+                "?include=shared_payment_token",
+            )
+            if spend_request.get("status") != "approved":
+                yield "error", (
+                    f"Spend request {input_data.spend_request_id} is "
+                    f"{spend_request.get('status')}, not approved"
+                )
+                return
+
+            spt = (spend_request.get("shared_payment_token") or {}).get("id")
+            if not spt:
+                yield "error", (
+                    "Spend request has no shared payment token — it was likely "
+                    "created for a virtual card. Use credential type "
+                    "'shared_payment_token' to pay an MPP merchant."
+                )
+                return
+
+            status_code, payload = await self._pay_with_token(
+                spt,
+                input_data.url,
+                input_data.method,
+                input_data.body,
+                input_data.headers,
+            )
+            yield "status_code", status_code
+            yield "paid", 200 <= status_code < 300
+            yield "response", payload
+        except Exception as e:
+            yield "error", str(e)
+
+    async def _pay_with_token(
+        self, spt: str, url: str, method: str, body: dict, headers: dict
+    ) -> tuple[int, dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=45) as client:
+            base_headers = {"Content-Type": "application/json", **headers}
+            first = await client.request(
+                method, url, json=body or None, headers=base_headers
+            )
+            if first.status_code != 402:
+                # Nothing to pay — either it succeeded outright or it failed for
+                # an unrelated reason. Either way, report what happened.
+                return first.status_code, _json_or_text(first)
+
+            challenge = next(
+                (
+                    c
+                    for c in parse_payment_challenges(
+                        first.headers.get("www-authenticate", "")
+                    )
+                    if c.get("method") == "stripe"
+                ),
+                None,
+            )
+            if challenge is None:
+                raise RuntimeError(
+                    "Merchant returned 402 without a Stripe payment challenge"
+                )
+
+            retry = await client.request(
+                method,
+                url,
+                json=body or None,
+                headers={
+                    **base_headers,
+                    "Authorization": build_credential(challenge, spt),
+                },
+            )
+            return retry.status_code, _json_or_text(retry)
+
+
+def _json_or_text(response: httpx.Response) -> dict[str, Any]:
+    try:
+        parsed = response.json()
+        return parsed if isinstance(parsed, dict) else {"data": parsed}
+    except Exception:
+        return {"body": response.text[:1000]}
