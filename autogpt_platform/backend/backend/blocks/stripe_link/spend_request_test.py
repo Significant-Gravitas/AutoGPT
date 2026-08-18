@@ -147,16 +147,37 @@ async def test_non_resumable_action_is_flagged_as_such():
 
 @pytest.mark.asyncio
 async def test_approved_request_emits_no_action_fields():
-    outputs = await run_retrieve(
+    outputs, _ = await run_retrieve_with(
         {
             "status": "approved",
             "card": {"number": "4242424242424242", "cvc": "123", "brand": "visa"},
-        }
+        },
+        include_card=True,
     )
 
     assert outputs["status"] == "approved"
     assert outputs["card_number"] == "4242424242424242"
     assert "next_action_type" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_card_is_withheld_unless_explicitly_included():
+    """The opt-in has to gate emission, not just the request.
+
+    Card number and CVC are persisted with the execution, so a response
+    carrying them when we did not ask must not be written out — otherwise
+    "defaults to off" only ever described the request we sent.
+    """
+    outputs = await run_retrieve(
+        {
+            "status": "approved",
+            "card": {"number": "4242424242424242", "cvc": "123"},
+        }
+    )
+
+    assert outputs["status"] == "approved"
+    assert "card_number" not in outputs
+    assert "card_cvc" not in outputs
 
 
 @pytest.mark.asyncio
@@ -252,3 +273,91 @@ async def test_link_error_falls_back_when_the_body_is_not_json():
             await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests")
     finally:
         httpx.AsyncClient = original  # type: ignore[assignment]
+
+
+async def run_retrieve_with(payload: dict, **input_overrides) -> tuple[dict, dict]:
+    """Retrieve with extra inputs, also returning what reached the API."""
+    seen: dict = {}
+    block = StripeLinkRetrieveSpendRequestBlock()
+
+    async def _fake(credentials, method, path, body=None):
+        seen["method"] = method
+        seen["path"] = path
+        return payload
+
+    object.__setattr__(block, "_link_api_request", _fake)
+    inp = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "spend_request_id": "lsrq_test",
+            **input_overrides,
+        }
+    )
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+    return outputs, seen
+
+
+@pytest.mark.asyncio
+async def test_shared_payment_token_is_requested_and_emitted():
+    """The SPT is the value that authorizes a charge — the highest-risk output.
+
+    It is only fetched when explicitly opted into, and the emitted value must
+    be the token itself, not some other field of the wrapper object.
+    """
+    outputs, seen = await run_retrieve_with(
+        {
+            "status": "approved",
+            "shared_payment_token": {"id": "spt_live_abc123"},
+        },
+        include_shared_payment_token=True,
+    )
+
+    assert "shared_payment_token" in seen["path"]
+    assert outputs["shared_payment_token"] == "spt_live_abc123"
+
+
+@pytest.mark.asyncio
+async def test_shared_payment_token_is_not_requested_by_default():
+    outputs, seen = await run_retrieve_with(
+        {"status": "approved", "shared_payment_token": {"id": "spt_live_abc123"}}
+    )
+
+    assert "shared_payment_token" not in seen["path"]
+    assert "shared_payment_token" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_a_non_object_shared_payment_token_does_not_crash_retrieve():
+    """Link is documented to send an object; a bare string or null must not
+    take down a retrieve that has already yielded `status`."""
+    for payload_value in ("spt_live_abc123", None, []):
+        outputs, _ = await run_retrieve_with(
+            {"status": "approved", "shared_payment_token": payload_value},
+            include_shared_payment_token=True,
+        )
+        assert outputs["status"] == "approved"
+        assert "error" not in outputs
+        assert not outputs.get("shared_payment_token")
+
+
+@pytest.mark.asyncio
+async def test_a_null_status_details_does_not_break_requires_action():
+    """`.get(key, {})` only defaults when the key is *missing*.
+
+    An explicit null used to raise mid-chain, after `status` had already been
+    yielded — so the block emitted a partial result and then errored.
+    """
+    outputs = await run_retrieve({"status": "requires_action", "status_details": None})
+
+    assert outputs["status"] == "requires_action"
+    assert outputs["next_action_type"] == ""
+    assert outputs["auto_resumes"] is False
+    assert "error" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_card_request_without_merchant_fields_is_rejected():
+    """Mirror of the SPT network_id check: a card request with no merchant
+    identity must fail before it reaches Link."""
+    with pytest.raises(ValidationError, match="merchant"):
+        await run_create(credential_type="card", merchant_name="", merchant_url="")

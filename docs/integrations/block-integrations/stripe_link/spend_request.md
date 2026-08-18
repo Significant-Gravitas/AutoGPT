@@ -101,7 +101,7 @@ _Add technical explanation here._
 | card_exp_year | Card expiry year | int |
 | card_brand | Card brand (visa, mastercard, etc.) | str |
 | valid_until | ISO timestamp when the virtual card expires | str |
-| shared_payment_token | One-time Shared Payment Token, when the request was created with `credential_type: shared_payment_token`. Empty otherwise. This is a bearer credential that can authorize a charge, and block outputs are persisted — treat it like the card fields. | str |
+| shared_payment_token | One-time Shared Payment Token, when the request was created with `credential_type: shared_payment_token`. Emitted only when `include_shared_payment_token` is on; empty otherwise. This is a bearer credential that can authorize a charge, and block outputs are persisted — treat it like the card fields. | str |
 | next_action_type | Set when status is `requires_action`: what the user must resolve before approval can be requested, e.g. a 3D Secure challenge. Empty otherwise. | str |
 | next_action_message | Human-readable explanation of the required action | str |
 | next_action_url | Where the user resolves the required action | str |
