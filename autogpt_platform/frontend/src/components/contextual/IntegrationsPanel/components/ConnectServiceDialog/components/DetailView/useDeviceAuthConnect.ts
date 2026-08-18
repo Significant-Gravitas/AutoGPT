@@ -9,7 +9,6 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 
 interface DeviceAuthInitiateResponse {
   state_token: string;
-  device_code: string;
   user_code: string;
   verification_url: string;
   verification_url_complete: string | null;

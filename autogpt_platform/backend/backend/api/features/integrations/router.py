@@ -382,8 +382,10 @@ async def callback(
 
 
 class DeviceAuthInitiateResponse(BaseModel):
+    # Deliberately no `device_code`: it is the secret used to poll for tokens.
+    # The browser never needs it — /device-auth/poll takes only `state_token`
+    # and reads the device code back out of server-side state.
     state_token: str
-    device_code: str
     user_code: str
     verification_url: str
     verification_url_complete: str | None = None
@@ -453,7 +455,6 @@ async def device_auth_initiate(
 
     return DeviceAuthInitiateResponse(
         state_token=state_token,
-        device_code=initiation.device_code,
         user_code=initiation.user_code,
         verification_url=initiation.verification_url,
         verification_url_complete=initiation.verification_url_complete,

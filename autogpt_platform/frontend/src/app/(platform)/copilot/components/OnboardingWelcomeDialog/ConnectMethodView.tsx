@@ -17,6 +17,7 @@ import {
   GlobeIcon,
   Key01Icon,
   SecurityCheckIcon,
+  SmartPhone01Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -66,6 +67,11 @@ const METHOD_COPY: Record<
     label: "Host",
     description: "Scope credentials to one host.",
     icon: GlobeIcon,
+  },
+  [AuthType.device_code]: {
+    label: "Device auth",
+    description: "Approve on your phone with a short code.",
+    icon: SmartPhone01Icon,
   },
 };
 

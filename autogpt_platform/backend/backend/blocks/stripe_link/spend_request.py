@@ -175,7 +175,10 @@ class StripeLinkCreateSpendRequestBlock(Block):
             description=(
                 "Description of the purchase context (min 100 characters). "
                 "Shown to the user when they approve the request."
-            )
+            ),
+            # Enforced, not just documented: this is the text the user reads
+            # when deciding whether to approve a charge.
+            min_length=100,
         )
         amount: int = SchemaField(
             description="Amount in cents (max 50000)", ge=1, le=50000

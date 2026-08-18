@@ -112,6 +112,7 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
   api_key: "API Key",
   user_password: "Password",
   host_scoped: "Headers",
+  device_code: "Device Auth",
 };
 
 export function getCredentialTypeLabel(type: CredentialsType): string {

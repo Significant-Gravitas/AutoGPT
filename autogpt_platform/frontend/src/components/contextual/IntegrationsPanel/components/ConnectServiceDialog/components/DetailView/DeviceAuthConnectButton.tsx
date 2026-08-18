@@ -1,6 +1,12 @@
 "use client";
 
-import { ArrowSquareOutIcon, SpinnerGapIcon, XIcon } from "@phosphor-icons/react";
+import {
+  Cancel01Icon,
+  LinkSquare01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -69,13 +75,13 @@ export function DeviceAuthConnectButton({
           className="inline-flex items-center justify-center gap-2 rounded-md bg-[#1F1F20] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#2F2F30]"
         >
           Open {providerName}
-          <ArrowSquareOutIcon size={16} />
+          <Icon icon={LinkSquare01Icon} size={16} />
         </a>
       </div>
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[#83838C]">
-          <SpinnerGapIcon size={16} className="animate-spin" />
+          <Icon icon={Loading03Icon} size={16} className="animate-spin" />
           <Text variant="small">Waiting for approval…</Text>
         </div>
         <Button
@@ -83,7 +89,7 @@ export function DeviceAuthConnectButton({
           variant="ghost"
           size="small"
           onClick={cancel}
-          rightIcon={<XIcon size={14} />}
+          rightIcon={<Icon icon={Cancel01Icon} size={14} />}
         >
           Cancel
         </Button>

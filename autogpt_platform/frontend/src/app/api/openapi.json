@@ -7735,6 +7735,110 @@
         }
       }
     },
+    "/api/integrations/{provider}/device-auth/initiate": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Initiate device code OAuth flow",
+        "operationId": "postV1Initiate device code oauth flow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to initiate device auth for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "scopes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Comma-separated list of authorization scopes",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthInitiateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/{provider}/device-auth/poll": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Poll device code OAuth flow for completion",
+        "operationId": "postV1Poll device code oauth flow for completion",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to poll device auth for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeviceAuthPollRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthPollResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -17153,7 +17257,13 @@
           },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
+            "enum": [
+              "api_key",
+              "oauth2",
+              "user_password",
+              "host_scoped",
+              "device_code"
+            ],
             "title": "Type"
           }
         },
@@ -17169,7 +17279,13 @@
           "provider": { "type": "string", "title": "Provider" },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
+            "enum": [
+              "api_key",
+              "oauth2",
+              "user_password",
+              "host_scoped",
+              "device_code"
+            ],
             "title": "Type"
           },
           "title": {
@@ -17350,6 +17466,50 @@
         "required": ["edge_uuid", "reason", "new_status"],
         "title": "DemotionSummary",
         "description": "One line per demoted RELATES_TO edge."
+      },
+      "DeviceAuthInitiateResponse": {
+        "properties": {
+          "state_token": { "type": "string", "title": "State Token" },
+          "user_code": { "type": "string", "title": "User Code" },
+          "verification_url": { "type": "string", "title": "Verification Url" },
+          "verification_url_complete": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Verification Url Complete"
+          },
+          "expires_in": { "type": "integer", "title": "Expires In" },
+          "interval": { "type": "integer", "title": "Interval" }
+        },
+        "type": "object",
+        "required": [
+          "state_token",
+          "user_code",
+          "verification_url",
+          "expires_in",
+          "interval"
+        ],
+        "title": "DeviceAuthInitiateResponse"
+      },
+      "DeviceAuthPollRequest": {
+        "properties": {
+          "state_token": { "type": "string", "title": "State Token" }
+        },
+        "type": "object",
+        "required": ["state_token"],
+        "title": "DeviceAuthPollRequest"
+      },
+      "DeviceAuthPollResponse": {
+        "properties": {
+          "status": { "type": "string", "title": "Status" },
+          "credentials": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CredentialsMetaResponse" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "DeviceAuthPollResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -22999,7 +23159,13 @@
           "supported_auth_types": {
             "items": {
               "type": "string",
-              "enum": ["api_key", "oauth2", "user_password", "host_scoped"]
+              "enum": [
+                "api_key",
+                "oauth2",
+                "user_password",
+                "host_scoped",
+                "device_code"
+              ]
             },
             "type": "array",
             "title": "Supported Auth Types",
