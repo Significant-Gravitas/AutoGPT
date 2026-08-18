@@ -1,10 +1,5 @@
-import { useCreateRaisedExpert } from "@/app/api/__generated__/endpoints/experts/experts";
-import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { VoicePickResult } from "@/components/organisms/VoicePicker/helpers";
-import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   beatTriggers,
   buildFlowItems,
@@ -16,7 +11,6 @@ import {
   assembledKit,
   clearDraft,
   EMPTY_DRAFT,
-  getExpertLimitCode,
   loadDraft,
   resolveVoicePreferences,
   saveDraft,
@@ -27,20 +21,17 @@ import {
   type RaiseDraft,
   type RaiseKit,
 } from "./helpers";
-import {
-  failedAttachmentMessage,
-  toRaiseAttachments,
-} from "./components/KitStep/helpers";
 import { useFlowProgress } from "./useFlowProgress";
+import { useRaiseSubmission } from "./useRaiseSubmission";
 
 export function useRaisePage() {
-  const router = useRouter();
-  const { mutateAsync: createRaisedExpert, isPending } =
-    useCreateRaisedExpert();
   const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
   const progress = useFlowProgress(beatTriggers(draft));
-  const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
-  const submitLatch = useRef(false);
+  const { finish: submitRaise, isSubmitting } = useRaiseSubmission();
+
+  function finish(kit: RaiseKit) {
+    void submitRaise(draft, kit);
+  }
 
   function update(changes: Partial<RaiseDraft>) {
     const next = { ...draft, ...changes };
@@ -149,70 +140,6 @@ export function useRaisePage() {
     progress.clearAfter(beat);
   }
 
-  async function finish(kit: RaiseKit) {
-    if (submitLatch.current) return;
-    submitLatch.current = true;
-    setIsSubmissionLocked(true);
-    try {
-      const response = await createRaisedExpert({
-        data: {
-          name: draft.name,
-          role: draft.role,
-          color: draft.color,
-          avatar_url: draft.avatarUrl || null,
-          about: draft.about || null,
-          voice_preferences: draft.voicePreferences || null,
-          weekly_budget: kit.weeklyBudget,
-          attachments: toRaiseAttachments(kit.attachments),
-        },
-      });
-      const result = response.data as RaiseResult;
-      if (result.failed_attachments?.length) {
-        toast({
-          title: `Raised ${draft.name || "your expert"}, but some tools didn't attach`,
-          description: failedAttachmentMessage(
-            result.failed_attachments,
-            kit.attachments,
-          ),
-        });
-      }
-      clearDraft();
-      // kickoff=1 has the expert open the thread itself: introduce who it is,
-      // say what it can take on, and start or ask for its first job.
-      router.push(
-        `/copilot?expertId=${encodeURIComponent(result.expert.id)}&kickoff=1`,
-      );
-    } catch (error) {
-      submitLatch.current = false;
-      setIsSubmissionLocked(false);
-      if (error instanceof ApiError && error.status === 409) {
-        if (
-          getExpertLimitCode(error.response) === "raised_expert_lifetime_limit"
-        ) {
-          toast({
-            title: "Expert creation limit reached",
-            description:
-              "This account has reached its lifetime raised-expert limit. Contact support if you need more capacity.",
-            variant: "destructive",
-          });
-          return;
-        }
-        toast({
-          title: "Your team is full",
-          description:
-            "You've reached the limit of active experts. Archive one from your team page to raise another.",
-          variant: "destructive",
-        });
-        return;
-      }
-      toast({
-        title: `Couldn't raise ${draft.name || "your expert"}`,
-        description: "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
-    }
-  }
-
   return {
     step: draft.step,
     hasStarted: draft.hasStarted,
@@ -227,7 +154,7 @@ export function useRaisePage() {
     marketplace: draft.marketplace,
     skills: draft.skills,
     kit: assembledKit(draft),
-    isSubmitting: isPending || isSubmissionLocked,
+    isSubmitting,
     canGoBack: lastAnsweredBeat(draft) !== null,
     startRaising,
     restart,

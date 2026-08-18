@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import RaisePage from "../page";
-import { saveDraft, VOICE_SKIPPED_LABEL } from "../helpers";
+import { loadDraft, saveDraft, VOICE_SKIPPED_LABEL } from "../helpers";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
   setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
@@ -351,6 +351,16 @@ test("back returns to the previous step and the draft survives", async () => {
   expect(
     await screen.findByRole("button", { name: "Skip for now" }),
   ).toBeDefined();
+
+  const draft = loadDraft();
+  expect(draft.step).toBe("voice");
+  expect(draft.voiceLabel).toBeNull();
+  expect(draft).toMatchObject({
+    hasStarted: true,
+    role: "marketer",
+    name: "Otto",
+    color: "rose-300",
+  });
 });
 
 test("a refresh resumes the draft from session storage", async () => {

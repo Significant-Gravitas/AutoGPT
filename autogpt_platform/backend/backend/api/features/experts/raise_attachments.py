@@ -1,7 +1,6 @@
 """Validate and install raise-flow workflow/skill attachments."""
 
 import logging
-from typing import Literal
 
 import prisma.errors
 import prisma.models
@@ -10,6 +9,7 @@ from pydantic import BaseModel
 from backend.api.features.experts.models import (
     RaiseAttachment,
     RaiseAttachmentFailure,
+    RaiseAttachmentFailureReason,
     RaiseAttachmentKind,
     RaiseAttachmentSource,
 )
@@ -27,8 +27,6 @@ from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 logger = logging.getLogger(__name__)
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
-
-AttachmentFailureReason = Literal["unavailable", "installation_failed"]
 
 
 class RaiseAttachmentUnavailableError(Exception):
@@ -320,7 +318,7 @@ def _dedupe_key(attachment: RaiseAttachment) -> tuple[str, str, str]:
 
 
 def _failure(
-    attachment: RaiseAttachment, reason: AttachmentFailureReason
+    attachment: RaiseAttachment, reason: RaiseAttachmentFailureReason
 ) -> RaiseAttachmentFailure:
     return RaiseAttachmentFailure(
         kind=attachment.kind,

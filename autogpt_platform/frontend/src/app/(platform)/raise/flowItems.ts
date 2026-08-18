@@ -64,7 +64,7 @@ export function buildFlowItems(
       });
     }
     if (progress.steps[beat]) {
-      items.push({ kind: "step", id: `${beat}-step`, beat });
+      items.push({ kind: "step", id: stepId(beat), beat });
     }
   });
 
@@ -73,6 +73,10 @@ export function buildFlowItems(
 
 export function questionId(beat: BeatKey) {
   return `autogpt-${beat}-question`;
+}
+
+export function stepId(beat: BeatKey) {
+  return `${beat}-step`;
 }
 
 // Each beat's question is asked once the beat before it has an answer.

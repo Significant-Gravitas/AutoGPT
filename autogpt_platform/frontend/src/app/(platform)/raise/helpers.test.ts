@@ -8,6 +8,7 @@ import {
   kitToolsLabel,
   loadDraft,
   raisedIdentity,
+  type RaiseDraft,
   resolveVoicePreferences,
   saveDraft,
   VOICE_SKIPPED_LABEL,
@@ -107,6 +108,12 @@ describe("raise helpers", () => {
       ],
     });
   });
+
+  test("keeps a skipped budget distinct from an unanswered one", () => {
+    expect(assembledKit({ ...EMPTY_DRAFT, budget: { credits: null } })).toEqual(
+      { weeklyBudget: null, attachments: [] },
+    );
+  });
 });
 
 describe("restoring a persisted draft", () => {
@@ -131,4 +138,20 @@ describe("restoring a persisted draft", () => {
 
     expect(loadDraft().voiceLabel).toBe("Direct");
   });
+
+  test("moves a draft parked on the retired kit step onto budget", () => {
+    saveStepFromEarlierBuild("kit");
+
+    expect(loadDraft().step).toBe("budget");
+  });
+
+  test("restarts the flow when the stored step is not a known step", () => {
+    saveStepFromEarlierBuild("space-invaders");
+
+    expect(loadDraft().step).toBe(EMPTY_DRAFT.step);
+  });
 });
+
+function saveStepFromEarlierBuild(step: string) {
+  saveDraft({ ...EMPTY_DRAFT, step } as RaiseDraft);
+}

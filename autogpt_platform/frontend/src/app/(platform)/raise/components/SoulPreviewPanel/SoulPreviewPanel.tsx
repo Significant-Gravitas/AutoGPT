@@ -11,6 +11,11 @@ import { SoulDetailCard } from "./SoulDetailCard";
 const REVEAL =
   "duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
+type SoulDetail = {
+  label: string;
+  value: string;
+};
+
 type Props = {
   name: string;
   role: string | null;
@@ -38,7 +43,7 @@ export function SoulPreviewPanel({
     { label: "Voice", value: voiceLabel },
     { label: "Weekly budget", value: kitBudgetLabel(kit) },
     { label: "Tools", value: kitToolsLabel(kit) },
-  ].filter((detail) => Boolean(detail.value));
+  ].filter((detail): detail is SoulDetail => Boolean(detail.value));
 
   return (
     <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
@@ -81,7 +86,7 @@ export function SoulPreviewPanel({
         <SoulDetailCard
           key={detail.label}
           label={detail.label}
-          value={detail.value as string}
+          value={detail.value}
           color={color}
         />
       ))}

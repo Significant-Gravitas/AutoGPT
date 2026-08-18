@@ -718,10 +718,6 @@ describe("ChatMessagesContainer — readOnly mode", () => {
 // ── expert kickoff ────────────────────────────────────────────────────────
 
 describe("ChatMessagesContainer — expert kickoff", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
   it("shows the kickoff prompt as a user message above the reply", () => {
     const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
     render(

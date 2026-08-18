@@ -139,6 +139,28 @@ describe("kickoff message identification", () => {
     expect(firstText(revealed[0])).toBe(kickoff.text);
   });
 
+  it("carries non-text parts of a kickoff message through the reveal", () => {
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+    const filePart = {
+      type: "file",
+      mediaType: "application/json",
+      filename: "workflow.json",
+      url: "https://example.test/api/workspace/files/file-1",
+    };
+    const message = {
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: kickoff.text }, filePart],
+      metadata: kickoff.metadata,
+    } as UIMessage;
+
+    const [revealed] = revealKickoffMessages([message]);
+
+    expect(revealed.parts).toHaveLength(2);
+    expect(firstText(revealed)).toBe(kickoff.text);
+    expect(revealed.parts[1]).toEqual(filePart);
+  });
+
   it("hides the legacy marker from a revealed kickoff message", () => {
     const legacy = `[[EXPERT_KICKOFF:${EXPERT_ID}]]\n\nIntroduce yourself.`;
 

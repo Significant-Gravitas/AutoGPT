@@ -202,4 +202,41 @@ describe("kit helpers", () => {
       ),
     ).toBe("SEO Blog Writer is no longer available");
   });
+
+  test("separates multiple failed attachments into sentences", () => {
+    expect(
+      failedAttachmentMessage(
+        [
+          {
+            kind: "workflow",
+            source: "marketplace",
+            id: "listing-1",
+            reason: "unavailable",
+          },
+          {
+            kind: "skill",
+            source: "library",
+            id: "seo-audit",
+            reason: "installation_failed",
+          },
+        ],
+        [
+          {
+            kind: "workflow",
+            source: "marketplace",
+            id: "listing-1",
+            name: "SEO Blog Writer",
+          },
+          {
+            kind: "skill",
+            source: "library",
+            id: "seo-audit",
+            name: "SEO audit",
+          },
+        ],
+      ),
+    ).toBe(
+      "SEO Blog Writer is no longer available. SEO audit couldn't be installed",
+    );
+  });
 });

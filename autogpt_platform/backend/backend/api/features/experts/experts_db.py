@@ -117,11 +117,15 @@ FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
-    name = listing.name if listing else None
-    description = listing.description if listing else None
-    if name is None and library_agent is not None:
-        name = library_agent.name
-        description = library_agent.description
+    # A listing always carries both name and description (non-null columns), so
+    # the pair is taken from one source or the other — never mixed, which would
+    # pair a published title with the creator's private description.
+    if listing is not None:
+        name, description = listing.name, listing.description
+    elif library_agent is not None:
+        name, description = library_agent.name, library_agent.description
+    else:
+        name, description = None, None
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,

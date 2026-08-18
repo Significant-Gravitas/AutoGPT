@@ -70,10 +70,6 @@ export const RAISE_PROMPTS = {
     `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
   skillsQuestion: (name: string) =>
     `Should ${name || "your expert"} have extra skills? Add from your library, or a marketplace agent as a skill — or skip.`,
-  name: "Hi. I don't have a name yet — that's where you come in.",
-  voice: (name: string) =>
-    `Nice to meet you, ${name}. How should I sound when I write?`,
-  review: "That's me so far. Ready when you are — I'll open our first chat.",
 };
 
 // Beat before each question lands, so the control that triggered it settles

@@ -141,7 +141,12 @@ function NewTaskItem() {
   );
 }
 
-function NavItem({ link, children }: { link: NavLink; children?: ReactNode }) {
+interface NavItemProps {
+  link: NavLink;
+  children?: ReactNode;
+}
+
+function NavItem({ link, children }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 

@@ -176,7 +176,7 @@ export function failedAttachmentMessage(
           : "couldn't be installed";
       return `${name} ${reason}`;
     })
-    .join(" ");
+    .join(". ");
 }
 
 function marketplaceHit(

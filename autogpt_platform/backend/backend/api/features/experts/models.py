@@ -182,6 +182,7 @@ class HireResult(BaseModel):
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
 RaiseAttachmentSource = Literal["marketplace", "library"]
+RaiseAttachmentFailureReason = Literal["unavailable", "installation_failed"]
 MAX_RAISE_ATTACHMENTS = 20
 WEEKLY_BUDGET_MAX_CREDITS = 1_000_000
 
@@ -217,7 +218,7 @@ class RaiseAttachmentFailure(BaseModel):
     kind: RaiseAttachmentKind
     source: RaiseAttachmentSource
     id: str
-    reason: Literal["unavailable", "installation_failed"]
+    reason: RaiseAttachmentFailureReason
 
 
 class RaiseResult(BaseModel):

@@ -1,83 +1,50 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { cn } from "@/lib/utils";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft02Icon,
   ArrowRight02Icon,
   RefreshIcon,
 } from "@hugeicons/core-free-icons";
+import { useRef, useState } from "react";
 import {
   BEAT_KEYS,
   questionId,
   type BeatKey,
   type RaiseFlowItem,
 } from "../../flowItems";
-import { VOICE_SAMPLES } from "../../helpers";
-import { useRef, useState } from "react";
-import { useRaisePage } from "../../useRaisePage";
 import { useConversationScroll } from "../../useConversationScroll";
-import { AboutStep } from "../AboutStep/AboutStep";
+import { useRaisePage } from "../../useRaisePage";
 import { AutoGPTBubble } from "../AutoGPTBubble/AutoGPTBubble";
-import { AvatarStep } from "../AvatarStep/AvatarStep";
-import { ColorStep } from "../ColorStep/ColorStep";
-import {
-  ditherColorsFor,
-  interactiveCardClassFor,
-  selectedCardClassFor,
-  textClassFor,
-} from "../ColorStep/helpers";
+import { ditherColorsFor } from "../ColorStep/helpers";
 import { DitheredWaves } from "../DitheredWaves/DitheredWaves";
-import { BudgetStep } from "../BudgetStep/BudgetStep";
-import { MarketplaceStep } from "../MarketplaceStep/MarketplaceStep";
-import { NameStep } from "../NameStep/NameStep";
-import { RoleStep } from "../RoleStep/RoleStep";
-import { SkillsStep } from "../SkillsStep/SkillsStep";
-import { nameSuggestionsFor } from "../RoleStep/helpers";
 import { SoulPreviewPanel } from "../SoulPreviewPanel/SoulPreviewPanel";
+import { BeatControl } from "./components/BeatControl";
 import { RestartConfirmDialog } from "./components/RestartConfirmDialog";
 
 const STEP_ANIMATION =
   "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 export function RaiseFlow() {
+  const flow = useRaisePage();
   const {
     hasStarted,
     items,
-    role,
     name,
+    role,
     color,
     avatarUrl,
     about,
     voiceLabel,
-    budget,
-    marketplace,
-    skills,
     kit,
-    isSubmitting,
     canGoBack,
     startRaising,
     restart,
     goBack,
     revealStep,
-    pickRole,
-    submitName,
-    pickColor,
-    pickAvatar,
-    skipAvatar,
-    submitAbout,
-    skipAbout,
-    pickVoice,
-    skipVoice,
-    submitBudget,
-    skipBudget,
-    submitMarketplace,
-    skipMarketplace,
-    submitSkills,
-    skipSkills,
-  } = useRaisePage();
+  } = flow;
   const { scrollRef, canScrollUp, canScrollDown } = useConversationScroll();
   const [isRestartOpen, setIsRestartOpen] = useState(false);
   const initialMessageIds = useRef<Set<string> | null>(null);
@@ -87,90 +54,6 @@ export function RaiseFlow() {
     );
   }
   const seenMessageIds = initialMessageIds.current;
-
-  function renderStep(beat: BeatKey) {
-    switch (beat) {
-      case "role":
-        return <RoleStep selectedRole={role} color={color} onPick={pickRole} />;
-      case "name":
-        return (
-          <NameStep
-            selectedName={name || null}
-            suggestions={nameSuggestionsFor(role)}
-            color={color}
-            onSubmit={submitName}
-          />
-        );
-      case "color":
-        return <ColorStep selectedColor={color} onPick={pickColor} />;
-      case "avatar":
-        return (
-          <AvatarStep
-            name={name}
-            color={color}
-            avatarUrl={avatarUrl || null}
-            isSkipped={avatarUrl === ""}
-            onPick={pickAvatar}
-            onSkip={skipAvatar}
-          />
-        );
-      case "about":
-        return (
-          <AboutStep
-            submittedAbout={about}
-            name={name}
-            color={color}
-            onSubmit={submitAbout}
-            onSkip={skipAbout}
-          />
-        );
-      case "voice":
-        return (
-          <VoicePicker
-            name={name}
-            samples={VOICE_SAMPLES}
-            hideHeader
-            labelClassName={textClassFor(color)}
-            cardColors={{
-              selected: selectedCardClassFor(color),
-              interactive: interactiveCardClassFor(color),
-            }}
-            onPick={pickVoice}
-            onSkip={skipVoice}
-          />
-        );
-      case "budget":
-        return (
-          <BudgetStep
-            color={color}
-            submittedBudget={budget}
-            onSubmit={submitBudget}
-            onSkip={skipBudget}
-          />
-        );
-      case "marketplace":
-        return (
-          <MarketplaceStep
-            color={color}
-            submitted={marketplace}
-            onSubmit={submitMarketplace}
-            onSkip={skipMarketplace}
-          />
-        );
-      case "skills":
-        return (
-          <SkillsStep
-            name={name}
-            color={color}
-            submitted={skills}
-            existingCount={marketplace?.length ?? 0}
-            isSubmitting={isSubmitting}
-            onSubmit={submitSkills}
-            onSkip={skipSkills}
-          />
-        );
-    }
-  }
 
   function renderItem(item: RaiseFlowItem) {
     if (item.kind === "startButton") {
@@ -192,7 +75,7 @@ export function RaiseFlow() {
     if (item.kind === "step") {
       return (
         <div key={item.id} id={item.id} className={STEP_ANIMATION}>
-          {renderStep(item.beat)}
+          <BeatControl beat={item.beat} flow={flow} />
         </div>
       );
     }

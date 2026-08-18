@@ -833,15 +833,15 @@ async def test_raise_expert_rejects_missing_library_skill(server: SpinTestServer
             new_callable=AsyncMock,
             return_value=None,
         ),
+        pytest.raises(experts_db.FirstJobUnavailableError),
     ):
-        with pytest.raises(experts_db.FirstJobUnavailableError):
-            await experts_db.create_raised_expert(
-                owner.id,
-                "Otto",
-                None,
-                None,
-                attachments=_library_skill("missing_skill"),
-            )
+        await experts_db.create_raised_expert(
+            owner.id,
+            "Otto",
+            None,
+            None,
+            attachments=_library_skill("missing_skill"),
+        )
     assert await experts_db.list_experts(owner.id) == []
 
 
@@ -1311,9 +1311,11 @@ async def test_existing_non_private_hire_is_never_revived():
     async def fake_transaction(*args, **kwargs):
         yield tx
 
-    with patch.object(experts_db, "transaction", fake_transaction):
-        with pytest.raises(experts_db.ExpertNotFoundError):
-            await experts_db._reserve_hired_expert("owner-1", "template-1", {})
+    with (
+        patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db._reserve_hired_expert("owner-1", "template-1", {})
 
     tx.expert.update.assert_not_awaited()
     tx.expert.create.assert_not_awaited()
@@ -1359,9 +1361,9 @@ async def test_hire_existing_team_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
-            await experts_db.hire_expert("owner-1", "template-1", None)
+        await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
     tx.expert.create.assert_not_awaited()
@@ -1411,9 +1413,9 @@ async def test_hire_raced_org_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
-            await experts_db.hire_expert("owner-1", "template-1", None)
+        await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
     tx.expert.create.assert_awaited_once()
@@ -1450,9 +1452,9 @@ async def test_rehire_missing_private_tenancy_rolls_back_to_archived():
         patch.object(
             scheduling, "detach_expert_triggers", new_callable=AsyncMock
         ) as detach,
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
     ):
-        with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
-            await experts_db._resume_revived_hire(row)
+        await experts_db._resume_revived_hire(row)
 
     resume.assert_not_awaited()
     reattach.assert_not_awaited()
@@ -1497,9 +1499,9 @@ async def test_rehire_reattach_failure_restores_archived_state():
         patch.object(
             scheduling, "detach_expert_triggers", new_callable=AsyncMock
         ) as detach,
+        pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info:
-            await experts_db._resume_revived_hire(row)
+        await experts_db._resume_revived_hire(row)
 
     assert exc_info.value.expert_id == "expert-1"
     assert isinstance(exc_info.value.__cause__, RuntimeError)
@@ -1580,9 +1582,9 @@ async def test_resolve_private_expert_tenancy_fails_without_personal_org():
             new_callable=AsyncMock,
             return_value=(None, None),
         ),
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
     ):
-        with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
-            await experts_db.resolve_private_expert_tenancy("owner-1", "expert-1")
+        await experts_db.resolve_private_expert_tenancy("owner-1", "expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2276,9 +2278,11 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
         where={"id": hired.expert.id}, data={"weeklyBudget": 100}
     )
 
-    with patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=150)):
-        with pytest.raises(ExpertRunPausedError):
-            await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
+    with (
+        patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=150)),
+        pytest.raises(ExpertRunPausedError),
+    ):
+        await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
 
     row = await prisma.models.Expert.prisma().find_unique(where={"id": hired.expert.id})
     assert row is not None and row.schedulesPausedAt is not None
@@ -3269,13 +3273,15 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
 async def test_list_expert_runs_rejects_missing_or_foreign_expert():
     expert_client = SimpleNamespace(find_first=AsyncMock(return_value=None))
 
-    with patch.object(
-        prisma.models.Expert,
-        "prisma",
-        return_value=expert_client,
+    with (
+        patch.object(
+            prisma.models.Expert,
+            "prisma",
+            return_value=expert_client,
+        ),
+        pytest.raises(experts_db.ExpertNotFoundError),
     ):
-        with pytest.raises(experts_db.ExpertNotFoundError):
-            await experts_db.list_expert_runs("owner-1", "foreign-expert")
+        await experts_db.list_expert_runs("owner-1", "foreign-expert")
 
     assert expert_client.find_first.await_args.kwargs["where"]["ownerUserId"] == (
         "owner-1"

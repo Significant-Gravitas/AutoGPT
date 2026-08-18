@@ -70,6 +70,8 @@ export function AvatarStep({
         type="file"
         accept={ACCEPTED_AVATAR_TYPES}
         className="sr-only"
+        tabIndex={-1}
+        aria-hidden
         onChange={(event) => handleFileChange(event.target.files?.[0])}
       />
       <Button

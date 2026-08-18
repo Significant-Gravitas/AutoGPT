@@ -1,8 +1,6 @@
-export const MIN_BOTTOM_PADDING = 64;
+import { BEAT_KEYS, questionId, stepId, type BeatKey } from "./flowItems";
 
-const PROMPT_PREFIX = "autogpt-";
-const PROMPT_SUFFIX = "-question";
-const STEP_SUFFIX = "-step";
+export const MIN_BOTTOM_PADDING = 64;
 
 export function bottomPaddingToCenter(
   viewportHeight: number,
@@ -32,14 +30,12 @@ export function scrollTopToCenterChild({
   return Math.max(0, Math.min(next, Math.max(0, maxScrollTop)));
 }
 
-function beatFromPromptId(id: string) {
-  if (!id.startsWith(PROMPT_PREFIX) || !id.endsWith(PROMPT_SUFFIX)) return null;
-  return id.slice(PROMPT_PREFIX.length, -PROMPT_SUFFIX.length);
+function beatFromPromptId(id: string): BeatKey | null {
+  return BEAT_KEYS.find((beat) => questionId(beat) === id) ?? null;
 }
 
-function beatFromStepId(id: string) {
-  if (!id.endsWith(STEP_SUFFIX)) return null;
-  return id.slice(0, -STEP_SUFFIX.length);
+function beatFromStepId(id: string): BeatKey | null {
+  return BEAT_KEYS.find((beat) => stepId(beat) === id) ?? null;
 }
 
 export function isPromptStepPair(
