@@ -8,6 +8,7 @@ Uses a public client ID (no client_secret).
 import logging
 import time
 from typing import ClassVar
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import SecretStr
@@ -19,11 +20,14 @@ from backend.integrations.oauth.device_base import (
     DeviceAuthPollResult,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
+app_config = Config()
 
 LINK_AUTH_BASE_URL = "https://login.link.com"
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
+LINK_CLIENT_NAME = "AutoGPT"
 
 
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
@@ -34,22 +38,47 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         "userinfo:read",
         "payment_methods.agentic",
     ]
+    # Requested as RFC 9396 authorization details, not scopes — Link gates its
+    # read endpoints on these rather than on the scope string.
+    SOURCE_ACTIONS: ClassVar[list[str]] = [
+        "read_balances",
+        "read_external_transactions",
+        "read_link_transactions",
+        "read_source_details",
+    ]
 
     async def initiate_device_auth(self, scopes: list[str]) -> DeviceAuthInitiation:
-        import socket
-
         effective_scopes = self.handle_default_scopes(scopes)
-        hostname = socket.gethostname()
+
+        # Shown in the user's Link app under connected apps, and on the consent
+        # screen. The CLI uses `<client> on <hostname>`, but our hostname is a
+        # container ID the user has never seen — the platform they are actually
+        # connecting to is the useful half.
+        platform_host = urlparse(app_config.platform_base_url or "").netloc
+        connection_label = (
+            f"{LINK_CLIENT_NAME} on {platform_host}"
+            if platform_host
+            else LINK_CLIENT_NAME
+        )
+
+        # RFC 9396 rich authorization details. Link gates its read endpoints
+        # (/balances, /transactions, /sources) on these source actions being
+        # part of the grant — without them those return 403 feature_unavailable
+        # even though the scopes look sufficient. One `source` detail carries
+        # every action, matching the CLI's buildAuthorizationDetails.
+        form = {
+            "client_id": LINK_CLIENT_ID,
+            "scope": " ".join(effective_scopes),
+            "connection_label": connection_label,
+            "client_hint": LINK_CLIENT_NAME,
+            "authorization_details[][type]": "source",
+            "authorization_details[][actions][]": self.SOURCE_ACTIONS,
+        }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{LINK_AUTH_BASE_URL}/device/code",
-                data={
-                    "client_id": LINK_CLIENT_ID,
-                    "scope": " ".join(effective_scopes),
-                    "connection_label": f"AutoGPT on {hostname}",
-                    "client_hint": "AutoGPT",
-                },
+                data=form,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             response.raise_for_status()

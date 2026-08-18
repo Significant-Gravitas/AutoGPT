@@ -87,6 +87,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
 | [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
 | [Stripe Link Create Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-spend-request) | Create a Stripe Link spend request for a one-time payment credential |
+| [Stripe Link Get Shipping Address](block-integrations/stripe_link/profile.md#stripe-link-get-shipping-address) | Get the shipping addresses saved on a Link wallet, so an agent can complete a checkout that needs delivery |
+| [Stripe Link Get User Info](block-integrations/stripe_link/profile.md#stripe-link-get-user-info) | Get the Link account holder's name and contact details |
 | [Stripe Link List Payment Methods](block-integrations/stripe_link/spend_request.md#stripe-link-list-payment-methods) | List payment methods from a Stripe Link wallet |
 | [Stripe Link Retrieve Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-spend-request) | Retrieve a Stripe Link spend request and card credentials |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |

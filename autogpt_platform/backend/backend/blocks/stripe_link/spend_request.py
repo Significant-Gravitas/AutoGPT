@@ -273,6 +273,11 @@ class StripeLinkCreateSpendRequestBlock(Block):
                     "test": input_data.test_mode,
                 },
             )
+            # Note: do NOT also call POST /spend_requests/{id}/request_approval
+            # here. `request_approval` in the body already moves the request to
+            # pending_approval, and the dedicated endpoint then 409s. That
+            # endpoint is for requesting approval on a request created without
+            # it — verified against the live API.
             yield "spend_request_id", result["id"]
             yield "status", result["status"]
             if result.get("approval_url"):
