@@ -38,6 +38,11 @@ PAYMENT_SCHEME = "Payment"
 # Merchant-controlled data: bound what we decode and what we echo back.
 MAX_REQUEST_BLOB_BYTES = 16 * 1024
 MAX_ERROR_BODY_CHARS = 1000
+# `Requests` retries throttle statuses forever when unbounded, and that set
+# includes 500. A read can be retried safely; the paying request cannot — a 500
+# may mean the merchant already processed it, so it gets a single attempt.
+PROBE_MAX_ATTEMPTS = 3
+PAY_MAX_ATTEMPTS = 1
 # Fields `mppx` keeps on the wire challenge; anything else the server sends is
 # dropped rather than echoed back.
 CHALLENGE_FIELDS = frozenset(
@@ -203,7 +208,9 @@ class StripeLinkGetPaymentChallengeBlock(Block):
         Goes through `Requests`, which validates the URL before connecting. The
         URL comes from the agent, so a raw client here would be an SSRF hole.
         """
-        response = await Requests(raise_for_status=False).request(
+        response = await Requests(
+            raise_for_status=False, retry_max_attempts=PROBE_MAX_ATTEMPTS
+        ).request(
             method,
             url,
             json=body or None,
@@ -368,7 +375,8 @@ class StripeLinkMPPPayBlock(Block):
         — so an unvalidated client could be steered into handing a payment
         token to an arbitrary or internal host.
         """
-        client = Requests(raise_for_status=False)
+        # Bounded, and deliberately not retried: see PAY_MAX_ATTEMPTS.
+        client = Requests(raise_for_status=False, retry_max_attempts=PAY_MAX_ATTEMPTS)
         # Caller headers first, so they cannot displace Content-Type or, more
         # importantly, the Authorization we are about to attach.
         base_headers = {**headers, "Content-Type": "application/json"}
