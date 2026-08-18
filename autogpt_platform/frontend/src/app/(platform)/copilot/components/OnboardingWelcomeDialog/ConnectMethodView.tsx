@@ -34,7 +34,7 @@ interface Props {
 // Every method a provider can advertise has to appear here — the list below
 // is filtered by it, so anything missing renders no method at all rather than
 // falling back to a default.
-const METHOD_ORDER: AuthMethod[] = [
+export const METHOD_ORDER: AuthMethod[] = [
   AuthType.oauth2,
   AuthType.device_code,
   AuthType.api_key,
