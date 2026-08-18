@@ -174,7 +174,16 @@ export const getCredentialProviderFromSchema = (
       return null;
     }
     return discriminatedProvider;
-  } else {
-    return providers[0];
   }
+
+  // Single-provider fields used to return their one provider unconditionally,
+  // ignoring the discriminator. That is wrong when a field declares a mapping:
+  // an unmapped value means "this choice needs no credential" — AutoPilot's
+  // `platform` transport, which is deliberately absent from the mapping — and
+  // the input must hide rather than ask for a credential nothing will use.
+  if (discriminator && discriminatorMapping) {
+    return discriminatedProvider ?? null;
+  }
+
+  return providers[0];
 };
