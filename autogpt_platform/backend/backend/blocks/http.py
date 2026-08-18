@@ -206,11 +206,17 @@ class SendWebRequestBlock(Block):
             json=body if (input_data.json_format and not use_files) else None,
         )
 
-        # Decide how to parse the response
-        content_type = response.headers.get("content-type", "")
-        is_json = content_type.startswith("application/json") or content_type.endswith(
-            "+json"
+        # Decide how to parse the response. RFC 6839 structured syntax suffixes
+        # such as application/problem+json and application/vnd.api+json are JSON.
+        # Strip media-type parameters before matching so `+json; charset=utf-8`
+        # is handled correctly as well.
+        content_type = (
+            response.headers.get("content-type", "")
+            .split(";", 1)[0]
+            .strip()
+            .lower()
         )
+        is_json = content_type == "application/json" or content_type.endswith("+json")
         if is_json:
             result = None if response.status == 204 else response.json()
         else:
