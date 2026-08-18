@@ -15,6 +15,7 @@ import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
 import { TEAM_GRID_CLASS } from "./helpers";
+import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
@@ -28,6 +29,7 @@ export default function TeamPage() {
     podForExpert,
     podGroups,
     ungroupedExperts,
+    schedules,
     schedulesForExpert,
     isLoading,
     isError,
@@ -83,7 +85,7 @@ export default function TeamPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2.5">
-            <AITeamIcon size={36} className="shrink-0 text-black" />
+            <AITeamIcon size={36} className="shrink-0 text-zinc-950" />
             <Text variant="h3">Your Team</Text>
           </div>
           <Text variant="body" className="max-w-prose text-zinc-600">
@@ -92,6 +94,9 @@ export default function TeamPage() {
         </div>
         <CreateMenu onNewPod={openNewPod} />
       </div>
+      {!isLoading && !isError && hiredExperts.length > 0 ? (
+        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
+      ) : null}
 
       <TeamRoster
         isLoading={isLoading}

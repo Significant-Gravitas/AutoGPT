@@ -7,10 +7,12 @@ from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
+    ExpertIdentity,
     ExpertPod,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseResult,
 )
 
 router = APIRouter(
@@ -48,6 +50,21 @@ class AssignPodRequest(BaseModel):
     pod_id: str | None
 
 
+class CreateRaisedExpertRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: str | None = Field(default=None, max_length=100)
+    voice_preferences: str | None = Field(default=None, max_length=4_000)
+    first_job_store_listing_version_id: str | None = Field(default=None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Name must not be blank")
+        return stripped
+
+
 @router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
@@ -56,7 +73,11 @@ async def list_expert_templates() -> list[Expert]:
 @router.post(
     "",
     operation_id="hire_expert",
-    responses={404: {"description": "Expert template not found"}},
+    responses={
+        404: {"description": "Expert or expert template not found"},
+        409: {"description": "Active expert limit reached"},
+        503: {"description": "Expert workspace unavailable"},
+    },
 )
 async def hire_expert(
     request: HireRequest,
@@ -66,12 +87,70 @@ async def hire_expert(
         return await experts_db.hire_expert(user_id, request.template_id, request.name)
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found") from e
+    except experts_db.ExpertHireUnavailableError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Your expert is temporarily unavailable. Try again shortly.",
+        ) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Your expert workspace is still being set up. Try again shortly.",
+        ) from e
+    except experts_db.ExpertLimitExceededError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": e.limit},
+        )
+
+
+@router.post(
+    "/raise",
+    operation_id="create_raised_expert",
+    responses={
+        404: {"description": "First job listing not found or unavailable"},
+        409: {"description": "Active expert limit reached"},
+    },
+)
+async def create_raised_expert(
+    request: CreateRaisedExpertRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> RaiseResult:
+    try:
+        return await experts_db.create_raised_expert(
+            user_id,
+            request.name,
+            request.role,
+            request.voice_preferences,
+            request.first_job_store_listing_version_id,
+        )
+    except experts_db.FirstJobUnavailableError as e:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail={
+                "code": "first_job_unavailable",
+                "store_listing_version_id": e.store_listing_version_id,
+            },
+        )
+    except experts_db.ExpertLimitExceededError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": e.limit},
+        )
+    except experts_db.RaisedExpertLifetimeLimitExceededError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "raised_expert_lifetime_limit", "limit": e.limit},
+        )
 
 
 @router.get("", operation_id="list_experts")
 async def list_experts(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[Expert]:
+    """List the user's active hired experts."""
     return await experts_db.list_experts(user_id)
 
 
@@ -122,6 +201,14 @@ async def assign_expert_pod(
         experts_db.ExpertPodNotFoundError,
     ):
         raise fastapi.HTTPException(status_code=404, detail="Expert or pod not found")
+
+
+@router.get("/identities", operation_id="list_expert_identities")
+async def list_expert_identities(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertIdentity]:
+    """List the lightweight active and archived identity projection for chat."""
+    return await experts_db.list_expert_identities(user_id)
 
 
 @router.get(

@@ -229,9 +229,11 @@ def file_path_to_title(file_path: str) -> str:
         "Pr": "PR",
         "Gmb": "GMB",  # Google My Business
         "Hubspot": "HubSpot",
+        "Allquiet": "All Quiet",
         "Linkedin": "LinkedIn",
         "Tiktok": "TikTok",
         "Youtube": "YouTube",
+        "Dataforb2B": "DataForB2B",
     }
 
     def apply_fixes(text: str) -> str:

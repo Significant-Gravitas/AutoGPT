@@ -71,12 +71,49 @@ export function getWeeklySpend(expert: Expert) {
   return { spent: expert.weekly_spend ?? 0, budget: expert.weekly_budget };
 }
 
-export function workflowNeedsSetup(workflow: ExpertWorkflowRef) {
-  return Boolean(workflow.schedule_cron) && !workflow.schedule_id;
+export function getWorkflowSchedules(
+  workflow: ExpertWorkflowRef,
+  schedules: GraphExecutionJobInfo[],
+  graphWorkflowCounts: ReadonlyMap<ExpertWorkflowRef["graph_id"], number>,
+) {
+  const sameGraphWorkflowCount =
+    graphWorkflowCounts.get(workflow.graph_id) ?? 0;
+  return schedules.filter(
+    (schedule) =>
+      schedule.id === workflow.schedule_id ||
+      (sameGraphWorkflowCount === 1 && schedule.graph_id === workflow.graph_id),
+  );
 }
 
-export function getNeedsSetupCount(expert: Expert) {
-  return expert.workflows.filter(workflowNeedsSetup).length;
+export function getGraphWorkflowCounts(workflows: ExpertWorkflowRef[]) {
+  const counts = new Map<ExpertWorkflowRef["graph_id"], number>();
+  for (const workflow of workflows) {
+    counts.set(workflow.graph_id, (counts.get(workflow.graph_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function workflowNeedsSetup(
+  workflow: ExpertWorkflowRef,
+  schedules?: GraphExecutionJobInfo[],
+) {
+  const hasSchedule = schedules
+    ? schedules.length > 0
+    : Boolean(workflow.schedule_id);
+  return Boolean(workflow.schedule_cron) && !hasSchedule;
+}
+
+export function getNeedsSetupCount(
+  expert: Expert,
+  schedules?: GraphExecutionJobInfo[],
+) {
+  const graphWorkflowCounts = getGraphWorkflowCounts(expert.workflows);
+  return expert.workflows.filter((workflow) => {
+    const workflowSchedules = schedules
+      ? getWorkflowSchedules(workflow, schedules, graphWorkflowCounts)
+      : undefined;
+    return workflowNeedsSetup(workflow, workflowSchedules);
+  }).length;
 }
 
 /** Schedules belonging to an expert, soonest-firing first. Matches on the
