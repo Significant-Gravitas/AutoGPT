@@ -50,7 +50,12 @@ from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExecutionFailureReason,
+    NotFoundError,
+    get_execution_failure_reason,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -247,6 +252,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        failure_reason: ExecutionFailureReason | None = Field(
+            default=None,
+            description="Structured reason for a terminal execution failure",
+        )
         activity_status: str | None = Field(
             default=None,
             description="AI-generated summary of what the agent did",
@@ -266,6 +275,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                failure_reason=self.failure_reason,
                 activity_status=self.activity_status,
                 correctness_score=self.correctness_score,
             )
@@ -282,6 +292,7 @@ class GraphExecutionMeta(BaseDbModel):
     def from_db(_graph_exec: AgentGraphExecution):
         start_time = _graph_exec.startedAt
         end_time = _graph_exec.endedAt
+        execution_status = ExecutionStatus(_graph_exec.executionStatus)
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -292,6 +303,19 @@ class GraphExecutionMeta(BaseDbModel):
                     f"{_graph_exec.stats}: {e}"
                 )
             stats = None
+
+        failure_reason = stats.failure_reason if stats else None
+        if (
+            stats
+            and failure_reason is None
+            and execution_status == ExecutionStatus.FAILED
+        ):
+            # Historical error text may include provider-controlled content, so
+            # this compatibility path accepts only the anchored full-message forms.
+            failure_reason = get_execution_failure_reason(
+                stats.error,
+                allow_legacy_text=True,
+            )
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
@@ -311,7 +335,7 @@ class GraphExecutionMeta(BaseDbModel):
                 dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
             ),
             preset_id=_graph_exec.agentPresetId,
-            status=ExecutionStatus(_graph_exec.executionStatus),
+            status=execution_status,
             started_at=start_time,
             ended_at=end_time,
             stats=(
@@ -328,6 +352,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    failure_reason=failure_reason,
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
                 )

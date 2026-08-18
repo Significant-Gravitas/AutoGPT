@@ -185,6 +185,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
+| [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
 
 ## Text Processing
 
@@ -237,6 +238,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
 | [Replicate Model](block-integrations/replicate/replicate_block.md#replicate-model) | Run Replicate models synchronously |
+| [Smart Search](block-integrations/dataforb2b/reasoning.md#smart-search) | Natural-language search for people, leads or companies using DataForB2B's B2B database — describe your ideal lead or ICP in plain English and get matching profiles |
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
@@ -295,6 +297,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Get Person Detail](block-integrations/apollo/person.md#get-person-detail) | Get detailed person data with Apollo API, including email reveal |
 | [Get Wikipedia Summary](block-integrations/search.md#get-wikipedia-summary) | This block fetches the summary of a given topic from Wikipedia |
 | [Google Maps Search](block-integrations/search.md#google-maps-search) | This block searches for local businesses using Google Maps API |
+| [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
 | [Search Organizations](block-integrations/apollo/organization.md#search-organizations) | Search for organizations in Apollo |
 | [Search People](block-integrations/apollo/people.md#search-people) | Search for people in Apollo |
 | [Search The Web](block-integrations/jina/search.md#search-the-web) | This block searches the internet for the given search query |
@@ -482,6 +485,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [All Quiet Create Incident](block-integrations/allquiet/incidents.md#all-quiet-create-incident) | Creates an incident in All Quiet and pages the on-call responder |
+| [All Quiet Get Incident](block-integrations/allquiet/incident_search.md#all-quiet-get-incident) | Fetches a single All Quiet incident by ID |
+| [All Quiet Get On Call](block-integrations/allquiet/on_call.md#all-quiet-get-on-call) | Looks up who is on call in All Quiet, now or at a given time |
+| [All Quiet Incident Trigger](block-integrations/allquiet/triggers.md#all-quiet-incident-trigger) | Triggers a graph when All Quiet posts an incident to this webhook |
+| [All Quiet List Incidents](block-integrations/allquiet/incident_search.md#all-quiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
+| [All Quiet List Teams](block-integrations/allquiet/teams.md#all-quiet-list-teams) | Lists All Quiet teams and their IDs |
+| [All Quiet Update Incident](block-integrations/allquiet/incidents.md#all-quiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
@@ -631,9 +641,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Add Lead To Campaign](block-integrations/smartlead/campaign.md#add-lead-to-campaign) | Add a lead to a campaign in SmartLead |
+| [Company Enrichment](block-integrations/dataforb2b/enrich.md#company-enrichment) | Look up and enrich a company using DataForB2B's B2B database — firmographics, headcount/size, industry, domain and social profiles from a company domain, name or LinkedIn URL |
+| [Company Search](block-integrations/dataforb2b/search.md#company-search) | Search companies and accounts by structured filters — industry, headcount/size, location, funding, keywords — using DataForB2B's database |
 | [Create Campaign](block-integrations/smartlead/campaign.md#create-campaign) | Create a campaign in SmartLead |
 | [Hub Spot Company](block-integrations/hubspot/company.md#hub-spot-company) | Manages HubSpot companies - create, update, and retrieve company information |
 | [Hub Spot Contact](block-integrations/hubspot/contact.md#hub-spot-contact) | Manages HubSpot contacts - create, update, and retrieve contact information |
+| [People Search](block-integrations/dataforb2b/search.md#people-search) | Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database |
+| [Profile Enrichment](block-integrations/dataforb2b/enrich.md#profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub |
 | [Save Campaign Sequences](block-integrations/smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
 
 ## AI Safety
