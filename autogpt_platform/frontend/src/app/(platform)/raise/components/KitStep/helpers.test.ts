@@ -109,7 +109,11 @@ describe("kit helpers", () => {
     });
 
     expect(hits).toHaveLength(3);
-    expect(hits.map((hit) => hit.id)).toEqual(["skill-a", "skill-b", "skill-c"]);
+    expect(hits.map((hit) => hit.id)).toEqual([
+      "skill-a",
+      "skill-b",
+      "skill-c",
+    ]);
   });
 
   test("ranks search hits by relevance and keeps the top three", () => {

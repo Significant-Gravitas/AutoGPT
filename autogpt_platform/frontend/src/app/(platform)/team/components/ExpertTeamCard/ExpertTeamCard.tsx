@@ -247,6 +247,7 @@ export function ExpertTeamCard({
             </DropdownMenu>
           ) : null}
         </div>
+      </div>
       <FireExpertDialog
         expertId={expert.id}
         expertName={expert.name}

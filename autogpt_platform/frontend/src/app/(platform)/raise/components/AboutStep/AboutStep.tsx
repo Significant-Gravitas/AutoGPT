@@ -81,7 +81,7 @@ export function AboutStep({
           disabled={!trimmed}
           className="h-[2.625rem] rounded-xl py-3"
         >
-          That's it
+          That&apos;s it
         </Button>
         <Button
           type="button"

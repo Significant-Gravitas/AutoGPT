@@ -44,7 +44,8 @@ export function scoreSearchHit(hit: SearchHit, query: string) {
 export function limitSearchHits(hits: SearchHit[], query: string) {
   const ranked = query.trim()
     ? [...hits].sort(
-        (left, right) => scoreSearchHit(right, query) - scoreSearchHit(left, query),
+        (left, right) =>
+          scoreSearchHit(right, query) - scoreSearchHit(left, query),
       )
     : hits;
   return ranked.slice(0, MAX_SEARCH_RESULTS);

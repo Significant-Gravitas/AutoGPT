@@ -83,7 +83,9 @@ describe("MarketplaceStep", () => {
         },
       }),
       getGetV2ListLibraryAgentsMockHandler({
-        agents: [{ id: "lib-agent-1", name: "Library Workflow" } as LibraryAgent],
+        agents: [
+          { id: "lib-agent-1", name: "Library Workflow" } as LibraryAgent,
+        ],
         pagination: {
           total_items: 1,
           total_pages: 1,
@@ -141,9 +143,7 @@ describe("MarketplaceStep", () => {
     expect(await screen.findByText("SEO Blog Writer")).toBeDefined();
     expect(await screen.findByText("Local SEO")).toBeDefined();
     expect(screen.queryByText("Marketplace skill")).toBeNull();
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Add" })[0],
-    );
+    await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /Remove SEO Blog Writer/ }),

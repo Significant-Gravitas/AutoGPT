@@ -21,7 +21,7 @@ export function WhatRunsFilters({ value, onChange }: Props) {
         <span
           aria-hidden
           style={{ left: indicator.left, width: indicator.width }}
-          className="absolute top-0 h-[2.125rem] rounded-full bg-zinc-800 transition-[left,width] duration-300 ease-[cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-none"
+          className="ease-[cubic-bezier(0.33,1,0.68,1)] absolute top-0 h-[2.125rem] rounded-full bg-zinc-800 transition-[left,width] duration-300 motion-reduce:transition-none"
         />
       ) : null}
 

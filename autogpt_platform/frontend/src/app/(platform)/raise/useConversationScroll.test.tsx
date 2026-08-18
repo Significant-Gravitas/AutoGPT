@@ -20,7 +20,10 @@ function renderHarness() {
   const log = screen.getByTestId("log");
   // happy-dom has no layout, so the column has to be told it overflows for
   // "did the reader scroll away from the end" to mean anything.
-  Object.defineProperty(log, "clientHeight", { value: 400, configurable: true });
+  Object.defineProperty(log, "clientHeight", {
+    value: 400,
+    configurable: true,
+  });
   Object.defineProperty(log, "scrollHeight", {
     value: 1200,
     configurable: true,
