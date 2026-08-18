@@ -21,6 +21,7 @@ from prisma.models import AgentNode
 
 from backend.blocks.autopilot import AutoPilotBlock, AutoPilotTransport
 from backend.data.db import connect, disconnect
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,11 @@ async def migrate_autopilot_transport(*, apply: bool) -> int:
             node.id,
         )
         if apply:
+            # SafeJson, not the raw dict: prisma rejects a plain dict for a
+            # Json column ("should be of any of the following types:
+            # JsonNullValueInput, Json").
             await AgentNode.prisma().update(
-                where={"id": node.id}, data={"constantInput": constants}
+                where={"id": node.id}, data={"constantInput": SafeJson(constants)}
             )
 
     # Silent when there is nothing to do: this runs on every boot, and a
