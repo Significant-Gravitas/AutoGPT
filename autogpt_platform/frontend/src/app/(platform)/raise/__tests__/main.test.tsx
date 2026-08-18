@@ -166,7 +166,11 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
 
   seedAtSkills();
   renderRaise();
-  await userEvent.click(await screen.findByRole("button", { name: "Skip" }));
+  // The skills step only renders its actions once the copilot-skills request
+  // settles, which can outrun the 1s default when the suite runs under load.
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+  );
 
   await waitFor(() => expect(captured).not.toBeNull());
   expect(captured).toMatchObject({
