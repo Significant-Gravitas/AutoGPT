@@ -18,8 +18,6 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | payment_method_id | ID of the payment method to use (from list payment methods) | str | Yes |
-| merchant_name | Name of the merchant, shown on the approval sheet. | str | Yes |
-| merchant_url | URL of the merchant website | str | Yes |
 | context | Description of the purchase context (min 100 characters). Shown to the user when they approve the request. | str | Yes |
 | amount | Amount in cents (max 50000) | int | Yes |
 | currency | 3-letter ISO currency code | str | No |
@@ -28,6 +26,8 @@ _Add technical explanation here._
 | line_items | Itemised breakdown shown to the user on the approval sheet. Each item takes `name` (required) plus optional `quantity`, `unit_amount`, `description`, `sku`, `url`, `image_url` and `product_url`. | List[Dict[str, Any]] | No |
 | totals | Total lines shown on the approval sheet. Each takes `type`, `display_text` and `amount`. `type` is one of: subtotal, tax, total, items_base_amount, items_discount, discount, fulfillment, shipping, fee, gift_wrap, tip, store_credit. | List[Dict[str, Any]] | No |
 | metadata | Arbitrary key/value data stored on the spend request. Max 50 keys; keys <= 40 chars, values <= 500 chars. | Dict[str, str] | No |
+| merchant_name | Name of the merchant, shown on the approval sheet. | str | Yes |
+| merchant_url | URL of the merchant website | str | Yes |
 
 ### Outputs
 
@@ -60,7 +60,6 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | payment_method_id | ID of the payment method to use (from list payment methods) | str | Yes |
-| network_id | Merchant network ID, read from the merchant's HTTP 402 `WWW-Authenticate: Payment` challenge — see the Get Payment Challenge block. This identifies the merchant in place of merchant_name/merchant_url. | str | Yes |
 | context | Description of the purchase context (min 100 characters). Shown to the user when they approve the request. | str | Yes |
 | amount | Amount in cents (max 50000) | int | Yes |
 | currency | 3-letter ISO currency code | str | No |
@@ -69,6 +68,7 @@ _Add technical explanation here._
 | line_items | Itemised breakdown shown to the user on the approval sheet. Each item takes `name` (required) plus optional `quantity`, `unit_amount`, `description`, `sku`, `url`, `image_url` and `product_url`. | List[Dict[str, Any]] | No |
 | totals | Total lines shown on the approval sheet. Each takes `type`, `display_text` and `amount`. `type` is one of: subtotal, tax, total, items_base_amount, items_discount, discount, fulfillment, shipping, fee, gift_wrap, tip, store_credit. | List[Dict[str, Any]] | No |
 | metadata | Arbitrary key/value data stored on the spend request. Max 50 keys; keys <= 40 chars, values <= 500 chars. | Dict[str, str] | No |
+| network_id | Merchant network ID, read from the merchant's HTTP 402 `WWW-Authenticate: Payment` challenge — see the Get Payment Challenge block. This identifies the merchant in place of merchant_name/merchant_url. | str | Yes |
 
 ### Outputs
 

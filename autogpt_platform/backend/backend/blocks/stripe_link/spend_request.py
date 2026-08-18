@@ -229,6 +229,91 @@ def _presentation_body(input_data: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Block: Create Card Spend Request
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Shared spend-request schema
+# ---------------------------------------------------------------------------
+class _BaseSpendRequestInput(BlockSchemaInput):
+    """Fields common to both spend-request types.
+
+    The two create blocks differ only in how the merchant is identified — name
+    and URL for a card, network ID for a Shared Payment Token. Everything else
+    is the same request, so it lives here rather than being copied into each,
+    where a later field would inevitably be added to only one of them.
+    """
+
+    credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
+    payment_method_id: str = SchemaField(
+        description="ID of the payment method to use (from list payment methods)"
+    )
+    context: str = SchemaField(
+        description=(
+            "Description of the purchase context (min 100 characters). "
+            "Shown to the user when they approve the request."
+        ),
+        # Enforced, not just documented: this is the text the user reads
+        # when deciding whether to approve a charge.
+        min_length=100,
+    )
+    amount: int = SchemaField(description="Amount in cents (max 50000)", ge=1, le=50000)
+    currency: str = SchemaField(description="3-letter ISO currency code", default="usd")
+    request_approval: bool = SchemaField(
+        description=(
+            "If true, immediately sends a push notification to the user "
+            "for approval. Otherwise, call request-approval separately."
+        ),
+        default=True,
+    )
+    test_mode: bool = SchemaField(
+        description="Use test mode (fake card 4242424242424242)",
+        default=False,
+    )
+    line_items: list[dict[str, Any]] = SchemaField(
+        description=(
+            "Itemised breakdown shown to the user on the approval sheet. "
+            "Each item takes `name` (required) plus optional `quantity`, "
+            "`unit_amount`, `description`, `sku`, `url`, `image_url` and "
+            "`product_url`."
+        ),
+        default_factory=list,
+        advanced=True,
+    )
+    totals: list[dict[str, Any]] = SchemaField(
+        description=(
+            "Total lines shown on the approval sheet. Each takes `type`, "
+            "`display_text` and `amount`. `type` is one of: subtotal, tax, "
+            "total, items_base_amount, items_discount, discount, "
+            "fulfillment, shipping, fee, gift_wrap, tip, store_credit."
+        ),
+        default_factory=list,
+        advanced=True,
+    )
+    metadata: dict[str, str] = SchemaField(
+        description=(
+            "Arbitrary key/value data stored on the spend request. Max 50 "
+            "keys; keys <= 40 chars, values <= 500 chars."
+        ),
+        default_factory=dict,
+        advanced=True,
+    )
+
+
+class _SpendRequestCreatedOutput(BlockSchemaOutput):
+    """What creating a spend request returns, for either credential type."""
+
+    spend_request_id: str = SchemaField(description="ID of the created spend request")
+    status: str = SchemaField(
+        description="Status: created, pending_approval, approved, denied, etc."
+    )
+    approval_url: str = SchemaField(
+        description="URL the user can visit to approve (if not using push)",
+        default="",
+    )
+    error: str = SchemaField(
+        description="Error message if the request failed",
+        default="",
+    )
+
+
 class StripeLinkCreateCardSpendRequestBlock(Block):
     """
     Create a spend request for a one-time-use virtual card.
@@ -244,85 +329,14 @@ class StripeLinkCreateCardSpendRequestBlock(Block):
     # only replaces names it can find on the block instance.
     _link_api_request = staticmethod(link_api_request)
 
-    class Input(BlockSchemaInput):
-        credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
-        payment_method_id: str = SchemaField(
-            description="ID of the payment method to use (from list payment methods)"
-        )
+    class Input(_BaseSpendRequestInput):
         merchant_name: str = SchemaField(
             description="Name of the merchant, shown on the approval sheet."
         )
         merchant_url: str = SchemaField(description="URL of the merchant website")
-        context: str = SchemaField(
-            description=(
-                "Description of the purchase context (min 100 characters). "
-                "Shown to the user when they approve the request."
-            ),
-            # Enforced, not just documented: this is the text the user reads
-            # when deciding whether to approve a charge.
-            min_length=100,
-        )
-        amount: int = SchemaField(
-            description="Amount in cents (max 50000)", ge=1, le=50000
-        )
-        currency: str = SchemaField(
-            description="3-letter ISO currency code", default="usd"
-        )
-        request_approval: bool = SchemaField(
-            description=(
-                "If true, immediately sends a push notification to the user "
-                "for approval. Otherwise, call request-approval separately."
-            ),
-            default=True,
-        )
-        test_mode: bool = SchemaField(
-            description="Use test mode (fake card 4242424242424242)",
-            default=False,
-        )
-        line_items: list[dict[str, Any]] = SchemaField(
-            description=(
-                "Itemised breakdown shown to the user on the approval sheet. "
-                "Each item takes `name` (required) plus optional `quantity`, "
-                "`unit_amount`, `description`, `sku`, `url`, `image_url` and "
-                "`product_url`."
-            ),
-            default_factory=list,
-            advanced=True,
-        )
-        totals: list[dict[str, Any]] = SchemaField(
-            description=(
-                "Total lines shown on the approval sheet. Each takes `type`, "
-                "`display_text` and `amount`. `type` is one of: subtotal, tax, "
-                "total, items_base_amount, items_discount, discount, "
-                "fulfillment, shipping, fee, gift_wrap, tip, store_credit."
-            ),
-            default_factory=list,
-            advanced=True,
-        )
-        metadata: dict[str, str] = SchemaField(
-            description=(
-                "Arbitrary key/value data stored on the spend request. Max 50 "
-                "keys; keys <= 40 chars, values <= 500 chars."
-            ),
-            default_factory=dict,
-            advanced=True,
-        )
 
-    class Output(BlockSchemaOutput):
-        spend_request_id: str = SchemaField(
-            description="ID of the created spend request"
-        )
-        status: str = SchemaField(
-            description="Status: created, pending_approval, approved, denied, etc."
-        )
-        approval_url: str = SchemaField(
-            description="URL the user can visit to approve (if not using push)",
-            default="",
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+    class Output(_SpendRequestCreatedOutput):
+        pass
 
     def __init__(self):
         super().__init__(
@@ -416,11 +430,7 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
     # only replaces names it can find on the block instance.
     _link_api_request = staticmethod(link_api_request)
 
-    class Input(BlockSchemaInput):
-        credentials: StripeLinkCredentialsInput = StripeLinkCredentialsField()
-        payment_method_id: str = SchemaField(
-            description="ID of the payment method to use (from list payment methods)"
-        )
+    class Input(_BaseSpendRequestInput):
         network_id: str = SchemaField(
             description=(
                 "Merchant network ID, read from the merchant's HTTP 402 "
@@ -430,76 +440,9 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
             ),
             min_length=1,
         )
-        context: str = SchemaField(
-            description=(
-                "Description of the purchase context (min 100 characters). "
-                "Shown to the user when they approve the request."
-            ),
-            # Enforced, not just documented: this is the text the user reads
-            # when deciding whether to approve a charge.
-            min_length=100,
-        )
-        amount: int = SchemaField(
-            description="Amount in cents (max 50000)", ge=1, le=50000
-        )
-        currency: str = SchemaField(
-            description="3-letter ISO currency code", default="usd"
-        )
-        request_approval: bool = SchemaField(
-            description=(
-                "If true, immediately sends a push notification to the user "
-                "for approval. Otherwise, call request-approval separately."
-            ),
-            default=True,
-        )
-        test_mode: bool = SchemaField(
-            description="Use test mode (fake card 4242424242424242)",
-            default=False,
-        )
-        line_items: list[dict[str, Any]] = SchemaField(
-            description=(
-                "Itemised breakdown shown to the user on the approval sheet. "
-                "Each item takes `name` (required) plus optional `quantity`, "
-                "`unit_amount`, `description`, `sku`, `url`, `image_url` and "
-                "`product_url`."
-            ),
-            default_factory=list,
-            advanced=True,
-        )
-        totals: list[dict[str, Any]] = SchemaField(
-            description=(
-                "Total lines shown on the approval sheet. Each takes `type`, "
-                "`display_text` and `amount`. `type` is one of: subtotal, tax, "
-                "total, items_base_amount, items_discount, discount, "
-                "fulfillment, shipping, fee, gift_wrap, tip, store_credit."
-            ),
-            default_factory=list,
-            advanced=True,
-        )
-        metadata: dict[str, str] = SchemaField(
-            description=(
-                "Arbitrary key/value data stored on the spend request. Max 50 "
-                "keys; keys <= 40 chars, values <= 500 chars."
-            ),
-            default_factory=dict,
-            advanced=True,
-        )
 
-    class Output(BlockSchemaOutput):
-        spend_request_id: str = SchemaField(
-            description="ID of the created spend request"
-        )
-        status: str = SchemaField(
-            description="Status: created, pending_approval, approved, denied, etc."
-        )
-        approval_url: str = SchemaField(
-            description="URL the user can visit to approve (if not using push)",
-            default="",
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+    class Output(_SpendRequestCreatedOutput):
+        pass
 
     def __init__(self):
         super().__init__(

@@ -59,6 +59,22 @@ def test_the_token_flow_survives_on_cloud(monkeypatch):
         assert block_cls().disabled is False, block_cls.__name__
 
 
+def test_the_two_create_blocks_differ_only_in_merchant_identity():
+    """They are the same request with a different way of naming the merchant.
+
+    The split exists to make the card flow separately gateable, not to fork
+    the schema — so everything except merchant identity has to come from the
+    shared base, or a field added later lands on only one of them.
+    """
+    card = set(sr.StripeLinkCreateCardSpendRequestBlock().input_schema.model_fields)
+    token = set(sr.StripeLinkCreateTokenSpendRequestBlock().input_schema.model_fields)
+
+    assert card - token == {"merchant_name", "merchant_url"}
+    assert token - card == {"network_id"}
+    # Declared on the base, not copied into each block.
+    assert card & token <= set(sr._BaseSpendRequestInput.model_fields)
+
+
 # ---------------------------------------------------------------------------
 # Harness
 # ---------------------------------------------------------------------------
