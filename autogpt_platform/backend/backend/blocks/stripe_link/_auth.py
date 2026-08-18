@@ -15,13 +15,25 @@ from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Cre
 from backend.integrations.providers import ProviderName
 
 LINK_API_BASE_URL = "https://api.link.com"
+
+# Every Link call is awaited inline by a block or an API handler, so an
+# upstream that accepts the connection and then stalls would hold a worker for
+# as long as it likes. Bound them all.
+LINK_HTTP_TIMEOUT = 15.0
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
 
 StripeLinkCredentials = OAuth2Credentials
 
+# `credentials_types` carries two different things at once: the *shape* of the
+# stored credential and the *method* used to acquire it. For every other
+# provider those coincide, but a device-code grant yields an ordinary OAuth2
+# token pair — so the block has to accept `oauth2` (or saved credentials stop
+# matching) while still advertising `device_code` so connect UIs offer the
+# device flow instead of an authorization-code redirect the provider has no
+# client secret for.
 StripeLinkCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.STRIPE_LINK],  # type: ignore[index]
-    Literal["oauth2"],
+    Literal["oauth2", "device_code"],
 ]
 
 

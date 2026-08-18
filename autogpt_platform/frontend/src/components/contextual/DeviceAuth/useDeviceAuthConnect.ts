@@ -9,10 +9,16 @@ import {
   postV1PollDeviceCodeOauthFlowForCompletion,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 
 interface Args {
   provider: string;
-  onSuccess: () => void;
+  /**
+   * Receives the credential the poll returned, so a caller that has to select
+   * it (the builder's credentials input) doesn't have to re-fetch and guess
+   * which of the provider's credentials is the new one.
+   */
+  onSuccess: (credentials?: CredentialsMetaResponse) => void;
 }
 
 type Phase = "idle" | "awaiting_user" | "polling" | "done" | "error";
@@ -60,7 +66,7 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
         if (response.status !== 200) {
           throw new Error("Device auth poll failed");
         }
-        const { status } = response.data;
+        const { status, credentials } = response.data;
 
         if (status === "approved") {
           setPhase("done");
@@ -69,7 +75,7 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           await queryClient.invalidateQueries({
             queryKey: getGetV1ListCredentialsQueryKey(),
           });
-          onSuccess();
+          onSuccess(credentials ?? undefined);
           return;
         }
 
@@ -137,11 +143,12 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
       // provider would either spin the loop or stall it forever.
       intervalRef.current = Math.min(Math.max(data.interval || 5, 1), 60);
 
-      // Start polling
+      // Start polling. Use the clamped value, not the raw one — an upstream
+      // `interval: 0` would otherwise spin the first poll immediately.
       setPhase("polling");
       pollingRef.current = setTimeout(
         () => poll(data.state_token),
-        data.interval * 1000,
+        intervalRef.current * 1000,
       );
     } catch (error) {
       if (isUnmountedRef.current) return;

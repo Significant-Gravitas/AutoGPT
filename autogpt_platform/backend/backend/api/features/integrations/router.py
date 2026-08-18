@@ -434,28 +434,41 @@ async def device_auth_initiate(
     try:
         initiation = await handler.initiate_device_auth(requested_scopes)
     except Exception as e:
+        # The message carries the upstream response body verbatim; keep it in
+        # the logs rather than handing it to the caller.
         logger.error(f"Device auth initiation failed for {provider}: {e}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to initiate device auth: {str(e)}",
+            detail="Failed to initiate device auth with the provider.",
         )
 
     # Outlive the provider's device code by a minute. If the state token
     # expired first the poll loop would die with "Invalid or expired state
     # token" while the user could still legitimately approve; the extra grace
     # also lets the final poll consume the token and report `expired` properly.
-    state_token, _ = await creds_manager.store.store_state_token(
-        user_id=user_id,
-        provider=getattr(provider, "value", None) or str(provider),
-        scopes=requested_scopes,
-        expires_in_seconds=initiation.expires_in + 60,
-        state_metadata={
-            "flow_type": "device_code",
-            "device_code": initiation.device_code,
-            "interval": initiation.interval,
-            "user_code": initiation.user_code,
-        },
-    )
+    try:
+        state_token, _ = await creds_manager.store.store_state_token(
+            user_id=user_id,
+            provider=getattr(provider, "value", None) or str(provider),
+            scopes=requested_scopes,
+            expires_in_seconds=initiation.expires_in + 60,
+            state_metadata={
+                "flow_type": "device_code",
+                "device_code": initiation.device_code,
+                "interval": initiation.interval,
+                "user_code": initiation.user_code,
+            },
+        )
+    except Exception as e:
+        # The upstream device code is already issued at this point; it simply
+        # goes unused and expires on its own. Surfacing the storage error --
+        # a raw Prisma failure when the user row is missing -- would leak
+        # internals for something the caller can only retry.
+        logger.error(f"Failed to persist device auth state for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start device authorization. Please try again.",
+        )
 
     return DeviceAuthInitiateResponse(
         state_token=state_token,
@@ -501,10 +514,12 @@ async def device_auth_poll(
     try:
         result = await handler.poll_for_tokens(device_code)
     except Exception as e:
+        # As above: `poll_for_tokens` embeds the raw upstream body in its
+        # error, so log it and return something generic.
         logger.error(f"Device auth poll failed for {provider}: {e}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Device auth poll failed: {str(e)}",
+            detail="Device auth poll failed against the provider.",
         )
 
     if result.status in ("pending", "slow_down"):

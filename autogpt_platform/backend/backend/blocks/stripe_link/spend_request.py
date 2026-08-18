@@ -20,6 +20,8 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.stripe_link._auth import (
+    LINK_API_BASE_URL,
+    LINK_HTTP_TIMEOUT,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     StripeLinkCredentials,
@@ -34,9 +36,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-LINK_API_BASE = "https://api.link.com"
 CREDENTIAL_TYPE_CARD = "card"
 CREDENTIAL_TYPE_SPT = "shared_payment_token"
+
+
+def _nested_dict(source: Any, *keys: str) -> dict[str, Any]:
+    """Walk nested dict keys, yielding {} at the first non-dict.
+
+    `.get(key, {})` only defaults when the key is *missing*; Link sends
+    explicit nulls, and a `None` in the middle of a chain raises
+    AttributeError. Retrieve had already yielded `status` by that point, so
+    the block emitted a partial result and then errored.
+    """
+    current: Any = source
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    return current if isinstance(current, dict) else {}
 
 
 async def link_api_request(
@@ -60,16 +77,16 @@ async def link_api_request(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
         response = await client.request(
             method=method,
-            url=f"{LINK_API_BASE}{path}",
+            url=f"{LINK_API_BASE_URL}{path}",
             headers=headers,
             json=body,
         )
         if response.is_error:
-            # Link explains itself in the body; `raise_for_status()` alone
-            # reports "400 Bad Request" and throws that explanation away.
+            # Link explains itself in the body, so surface that rather than a
+            # bare "400 Bad Request" with the explanation discarded.
             try:
                 detail = response.json().get("error", {}).get("message")
             # ValueError: not JSON. AttributeError/TypeError: JSON, but not the
@@ -606,9 +623,9 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            include = ["card"] if input_data.include_card else []
+            include = [CREDENTIAL_TYPE_CARD] if input_data.include_card else []
             if input_data.include_shared_payment_token:
-                include.append("shared_payment_token")
+                include.append(CREDENTIAL_TYPE_SPT)
             path = f"/spend_requests/{input_data.spend_request_id}"
             if include:
                 path += f"?include={','.join(include)}"
@@ -623,27 +640,28 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             # `auto_resume` and the request clears itself, so the caller should
             # poll rather than give up; anything else needs a fresh request.
             if status == "requires_action":
-                action = (
-                    result.get("status_details", {})
-                    .get("requires_action", {})
-                    .get("next_action", {})
+                action = _nested_dict(
+                    result, "status_details", "requires_action", "next_action"
                 )
                 yield "next_action_type", action.get("type", "")
                 yield "next_action_message", action.get("display_message", "")
                 yield "next_action_url", action.get("action_url", "")
                 yield "auto_resumes", action.get("resolution") == "auto_resume"
 
-            # Defensive: Link returns an object here, but a bare string or a
-            # null would make `.get` raise and take down the whole retrieve.
-            spt = result.get("shared_payment_token")
-            spt = spt if isinstance(spt, dict) else {}
-            if spt:
-                yield "shared_payment_token", spt.get("id", "")
+            # Gate emission on the opt-in, not just the request. These are
+            # bearer values that get persisted with the execution, so a
+            # response carrying one we did not ask for must not be written
+            # out — otherwise "defaults to off" only describes the request.
+            if input_data.include_shared_payment_token:
+                spt = _nested_dict(result, CREDENTIAL_TYPE_SPT)
+                if spt:
+                    yield "shared_payment_token", spt.get("id", "")
 
-            card = result.get("card")
-            if card:
-                yield "card_number", card.get("number", "")
-                yield "card_cvc", card.get("cvc", "")
+            if input_data.include_card:
+                card = _nested_dict(result, CREDENTIAL_TYPE_CARD)
+                if card:
+                    yield "card_number", card.get("number", "")
+                    yield "card_cvc", card.get("cvc", "")
                 yield "card_exp_month", card.get("exp_month", 0)
                 yield "card_exp_year", card.get("exp_year", 0)
                 yield "card_brand", card.get("brand", "")
