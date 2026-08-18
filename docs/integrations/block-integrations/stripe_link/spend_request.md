@@ -3,10 +3,10 @@
 _Add a description of this category of blocks._
 <!-- END MANUAL -->
 
-## Stripe Link Create Spend Request
+## Stripe Link Create Card Spend Request
 
 ### What it is
-Create a Stripe Link spend request for a one-time payment credential
+Create a Stripe Link spend request for a one-time virtual card. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -42,6 +42,36 @@ _Add practical use case examples here._
 
 ---
 
+## Stripe Link Get Spend Request Status
+
+### What it is
+Check whether a Stripe Link spend request has been approved yet. Poll this after creating a request and before spending.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| spend_request_id | ID of the spend request to check (e.g., lsrq_...) | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the request failed | str |
+| status | Current status: pending_approval, approved, denied, expired. Wait for `approved` before spending the credential. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Stripe Link List Payment Methods
 
 ### What it is
@@ -66,10 +96,10 @@ _Add practical use case examples here._
 
 ---
 
-## Stripe Link Retrieve Spend Request
+## Stripe Link Retrieve Card
 
 ### What it is
-Retrieve a Stripe Link spend request and card credentials
+Get the one-time virtual card for an approved Stripe Link spend request. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -80,8 +110,7 @@ _Add technical explanation here._
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spend_request_id | ID of the spend request to retrieve (e.g., lsrq_...) | str | Yes |
-| include_card | Fetch the unmasked virtual card number and CVC. Off by default: these are emitted as block outputs, which are persisted with the execution, so only turn it on for a graph that actually completes a card checkout. | bool | No |
+| spend_request_id | ID of an approved spend request (e.g., lsrq_...) | str | Yes |
 
 ### Outputs
 
@@ -89,8 +118,8 @@ _Add technical explanation here._
 |--------|-------------|------|
 | error | Error message if the request failed | str |
 | status | Current status of the spend request | str |
-| card_number | Virtual card number. Single-use, capped at the approved amount, and expires at `valid_until`. Emitted only when `include_card` is on. Block outputs are persisted, so treat this as sensitive and avoid wiring it anywhere that logs. | str |
-| card_cvc | Virtual card CVC. Emitted only when `include_card` is on. See the note on `card_number`: this is persisted with the execution record. | str |
+| card_number | Virtual card number. Single-use, capped at the approved amount, and expires at `valid_until`. Block outputs are persisted with the execution, so avoid wiring this anywhere that logs, exports, or reaches a model prompt. | str |
+| card_cvc | Virtual card CVC. See the note on `card_number`: this is persisted with the execution record. | str |
 | card_exp_month | Card expiry month | int |
 | card_exp_year | Card expiry year | int |
 | card_brand | Card brand (visa, mastercard, etc.) | str |

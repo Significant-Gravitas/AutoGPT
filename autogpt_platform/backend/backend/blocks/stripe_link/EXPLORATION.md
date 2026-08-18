@@ -194,8 +194,9 @@ Regardless of auth approach, the block surface area would be:
 | Block | Description | Auth Scope |
 |-------|-------------|------------|
 | `StripeLinkListPaymentMethodsBlock` | List cards/bank accounts | `payment_methods.agentic` |
-| `StripeLinkCreateSpendRequestBlock` | Create a spend request | `payment_methods.agentic` |
-| `StripeLinkRetrieveSpendRequestBlock` | Get spend request + card details | `payment_methods.agentic` |
+| `StripeLinkCreateCardSpendRequestBlock` | Create a virtual-card spend request (self-hosted only) | `payment_methods.agentic` |
+| `StripeLinkGetSpendRequestStatusBlock` | Poll a spend request for approval | `payment_methods.agentic` |
+| `StripeLinkRetrieveCardBlock` | Get the virtual card once approved (self-hosted only) | `payment_methods.agentic` |
 | `StripeLinkRequestApprovalBlock` | Request user approval for spend | `payment_methods.agentic` |
 | `StripeLinkMPPPayBlock` | Execute MPP payment | `payment_methods.agentic` |
 
