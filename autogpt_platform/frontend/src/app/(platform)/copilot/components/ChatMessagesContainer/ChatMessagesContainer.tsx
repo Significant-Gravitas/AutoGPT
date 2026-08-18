@@ -20,7 +20,7 @@ import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
-import { stripKickoffMessages } from "../../expertKickoff";
+import { revealKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -334,10 +334,8 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
 }: Props) {
-  // The expert-kickoff control prompt is filtered at the transcript renderer
-  // only so lifecycle, dedup and metadata-preserving retry logic still see it.
   const messages = useMemo(
-    () => stripKickoffMessages(allMessages),
+    () => revealKickoffMessages(allMessages),
     [allMessages],
   );
   // The in-chat "progress in the sidebar" notice only applies to the old

@@ -1,15 +1,17 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { cn } from "@/lib/utils";
+import { Forward02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { bubbleClassFor } from "../ColorStep/helpers";
 import { aboutPlaceholderFor } from "../RoleStep/helpers";
 
 interface Props {
   submittedAbout: string | null;
-  role: string | null;
+  name: string | null;
   color: string | null;
   onSubmit: (about: string) => void;
   onSkip: () => void;
@@ -17,7 +19,7 @@ interface Props {
 
 export function AboutStep({
   submittedAbout,
-  role,
+  name,
   color,
   onSubmit,
   onSkip,
@@ -26,15 +28,25 @@ export function AboutStep({
   const trimmed = value.trim();
 
   if (submittedAbout !== null) {
+    const isSkipped = submittedAbout === "";
+
     return (
-      <p
+      <div
         className={cn(
           "ml-auto max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-relaxed text-foreground",
+          isSkipped && "flex w-fit items-center gap-2",
           bubbleClassFor(color) ?? "border-accent bg-accent/5",
         )}
       >
-        {submittedAbout}
-      </p>
+        {isSkipped ? (
+          <>
+            <Icon icon={Forward02Icon} size={16} aria-hidden />
+            Skipped
+          </>
+        ) : (
+          submittedAbout
+        )}
+      </div>
     );
   }
 
@@ -56,7 +68,7 @@ export function AboutStep({
         hideLabel
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder={aboutPlaceholderFor(role)}
+        placeholder={aboutPlaceholderFor(name)}
         rows={4}
         maxLength={2000}
         wrapperClassName="mb-0 w-full max-w-[42rem]"
@@ -69,7 +81,7 @@ export function AboutStep({
           disabled={!trimmed}
           className="h-[2.625rem] rounded-xl py-3"
         >
-          {`That's them`}
+          That's it
         </Button>
         <Button
           type="button"

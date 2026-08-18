@@ -23,8 +23,6 @@ export function getPresenceLabel(status: HomeAgentStatusStatus): string {
   return (PRESENCE[status] ?? UNKNOWN_PRESENCE).label;
 }
 
-// Opening an expert via `?expertId=` adopts that expert's latest thread (or
-// starts a fresh one), matching how the rest of the app links into copilot.
-export function getExpertChatHref(expertID: string): string {
-  return `/copilot?expertId=${encodeURIComponent(expertID)}`;
+export function getExpertHref(expertID: string): string {
+  return `/team/${encodeURIComponent(expertID)}`;
 }

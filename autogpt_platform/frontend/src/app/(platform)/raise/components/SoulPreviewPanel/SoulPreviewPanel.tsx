@@ -3,7 +3,8 @@
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
 import Image from "next/image";
-import { findRoleOption } from "../RoleStep/helpers";
+import { kitBudgetLabel, kitToolsLabel, type RaiseKit } from "../../helpers";
+import { roleLabelFor } from "../RoleStep/helpers";
 import { SoulDetailCard } from "./SoulDetailCard";
 
 const REVEAL =
@@ -16,7 +17,7 @@ type Props = {
   color: string | null;
   about: string | null;
   voiceLabel: string | null;
-  firstTask: string | null;
+  kit: RaiseKit | null;
 };
 
 // Starts as just the orb — an expert with nothing to say about itself yet.
@@ -28,13 +29,14 @@ export function SoulPreviewPanel({
   color,
   about,
   voiceLabel,
-  firstTask,
+  kit,
 }: Props) {
-  const roleLabel = findRoleOption(role)?.label;
+  const roleLabel = roleLabelFor(role);
   const details = [
     { label: "About", value: about },
     { label: "Voice", value: voiceLabel },
-    { label: "First task", value: firstTask },
+    { label: "Weekly budget", value: kitBudgetLabel(kit) },
+    { label: "Tools", value: kitToolsLabel(kit) },
   ].filter((detail) => Boolean(detail.value));
 
   return (

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { selectableRowClassName, type SelectableCardColors } from "../styles";
+import { selectableCardClassName, type SelectableCardColors } from "../styles";
 
 const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
 const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
@@ -28,7 +28,7 @@ export function CustomVoiceOption({
   const characterCountId = `${textareaId}-character-count`;
 
   return (
-    <div className={selectableRowClassName(isSelected, colors)}>
+    <div className={selectableCardClassName(isSelected, false, colors)}>
       <label
         htmlFor={`${textareaId}-choice`}
         className={cn(

@@ -26,6 +26,5 @@
     "weekly_spend": 0,
     "workflows": []
   },
-  "first_job_failure_reason": null,
-  "first_job_installed": false
+  "failed_attachments": []
 }

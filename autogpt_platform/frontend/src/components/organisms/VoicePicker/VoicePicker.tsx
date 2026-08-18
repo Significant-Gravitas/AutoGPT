@@ -6,7 +6,7 @@ import { useId } from "react";
 import { CustomVoiceOption } from "./components/CustomVoiceOption";
 import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
-import { groupedCardClassName, type SelectableCardColors } from "./styles";
+import type { SelectableCardColors } from "./styles";
 import { useVoicePicker } from "./useVoicePicker";
 
 type Props = {
@@ -61,7 +61,7 @@ export function VoicePicker({
         </header>
       )}
 
-      <fieldset className={groupedCardClassName}>
+      <fieldset className="flex flex-col gap-3">
         <legend className="sr-only">Writing voice</legend>
         {samples.slice(0, 2).map((sample, index) => {
           const choice = index === 0 ? "a" : "b";

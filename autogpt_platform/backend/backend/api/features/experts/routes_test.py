@@ -25,6 +25,8 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
+    RaiseAttachmentFailure,
     RaiseResult,
 )
 from backend.api.features.experts.routes import router
@@ -227,8 +229,7 @@ def test_create_raised_expert_returns_expert(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=raised,
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -238,24 +239,24 @@ def test_create_raised_expert_returns_expert(
     data = response.json()
     assert data["expert"]["id"] == "raised-1"
     assert data["expert"]["source_template_id"] is None
-    assert data["first_job_installed"] is False
-    assert data["first_job_failure_reason"] is None
+    assert data["failed_attachments"] == []
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Otto",
         None,
         None,
-        None,
         avatar_url=None,
         color=None,
         about=None,
+        weekly_budget=None,
+        attachments=[],
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_default"
     )
 
 
-def test_create_raised_expert_passes_role_voice_and_first_job(
+def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
     configured_snapshot: Snapshot,
@@ -271,8 +272,7 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
                 voice_preferences="Warm and detailed.",
                 workflows=[_make_workflow_ref()],
             ),
-            first_job_installed=True,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -282,25 +282,37 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
             "name": "Nova",
             "role": "Research Assistant",
             "voice_preferences": "Warm and detailed.",
-            "first_job_store_listing_version_id": "listing-version-1",
+            "weekly_budget": 250,
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-1",
+                }
+            ],
         },
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["first_job_installed"] is True
+    assert data["failed_attachments"] == []
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
         "Research Assistant",
         "Warm and detailed.",
-        "listing-version-1",
         avatar_url=None,
         color=None,
         about=None,
+        weekly_budget=250,
+        attachments=[
+            RaiseAttachment(
+                kind="workflow", source="marketplace", id="listing-version-1"
+            )
+        ],
     )
     configured_snapshot.assert_match(
-        json.dumps(data, indent=2, sort_keys=True), "expert_raise_first_job"
+        json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
     )
 
 
@@ -313,8 +325,7 @@ def test_create_raised_expert_forwards_about(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-4", name="Nova"),
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -329,14 +340,15 @@ def test_create_raised_expert_forwards_about(
         "Nova",
         None,
         None,
-        None,
         avatar_url=None,
         color=None,
         about="Always cites a source.",
+        weekly_budget=None,
+        attachments=[],
     )
 
 
-def test_create_raised_expert_reports_first_job_installation_failure(
+def test_create_raised_expert_reports_attachment_installation_failure(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
     configured_snapshot: Snapshot,
@@ -346,8 +358,14 @@ def test_create_raised_expert_reports_first_job_installation_failure(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-3", name="Nova"),
-            first_job_installed=False,
-            first_job_failure_reason="installation_failed",
+            failed_attachments=[
+                RaiseAttachmentFailure(
+                    kind="workflow",
+                    source="marketplace",
+                    id="listing-version-1",
+                    reason="installation_failed",
+                )
+            ],
         ),
     )
 
@@ -355,27 +373,37 @@ def test_create_raised_expert_reports_first_job_installation_failure(
         "/experts/raise",
         json={
             "name": "Nova",
-            "first_job_store_listing_version_id": "listing-version-1",
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-1",
+                }
+            ],
         },
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["first_job_installed"] is False
-    assert data["first_job_failure_reason"] == "installation_failed"
+    assert data["failed_attachments"][0]["reason"] == "installation_failed"
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
         None,
         None,
-        "listing-version-1",
         avatar_url=None,
         color=None,
         about=None,
+        weekly_budget=None,
+        attachments=[
+            RaiseAttachment(
+                kind="workflow", source="marketplace", id="listing-version-1"
+            )
+        ],
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True),
-        "expert_raise_first_job_installation_failure",
+        "expert_raise_attachment_installation_failure",
     )
 
 
@@ -407,8 +435,7 @@ def test_create_raised_expert_passes_avatar_and_color(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-3", name="Nova"),
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -427,10 +454,11 @@ def test_create_raised_expert_passes_avatar_and_color(
         "Nova",
         None,
         None,
-        None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
         about=None,
+        weekly_budget=None,
+        attachments=[],
     )
 
 
@@ -442,8 +470,7 @@ def test_create_raised_expert_accepts_relative_avatar_path(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-4", name="Otto"),
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -491,8 +518,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-5", name="Otto"),
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -506,6 +532,8 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
         "avatar_url": None,
         "color": None,
         "about": None,
+        "weekly_budget": None,
+        "attachments": [],
     }
 
 
@@ -519,11 +547,7 @@ def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
             "v" * 4_001,
             "expert_raise_voice_preferences_too_long",
         ),
-        (
-            "first_job_store_listing_version_id",
-            "l" * 101,
-            "expert_raise_first_job_id_too_long",
-        ),
+        ("weekly_budget", -1, "expert_raise_weekly_budget_negative"),
         ("color", "c" * 33, "expert_raise_color_too_long"),
         ("about", "a" * 10_001, "expert_raise_about_too_long"),
         (
@@ -601,32 +625,42 @@ def test_create_raised_expert_at_lifetime_cap_returns_409(
     )
 
 
-def test_create_raised_expert_unavailable_first_job_returns_404(
+def test_create_raised_expert_unavailable_attachment_returns_404(
     mocker: pytest_mock.MockerFixture,
     configured_snapshot: Snapshot,
 ) -> None:
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
-        side_effect=experts_db.FirstJobUnavailableError("listing-version-9"),
+        side_effect=experts_db.FirstJobUnavailableError(
+            "workflow", "marketplace", "listing-version-9"
+        ),
     )
 
     response = client.post(
         "/experts/raise",
         json={
             "name": "Otto",
-            "first_job_store_listing_version_id": "listing-version-9",
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-9",
+                }
+            ],
         },
     )
 
     assert response.status_code == 404
     assert response.json()["detail"] == {
-        "code": "first_job_unavailable",
-        "store_listing_version_id": "listing-version-9",
+        "code": "attachment_unavailable",
+        "kind": "workflow",
+        "source": "marketplace",
+        "id": "listing-version-9",
     }
     configured_snapshot.assert_match(
         json.dumps(response.json(), indent=2, sort_keys=True),
-        "expert_raise_first_job_unavailable",
+        "expert_raise_attachment_unavailable",
     )
 
 

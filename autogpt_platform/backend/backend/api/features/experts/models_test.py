@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from backend.api.features.experts.models import (
     ExpertSoulUpdate,
+    RaiseAttachment,
     VoiceSample,
     decode_voice_preferences,
     encode_voice_preferences,
@@ -111,3 +112,13 @@ def test_decode_mixed_sample_list_keeps_only_valid_samples():
 
     assert description == "Clear and direct."
     assert samples == [VoiceSample(label="Punchy", text="Ship it.")]
+
+
+def test_raise_attachment_strips_id():
+    attachment = RaiseAttachment(kind="workflow", source="library", id="  agent-1  ")
+    assert attachment.id == "agent-1"
+
+
+def test_raise_attachment_rejects_blank_id():
+    with pytest.raises(ValidationError):
+        RaiseAttachment(kind="skill", source="library", id="   ")

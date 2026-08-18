@@ -1,18 +1,20 @@
 "use client";
 
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
+import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
 import { AutopilotCard } from "./components/AutopilotCard";
 import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
+import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
+import { SECTION_INSET_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
@@ -44,7 +46,7 @@ export default function TeamPage() {
       <main className={MAIN_CLASS}>
         <div className={GRID_CLASS}>
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-[1.75rem]" />
+            <ExpertTeamCardSkeleton key={i} />
           ))}
         </div>
       </main>
@@ -57,7 +59,12 @@ export default function TeamPage() {
 
   return (
     <main className={MAIN_CLASS}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div
+        className={cn(
+          "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
+          SECTION_INSET_CLASS,
+        )}
+      >
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2.5">
             <AITeamIcon size={36} className="shrink-0 text-zinc-950" />
@@ -72,9 +79,7 @@ export default function TeamPage() {
       <div className={GRID_CLASS}>
         <AutopilotCard />
         {isLoading
-          ? [0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-[1.75rem]" />
-            ))
+          ? [0, 1, 2].map((i) => <ExpertTeamCardSkeleton key={i} />)
           : hiredExperts.map((expert) => (
               <ExpertTeamCard
                 key={expert.id}

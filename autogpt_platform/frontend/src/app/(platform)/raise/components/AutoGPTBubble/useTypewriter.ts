@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from "react";
 const CHAR_DELAY_MS = 18;
 const START_DELAY_MS = 250;
 
-export function useTypewriter(text: string, onComplete?: () => void) {
+export function useTypewriter(
+  text: string,
+  onComplete?: () => void,
+  enabled = true,
+) {
   const [typedCount, setTypedCount] = useState(0);
   const onCompleteRef = useRef(onComplete);
 
@@ -12,7 +16,7 @@ export function useTypewriter(text: string, onComplete?: () => void) {
   }, [onComplete]);
 
   useEffect(() => {
-    if (prefersReducedMotion()) {
+    if (!enabled || prefersReducedMotion()) {
       setTypedCount(text.length);
       onCompleteRef.current?.();
       return;
@@ -34,7 +38,7 @@ export function useTypewriter(text: string, onComplete?: () => void) {
 
     timer = setTimeout(type, START_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [text]);
+  }, [text, enabled]);
 
   return {
     typed: text.slice(0, typedCount),

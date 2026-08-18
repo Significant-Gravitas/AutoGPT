@@ -11,7 +11,9 @@ export type RaiseStep =
   | "avatar"
   | "about"
   | "voice"
-  | "firstTask"
+  | "budget"
+  | "marketplace"
+  | "skills"
   | "done";
 
 export const STEP_ORDER: RaiseStep[] = [
@@ -21,9 +23,24 @@ export const STEP_ORDER: RaiseStep[] = [
   "avatar",
   "about",
   "voice",
-  "firstTask",
+  "budget",
+  "marketplace",
+  "skills",
   "done",
 ];
+
+export interface RaiseAttachmentDraft {
+  kind: "workflow" | "skill";
+  source: "marketplace" | "library";
+  id: string;
+  name: string;
+  marketplaceKey?: string;
+}
+
+export interface RaiseKit {
+  weeklyBudget: number | null;
+  attachments: RaiseAttachmentDraft[];
+}
 
 export const VOICE_SAMPLES: VoiceSample[] = [
   {
@@ -37,23 +54,25 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  greeting: "Hello, I'm AutoGPT. I'll help you raise your own expert.",
+  greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
   roleQuestion: "First — what should your expert do for you?",
-  nameQuestion: "Good pick. What do you want to call them?",
-  colorQuestion: "Nice. Now choose a color for them.",
+  nameQuestion: "Good pick. What do you want to call it?",
+  colorQuestion: "Nice. Now choose a color for it.",
   avatarQuestion: (name: string) =>
-    `Want to give ${name || "them"} a face? Upload a picture, let me generate one, or skip it.`,
-  aboutQuestion:
-    "Anything else I should know about them? How they should work, what matters to you — or skip it.",
+    `Want to give ${name || "it"} a face? Upload a picture, let me generate one, or skip it.`,
+  aboutQuestion: (name: string) =>
+    `Anything else I should know about ${name || "your expert"}? How it should work, what matters to you — or skip it.`,
   voiceQuestion: (name: string) =>
-    `How should ${name || "your expert"} sound when they write? Pick the one that feels right.`,
-  firstTaskQuestion: (name: string) =>
-    `Last thing — what should ${name || "your expert"} start on? I'll open your first chat with it.`,
+    `How should ${name || "your expert"} sound when it writes? Pick the one that feels right.`,
+  budgetQuestion: (name: string) =>
+    `How much weekly budget should ${name || "your expert"} have? 500 credits is the default — pick an amount, or skip.`,
+  marketplaceQuestion: (name: string) =>
+    `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
+  skillsQuestion: (name: string) =>
+    `Should ${name || "your expert"} have extra skills? Add from your library, or a marketplace agent as a skill — or skip.`,
   name: "Hi. I don't have a name yet — that's where you come in.",
   voice: (name: string) =>
     `Nice to meet you, ${name}. How should I sound when I write?`,
-  firstJob:
-    "What should I take on first? Pick a starter job, or skip and we'll figure it out together.",
   review: "That's me so far. Ready when you are — I'll open our first chat.",
 };
 
@@ -74,7 +93,10 @@ export interface RaiseDraft {
   about: string | null;
   voicePreferences: string;
   voiceLabel: string | null;
-  firstTask: string | null;
+  // Outer null = not answered yet. credits null = skipped (platform default).
+  budget: { credits: number | null } | null;
+  marketplace: RaiseAttachmentDraft[] | null;
+  skills: RaiseAttachmentDraft[] | null;
 }
 
 export const EMPTY_DRAFT: RaiseDraft = {
@@ -87,7 +109,9 @@ export const EMPTY_DRAFT: RaiseDraft = {
   about: null,
   voicePreferences: "",
   voiceLabel: null,
-  firstTask: null,
+  budget: null,
+  marketplace: null,
+  skills: null,
 };
 
 const DRAFT_STORAGE_KEY = "raise-expert-draft";
@@ -97,8 +121,15 @@ export function loadDraft(): RaiseDraft {
   try {
     const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return EMPTY_DRAFT;
-    const parsed = JSON.parse(raw) as Partial<RaiseDraft>;
-    return { ...EMPTY_DRAFT, ...parsed };
+    const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
+      step?: string;
+    };
+    const step = parsed.step === "kit" ? "budget" : parsed.step;
+    return {
+      ...EMPTY_DRAFT,
+      ...parsed,
+      step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
+    };
   } catch {
     return EMPTY_DRAFT;
   }
@@ -118,6 +149,24 @@ export function clearDraft() {
   } catch {
     // Clearing is best-effort under the same storage restrictions.
   }
+}
+
+function isRaiseStep(step: string | undefined): step is RaiseStep {
+  return STEP_ORDER.includes(step as RaiseStep);
+}
+
+export function assembledKit(draft: RaiseDraft): RaiseKit | null {
+  if (
+    draft.budget === null &&
+    draft.marketplace === null &&
+    draft.skills === null
+  ) {
+    return null;
+  }
+  return {
+    weeklyBudget: draft.budget?.credits ?? null,
+    attachments: [...(draft.marketplace ?? []), ...(draft.skills ?? [])],
+  };
 }
 
 export function previousStep(step: RaiseStep): RaiseStep {
@@ -144,6 +193,22 @@ export function resolveVoicePreferences(
 export function raisedIdentity(name: string): string {
   // Keep this preview copy aligned with backend experts_db._raised_identity.
   return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
+}
+
+export function creditsToUsdLabel(credits: number): string {
+  const dollars = credits / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+export function kitBudgetLabel(kit: RaiseKit | null): string | null {
+  if (!kit || kit.weeklyBudget === null) return null;
+  if (kit.weeklyBudget === 0) return "No weekly limit";
+  return `${kit.weeklyBudget.toLocaleString()} credits (${creditsToUsdLabel(kit.weeklyBudget)}/week)`;
+}
+
+export function kitToolsLabel(kit: RaiseKit | null): string | null {
+  if (!kit || kit.attachments.length === 0) return null;
+  return kit.attachments.map((attachment) => attachment.name).join(", ");
 }
 
 export function getExpertLimitCode(response: unknown): string | null {

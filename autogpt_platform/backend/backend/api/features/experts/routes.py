@@ -8,6 +8,8 @@ from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_IDENTITY_MAX_LENGTH,
+    MAX_RAISE_ATTACHMENTS,
+    WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
     ExpertDetachPreview,
     ExpertIdentity,
@@ -15,6 +17,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
     RaiseResult,
     validate_avatar_url,
 )
@@ -46,7 +49,11 @@ class CreateRaisedExpertRequest(BaseModel):
     voice_preferences: str | None = Field(default=None, max_length=4_000)
     # Free-text "about them" answer from the raise flow; becomes the identity.
     about: str | None = Field(default=None, max_length=EXPERT_IDENTITY_MAX_LENGTH)
-    first_job_store_listing_version_id: str | None = Field(default=None, max_length=100)
+    # Credits (100 = $1). Omitted/null keeps the platform default at read time.
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+    attachments: list[RaiseAttachment] = Field(
+        default_factory=list, max_length=MAX_RAISE_ATTACHMENTS
+    )
 
     @field_validator("name")
     @classmethod
@@ -114,7 +121,7 @@ async def hire_expert(
     "/raise",
     operation_id="create_raised_expert",
     responses={
-        404: {"description": "First job listing not found or unavailable"},
+        404: {"description": "Attachment not found or unavailable"},
         409: {"description": "Active expert limit reached"},
     },
 )
@@ -128,17 +135,20 @@ async def create_raised_expert(
             request.name,
             request.role,
             request.voice_preferences,
-            request.first_job_store_listing_version_id,
             avatar_url=request.avatar_url,
             color=request.color,
             about=request.about,
+            weekly_budget=request.weekly_budget,
+            attachments=request.attachments,
         )
     except experts_db.FirstJobUnavailableError as e:
         raise fastapi.HTTPException(
             status_code=404,
             detail={
-                "code": "first_job_unavailable",
-                "store_listing_version_id": e.store_listing_version_id,
+                "code": "attachment_unavailable",
+                "kind": e.kind,
+                "source": e.source,
+                "id": e.id,
             },
         )
     except experts_db.ExpertLimitExceededError as e:

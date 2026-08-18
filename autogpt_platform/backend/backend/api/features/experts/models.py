@@ -152,16 +152,51 @@ class HireResult(BaseModel):
     failed_preloads: list[str]
 
 
+RaiseAttachmentKind = Literal["workflow", "skill"]
+RaiseAttachmentSource = Literal["marketplace", "library"]
+MAX_RAISE_ATTACHMENTS = 20
+WEEKLY_BUDGET_MAX_CREDITS = 1_000_000
+
+
+class RaiseAttachment(BaseModel):
+    """One workflow or skill to attach while raising an expert.
+
+    ``id`` is a store listing version UUID (marketplace), a library agent
+    UUID (library workflow), or a copilot skill slug (library skill).
+    Marketplace skills use a store listing version UUID; the listing's
+    public name is stored on ``Expert.skills``.
+    """
+
+    kind: RaiseAttachmentKind
+    source: RaiseAttachmentSource
+    id: str = Field(min_length=1, max_length=100)
+
+    @field_validator("id")
+    @classmethod
+    def strip_id(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Attachment id must not be blank")
+        return stripped
+
+
+class RaiseAttachmentFailure(BaseModel):
+    kind: RaiseAttachmentKind
+    source: RaiseAttachmentSource
+    id: str
+    reason: Literal["unavailable", "installation_failed"]
+
+
 class RaiseResult(BaseModel):
-    """Result of raising a blank expert. ``first_job_installed`` is only
-    True when a first job was requested and its install succeeded, so the
-    client can surface partial success instead of a silent no-op. The stable
-    failure reason distinguishes a listing withdrawn mid-flow from an install
-    failure."""
+    """Result of raising a blank expert.
+
+    Attachments are validated before the expert row is created. A later
+    install failure is non-fatal and listed in ``failed_attachments`` so
+    the client can surface partial success.
+    """
 
     expert: Expert
-    first_job_installed: bool
-    first_job_failure_reason: Literal["unavailable", "installation_failed"] | None
+    failed_attachments: list[RaiseAttachmentFailure] = []
 
 
 class ExpertSoulUpdate(BaseModel):

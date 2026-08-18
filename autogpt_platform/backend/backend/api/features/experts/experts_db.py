@@ -10,7 +10,7 @@ import prisma.types
 from prisma.enums import ResourceVisibility
 from pydantic import JsonValue, ValidationError
 
-from backend.api.features.experts import scheduling
+from backend.api.features.experts import raise_attachments, scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -21,6 +21,7 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
     RaiseResult,
     decode_voice_preferences,
 )
@@ -45,7 +46,6 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
-    NotFoundError,
 )
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -92,25 +92,24 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         self.limit = limit
 
 
-class FirstJobUnavailableError(Exception):
-    def __init__(self, store_listing_version_id: str):
-        super().__init__(
-            f"Store listing version {store_listing_version_id} "
-            "not found or unavailable"
-        )
-        self.store_listing_version_id = store_listing_version_id
+FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
+    name = listing.name if listing else None
+    description = listing.description if listing else None
+    if name is None and library_agent is not None:
+        name = library_agent.name
+        description = library_agent.description
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
         library_agent_id=row.libraryAgentId,
         graph_id=library_agent.agentGraphId if library_agent else None,
-        name=listing.name if listing else None,
-        description=listing.description if listing else None,
+        name=name,
+        description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
     )
@@ -694,23 +693,21 @@ async def create_raised_expert(
     name: str,
     role: str | None,
     voice_preferences: str | None,
-    first_job_store_listing_version_id: str | None,
     *,
     avatar_url: str | None = None,
     color: str | None = None,
     about: str | None = None,
+    weekly_budget: int | None = None,
+    attachments: list[RaiseAttachment] | None = None,
 ) -> RaiseResult:
     """Raise a blank expert owned by *user_id*.
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
-    NULL. Capacity checks and creation share a per-user advisory lock. A
-    requested first job is validated before creation, then its exact listing
-    rows are locked and revalidated through workflow association. Installation
-    failure remains non-fatal and is reported in the result.
+    NULL. Capacity checks and creation share a per-user advisory lock.
+    Attachments are validated before creation. Workflow install failure
+    remains non-fatal and is reported in the result.
     """
-    if first_job_store_listing_version_id is not None:
-        await _validate_first_job_listing(first_job_store_listing_version_id)
-
+    resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
     expert = await _create_raised_expert_row(
         user_id,
         name,
@@ -719,43 +716,19 @@ async def create_raised_expert(
         avatar_url=avatar_url,
         color=color,
         about=about,
+        weekly_budget=weekly_budget,
+        skills=resolved.skill_names,
     )
-    first_job_installed = False
-    failure_reason: Literal["unavailable", "installation_failed"] | None = None
-    if first_job_store_listing_version_id is not None:
-        try:
-            await _install_first_job(
-                user_id, expert.id, first_job_store_listing_version_id
-            )
-            first_job_installed = True
-        except (FirstJobUnavailableError, NotFoundError):
-            # NotFoundError covers the listing version or its graph disappearing
-            # between the locked availability check and graph resolution, which
-            # is the same "no longer available" outcome for the client.
-            failure_reason = "unavailable"
-            logger.warning(
-                f"First job {first_job_store_listing_version_id} became "
-                f"unavailable while raising expert #{expert.id} for user #{user_id}"
-            )
-        except Exception:
-            failure_reason = "installation_failed"
-            logger.exception(
-                f"Failed to install first job "
-                f"{first_job_store_listing_version_id} on raised "
-                f"expert #{expert.id} for user #{user_id}"
-            )
-
-    if first_job_installed:
+    failed_attachments = await raise_attachments.install_workflows(
+        user_id, expert.id, resolved.workflows
+    )
+    if resolved.workflows and len(failed_attachments) < len(resolved.workflows):
         hydrated = await get_expert(user_id, expert.id)
         if hydrated is None:
             raise ExpertNotFoundError(expert.id)
     else:
         hydrated = _to_model(expert)
-    return RaiseResult(
-        expert=hydrated,
-        first_job_installed=first_job_installed,
-        first_job_failure_reason=failure_reason,
-    )
+    return RaiseResult(expert=hydrated, failed_attachments=failed_attachments)
 
 
 async def _create_raised_expert_row(
@@ -767,6 +740,8 @@ async def _create_raised_expert_row(
     avatar_url: str | None,
     color: str | None,
     about: str | None,
+    weekly_budget: int | None = None,
+    skills: list[str] | None = None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
         await _lock_expert_creation(tx, user_id)
@@ -789,6 +764,8 @@ async def _create_raised_expert_row(
                 "role": role or "",
                 "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
+                "weeklyBudget": weekly_budget,
+                "skills": skills or [],
             },
             include=_WORKFLOW_INCLUDE,
         )
@@ -799,51 +776,9 @@ async def _install_first_job(
     expert_id: str,
     store_listing_version_id: str,
 ) -> None:
-    async with transaction() as tx:
-        is_installable = (
-            await library_db.is_store_listing_version_available_for_install(
-                store_listing_version_id,
-                tx=tx,
-                lock_rows=True,
-            )
-        )
-        if not is_installable:
-            raise FirstJobUnavailableError(store_listing_version_id)
-
-        expert = await tx.expert.find_first(
-            where={
-                "id": expert_id,
-                "ownerUserId": user_id,
-                "isTemplate": False,
-                "isArchived": False,
-            }
-        )
-        if expert is None:
-            raise ExpertNotFoundError(expert_id)
-
-        library_agent = await library_db.add_store_agent_to_library_in_transaction(
-            store_listing_version_id, user_id, tx
-        )
-        await tx.expertworkflow.create(
-            data={
-                "expertId": expert_id,
-                "storeListingVersionId": store_listing_version_id,
-                "libraryAgentId": library_agent.id,
-            }
-        )
-
-
-async def _validate_first_job_listing(store_listing_version_id: str) -> None:
-    """Require the submitted listing-version row itself to be live.
-
-    The shared library install path authorizes by graph, which would let a
-    pending or deleted version UUID pointing at an approved graph slip
-    through and link the expert to an unapproved row."""
-    is_installable = await library_db.is_store_listing_version_available_for_install(
-        store_listing_version_id
+    await raise_attachments.install_marketplace_workflow(
+        user_id, expert_id, store_listing_version_id
     )
-    if not is_installable:
-        raise FirstJobUnavailableError(store_listing_version_id)
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:

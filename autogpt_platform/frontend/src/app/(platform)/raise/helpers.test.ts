@@ -1,7 +1,11 @@
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { describe, expect, test } from "vitest";
 import {
+  assembledKit,
+  EMPTY_DRAFT,
   getExpertLimitCode,
+  kitBudgetLabel,
+  kitToolsLabel,
   raisedIdentity,
   resolveVoicePreferences,
   voiceSummaryLabel,
@@ -47,5 +51,57 @@ describe("raise helpers", () => {
     ).toBe("raised_expert_lifetime_limit");
     expect(getExpertLimitCode({ detail: "legacy error" })).toBeNull();
     expect(getExpertLimitCode(null)).toBeNull();
+  });
+
+  test("formats weekly budget and tool labels for the soul preview", () => {
+    expect(kitBudgetLabel(null)).toBeNull();
+    expect(kitBudgetLabel({ weeklyBudget: null, attachments: [] })).toBeNull();
+    expect(kitBudgetLabel({ weeklyBudget: 0, attachments: [] })).toBe(
+      "No weekly limit",
+    );
+    expect(kitBudgetLabel({ weeklyBudget: 500, attachments: [] })).toBe(
+      "500 credits ($5/week)",
+    );
+    expect(
+      kitToolsLabel({
+        weeklyBudget: null,
+        attachments: [
+          {
+            kind: "skill",
+            source: "library",
+            id: "seo-audit",
+            name: "SEO audit",
+          },
+        ],
+      }),
+    ).toBe("SEO audit");
+  });
+
+  test("assembles preview kit from answered budget and attachments", () => {
+    expect(assembledKit(EMPTY_DRAFT)).toBeNull();
+    expect(
+      assembledKit({
+        ...EMPTY_DRAFT,
+        budget: { credits: 500 },
+        marketplace: [
+          {
+            kind: "workflow",
+            source: "marketplace",
+            id: "listing-1",
+            name: "SEO Blog Writer",
+          },
+        ],
+      }),
+    ).toEqual({
+      weeklyBudget: 500,
+      attachments: [
+        {
+          kind: "workflow",
+          source: "marketplace",
+          id: "listing-1",
+          name: "SEO Blog Writer",
+        },
+      ],
+    });
   });
 });

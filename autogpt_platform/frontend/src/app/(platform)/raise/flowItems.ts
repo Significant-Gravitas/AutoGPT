@@ -9,7 +9,9 @@ export const BEAT_KEYS = [
   "avatar",
   "about",
   "voice",
-  "firstTask",
+  "budget",
+  "marketplace",
+  "skills",
 ] as const;
 
 export type BeatKey = (typeof BEAT_KEYS)[number];
@@ -45,9 +47,11 @@ export function buildFlowItems(
     name: RAISE_PROMPTS.nameQuestion,
     color: RAISE_PROMPTS.colorQuestion,
     avatar: RAISE_PROMPTS.avatarQuestion(draft.name),
-    about: RAISE_PROMPTS.aboutQuestion,
+    about: RAISE_PROMPTS.aboutQuestion(draft.name),
     voice: RAISE_PROMPTS.voiceQuestion(draft.name),
-    firstTask: RAISE_PROMPTS.firstTaskQuestion(draft.name),
+    budget: RAISE_PROMPTS.budgetQuestion(draft.name),
+    marketplace: RAISE_PROMPTS.marketplaceQuestion(draft.name),
+    skills: RAISE_PROMPTS.skillsQuestion(draft.name),
   };
 
   BEAT_KEYS.forEach((beat) => {
@@ -80,7 +84,9 @@ export function beatTriggers(draft: RaiseDraft): Record<BeatKey, boolean> {
     avatar: draft.color !== null,
     about: draft.avatarUrl !== null,
     voice: draft.about !== null,
-    firstTask: draft.voiceLabel !== null,
+    budget: draft.voiceLabel !== null,
+    marketplace: draft.budget !== null,
+    skills: draft.marketplace !== null,
   };
 }
 
@@ -92,7 +98,9 @@ function beatAnswers(draft: RaiseDraft): Record<BeatKey, boolean> {
     avatar: draft.avatarUrl !== null,
     about: draft.about !== null,
     voice: draft.voiceLabel !== null,
-    firstTask: draft.firstTask !== null,
+    budget: draft.budget !== null,
+    marketplace: draft.marketplace !== null,
+    skills: draft.skills !== null,
   };
 }
 
@@ -117,7 +125,11 @@ export function clearedAnswer(beat: BeatKey): Partial<RaiseDraft> {
       return { about: null };
     case "voice":
       return { voicePreferences: "", voiceLabel: null };
-    case "firstTask":
-      return { firstTask: null };
+    case "budget":
+      return { budget: null };
+    case "marketplace":
+      return { marketplace: null };
+    case "skills":
+      return { skills: null };
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import {
   Avatar,
   AvatarFallback,
@@ -92,7 +92,7 @@ export default function ExpertDetailPage() {
     );
   }
 
-  const accent = getExpertAccent(expert.role);
+  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   return (

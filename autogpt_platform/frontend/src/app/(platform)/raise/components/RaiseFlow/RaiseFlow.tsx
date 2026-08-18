@@ -16,6 +16,7 @@ import {
   type RaiseFlowItem,
 } from "../../flowItems";
 import { VOICE_SAMPLES } from "../../helpers";
+import { useRef } from "react";
 import { useRaisePage } from "../../useRaisePage";
 import { useConversationScroll } from "../../useConversationScroll";
 import { AboutStep } from "../AboutStep/AboutStep";
@@ -25,14 +26,15 @@ import { ColorStep } from "../ColorStep/ColorStep";
 import {
   ditherColorsFor,
   interactiveCardClassFor,
-  rowSelectedClassFor,
   selectedCardClassFor,
   textClassFor,
 } from "../ColorStep/helpers";
 import { DitheredWaves } from "../DitheredWaves/DitheredWaves";
-import { FirstTaskStep } from "../FirstTaskStep/FirstTaskStep";
+import { BudgetStep } from "../BudgetStep/BudgetStep";
+import { MarketplaceStep } from "../MarketplaceStep/MarketplaceStep";
 import { NameStep } from "../NameStep/NameStep";
 import { RoleStep } from "../RoleStep/RoleStep";
+import { SkillsStep } from "../SkillsStep/SkillsStep";
 import { nameSuggestionsFor } from "../RoleStep/helpers";
 import { SoulPreviewPanel } from "../SoulPreviewPanel/SoulPreviewPanel";
 
@@ -49,7 +51,9 @@ export function RaiseFlow() {
     avatarUrl,
     about,
     voiceLabel,
-    firstTask,
+    budget,
+    marketplace,
+    kit,
     isSubmitting,
     canGoBack,
     startRaising,
@@ -65,10 +69,21 @@ export function RaiseFlow() {
     skipAbout,
     pickVoice,
     skipVoice,
-    submitFirstTask,
-    skipFirstTask,
+    submitBudget,
+    skipBudget,
+    submitMarketplace,
+    skipMarketplace,
+    submitSkills,
+    skipSkills,
   } = useRaisePage();
   const { scrollRef, canScrollUp, canScrollDown } = useConversationScroll();
+  const initialMessageIds = useRef<Set<string> | null>(null);
+  if (initialMessageIds.current === null) {
+    initialMessageIds.current = new Set(
+      items.filter((item) => item.kind === "message").map((item) => item.id),
+    );
+  }
+  const seenMessageIds = initialMessageIds.current;
 
   function renderStep(beat: BeatKey) {
     switch (beat) {
@@ -100,7 +115,7 @@ export function RaiseFlow() {
         return (
           <AboutStep
             submittedAbout={about}
-            role={role}
+            name={name}
             color={color}
             onSubmit={submitAbout}
             onSkip={skipAbout}
@@ -116,21 +131,39 @@ export function RaiseFlow() {
             cardColors={{
               selected: selectedCardClassFor(color),
               interactive: interactiveCardClassFor(color),
-              selectedRow: rowSelectedClassFor(color),
             }}
             onPick={pickVoice}
             onSkip={skipVoice}
           />
         );
-      case "firstTask":
+      case "budget":
         return (
-          <FirstTaskStep
+          <BudgetStep
+            color={color}
+            submittedBudget={budget}
+            onSubmit={submitBudget}
+            onSkip={skipBudget}
+          />
+        );
+      case "marketplace":
+        return (
+          <MarketplaceStep
+            color={color}
+            submitted={marketplace}
+            onSubmit={submitMarketplace}
+            onSkip={skipMarketplace}
+          />
+        );
+      case "skills":
+        return (
+          <SkillsStep
             name={name}
             color={color}
-            submittedTask={firstTask}
+            submitted={null}
+            existingCount={marketplace?.length ?? 0}
             isSubmitting={isSubmitting}
-            onSubmit={submitFirstTask}
-            onSkip={skipFirstTask}
+            onSubmit={submitSkills}
+            onSkip={skipSkills}
           />
         );
     }
@@ -155,7 +188,7 @@ export function RaiseFlow() {
     }
     if (item.kind === "step") {
       return (
-        <div key={item.id} className={STEP_ANIMATION}>
+        <div key={item.id} id={item.id} className={STEP_ANIMATION}>
           {renderStep(item.beat)}
         </div>
       );
@@ -163,7 +196,9 @@ export function RaiseFlow() {
     return (
       <AutoGPTBubble
         key={item.id}
+        id={item.id}
         text={item.text}
+        animate={!seenMessageIds.has(item.id)}
         onTypingComplete={revealOnTyped(item.id, revealStep)}
       />
     );
@@ -192,7 +227,7 @@ export function RaiseFlow() {
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
           />
-          <div className="absolute right-4 top-4 z-10 flex gap-2 sm:right-6 sm:top-6">
+          <div className="absolute left-4 top-4 z-10 flex gap-2 sm:left-6 sm:top-6">
             <Button
               variant="icon"
               size="small"
@@ -223,7 +258,7 @@ export function RaiseFlow() {
               color={color}
               about={about}
               voiceLabel={voiceLabel}
-              firstTask={firstTask}
+              kit={kit}
             />
           </div>
         </div>

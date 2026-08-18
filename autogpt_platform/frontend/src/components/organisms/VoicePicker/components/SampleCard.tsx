@@ -2,7 +2,7 @@ import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { selectableRowClassName, type SelectableCardColors } from "../styles";
+import { selectableCardClassName, type SelectableCardColors } from "../styles";
 
 type Props = {
   sample: VoiceSample;
@@ -25,7 +25,10 @@ export function SampleCard({
 }: Props) {
   return (
     <label
-      className={cn("text-left", selectableRowClassName(isSelected, colors))}
+      className={cn(
+        "block w-full text-left",
+        selectableCardClassName(isSelected, true, colors),
+      )}
     >
       <input
         type="radio"

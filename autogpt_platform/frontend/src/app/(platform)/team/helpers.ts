@@ -3,6 +3,11 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { formatDistanceToNow } from "date-fns";
 
+/** Section headings sit outside the cards, so they need the cards' own content
+ *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
+ *  up with the text inside them instead of with the card edge. */
+export const SECTION_INSET_CLASS = "px-5";
+
 export function getLastRunLabel(expert: Expert) {
   if (!expert.last_run_at) return null;
   const when = formatDistanceToNow(new Date(expert.last_run_at), {

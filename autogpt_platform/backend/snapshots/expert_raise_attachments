@@ -37,6 +37,5 @@
       }
     ]
   },
-  "first_job_failure_reason": null,
-  "first_job_installed": true
+  "failed_attachments": []
 }

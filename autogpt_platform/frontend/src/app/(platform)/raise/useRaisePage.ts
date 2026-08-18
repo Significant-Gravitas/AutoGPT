@@ -13,6 +13,7 @@ import {
   type BeatKey,
 } from "./flowItems";
 import {
+  assembledKit,
   clearDraft,
   EMPTY_DRAFT,
   getExpertLimitCode,
@@ -22,8 +23,14 @@ import {
   voiceSummaryLabel,
   VOICE_SAMPLES,
   VOICE_SKIPPED_LABEL,
+  type RaiseAttachmentDraft,
   type RaiseDraft,
+  type RaiseKit,
 } from "./helpers";
+import {
+  failedAttachmentMessage,
+  toRaiseAttachments,
+} from "./components/KitStep/helpers";
 import { useFlowProgress } from "./useFlowProgress";
 
 export function useRaisePage() {
@@ -33,10 +40,6 @@ export function useRaisePage() {
   const [draft, setDraft] = useState<RaiseDraft>(loadDraft);
   const progress = useFlowProgress(beatTriggers(draft));
   const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
-  // Synchronous latch: isPending only flips after a rerender, so a rapid
-  // double-click could dispatch two POSTs without it. Stays latched after
-  // success (we are navigating away); resets only on error so the user
-  // can retry.
   const submitLatch = useRef(false);
 
   function update(changes: Partial<RaiseDraft>) {
@@ -94,7 +97,7 @@ export function useRaisePage() {
     update({
       voicePreferences: preferences,
       voiceLabel: voiceSummaryLabel(result, VOICE_SAMPLES),
-      step: "firstTask",
+      step: "budget",
     });
   }
 
@@ -102,20 +105,38 @@ export function useRaisePage() {
     update({
       voicePreferences: "",
       voiceLabel: VOICE_SKIPPED_LABEL,
-      step: "firstTask",
+      step: "budget",
     });
   }
 
-  // The first task is the payoff, so submitting it finishes the raise and
-  // carries straight into the chat instead of parking on a review screen.
-  function submitFirstTask(task: string) {
-    update({ firstTask: task, step: "done" });
-    finish(task);
+  function submitBudget(credits: number) {
+    update({ budget: { credits }, step: "marketplace" });
   }
 
-  function skipFirstTask() {
-    update({ firstTask: "", step: "done" });
-    finish("");
+  function skipBudget() {
+    update({ budget: { credits: null }, step: "marketplace" });
+  }
+
+  function submitMarketplace(attachments: RaiseAttachmentDraft[]) {
+    update({ marketplace: attachments, step: "skills" });
+  }
+
+  function skipMarketplace() {
+    update({ marketplace: [], step: "skills" });
+  }
+
+  function submitSkills(attachments: RaiseAttachmentDraft[]) {
+    finish({
+      weeklyBudget: draft.budget?.credits ?? null,
+      attachments: [...(draft.marketplace ?? []), ...attachments],
+    });
+  }
+
+  function skipSkills() {
+    finish({
+      weeklyBudget: draft.budget?.credits ?? null,
+      attachments: draft.marketplace ?? [],
+    });
   }
 
   function goBack() {
@@ -125,7 +146,7 @@ export function useRaisePage() {
     progress.clearAfter(beat);
   }
 
-  async function finish(firstTask: string) {
+  async function finish(kit: RaiseKit) {
     if (submitLatch.current) return;
     submitLatch.current = true;
     setIsSubmissionLocked(true);
@@ -138,11 +159,26 @@ export function useRaisePage() {
           avatar_url: draft.avatarUrl || null,
           about: draft.about || null,
           voice_preferences: draft.voicePreferences || null,
+          weekly_budget: kit.weeklyBudget,
+          attachments: toRaiseAttachments(kit.attachments),
         },
       });
       const result = response.data as RaiseResult;
+      if (result.failed_attachments?.length) {
+        toast({
+          title: `Raised ${draft.name || "your expert"}, but some tools didn't attach`,
+          description: failedAttachmentMessage(
+            result.failed_attachments,
+            kit.attachments,
+          ),
+        });
+      }
       clearDraft();
-      router.push(chatHandoffUrl(result.expert.id, firstTask));
+      // kickoff=1 has the expert open the thread itself: introduce who it is,
+      // say what it can take on, and start or ask for its first job.
+      router.push(
+        `/copilot?expertId=${encodeURIComponent(result.expert.id)}&kickoff=1`,
+      );
     } catch (error) {
       submitLatch.current = false;
       setIsSubmissionLocked(false);
@@ -184,7 +220,10 @@ export function useRaisePage() {
     voiceLabel: draft.voiceLabel,
     items: buildFlowItems(draft, progress),
     name: draft.name,
-    firstTask: draft.firstTask,
+    budget: draft.budget,
+    marketplace: draft.marketplace,
+    skills: draft.skills,
+    kit: assembledKit(draft),
     isSubmitting: isPending || isSubmissionLocked,
     canGoBack: lastAnsweredBeat(draft) !== null,
     startRaising,
@@ -199,17 +238,12 @@ export function useRaisePage() {
     skipAbout,
     pickVoice,
     skipVoice,
-    submitFirstTask,
-    skipFirstTask,
+    submitBudget,
+    skipBudget,
+    submitMarketplace,
+    skipMarketplace,
+    submitSkills,
+    skipSkills,
     goBack,
   };
-}
-
-// CoPilot picks up `#prompt=` on mount and sends it as the first message when
-// `autosubmit=true`, so the raise flow hands the task over without needing a
-// session to exist yet.
-function chatHandoffUrl(expertId: string, firstTask: string) {
-  const base = `/copilot?expertId=${encodeURIComponent(expertId)}`;
-  if (!firstTask) return base;
-  return `${base}&autosubmit=true#prompt=${encodeURIComponent(firstTask)}`;
 }

@@ -3,6 +3,8 @@ export interface ColorOption {
   label: string;
   // Written out in full so Tailwind's scanner keeps the class.
   swatchClassName: string;
+  // Gradient stop for a surface washed in the expert's color.
+  washFromClassName: string;
   // Border + tint for answers rendered in the expert's color.
   bubbleClassName: string;
   // Readable text at label sizes; the -300 swatch is too light for copy.
@@ -23,6 +25,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "rose-300",
     label: "Rose",
     swatchClassName: "bg-rose-300",
+    washFromClassName: "from-rose-100",
     bubbleClassName: "border-rose-300 bg-rose-50",
     textClassName: "text-rose-700",
     selectedCardClassName: "border-rose-400 bg-rose-50 ring-2 ring-rose-200",
@@ -35,6 +38,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "red-300",
     label: "Red",
     swatchClassName: "bg-red-300",
+    washFromClassName: "from-red-100",
     bubbleClassName: "border-red-300 bg-red-50",
     textClassName: "text-red-700",
     selectedCardClassName: "border-red-400 bg-red-50 ring-2 ring-red-200",
@@ -46,6 +50,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "orange-300",
     label: "Orange",
     swatchClassName: "bg-orange-300",
+    washFromClassName: "from-orange-100",
     bubbleClassName: "border-orange-300 bg-orange-50",
     textClassName: "text-orange-700",
     selectedCardClassName:
@@ -59,6 +64,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "amber-300",
     label: "Amber",
     swatchClassName: "bg-amber-300",
+    washFromClassName: "from-amber-100",
     bubbleClassName: "border-amber-300 bg-amber-50",
     textClassName: "text-amber-700",
     selectedCardClassName: "border-amber-400 bg-amber-50 ring-2 ring-amber-200",
@@ -71,6 +77,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "yellow-300",
     label: "Yellow",
     swatchClassName: "bg-yellow-300",
+    washFromClassName: "from-yellow-100",
     bubbleClassName: "border-yellow-300 bg-yellow-50",
     textClassName: "text-yellow-700",
     selectedCardClassName:
@@ -84,6 +91,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "lime-300",
     label: "Lime",
     swatchClassName: "bg-lime-300",
+    washFromClassName: "from-lime-100",
     bubbleClassName: "border-lime-300 bg-lime-50",
     textClassName: "text-lime-700",
     selectedCardClassName: "border-lime-400 bg-lime-50 ring-2 ring-lime-200",
@@ -96,6 +104,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "green-300",
     label: "Green",
     swatchClassName: "bg-green-300",
+    washFromClassName: "from-green-100",
     bubbleClassName: "border-green-300 bg-green-50",
     textClassName: "text-green-700",
     selectedCardClassName: "border-green-400 bg-green-50 ring-2 ring-green-200",
@@ -108,6 +117,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "emerald-300",
     label: "Emerald",
     swatchClassName: "bg-emerald-300",
+    washFromClassName: "from-emerald-100",
     bubbleClassName: "border-emerald-300 bg-emerald-50",
     textClassName: "text-emerald-700",
     selectedCardClassName:
@@ -121,6 +131,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "teal-300",
     label: "Teal",
     swatchClassName: "bg-teal-300",
+    washFromClassName: "from-teal-100",
     bubbleClassName: "border-teal-300 bg-teal-50",
     textClassName: "text-teal-700",
     selectedCardClassName: "border-teal-400 bg-teal-50 ring-2 ring-teal-200",
@@ -133,6 +144,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "cyan-300",
     label: "Cyan",
     swatchClassName: "bg-cyan-300",
+    washFromClassName: "from-cyan-100",
     bubbleClassName: "border-cyan-300 bg-cyan-50",
     textClassName: "text-cyan-700",
     selectedCardClassName: "border-cyan-400 bg-cyan-50 ring-2 ring-cyan-200",
@@ -145,6 +157,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "sky-300",
     label: "Sky",
     swatchClassName: "bg-sky-300",
+    washFromClassName: "from-sky-100",
     bubbleClassName: "border-sky-300 bg-sky-50",
     textClassName: "text-sky-700",
     selectedCardClassName: "border-sky-400 bg-sky-50 ring-2 ring-sky-200",
@@ -156,6 +169,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "blue-300",
     label: "Blue",
     swatchClassName: "bg-blue-300",
+    washFromClassName: "from-blue-100",
     bubbleClassName: "border-blue-300 bg-blue-50",
     textClassName: "text-blue-700",
     selectedCardClassName: "border-blue-400 bg-blue-50 ring-2 ring-blue-200",
@@ -168,6 +182,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "indigo-300",
     label: "Indigo",
     swatchClassName: "bg-indigo-300",
+    washFromClassName: "from-indigo-100",
     bubbleClassName: "border-indigo-300 bg-indigo-50",
     textClassName: "text-indigo-700",
     selectedCardClassName:
@@ -181,6 +196,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "violet-300",
     label: "Violet",
     swatchClassName: "bg-violet-300",
+    washFromClassName: "from-violet-100",
     bubbleClassName: "border-violet-300 bg-violet-50",
     textClassName: "text-violet-700",
     selectedCardClassName:
@@ -194,6 +210,7 @@ export const COLOR_OPTIONS: ColorOption[] = [
     id: "fuchsia-300",
     label: "Fuchsia",
     swatchClassName: "bg-fuchsia-300",
+    washFromClassName: "from-fuchsia-100",
     bubbleClassName: "border-fuchsia-300 bg-fuchsia-50",
     textClassName: "text-fuchsia-700",
     selectedCardClassName:
@@ -219,6 +236,10 @@ export function bubbleClassFor(id: string | null) {
 
 export function swatchClassFor(id: string | null) {
   return findColorOption(id)?.swatchClassName;
+}
+
+export function washFromClassFor(id: string | null) {
+  return findColorOption(id)?.washFromClassName;
 }
 
 export function textClassFor(id: string | null) {
