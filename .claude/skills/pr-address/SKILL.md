@@ -300,7 +300,7 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
    # `/review` (yours or a maintainer's) counts as a "new comment" and forces
    # an address round over a comment with nothing to address.
    gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate --slurp \
-     --jq '[.[][] | select((.body // "") | test("^\\s*/[a-z-]+\\s*$") | not)]'
+     | jq '[.[][] | select((.body // "") | test("^\\s*/[a-z-]+\\s*$") | not)]'
    ```
    Compare total count and newest `id` against baseline. Filter to non-empty, non-bot, non-author-update messages.
 
