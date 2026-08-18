@@ -9,7 +9,7 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { useNotificationForm } from "./useNotificationForm";
 import { Switch } from "@/components/atoms/Switch/Switch";
 

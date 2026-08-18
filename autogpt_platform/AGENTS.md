@@ -49,6 +49,7 @@ AutoGPT Platform is a monorepo containing:
 
 - **`dev`** is the main development branch. All PRs should target `dev`.
 - **`master`** is the production branch. Only used for production releases.
+- Exception: **LLM-catalog-only diffs** (`backend/data/llm_registry/catalog.py`) may use a `hotfix/*` branch targeting `master` for incident-speed changes (model kills, routing swaps) — CD deploys on merge. See `docs/platform/contributing/managing-llm-models.md`.
 
 ### Creating Pull Requests
 

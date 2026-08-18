@@ -4,11 +4,15 @@ import { useState } from "react";
 import {
   useGetOauthListMyOauthApps,
   usePatchOauthUpdateAppStatus,
-  usePostOauthUploadAppLogo,
   getGetOauthListMyOauthAppsQueryKey,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  isFileTooLarge,
+  OAUTH_LOGO_MAX_SIZE_MB,
+  uploadOAuthAppLogoDirect,
+} from "@/lib/direct-upload";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 
 export const useOAuthApps = () => {
@@ -22,16 +26,6 @@ export const useOAuthApps = () => {
   });
 
   const { mutateAsync: updateStatus } = usePatchOauthUpdateAppStatus({
-    mutation: {
-      onSettled: () => {
-        return queryClient.invalidateQueries({
-          queryKey: getGetOauthListMyOauthAppsQueryKey(),
-        });
-      },
-    },
-  });
-
-  const { mutateAsync: uploadLogo } = usePostOauthUploadAppLogo({
     mutation: {
       onSettled: () => {
         return queryClient.invalidateQueries({
@@ -69,21 +63,16 @@ export const useOAuthApps = () => {
   };
 
   const handleUploadLogo = async (appId: string, file: File) => {
+    if (isFileTooLarge({ file, maxSizeMB: OAUTH_LOGO_MAX_SIZE_MB, toast }))
+      return;
+
     try {
       setUploadingAppId(appId);
-      const result = await uploadLogo({
-        appId,
-        data: { file },
+      await uploadOAuthAppLogoDirect(appId, file);
+      toast({
+        title: "Success",
+        description: "Logo uploaded successfully",
       });
-
-      if (result.status === 200) {
-        toast({
-          title: "Success",
-          description: "Logo uploaded successfully",
-        });
-      } else {
-        throw new Error("Failed to upload logo");
-      }
     } catch (error) {
       console.error("Failed to upload logo:", error);
       const errorMessage =
@@ -95,6 +84,9 @@ export const useOAuthApps = () => {
       });
     } finally {
       setUploadingAppId(null);
+      void queryClient.invalidateQueries({
+        queryKey: getGetOauthListMyOauthAppsQueryKey(),
+      });
     }
   };
 

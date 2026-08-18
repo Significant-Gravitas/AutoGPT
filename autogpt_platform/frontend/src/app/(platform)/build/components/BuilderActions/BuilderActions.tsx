@@ -1,4 +1,4 @@
-import { parseAsString, useQueryStates } from "nuqs";
+import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { AgentOutputs } from "./components/AgentOutputs/AgentOutputs";
 import { RunGraph } from "./components/RunGraph/RunGraph";
 import { ScheduleGraph } from "./components/ScheduleGraph/ScheduleGraph";
@@ -6,8 +6,9 @@ import { PublishToMarketplace } from "./components/PublishToMarketplace/PublishT
 import { memo } from "react";
 
 export const BuilderActions = memo(() => {
-  const [{ flowID }] = useQueryStates({
+  const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
+    flowVersion: parseAsInteger,
   });
   return (
     <div
@@ -17,7 +18,7 @@ export const BuilderActions = memo(() => {
       <AgentOutputs flowID={flowID} />
       <RunGraph flowID={flowID} />
       <ScheduleGraph flowID={flowID} />
-      <PublishToMarketplace flowID={flowID} />
+      <PublishToMarketplace flowID={flowID} flowVersion={flowVersion} />
     </div>
   );
 });

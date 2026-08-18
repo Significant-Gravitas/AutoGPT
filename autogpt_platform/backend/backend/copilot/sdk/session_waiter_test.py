@@ -11,10 +11,11 @@ Focuses on the queue-on-busy fallback:
   fresh dispatch.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import active_turns
 from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
 
 _QR = type(
@@ -22,6 +23,18 @@ _QR = type(
     (),
     {"buffer_length": 4, "max_buffer_length": 10, "turn_in_flight": True},
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_session_lookup():
+    session = MagicMock()
+    session.metadata.llm_auth_provider = "platform"
+    session.metadata.llm_credential_id = None
+    with patch(
+        "backend.copilot.sdk.session_waiter.get_chat_session",
+        new=AsyncMock(return_value=session),
+    ) as lookup:
+        yield lookup
 
 
 @pytest.mark.asyncio
@@ -46,7 +59,7 @@ async def test_queue_branch_timeout_zero_returns_immediately():
             new=create_session,
         ),
         patch(
-            "backend.copilot.sdk.session_waiter.enqueue_copilot_turn",
+            "backend.copilot.executor.utils.enqueue_copilot_turn",
             new=enqueue,
         ),
         patch(
@@ -98,7 +111,7 @@ async def test_queue_branch_positive_timeout_rides_inflight_turn():
             new=create_session,
         ),
         patch(
-            "backend.copilot.sdk.session_waiter.enqueue_copilot_turn",
+            "backend.copilot.executor.utils.enqueue_copilot_turn",
             new=enqueue,
         ),
         patch(
@@ -135,6 +148,13 @@ async def test_idle_session_enqueues_normally():
     create_session = AsyncMock()
     enqueue = AsyncMock()
     wait_result = AsyncMock(return_value=("completed", SessionResult()))
+    idle_db = MagicMock()
+    # Session is idle → CAS idle → running succeeds; running count is 1
+    # after the flip (this caller is the only running session).
+    idle_db.update_chat_session_status = AsyncMock(return_value=True)
+    idle_db.count_chat_sessions_by_status = AsyncMock(return_value=1)
+    idle_db.list_chat_sessions_by_status = AsyncMock(return_value=[])
+    idle_db.get_chat_session_status = AsyncMock(return_value="idle")
 
     with (
         patch(
@@ -142,11 +162,16 @@ async def test_idle_session_enqueues_normally():
             new=AsyncMock(return_value=False),
         ),
         patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=0),
+        ),
+        patch.object(active_turns, "chat_db", return_value=idle_db),
+        patch(
             "backend.copilot.sdk.session_waiter.stream_registry.create_session",
             new=create_session,
         ),
         patch(
-            "backend.copilot.sdk.session_waiter.enqueue_copilot_turn",
+            "backend.copilot.executor.utils.enqueue_copilot_turn",
             new=enqueue,
         ),
         patch(
@@ -167,3 +192,57 @@ async def test_idle_session_enqueues_normally():
     assert result.queued is False
     create_session.assert_awaited_once()
     enqueue.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
+    """Slot-cap rejection in ``schedule_turn`` surfaces as the dedicated
+    ``rejected_concurrent_turn_cap`` outcome (not generic ``failed``) so
+    callers can render an actionable message instead of pointing at an
+    empty transcript."""
+    from backend.copilot.active_turns import ConcurrentTurnLimitError
+
+    create_session = AsyncMock()
+    enqueue = AsyncMock()
+    wait_result = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.executor.utils.acquire_turn_slot",
+            side_effect=ConcurrentTurnLimitError(),
+        ),
+        patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.create_session",
+            new=create_session,
+        ),
+        patch(
+            "backend.copilot.executor.utils.enqueue_copilot_turn",
+            new=enqueue,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=wait_result,
+        ),
+    ):
+        outcome, result = await run_copilot_turn_via_queue(
+            session_id="sess-idle",
+            user_id="u1",
+            message="kick off",
+            timeout=0.1,
+            tool_call_id="autopilot_block",
+            tool_name="autopilot_block",
+        )
+
+    assert outcome == "rejected_concurrent_turn_cap"
+    assert isinstance(result, SessionResult)
+    create_session.assert_not_awaited()
+    enqueue.assert_not_awaited()
+    wait_result.assert_not_awaited()

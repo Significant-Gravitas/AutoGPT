@@ -23,6 +23,9 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
+        # these tests target SDK behavior, not the aux check.
+        "aux_api_key": "or-aux-key",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -52,7 +55,7 @@ class TestResolveFallbackModel:
         Anthropic vendors stay routable.  Anthropic slugs are passed
         through unchanged in this mode (PR #12878)."""
         cfg = _make_config(
-            claude_agent_fallback_model="anthropic/claude-sonnet-4-20250514",
+            claude_agent_fallback_model="anthropic/claude-sonnet-4-6",
             use_openrouter=True,
             api_key="sk-test",
             base_url="https://openrouter.ai/api/v1",
@@ -62,7 +65,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
-        assert result == "anthropic/claude-sonnet-4-20250514"
+        assert result == "anthropic/claude-sonnet-4-6"
 
     def test_dots_replaced_for_direct_anthropic(self):
         """Direct Anthropic requires hyphen-separated versions."""

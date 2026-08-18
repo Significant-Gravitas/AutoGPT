@@ -16,11 +16,11 @@ from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
+from backend.data.onboarding import OnboardingStep
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
-# Test with both UserCredit and BetaUserCredit if needed
 credit_system = UserCredit()
 
 
@@ -291,7 +291,7 @@ async def test_onboarding_reward_idempotency(server: SpinTestServer):
         async def claim_reward():
             try:
                 result = await credit_system.onboarding_reward(
-                    user_id, 500, prisma.enums.OnboardingStep.WELCOME
+                    user_id, 500, OnboardingStep.WELCOME
                 )
                 return "SUCCESS" if result else "DUPLICATE"
             except Exception as e:

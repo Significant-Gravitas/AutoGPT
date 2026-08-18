@@ -1,11 +1,24 @@
 import { getSystemHeaders } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 
 export const ORIGINAL_TITLE = "AutoGPT";
+
+/**
+ * Title/body/icon for the OS-level notification fired when a copilot session
+ * completes. Kept in sync with the same copy hardcoded in `public/push-sw.js`
+ * (NOTIFICATION_MAP.copilot_completion.session_completed) — the SW file is
+ * plain JS served from /public and can't import from this module, so the two
+ * sources are matched by test rather than by reference.
+ */
+export const COPILOT_COMPLETION_NOTIFICATION = {
+  title: "AutoGPT",
+  body: "Task completed",
+  icon: "/notification-icon-192.png",
+} as const;
 
 /**
  * Returns HTTP headers required for direct backend requests from copilot:
@@ -123,6 +136,7 @@ export function getLatestAssistantStatusMessage(
   for (let i = last.parts.length - 1; i >= 0; i--) {
     const part = last.parts[i];
     if (part.type === "data-cursor") continue;
+    if (part.type === "data-dream-operations") continue;
     if (part.type === "data-status") {
       const data = (part as { data?: { message?: unknown } }).data;
       return typeof data?.message === "string" ? data.message : null;
@@ -384,4 +398,13 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
 
     return true;
   });
+}
+
+export function resolveModeChangedMode(dataPart: {
+  type: string;
+  data?: unknown;
+}): "extended_thinking" | "fast" | null {
+  if (dataPart.type !== "data-mode-changed") return null;
+  const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
+  return mode === "extended_thinking" || mode === "fast" ? mode : null;
 }

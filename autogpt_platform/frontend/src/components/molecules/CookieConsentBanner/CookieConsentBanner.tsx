@@ -2,9 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CookieIcon } from "@phosphor-icons/react/dist/ssr";
 import { useCookieConsentBanner } from "./useCookieConsentBanner";
 import { CookieSettingsModal } from "./components/CookieSettingsModal/CookieSettingsModal";
+import { CookieIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function CookieConsentBanner() {
   const {
@@ -30,7 +31,10 @@ export function CookieConsentBanner() {
         >
           <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-1 items-start gap-3">
-              <CookieIcon className="mt-0.5 h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-300" />
+              <Icon
+                icon={CookieIcon}
+                className="mt-0.5 h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-300"
+              />
               <div className="flex-1">
                 <Text
                   variant="body-medium"

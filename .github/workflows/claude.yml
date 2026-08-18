@@ -21,13 +21,10 @@ jobs:
       ) && (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR' ||
         github.event.review.author_association == 'OWNER' ||
         github.event.review.author_association == 'MEMBER' ||
-        github.event.review.author_association == 'COLLABORATOR' ||
         github.event.issue.author_association == 'OWNER' ||
-        github.event.issue.author_association == 'MEMBER' ||
-        github.event.issue.author_association == 'COLLABORATOR'
+        github.event.issue.author_association == 'MEMBER'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -99,7 +96,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
@@ -148,11 +145,7 @@ jobs:
             "rabbitmq:management"
             "clamav/clamav-debian:latest"
             "busybox:latest"
-            "kong:2.8.1"
-            "supabase/gotrue:v2.170.0"
-            "supabase/postgres:15.8.1.049"
-            "supabase/postgres-meta:v0.86.1"
-            "supabase/studio:20250224-d10db0f"
+            "pgvector/pgvector:pg15"
           )
           
           # Check if any cached tar files exist (more reliable than cache-hit)

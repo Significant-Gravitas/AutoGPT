@@ -249,9 +249,12 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
     ):
         mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
 
-        result = await resolve_graph_for_library(SLV_ID, ADMIN_USER_ID, admin=True)
+        result, resolved_slv = await resolve_graph_for_library(
+            SLV_ID, ADMIN_USER_ID, admin=True
+        )
 
     assert result is mock_graph_model
+    assert resolved_slv is mock_slv
     mock_admin.assert_awaited_once_with(
         graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
     )
@@ -284,15 +287,19 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
             return_value=mock_graph_model,
         ) as mock_regular,
     ):
-        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+        mock_prisma.return_value.find_first = AsyncMock(return_value=mock_slv)
 
-        result = await resolve_graph_for_library(SLV_ID, "regular-user-id", admin=False)
+        result, resolved_slv = await resolve_graph_for_library(
+            SLV_ID, "regular-user-id", admin=False
+        )
 
     assert result is mock_graph_model
+    assert resolved_slv is mock_slv
     mock_regular.assert_awaited_once_with(
         graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
     )
     mock_admin.assert_not_awaited()
+    mock_prisma.return_value.find_first.assert_awaited_once()
 
 
 # ---- Library membership grants graph access (product decision) ---- #

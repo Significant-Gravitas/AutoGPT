@@ -62,3 +62,4 @@ src/app/api/__generated__/
 # Video recordings (screen captures, bug repros)
 *.mov
 *.mp4
+!public/onboarding/*.mp4

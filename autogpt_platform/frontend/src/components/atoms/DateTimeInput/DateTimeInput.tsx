@@ -129,7 +129,7 @@ export const DateTimeInput = ({
     // Base styles matching other form components
     "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black w-full text-sm",
-    "placeholder:font-normal !placeholder:text-zinc-400",
+    "placeholder:font-normal !placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Error state
@@ -153,7 +153,7 @@ export const DateTimeInput = ({
     // Base styles
     "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black w-full",
-    "placeholder:font-normal placeholder:text-zinc-400",
+    "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
     // Size variants

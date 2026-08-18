@@ -11,6 +11,8 @@ from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from autogpt_libs.auth import config
+from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.dependencies import (
     get_user_id,
     requires_admin_user,
@@ -123,11 +125,13 @@ class TestAuthDependencies:
 
     @pytest.mark.asyncio
     async def test_requires_admin_user_missing_role(self):
-        """Test requires_admin_user with missing role."""
+        """A missing 'role' claim must fail closed (403), not raise KeyError."""
         jwt_payload = {"sub": "user-123", "email": "user@example.com"}
 
-        with pytest.raises(KeyError):
+        with pytest.raises(HTTPException) as exc_info:
             await requires_admin_user(jwt_payload)
+        assert exc_info.value.status_code == 403
+        assert "Admin access required" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_get_user_id_with_valid_payload(self, mocker: MockerFixture):
@@ -176,11 +180,19 @@ class TestAuthDependenciesIntegration:
         """Helper to create JWT tokens."""
         import jwt
 
+        # JWT_JWKS_URL is required by Settings.validate(); HS256 tokens verify
+        # against JWT_VERIFY_KEY and never touch the JWKS client, so a
+        # present-but-unused URL is enough. Reset the cached settings so
+        # get_settings() rebuilds under this patched environment.
         mocker.patch.dict(
             os.environ,
-            {"JWT_VERIFY_KEY": self.acceptable_jwt_secret},
+            {
+                "JWT_VERIFY_KEY": self.acceptable_jwt_secret,
+                "JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks",
+            },
             clear=True,
         )
+        mocker.patch.object(config, "_settings", Settings())
 
         def _create_token(payload, secret=self.acceptable_jwt_secret):
             return jwt.encode(payload, secret, algorithm="HS256")

@@ -5,10 +5,16 @@ import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_or_error,
+)
 from .base import BaseTool
-from .helpers import require_guide_read
+from .helpers import require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -25,8 +31,8 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, "
-            "auto-fixes, and saves. "
-            "Requires get_agent_building_guide first (refuses otherwise)."
+            "auto-fixes, and saves. Requires get_agent_building_guide and "
+            "find_library_agent(for_creation=true) first."
         )
 
     @property
@@ -38,10 +44,8 @@ class CreateAgentTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": "object",
-                    "description": "Agent graph with 'nodes' and 'links' arrays.",
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -56,18 +60,36 @@ class CreateAgentTool(BaseTool):
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
                 },
+                "is_hidden": {
+                    "type": "boolean",
+                    "description": (
+                        "Hide from the user's library listing. "
+                        "Use for trigger agents — they appear under "
+                        "the parent agent's triggers (auto-derived "
+                        "from AgentExecutorBlock usage in the graph)."
+                    ),
+                    "default": False,
+                },
+                "library_check_ack": {
+                    "type": "boolean",
+                    "description": "Bypass library-similarity gate after user declined.",
+                    "default": False,
+                },
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
         self,
         user_id: str | None,
         session: ChatSession,
-        agent_json: dict[str, Any] | None = None,
+        agent_json: dict[str, Any] | str | None = None,
+        agent_json_ref: str | None = None,
         save: bool = True,
         library_agent_ids: list[str] | None = None,
         folder_id: str | None = None,
+        is_hidden: bool = False,
+        library_check_ack: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
@@ -76,15 +98,33 @@ class CreateAgentTool(BaseTool):
         if guide_gate is not None:
             return guide_gate
 
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide agent_json with the complete agent graph. "
-                    "Use find_block to discover blocks, then generate the JSON."
-                ),
-                error="missing_agent_json",
-                session_id=session_id,
+        if not library_check_ack:
+            library_gate = require_library_check(session, "create_agent")
+            if library_gate is not None:
+                return library_gate
+        elif user_id and not (session and session.metadata.builder_graph_id):
+            # Track the LLM-driven gate bypass so we can measure how often
+            # users were shown matches but chose to build new anyway.
+            track_library_check_outcome(
+                user_id=user_id, session_id=session_id, outcome="bypassed_ack"
             )
+
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide agent_json with the complete agent graph "
+                '(inline or as an "@@agptfile:<path>" string), or '
+                "agent_json_ref pointing at the workspace agent file. "
+                "Use find_block to discover blocks, then generate the JSON."
+            ),
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         if library_agent_ids is None:
             library_agent_ids = []
@@ -92,7 +132,9 @@ class CreateAgentTool(BaseTool):
         nodes = agent_json.get("nodes", [])
         if not nodes:
             return ErrorResponse(
-                message="The agent JSON has no nodes. An agent needs at least one block.",
+                message=(
+                    "The agent JSON has no nodes. " "An agent needs at least one block."
+                ),
                 error="empty_agent",
                 session_id=session_id,
             )
@@ -117,4 +159,5 @@ class CreateAgentTool(BaseTool):
             default_name="Generated Agent",
             library_agents=library_agents,
             folder_id=folder_id,
+            is_hidden=is_hidden,
         )

@@ -1838,6 +1838,9 @@ export enum IconType {
   AutoGPTLogo,
   Sliders,
   Chat,
+  Billing,
+  Help,
+  WhatsNew,
 }
 
 export function getIconForSocial(

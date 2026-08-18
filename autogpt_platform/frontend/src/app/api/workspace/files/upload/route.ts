@@ -1,5 +1,5 @@
 import { environment } from "@/services/environment";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const headers: Record<string, string> = {};
-    if (token && token !== "no-token-found") {
+    if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 

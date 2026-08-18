@@ -198,9 +198,12 @@ async def cmd_load(session_ids: list[str]) -> None:
 
         # Create chat session in DB
         try:
-            from backend.copilot.db import create_chat_session, get_chat_session
+            from backend.copilot.db import (
+                create_chat_session,
+                get_chat_session_metadata,
+            )
 
-            existing = await get_chat_session(sid)
+            existing = await get_chat_session_metadata(sid)
             if existing:
                 print(f"[{sid[:12]}] Session already exists in DB, skipping creation")
             else:

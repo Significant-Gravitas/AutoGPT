@@ -2,6 +2,7 @@ import { act } from "@testing-library/react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { buildKickoffMessage } from "../../../expertKickoff";
 
 const mockScrollEl = {
   scrollHeight: 100,
@@ -58,6 +59,14 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 
+vi.mock("../components/QueueBadge", () => ({
+  QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
+    <span data-testid="queue-badge" data-session-id={sessionID ?? ""}>
+      QueueBadge
+    </span>
+  ),
+}));
+
 vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
 vi.mock("../components/CollapsedToolGroup", () => ({
   CollapsedToolGroup: () => null,
@@ -85,24 +94,31 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: () => null,
 }));
+// Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
-  parseSpecialMarkers: () => ({ markerType: null }),
+  parseSpecialMarkers: (text: string) => {
+    if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
+      return { markerType: "error" };
+    }
+    if (
+      typeof text === "string" &&
+      text.startsWith("[__COPILOT_RETRYABLE_ERROR_")
+    ) {
+      return { markerType: "retryable_error" };
+    }
+    return { markerType: null };
+  },
+  shouldShowTaskListNotice: () => false,
   splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoningParts: [],
-    responseParts: parts,
+    reasoning: [],
+    response: parts,
   }),
 }));
 
 vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner" />,
-}));
-
-vi.mock("@phosphor-icons/react", () => ({
-  Clock: () => <span data-testid="clock-icon" />,
-  ArrowDown: () => null,
-  ArrowUp: () => null,
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────
@@ -304,6 +320,100 @@ describe("ChatMessagesContainer — loading", () => {
   });
 });
 
+// ── error banner dedup ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — error banner dedup", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the trailing banner when no persisted error marker is in messages", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("SDK stream error: Prompt is too long"),
+    ).toBeDefined();
+    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+  });
+
+  it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+  });
+
+  it("suppresses the trailing banner when the marker is retryable", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("Transient error")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_RETRYABLE_ERROR_a9c2__] Transient error",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+  });
+});
+
 // ── pagination sentinel ───────────────────────────────────────────────────
 
 describe("ChatMessagesContainer", () => {
@@ -408,5 +518,258 @@ describe("ChatMessagesContainer — turnStats", () => {
       /2026/.test(el?.textContent ?? ""),
     );
     expect(labels.length).toBe(0);
+  });
+});
+
+// ── per-message queue badge ───────────────────────────────────────────────
+
+describe("ChatMessagesContainer — queue badges on user messages", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a QueueBadge when the row is the latest user in a queued session", () => {
+    const userId = "user-q1";
+    const turnStats = new Map([
+      [
+        userId,
+        {
+          isLatestUserMessage: true,
+          rawMessageId: "uuid-q1",
+        },
+      ],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="queued"
+      />,
+    );
+    const badge = screen.getByTestId("queue-badge");
+    expect(badge.getAttribute("data-session-id")).toBe("sess-123");
+  });
+
+  it("does NOT render a QueueBadge for normal (non-queued) user messages", () => {
+    const userId = "user-n1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+
+  it("does NOT render the badge when isLatestUserMessage but session is idle", () => {
+    // Guards against regressing the AND-gate: even if a row is the
+    // latest user message, the badge should stay hidden unless the
+    // OWNING session is in the queued state.
+    const userId = "user-q2";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q2" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "live", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+        sessionChatStatus="idle"
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── readOnly viewer behaviour ─────────────────────────────────────────────
+//
+// The shared-chat viewer (``/share/chat/[token]``) renders the same
+// ChatMessagesContainer with ``readOnly`` so the public viewer cannot
+// trigger any owner-only interactions (load-more, queue badges,
+// feedback actions, error banners).  These tests pin the gate.
+
+describe("ChatMessagesContainer — readOnly mode", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the load-older-messages sentinel even when more history exists", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages
+        onLoadMore={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /load older messages/i }),
+    ).toBeNull();
+  });
+
+  it("hides queued messages even when queuedMessages is non-empty", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["should not show"]}
+        readOnly
+      />,
+    );
+    expect(screen.queryByText("should not show")).toBeNull();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("hides the trailing error banner even on error status", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("upstream blew up")}
+        status="error"
+        readOnly
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByText(/upstream blew up/i)).toBeNull();
+  });
+
+  it("hides the queue-badge gate even when the session is queued", () => {
+    const userId = "user-q-readonly";
+    const turnStats = new Map([
+      [userId, { isLatestUserMessage: true, rawMessageId: "uuid-q-ro" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [
+          { type: "text" as const, text: "queue me", state: "done" as const },
+        ],
+      },
+    ];
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        turnStats={turnStats}
+        sessionChatStatus="queued"
+        readOnly
+      />,
+    );
+    expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── expert-kickoff hiding ─────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — expert kickoff hiding", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("hides the marked kickoff user message but renders the reply", () => {
+    const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [{ type: "text", text: kickoff.text }],
+            metadata: kickoff.metadata,
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            parts: [{ type: "text", text: "Hi, I'm Maria." }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryAllByTestId("message-user")).toHaveLength(0);
+    expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("keeps a user message that merely repeats the kickoff wording", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
   });
 });

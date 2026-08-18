@@ -49,6 +49,24 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class ExpertNotFoundError(NotFoundError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} not found"
+
+
+class ExpertPrivateTenancyNotFoundError(MissingConfigError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Private tenancy for expert {self.expert_id} not found"
+
+
 class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
@@ -176,3 +194,30 @@ class LinkFlowMismatchError(ValueError):
 
 class DuplicateChatMessageError(ValueError):
     """The same user message is already in flight for this chat session."""
+
+
+class WebhookRegistrationError(Exception):
+    """Registering a webhook with an external service failed."""
+
+
+class WebhookSetupUnavailableError(Exception):
+    """Webhook setup infrastructure (e.g. the Redis setup lock) is
+    temporarily unavailable. Retryable server-side condition — not a
+    configuration problem, so don't map it to a 4xx."""
+
+
+class ExpertRunPausedError(ValueError):
+    """An expert-attributed scheduled/triggered run was refused because the
+    expert's schedules are paused (weekly credit budget reached or archive).
+    Chat-initiated runs are never gated by this."""
+
+    def __init__(self, message: str, expert_id: str):
+        super().__init__(message)
+        # args carries both values so the RPC layer can reconstruct the
+        # exception; __str__ keeps user-facing rendering to the message.
+        self.args = (message, expert_id)
+        self.message = message
+        self.expert_id = expert_id
+
+    def __str__(self):
+        return self.message

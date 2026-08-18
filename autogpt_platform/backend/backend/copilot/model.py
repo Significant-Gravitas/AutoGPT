@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Self, cast
+from typing import Any, AsyncIterator, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -18,29 +19,62 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, library_db
+from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    NotFoundError,
+    RedisError,
+)
 
-from .config import ChatConfig
+from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
+# The routing layer that picked a turn's model. Defined here — on the
+# persistence model, the lowest layer — so ChatMessage can type its
+# stamped column and model_router / the SDK service import the ONE
+# definition instead of re-declaring the Literal. ("fallback" is stamped,
+# never routed: it marks a CLI 529-overload fallback to a different model.)
+RoutingSource = Literal[
+    "ld",
+    "catalog",
+    "env",
+    "fallback",
+    "preferred",
+    "account_default",
+    "account_available",
+]
+
+
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
+_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS = 1.0
+_EXPERT_KICKOFF_SESSION_NAMESPACE = uuid.UUID("3fd5434f-225a-53e8-b248-1a749a925892")
 
 
 def _get_session_cache_key(session_id: str) -> str:
     """Get the Redis cache key for a chat session."""
     return f"{CHAT_SESSION_CACHE_PREFIX}{session_id}"
+
+
+# ChatSession.chatStatus lifecycle values.  Open enum: future states
+# (e.g. ``"errored"``, ``"paused"``) can be added without a migration.
+# Within a session, turns are serialized so at most one task is in
+# flight at a time — the status sits at session scope, not message.
+CHAT_STATUS_IDLE = "idle"
+CHAT_STATUS_QUEUED = "queued"
+CHAT_STATUS_RUNNING = "running"
 
 
 # ===================== Chat data models ===================== #
@@ -54,15 +88,37 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
 
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
     # this graph and reject calls targeting a different agent.  Also used
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
+    source_platform: str | None = None
+
+    # Session kind — distinguishes regular chats from dream-pass and
+    # daydream artifacts so the frontend can render them differently
+    # (and so analytics / retention rules can filter them out).
+    # Open enum: future kinds (e.g. ``"daydream"``) can land without a
+    # migration; readers must tolerate unknown values.
+    kind: str = "normal"
+
+    # When ``kind == "dream"``, the originating pass id so the session
+    # links back to the orchestrator run that produced it.
+    dream_pass_id: str | None = None
 
 
 class ChatMessage(BaseModel):
+    id: str | None = None
+    """Stable per-send id.  When supplied by the caller (e.g. AI SDK's
+    ``messageId`` plumbed from the frontend's ``crypto.randomUUID()`` per
+    user click), it becomes the Prisma row's ``id`` — the PK uniqueness
+    constraint then makes the INSERT itself the atomic dedup primitive
+    for retransmits / RMQ redeliveries / browser auto-retries.  ``None``
+    leaves Prisma to generate via ``@default(uuid())``."""
+
     role: str
     content: str | None = None
     name: str | None = None
@@ -74,10 +130,67 @@ class ChatMessage(BaseModel):
     duration_ms: int | None = None
     created_at: datetime | None = None
 
+    # Which LLM served this assistant turn ("model" — visible to clients,
+    # the model-badge UX) and which routing layer picked it
+    # (platform and Codex routing sources, plus "fallback" when the CLI's
+    # overload fallback served a different model than the routed one).
+    # Product-intelligence mirrors these to segment quality judgments by
+    # model. None on user/tool rows.
+    #
+    # routing_source is excluded from serialized payloads: "ld" vs "env"
+    # would let a client infer LaunchDarkly cohort membership. It still
+    # persists — the DB save path maps fields explicitly (not via
+    # model_dump) and the back-fill reads attributes.
+    model: str | None = None
+    routing_source: RoutingSource | None = Field(default=None, exclude=True)
+
+    stamps_pending_save: bool = Field(default=False, exclude=True)
+    """True when model/routing_source were stamped after this row was already
+    persisted (mid-turn flush assigned its sequence before end-of-turn
+    stamping ran). The save path back-fills flagged rows — same mechanism
+    as ``tool_calls_pending_save`` below."""
+
+    tool_calls_pending_save: bool = Field(default=False, exclude=True)
+    """True when ``tool_calls`` mutated after this row was already persisted.
+
+    An assistant row is often flushed to the DB (getting its ``sequence``)
+    while its text streams, BEFORE the turn's tool_use blocks arrive — the
+    save path only inserts ``sequence is None`` rows, so late-attached
+    tool_calls would otherwise never reach the DB and the tool activity
+    becomes invisible in session history. ``_save_session_to_db`` back-fills
+    rows flagged here and clears the flag.
+
+    In-memory only (``exclude=True``) by necessity, not oversight: the flag
+    marks tool_calls content that exists ONLY in this process — if the
+    worker dies before a back-fill succeeds, the content is gone with it,
+    so a persisted flag would have nothing left to back-fill from. Residual
+    window: a back-fill failure on the turn's final save is retried on any
+    later save of the session, but not across a worker restart."""
+
+    def mark_tool_calls_pending_save(self) -> None:
+        """Flag this row for a toolCalls back-fill if it was already
+        persisted (has a sequence). The single invariant behind the
+        mid-turn-flush fix: any site that mutates ``tool_calls`` on a
+        possibly-sequenced message must call this — encapsulated here so a
+        future third mutation site can't silently reintroduce the
+        dropped-tool-calls bug."""
+        if self.sequence is not None:
+            self.tool_calls_pending_save = True
+
+    # Owning session id and generic per-row JSONB bag.  Today the
+    # dispatcher uses ``metadata`` to preserve the submit-time payload
+    # (file_ids / mode / model / permissions / context / arrival_at)
+    # on the user row that triggered a queued turn, so a later
+    # promotion can replay the turn faithfully.  Generic so future
+    # per-row state can land here without a migration.
+    session_id: str | None = None
+    metadata: dict | None = None
+
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
         return ChatMessage(
+            id=prisma_message.id,
             role=prisma_message.role,
             content=prisma_message.content,
             name=prisma_message.name,
@@ -88,6 +201,12 @@ class ChatMessage(BaseModel):
             sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
             created_at=prisma_message.createdAt,
+            session_id=prisma_message.sessionId,
+            metadata=_parse_json_field(prisma_message.metadata),
+            model=prisma_message.model,
+            # DB column is a plain string; the values are always ones we wrote
+            # (this PR owns the column) and Pydantic re-validates on construct.
+            routing_source=cast("RoutingSource | None", prisma_message.routingSource),
         )
 
 
@@ -154,6 +273,17 @@ class ChatSessionInfo(BaseModel):
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
     metadata: ChatSessionMetadata = ChatSessionMetadata()
+    # Session lifecycle: "idle" | "queued" | "running" (see CHAT_STATUS_*).
+    chat_status: str = "idle"
+    # Org/team tenancy anchor for the whole session: agent runs, block
+    # executions, and sub-sessions launched from this chat attribute to
+    # THIS org/team, not the user's default org at tool-call time.
+    organization_id: str | None = None
+    team_id: str | None = None
+    # Whether the user has pinned this session to the top of the sidebar.
+    is_pinned: bool = False
+    # Hired expert this session is scoped to; None = plain Autopilot session.
+    expert_id: str | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -202,6 +332,11 @@ class ChatSessionInfo(BaseModel):
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
             metadata=metadata,
+            chat_status=prisma_session.chatStatus,
+            organization_id=prisma_session.organizationId,
+            team_id=prisma_session.teamId,
+            is_pinned=prisma_session.isPinned,
+            expert_id=prisma_session.expertId,
         )
 
 
@@ -217,16 +352,53 @@ class ChatSession(ChatSessionInfo):
     # completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
+    # Optional argument capture for in-flight tool calls.  Some guards
+    # (e.g. ``require_guide_read``) discriminate by argument as well as
+    # by name — for ``read_skill(name="agent_building_guide")`` we need
+    # to know the *name* arg, not just that ``read_skill`` was called.
+    # Populated alongside the name set by
+    # :meth:`announce_inflight_tool_call`; mapping from tool name to a
+    # list of argument dicts (one entry per dispatched call).
+    _inflight_tool_call_args: dict[str, list[dict]] = PrivateAttr(default_factory=dict)
+
+    guide_in_system_prompt: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True when this turn's system prompt includes the
+    agent-building guide (builder-bound session, or a building session detected
+    from a prior-turn guide read / mode switch). Set by the SDK service at turn
+    start after the system prompt is assembled; never persisted — recomputed
+    every turn. The guide gate and ``get_agent_building_guide`` consult it to
+    skip redundant guide round-trips."""
+
+    sdk_turn_active: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag: True while the SDK service is running this
+    turn (set at turn start, never persisted). Lets shared tools branch on
+    the execution path — e.g. enter_agent_building_mode restarts in-turn on
+    SDK but degrades gracefully on the baseline path."""
+
+    building_mode_requested: bool = Field(default=False, exclude=True)
+    """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the
+    SDK service to restart the in-flight attempt with the agent-building
+    guide in the system prompt. Cleared by the restart handler; never
+    persisted — the durable mode signal is the tool call in message
+    history."""
+
     @classmethod
     def new(
         cls,
         user_id: str,
         *,
         dry_run: bool,
+        session_id: str | None = None,
         builder_graph_id: str | None = None,
+        source_platform: str | None = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        llm_auth_provider: CopilotLlmAuthProvider = "platform",
+        llm_credential_id: str | None = None,
+        expert_id: str | None = None,
     ) -> Self:
         return cls(
-            session_id=str(uuid.uuid4()),
+            session_id=session_id or str(uuid.uuid4()),
             user_id=user_id,
             title=None,
             messages=[],
@@ -237,7 +409,13 @@ class ChatSession(ChatSessionInfo):
             metadata=ChatSessionMetadata(
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
+                source_platform=source_platform,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             ),
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
         )
 
     @classmethod
@@ -253,7 +431,9 @@ class ChatSession(ChatSessionInfo):
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
 
-    def announce_inflight_tool_call(self, tool_name: str) -> None:
+    def announce_inflight_tool_call(
+        self, tool_name: str, arguments: Any = None
+    ) -> None:
         """Record that *tool_name* is being dispatched in the current turn.
 
         Called by the baseline tool executor **before** the tool actually
@@ -272,12 +452,31 @@ class ChatSession(ChatSessionInfo):
         particular because its aggressive tool-call chaining exercises
         this path much more than Sonnet does).  The buffer is cleared by
         :meth:`clear_inflight_tool_calls` at turn end.
+
+        *arguments* — optional dict snapshot of the call args.  Only
+        recorded when it's a mapping; non-dict shapes (lists, scalars,
+        the JSON-bare-string case) are dropped silently so argument-
+        discriminating guards never see a value they'd then crash on
+        with ``.get(...)``.  Guards look these up via
+        :meth:`get_inflight_tool_call_args`; gates that only care
+        about tool names ignore the dict.
         """
         self._inflight_tool_calls.add(tool_name)
+        if isinstance(arguments, dict):
+            self._inflight_tool_call_args.setdefault(tool_name, []).append(arguments)
 
     def clear_inflight_tool_calls(self) -> None:
         """Reset the in-flight tool-call announcement buffer."""
         self._inflight_tool_calls.clear()
+        self._inflight_tool_call_args.clear()
+
+    def get_inflight_tool_call_args(self, tool_name: str) -> list[dict]:
+        """Return arg snapshots captured for *tool_name* in this turn.
+
+        Returns an empty list when no in-flight call recorded args
+        (anonymous-tool-name announcements with ``arguments=None``).
+        """
+        return list(self._inflight_tool_call_args.get(tool_name, ()))
 
     def has_tool_been_called(self, tool_name: str) -> bool:
         """True when *tool_name* has been called in this session.
@@ -317,6 +516,7 @@ class ChatSession(ChatSessionInfo):
                 if not msg.tool_calls:
                     msg.tool_calls = []
                 msg.tool_calls.append(tool_call)
+                msg.mark_tool_calls_pending_save()
                 return
 
         self.messages.append(
@@ -545,6 +745,30 @@ async def get_chat_session(
     return session
 
 
+async def get_chat_session_metadata(
+    session_id: str,
+    user_id: str | None = None,
+) -> ChatSessionInfo | None:
+    """Get chat session metadata only (no messages).
+
+    Goes directly to the DB by primary key — bypasses the Redis cache,
+    which stores the full session and would deserialize the entire message
+    history just to read ``user_id``. Use this for ownership/existence
+    checks; use ``get_chat_session`` when the message history is actually
+    needed.
+    """
+    session_meta = await chat_db().get_chat_session_metadata(session_id)
+    if session_meta is None:
+        return None
+    if user_id is not None and session_meta.user_id != user_id:
+        logger.warning(
+            f"Session {session_id} user id mismatch: "
+            f"{session_meta.user_id} != {user_id}"
+        )
+        return None
+    return session_meta
+
+
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
@@ -568,10 +792,35 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
 
 
 async def _get_session_from_db(session_id: str) -> ChatSession | None:
-    """Get a chat session from the database."""
-    session = await chat_db().get_chat_session(session_id)
-    if not session:
+    """Get a chat session from the database, capped at MAX_LOADED_CHAT_MESSAGES.
+
+    Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
+    no cursor) so the LLM-context path inherits the same tool-pair boundary
+    expansion and visibility guarantees the UI scroll-back path uses. The
+    cap-hit log surfaces here (the LLM-context use case) rather than inside the
+    generic paginated function.
+    """
+    # Local import to avoid the model→db→model cycle.
+    from .db import MAX_LOADED_CHAT_MESSAGES
+
+    page = await chat_db().get_chat_messages_paginated(
+        session_id, limit=MAX_LOADED_CHAT_MESSAGES
+    )
+    if page is None:
         return None
+
+    if page.has_more:
+        logger.warning(
+            "Session %s loaded with capped messages (%d) — older history "
+            "must come from transcript checkpoint or context will be lost",
+            session_id,
+            MAX_LOADED_CHAT_MESSAGES,
+        )
+
+    session = ChatSession(
+        **page.session.model_dump(),
+        messages=page.messages,
+    )
 
     logger.info(
         f"Loaded session {session_id} from DB: "
@@ -585,6 +834,8 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
 async def upsert_chat_session(
     session: ChatSession,
+    *,
+    persist_tenancy: bool = False,
 ) -> ChatSession:
     """Update a chat session in both cache and database.
 
@@ -593,9 +844,9 @@ async def upsert_chat_session(
     attempt to upsert the same session simultaneously.
 
     Raises:
-        DatabaseError: If the database write fails. The cache is still updated
-            as a best-effort optimization, but the error is propagated to ensure
-            callers are aware of the persistence failure.
+        DatabaseError: If the database write fails. Ordinary upserts still update
+            the cache as a best-effort optimization. Tenancy-changing upserts
+            evict instead, so an uncommitted scope cannot become authoritative.
         RedisError: If the cache write fails (after successful DB write).
     """
     async with _get_session_lock(session.session_id) as _:
@@ -610,6 +861,7 @@ async def upsert_chat_session(
                 session,
                 existing_message_count,
                 skip_existence_check=existing_message_count > 0,
+                persist_tenancy=persist_tenancy,
             )
         except Exception as e:
             logger.error(
@@ -617,16 +869,36 @@ async def upsert_chat_session(
             )
             db_error = e
 
-        # Save to cache (best-effort, even if DB failed).
-        # Title updates (update_session_title) run *outside* this lock because
-        # they only touch the title field, not messages.  So a concurrent rename
-        # or auto-title may have written a newer title to Redis while this
-        # upsert was in progress.  Always prefer the cached title to avoid
-        # overwriting it with the stale in-memory copy.
+        if db_error is not None and persist_tenancy:
+            try:
+                await asyncio.wait_for(
+                    invalidate_session_cache(session.session_id),
+                    timeout=_TENANCY_FAILURE_CACHE_EVICTION_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Timed out evicting cache after failed tenancy update for %s",
+                    session.session_id,
+                )
+            raise DatabaseError(
+                f"Failed to persist chat session {session.session_id} to database"
+            ) from db_error
+
+        # Ordinary upserts keep best-effort cache-on-DB-error behavior;
+        # tenancy changes return above after eviction instead.
+        # Title (update_session_title) and pin state (update_session_pinned)
+        # are mutated *outside* this lock — they only touch their single field,
+        # not messages — so a concurrent rename, auto-title, or pin/unpin may
+        # have written a newer value to Redis while this upsert was in progress.
+        # Always prefer the cached title/pin to avoid reverting it with the
+        # stale in-memory copy.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
-            if existing_cached and existing_cached.title:
-                session = session.model_copy(update={"title": existing_cached.title})
+            if existing_cached:
+                updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
+                if existing_cached.title:
+                    updates["title"] = existing_cached.title
+                session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
             # If DB succeeded but cache failed, raise cache error
@@ -653,6 +925,7 @@ async def _save_session_to_db(
     existing_message_count: int,
     *,
     skip_existence_check: bool = False,
+    persist_tenancy: bool = False,
 ) -> None:
     """Save or update a chat session in the database.
 
@@ -664,15 +937,19 @@ async def _save_session_to_db(
     db = chat_db()
 
     if not skip_existence_check:
-        # Check if session exists in DB
-        existing = await db.get_chat_session(session.session_id)
+        # Existence check only — use the metadata-only fetch, no need to
+        # eager-load any messages here.
+        existing = await db.get_chat_session_metadata(session.session_id)
 
         if not existing:
             # Create new session
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 metadata=session.metadata,
+                expert_id=session.expert_id,
             )
             existing_message_count = 0
 
@@ -680,23 +957,50 @@ async def _save_session_to_db(
     total_prompt = sum(u.prompt_tokens for u in session.usage)
     total_completion = sum(u.completion_tokens for u in session.usage)
 
-    # Update session metadata
-    await db.update_chat_session(
-        session_id=session.session_id,
-        credentials=session.credentials,
-        successful_agent_runs=session.successful_agent_runs,
-        successful_agent_schedules=session.successful_agent_schedules,
-        total_prompt_tokens=total_prompt,
-        total_completion_tokens=total_completion,
-    )
+    update_kwargs: dict[str, Any] = {
+        "session_id": session.session_id,
+        "credentials": session.credentials,
+        "successful_agent_runs": session.successful_agent_runs,
+        "successful_agent_schedules": session.successful_agent_schedules,
+        "total_prompt_tokens": total_prompt,
+        "total_completion_tokens": total_completion,
+    }
+    if persist_tenancy:
+        update_kwargs.update(
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            update_tenancy=True,
+        )
+    await db.update_chat_session(**update_kwargs)
 
-    # Add new messages (only those after existing count)
-    new_messages = session.messages[existing_message_count:]
+    # Identify unsaved messages.  Two cases:
+    #
+    # - Brand-new session (existing_message_count == 0): persist every message,
+    #   regardless of whether it carries a sequence (callers may construct
+    #   ``ChatSession`` from a list of ChatMessage objects that already have
+    #   sequences set, e.g. when re-using a fixture across tests — those still
+    #   need to be saved as new rows).
+    # - Existing session: filter by ``sequence is None``.  Slicing by
+    #   ``session.messages[existing_message_count:]`` is incorrect for windowed
+    #   loads (cap of MAX_LOADED_CHAT_MESSAGES) — a session with 1500 saved
+    #   messages comes back with 1000 entries, and that slice would silently
+    #   drop every newly-appended message.
+    if existing_message_count == 0:
+        new_messages = list(session.messages)
+    else:
+        new_messages = [m for m in session.messages if m.sequence is None]
     if new_messages:
         messages_data = []
         for msg in new_messages:
             messages_data.append(
                 {
+                    # ``id`` is optional — when the caller supplies one
+                    # (frontend-provided per-click UUID) it becomes the
+                    # Prisma row's PK and a duplicate POST raises
+                    # ``UniqueViolationError`` we catch as the dedup
+                    # signal.  When None, Prisma generates via
+                    # ``@default(uuid())`` (existing behaviour).
+                    "id": msg.id,
                     "role": msg.role,
                     "content": msg.content,
                     "name": msg.name,
@@ -704,6 +1008,8 @@ async def _save_session_to_db(
                     "refusal": msg.refusal,
                     "tool_calls": msg.tool_calls,
                     "function_call": msg.function_call,
+                    "model": msg.model,
+                    "routing_source": msg.routing_source,
                 }
             )
         logger.info(
@@ -711,17 +1017,90 @@ async def _save_session_to_db(
             f"roles={[m['role'] for m in messages_data]}, "
             f"start_sequence={existing_message_count}"
         )
-        await db.add_chat_messages_batch(
+        # Use the offset actually used for the insert when back-filling
+        # sequences — the batch helper retries from ``get_next_sequence`` on a
+        # unique-constraint collision, so the original ``existing_message_count``
+        # may be stale by the time the rows actually land.  Back-filling with
+        # the stale value would desync in-memory ``ChatMessage.sequence`` from
+        # the DB, breaking later ``update_message_content_by_sequence`` calls.
+        actual_start = await db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,
             start_sequence=existing_message_count,
         )
-
-        # Back-fill sequence numbers on the in-memory ChatMessage objects so
-        # that downstream callers (inject_user_context) can persist updates
-        # by sequence rather than falling back to index-based writes.
         for i, msg in enumerate(new_messages):
-            msg.sequence = existing_message_count + i
+            msg.sequence = actual_start + i
+            msg.tool_calls_pending_save = False
+            msg.stamps_pending_save = False
+
+    # Back-fill tool_calls onto rows that were flushed before their
+    # tool_use blocks arrived (see ChatMessage.tool_calls_pending_save).
+    # Save-ordering invariant: this only repairs the row if a save runs
+    # AFTER the tool_use blocks arrive. That is guaranteed by the end-of-turn
+    # save (every turn ends with save_chat_session, including the error paths
+    # that append an error marker) — mid-turn flushes merely narrow the
+    # window. On failure the flag stays set so any later save retries.
+    pending = [
+        m
+        for m in session.messages
+        if m.tool_calls_pending_save and m.sequence is not None
+    ]
+
+    # Same repair for stamps: rows flushed mid-turn got their sequence
+    # before end-of-turn stamping ran (see ChatMessage.stamps_pending_save).
+    pending_stamps = [
+        m for m in session.messages if m.stamps_pending_save and m.sequence is not None
+    ]
+
+    async def _backfill_stamps(msg: ChatMessage) -> None:
+        assert msg.sequence is not None
+        try:
+            updated = await db.update_chat_message_stamps(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                model=msg.model,
+                routing_source=msg.routing_source,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill stamps for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+        if updated:
+            msg.stamps_pending_save = False
+
+    async def _backfill(msg: ChatMessage) -> None:
+        assert msg.sequence is not None  # narrowed by the filter above
+        try:
+            updated = await db.update_chat_message_tool_calls(
+                session_id=session.session_id,
+                sequence=msg.sequence,
+                tool_calls=msg.tool_calls or [],
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence}: {e}"
+            )
+            return
+
+        if updated:
+            msg.tool_calls_pending_save = False
+        else:
+            logger.warning(
+                f"Failed to back-fill tool_calls for session "
+                f"{session.session_id} seq {msg.sequence} (row not found)"
+            )
+
+    # One concurrent pass for both repairs — a mid-turn-flushed assistant
+    # row with tools commonly needs BOTH back-fills; success/failure flags
+    # stay independent per mechanism.
+    if pending or pending_stamps:
+        await asyncio.gather(
+            *(_backfill(m) for m in pending),
+            *(_backfill_stamps(m) for m in pending_stamps),
+        )
 
 
 async def append_and_save_message(
@@ -747,22 +1126,35 @@ async def append_and_save_message(
         if session is None:
             raise ValueError(f"Session {session_id} not found")
 
-        # Idempotency: skip if the trailing block of same-role messages already
-        # contains this content. Uses is_message_duplicate which checks all
+        # Idempotency layer 1: caller-supplied id collision.  The frontend
+        # sends a per-click UUID as ``message.id``; AI SDK / network / RMQ
+        # retransmits of the *same* logical send carry the same id.  Catch
+        # the dup before the DB round-trip when we already see it cached
+        # in-memory.  The DB INSERT below is the authoritative atomic
+        # check (PK uniqueness on ``ChatMessage.id``) — this is just the
+        # fast path.
+        if message.id is not None and any(
+            existing.id == message.id for existing in session.messages
+        ):
+            return None  # duplicate — caller should skip enqueue
+
+        # Idempotency layer 2: trailing same-role-and-content collapse.
+        # Catches retransmits from older clients that don't supply
+        # ``message.id``, plus mid-turn re-sends of identical text from
+        # the same role.  Uses is_message_duplicate which checks all
         # consecutive trailing messages of the same role, not just [-1].
         #
-        # This collapses infra/nginx retries whether they land on the same pod
-        # (serialised by the Redis lock) or a different pod.
+        # Legit same-text messages across turns are distinguished by the
+        # intervening assistant reply: if the user said "yes", got a
+        # response, and says "yes" again, ``messages[-1]`` is the
+        # assistant reply, so the role check fails and the second
+        # message goes through normally.
         #
-        # Legit same-text messages are distinguished by the assistant turn
-        # between them: if the user said "yes", got a response, and says
-        # "yes" again, session.messages[-1] is the assistant reply, so the
-        # role check fails and the second message goes through normally.
-        #
-        # Edge case: if a turn dies without writing any assistant message,
-        # the user's next send of the same text is blocked here permanently.
-        # The fix is to ensure failed turns always write an error/timeout
-        # assistant message so the session always ends on an assistant turn.
+        # Edge case: if a turn dies without writing any assistant
+        # message, the user's next send of the same text is blocked here
+        # permanently.  The fix is to ensure failed turns always write
+        # an error/timeout assistant message so the session always ends
+        # on an assistant turn.
         if message.content is not None and is_message_duplicate(
             session.messages, message.role, message.content
         ):
@@ -774,6 +1166,19 @@ async def append_and_save_message(
         try:
             await _save_session_to_db(session, existing_message_count)
         except Exception as e:
+            # Any save failure rolls back the optimistic append so the
+            # in-memory ``session.messages`` stays consistent with what's
+            # persisted (the function-scoped session is fresh per call,
+            # but the cache write below would otherwise persist the
+            # phantom row).
+            session.messages.pop()
+            # PK collision is the dedup signal — caller short-circuits to
+            # subscribe-only.  Other ``UniqueViolationError`` (e.g. a
+            # ``(sessionId, sequence)`` race that exhausted the retry
+            # loop in ``add_chat_messages_batch``) and unrelated
+            # exceptions surface as ``DatabaseError``.
+            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+                return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e
@@ -793,7 +1198,14 @@ async def create_chat_session(
     user_id: str,
     *,
     dry_run: bool,
+    session_id: str | None = None,
     builder_graph_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    source_platform: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -804,25 +1216,51 @@ async def create_chat_session(
         builder_graph_id: When set, locks the session to the given graph.
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
+        source_platform: External chat platform that originated the session.
+        expert_id: Private expert this session is scoped to. Expert sessions are
+            validated here and pinned to the owner's personal organization, and
+            the database re-validates active ownership atomically with session
+            persistence — the persisted attribution is authoritative.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
+    if expert_id is not None:
+        organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
+            user_id, expert_id
+        )
+
     session = ChatSession.new(
         user_id,
         dry_run=dry_run,
+        session_id=session_id,
         builder_graph_id=builder_graph_id,
+        source_platform=source_platform,
+        organization_id=organization_id,
+        team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+        expert_id=expert_id,
     )
 
     # Create in database first - fail fast if this fails
     try:
-        await chat_db().create_chat_session(
+        persisted = await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             metadata=session.metadata,
+            expert_id=expert_id,
         )
+        session.expert_id = persisted.expert_id
+    except ExpertNotFoundError:
+        # Domain error, not a persistence failure: the expert lost the
+        # attribution race. Propagate so callers (scheduler skip path,
+        # interactive 404) handle it as fail-closed, not as a 500.
+        raise
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")
         raise DatabaseError(
@@ -838,9 +1276,71 @@ async def create_chat_session(
     return session
 
 
+def expert_kickoff_session_id(
+    user_id: str,
+    expert_id: str,
+    organization_id: str | None = None,
+) -> str:
+    """Return the canonical first-session ID for one user's expert."""
+    return str(
+        uuid.uuid5(
+            _EXPERT_KICKOFF_SESSION_NAMESPACE,
+            f"{user_id}:{organization_id or 'personal'}:{expert_id}",
+        )
+    )
+
+
+async def get_or_create_expert_kickoff_session(
+    user_id: str,
+    expert_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+) -> ChatSession:
+    """Atomically create or adopt the canonical expert kickoff session."""
+    sessions, _ = await get_user_sessions(
+        user_id,
+        limit=1,
+        organization_id=organization_id,
+        expert_id=expert_id,
+        pinned_first=False,
+    )
+    if sessions:
+        existing = await get_chat_session(sessions[0].session_id, user_id)
+        if existing is not None:
+            return existing
+
+    session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
+    existing = await get_chat_session(session_id, user_id)
+    if existing is not None:
+        return existing
+
+    try:
+        return await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            session_id=session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+        )
+    except DatabaseError:
+        existing = await get_chat_session(session_id, user_id)
+        if existing is not None and existing.expert_id == expert_id:
+            return existing
+        raise
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -881,6 +1381,8 @@ async def get_or_create_builder_session(
             user_id,
             dry_run=False,
             builder_graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -894,34 +1396,62 @@ async def get_user_sessions(
     user_id: str,
     limit: int = 50,
     offset: int = 0,
+    organization_id: str | None = None,
+    title_contains: str | None = None,
+    expert_id: str | None = None,
+    pinned_first: bool = True,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
+
+    ``title_contains`` is a case-insensitive substring filter used by
+    /search/global so sessions are findable by literal title match
+    without waiting on async embedding.
+
+    ``expert_id`` restricts the listing to sessions scoped to that expert.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(user_id, limit, offset)
-    total_count = await db.get_user_session_count(user_id)
+    sessions = await db.get_user_chat_sessions(
+        user_id,
+        limit,
+        offset,
+        organization_id=organization_id,
+        title_contains=title_contains,
+        expert_id=expert_id,
+        pinned_first=pinned_first,
+    )
+    total_count = await db.get_user_session_count(
+        user_id, organization_id=organization_id, expert_id=expert_id
+    )
 
     return sessions, total_count
 
 
-async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
+async def delete_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+) -> bool:
     """Delete a chat session from both cache and database.
 
     Args:
         session_id: The session ID to delete.
         user_id: If provided, validates that the session belongs to this user
             before deletion. This prevents unauthorized deletion.
+        organization_id: If provided, scopes the deletion to sessions
+            belonging to this organization.
 
     Returns:
         True if deleted successfully, False otherwise.
     """
     # Delete from database first (with optional user_id validation)
     # This confirms ownership before invalidating cache
-    deleted = await chat_db().delete_chat_session(session_id, user_id)
+    deleted = await chat_db().delete_chat_session(
+        session_id, user_id, organization_id=organization_id
+    )
 
     if not deleted:
         return False
@@ -933,6 +1463,20 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await async_redis.delete(redis_key)
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+
+    # Best-effort embedding cleanup so deleted sessions stop appearing in
+    # /search/global hits. Only attempt when we have a user_id since the
+    # embedding row is user-scoped; without it the user-filter would miss
+    # and the orphan row (if any) gets cleaned up by the periodic embedder.
+    if user_id:
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                delete_chat_session_embedding,
+            )
+
+            await delete_chat_session_embedding(session_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
 
     # Shut down any local browser daemon for this session (best-effort).
     # Inline import required: all tool modules import ChatSession from this
@@ -990,10 +1534,64 @@ async def update_session_title(
                 f"Cache title update failed for session {session_id} (non-critical): {e}"
             )
 
+        # Fire-and-forget: index the new title so /search/global can find
+        # this session. Local import keeps the heavy embedding deps
+        # (OpenAI client, prisma raw SQL) off the model import path.
+        try:
+            from backend.copilot.chat_session_embeddings import (
+                schedule_chat_session_embedding,
+            )
+
+            schedule_chat_session_embedding(session_id, user_id, title)
+        except Exception as e:
+            logger.warning(
+                f"Failed to schedule session title embedding for {session_id}: {e}"
+            )
+
         return True
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_pinned(
+    session_id: str,
+    user_id: str,
+    is_pinned: bool,
+) -> bool:
+    """Pin or unpin a chat session, scoped to the owning user.
+
+    Lightweight operation that doesn't touch messages, mirroring
+    ``update_session_title``. Keeps the Redis cache in sync so the
+    sidebar reflects the change without waiting on a cache invalidation.
+
+    Args:
+        session_id: The session ID to update.
+        user_id: Owning user — the DB query filters on this.
+        is_pinned: New pin state.
+
+    Returns:
+        True if updated successfully, False only for the real not-found / wrong-user
+        case. Unexpected DB/runtime failures propagate so the route surfaces a 5xx
+        rather than masking them as a 404.
+    """
+    updated = await chat_db().update_chat_session_pinned(session_id, user_id, is_pinned)
+    if not updated:
+        return False
+
+    # Cache refresh is best-effort — a cache failure must not fail the request,
+    # the DB write already succeeded.
+    try:
+        cached = await _get_session_from_cache(session_id)
+        if cached:
+            cached.is_pinned = is_pinned
+            await cache_chat_session(cached)
+    except Exception as e:
+        logger.warning(
+            f"Cache pin update failed for session {session_id} (non-critical): {e}"
+        )
+
+    return True
 
 
 # ==================== Chat session locks ==================== #

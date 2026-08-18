@@ -16,6 +16,20 @@ on:
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:
+  # On-demand run of the full backend test + coverage suite for any branch.
+  # Useful when a branch's changes don't match the paths filter above (so the
+  # automatic push/pull_request runs are skipped) but you still want to run the
+  # suite and produce a fresh coverage upload for that branch's HEAD commit.
+  #   gh workflow run platform-backend-ci.yml --ref <branch>
+  # Pass pr_number to attach the coverage upload to an open PR (refreshes that
+  # PR's codecov/project/platform-backend status):
+  #   gh workflow run platform-backend-ci.yml --ref <branch> -f pr_number=<PR#>
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Open PR number to attach this coverage upload to (refreshes that PR's codecov status). Leave blank for a plain branch run."
+        required: false
+        type: string
 
 concurrency:
   group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -59,6 +73,50 @@ jobs:
 
       - name: Run Linters
         run: poetry run lint --skip-pyright
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+
+  # autogpt_libs is a standalone package with its own env; the backend `test`
+  # job (scoped to autogpt_platform/backend) never collects its tests, so run
+  # them here. Pure unit tests — no database or external services needed.
+  autogpt-libs-test:
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/autogpt_libs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.12-libs-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry ../backend/poetry.lock)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run pytest
+        run: poetry run pytest -q
 
     env:
       CI: true
@@ -111,7 +169,14 @@ jobs:
   test:
     permissions:
       contents: read
-    timeout-minutes: 15
+    # The suite is ~10.6k tests run serially (no pytest-xdist): the pytest step
+    # alone measures p50 ~13min / max ~18min, on top of 2-7min of container,
+    # checkout and dependency setup. A 20min cap sat *below* the job's real p95,
+    # so healthy runs were killed mid-suite and reported as `cancelled`. On
+    # merge_group that is fatal: `Check PR Status` treats a non-success check as
+    # a failure and GitHub ejects the PR from the merge queue. This is a guard
+    # against a hung job, not a performance budget - keep it well above p99.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -155,12 +220,50 @@ jobs:
           --health-timeout 10s
           --health-retries 5
           --health-start-period 180s
+      # FalkorDB backs the Graphiti knowledge graph the copilot uses for
+      # long-term memory. Mirrors the local compose mapping
+      # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
+      # ``GraphitiConfig`` defaults (``localhost:6380``,
+      # password=``local-dev-password`` from backend/.env.default) work
+      # unchanged. ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
+      # image's documented way to set the bearer; mirrors the entrypoint
+      # the compose stack writes. Integration tests in
+      # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
+      # via the ``falkordb_available`` fixture when the port isn't open
+      # (e.g. on a contributor's laptop) — this service makes the port
+      # available in CI so the integration suite actually runs.
+      # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
+      # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
+      # an unauthenticated PING.
+      # Pinned to a concrete release (unlike the local compose ``:latest``)
+      # so an upstream FalkorDB push can't start failing CI on unrelated
+      # PRs; bump deliberately alongside the compose stack.
+      falkordb:
+        image: falkordb/falkordb:v4.18.9
+        ports:
+          - 6380:6379
+        env:
+          REDIS_ARGS: "--requirepass local-dev-password"
+        options: >-
+          --health-cmd "redis-cli -a local-dev-password ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 10s
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          # Full ref history is needed so the "Install Poetry" step below can
+          # read poetry.lock off the base branch. `filter: blob:none` keeps
+          # every ref reachable while skipping the blob download for all of
+          # them, then lazily fetches the one blob that step actually reads.
+          # Without it this checkout has been measured at 429s vs 27s for a
+          # sibling matrix leg in the same run - enough variance on its own to
+          # blow the job budget.
           fetch-depth: 0
+          filter: blob:none
           submodules: true
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -180,10 +283,9 @@ jobs:
           # picks the right published port per shard.
           #
           # Not reusing docker-compose.platform.yml directly because compose
-          # validates the full file even when only some services are ``up``,
-          # and that file references services (db/kong/...) defined in a
-          # sibling compose file — pulling both in would needlessly couple
-          # CI to the full local-dev stack.
+          # validates the full file even when only some services are ``up``
+          # — pulling it in would needlessly couple CI to the full
+          # local-dev stack.
           docker network create redis-cluster-ci
           for i in 0 1 2; do
             port=$((17000 + i))
@@ -229,11 +331,6 @@ jobs:
           echo "Redis Cluster failed to reach ok state" >&2
           docker exec redis-0 redis-cli -p 17000 cluster info >&2 || true
           exit 1
-
-      - name: Setup Supabase
-        uses: supabase/setup-cli@v1
-        with:
-          version: 1.178.1
 
       - id: get_date
         name: Get date
@@ -288,15 +385,28 @@ jobs:
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
 
-      - id: supabase
-        name: Start Supabase
-        working-directory: .
+      - name: Start Postgres
+        working-directory: autogpt_platform
         run: |
-          supabase init
-          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
-          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
-        # outputs:
-        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
+          # Plain pgvector Postgres; the init script creates the legacy
+          # `auth` schema shim that historical migrations reference.
+          docker run -d --name postgres-test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
+            pgvector/pgvector:pg15
+          for _ in $(seq 1 30); do
+            if docker exec postgres-test pg_isready -U postgres >/dev/null 2>&1; then
+              echo "Postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres failed to start" >&2
+          docker logs postgres-test >&2
+          exit 1
 
       - name: Wait for ClamAV to be ready
         run: |
@@ -330,8 +440,8 @@ jobs:
       - name: Run Database Migrations
         run: poetry run prisma migrate deploy
         env:
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       - name: Run pytest with coverage
         run: |
@@ -344,11 +454,9 @@ jobs:
           fi
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
-          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
-          JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters" # DO NOT USE IN PRODUCTION!!
           REDIS_HOST: "localhost"
           REDIS_PORT: "17000"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
@@ -365,6 +473,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
           files: ./autogpt_platform/backend/coverage.xml
+          # On a manual workflow_dispatch, attach the upload to the given PR so
+          # codecov re-evaluates that PR's project status against its base.
+          # Empty for all automatic events (push/pull_request/merge_group), so
+          # their normal PR/commit detection is unchanged.
+          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
 
     env:
       CI: true

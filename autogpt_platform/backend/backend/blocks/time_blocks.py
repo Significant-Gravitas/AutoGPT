@@ -443,14 +443,23 @@ class CountdownTimerBlock(Block):
             advanced=False, description="Duration in days", default=0
         )
         repeat: int = SchemaField(
-            description="Number of times to repeat the timer",
+            description="Number of times to repeat the timer (1–1000)",
             default=1,
+            ge=1,
+            le=1000,
         )
 
     class Output(BlockSchemaOutput):
         output_message: Any = SchemaField(
             description="Message after the timer finishes"
         )
+
+    MAX_TOTAL_SECONDS = 7 * 86400  # 7 days
+    MIN_REPEAT = 1
+    MAX_REPEAT = 1000
+    # Override the default 30-minute block timeout so the configured cap
+    # is actually reachable; add a small buffer for scheduler overhead.
+    execution_timeout_seconds: int | None = MAX_TOTAL_SECONDS + 60
 
     def __init__(self):
         super().__init__(
@@ -469,15 +478,43 @@ class CountdownTimerBlock(Block):
             ],
         )
 
+    @staticmethod
+    def _coerce_duration_field(field_name: str, value: Union[int, str]) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{field_name} must be a valid integer, got {value!r}")
+
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        seconds = int(input_data.seconds)
-        minutes = int(input_data.minutes)
-        hours = int(input_data.hours)
-        days = int(input_data.days)
+        seconds = self._coerce_duration_field("seconds", input_data.seconds)
+        minutes = self._coerce_duration_field("minutes", input_data.minutes)
+        hours = self._coerce_duration_field("hours", input_data.hours)
+        days = self._coerce_duration_field("days", input_data.days)
+        repeat = input_data.repeat
+
+        # Defense-in-depth: also enforce here in case Pydantic constraints
+        # are bypassed by a caller that constructs Input.model_construct().
+        if not self.MIN_REPEAT <= repeat <= self.MAX_REPEAT:
+            raise ValueError(
+                f"Repeat must be between {self.MIN_REPEAT} and {self.MAX_REPEAT}, "
+                f"got {repeat}"
+            )
 
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
-        for _ in range(input_data.repeat):
+        if total_seconds < 0:
+            raise ValueError(
+                f"Countdown duration must be non-negative, got {total_seconds}s"
+            )
+        cumulative_seconds = total_seconds * repeat
+        if cumulative_seconds > self.MAX_TOTAL_SECONDS:
+            raise ValueError(
+                f"Cumulative countdown duration {cumulative_seconds}s "
+                f"(per-iteration {total_seconds}s × repeat {repeat}) "
+                f"exceeds max ({self.MAX_TOTAL_SECONDS}s = 7 days)"
+            )
+
+        for _ in range(repeat):
             if total_seconds > 0:
                 await asyncio.sleep(total_seconds)
             yield "output_message", input_data.input_message

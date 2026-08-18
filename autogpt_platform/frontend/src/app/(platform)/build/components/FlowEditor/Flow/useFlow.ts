@@ -19,9 +19,11 @@ import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
+import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
 
 export const useFlow = () => {
-  const [isLocked, setIsLocked] = useState(false);
+  const { isReadOnly } = useIsReadOnlyGraph();
+  const [isLockedState, setIsLockedState] = useState(false);
   const [hasAutoFramed, setHasAutoFramed] = useState(false);
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
@@ -301,6 +303,17 @@ export const useFlow = () => {
     [screenToFlowPosition, addBlock, setBlockMenuOpen],
   );
 
+  // When the graph is read-only, force the canvas locked and ignore unlock
+  // attempts so non-owners cannot edit nodes.
+  const isLocked = isReadOnly || isLockedState;
+  const setIsLocked = useCallback(
+    (locked: boolean) => {
+      if (isReadOnly) return;
+      setIsLockedState(locked);
+    },
+    [isReadOnly],
+  );
+
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
     isInitialLoadComplete,
@@ -308,5 +321,6 @@ export const useFlow = () => {
     onDrop,
     isLocked,
     setIsLocked,
+    isReadOnly,
   };
 };

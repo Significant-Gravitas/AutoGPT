@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlparse
 
-if TYPE_CHECKING:
-    from backend.data.model import OAuth2Credentials
+from backend.data.model import OAuth2Credentials
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,41 @@ def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     return output_parts or None
 
 
+async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
+    """Delete a stored MCP credential that the server just rejected.
+
+    Called from the copilot's ``run_mcp_tool`` path when an MCP server
+    returns 401/403 with a credential we *do* have on file — meaning the
+    token was revoked or expired server-side without our local
+    ``access_token_expires_at`` knowing.  Removing the dead row prevents
+    ``auto_lookup_mcp_credential`` from feeding the same stale token back
+    on the next attempt and lets the user re-auth cleanly via the setup
+    card.  Failures are swallowed (best-effort) — the worst case is a
+    second loop through the same code path, which still surfaces the
+    setup card.
+    """
+    try:
+        mgr = IntegrationCredentialsManager()
+        # Go through ``mgr.delete`` (not ``store.delete_creds_by_id``) so the
+        # per-credential lock + ``_invoke_creds_changed_hook`` fire — the hook
+        # evicts any cached provider token for the user.
+        await mgr.delete(user_id, credential_id)
+        logger.info("Invalidated stale MCP credential %s", credential_id)
+    except ValueError:
+        # ``mgr.delete`` raises ``ValueError`` when the credential is
+        # already gone (e.g. the user deleted it manually in Settings
+        # between the ``auto_lookup_mcp_credential`` call and now).  Not
+        # a problem — the goal was "this row should not exist" and it
+        # doesn't.  Demote to debug so we don't spam warnings on retries.
+        logger.debug("MCP credential %s already gone during invalidate", credential_id)
+    except Exception:
+        logger.warning(
+            "Failed to invalidate stale MCP credential %s",
+            credential_id,
+            exc_info=True,
+        )
+
+
 async def auto_lookup_mcp_credential(
     user_id: str, server_url: str
 ) -> OAuth2Credentials | None:
@@ -82,10 +118,6 @@ async def auto_lookup_mcp_credential(
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if needed, or ``None`` when no match is found.
     """
-    from backend.data.model import OAuth2Credentials
-    from backend.integrations.creds_manager import IntegrationCredentialsManager
-    from backend.integrations.providers import ProviderName
-
     try:
         mgr = IntegrationCredentialsManager()
         mcp_creds = await mgr.store.get_creds_by_provider(

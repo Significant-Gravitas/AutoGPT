@@ -1,5 +1,6 @@
 "use client";
 
+import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
@@ -12,6 +13,13 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { useContext, useEffect, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
+
+function normalizeMcpUrl(url: string): string {
+  // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
+  // for ``https://mcp.sentry.dev/mcp`` matches a card emitted with the
+  // same URL whether or not the trailing slash is present.
+  return url.trim().replace(/\/+$/, "");
+}
 interface Props {
   output: SetupRequirementsResponse;
   /**
@@ -39,18 +47,102 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
 
+  // Initial connection state comes from the backend.  When the model
+  // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
+  // `has_all_credentials` reflects whether the user already has a stored
+  // credential for this server — so we render "Connected — Reconnect"
+  // straight away instead of a bare Connect button.
+  const initiallyConnected = Boolean(
+    output.setup_info?.user_readiness?.has_all_credentials,
+  );
+
+  // The persisted backend state above is a snapshot from the moment the
+  // card was emitted.  On chat refresh that snapshot is stale — the user
+  // may have completed sign-in in a prior session.  Re-fetch the live
+  // cred list and OR it into ``connected`` so a previously-connected
+  // server still renders the "Connected — Reconnect" pill after a
+  // page reload.  We OR rather than override: once the user clicks
+  // Connect successfully in this component, ``localConnected`` stays
+  // true even if the live-cred query is briefly stale.
+  const normalizedServer = normalizeMcpUrl(serverUrl);
+  const { data: liveCredsRes } = useGetV1ListCredentials({
+    query: {
+      select: (res) => (res.status === 200 ? res.data : null),
+      // No staleTime — when this card mounts (e.g. immediately after the
+      // backend's ``invalidate_mcp_credential`` deleted a stale row),
+      // we want a fresh fetch.  A non-zero staleTime would let the
+      // previously-cached "cred exists" override the post-invalidation
+      // truth, briefly rendering "Connected" on a card whose
+      // ``has_all_credentials=false`` snapshot is the authoritative
+      // post-invalidation state.
+      refetchOnMount: "always",
+    },
+  });
+  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
+  // while loading or after a network/auth failure (``select`` returned
+  // ``null``).  Treating an unknown live state as ``false`` would override
+  // a still-valid persisted snapshot — see review for the
+  // initiallyConnected=false + 5xx race that surfaces a bare Connect
+  // button despite an existing cred.
+  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
+    ? "unknown"
+    : liveCredsRes.some(
+        (c) =>
+          c.provider === "mcp" &&
+          typeof c.host === "string" &&
+          normalizeMcpUrl(c.host) === normalizedServer,
+      );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [connected, setConnected] = useState(false);
+  // ``localConnected`` is set ONLY when the user successfully completes
+  // OAuth / manual-token in this component instance.  It is NOT seeded
+  // from ``initiallyConnected`` — that path is handled via ``liveSays``
+  // below.  Seeding from the persisted snapshot would shadow a later
+  // ``liveHasCred=false`` (e.g. cred revoked) and keep the Connected
+  // pill stuck.
+  const [localConnected, setLocalConnected] = useState(false);
+  // When Reconnect fails (or any in-card flow errors out), force the
+  // not-connected branch even though the live cred row still exists —
+  // otherwise ``liveHasCred=true`` would keep the pill rendered and the
+  // user couldn't see the error banner or the manual-token input.  Reset
+  // on the next attempt so the user can retry.
+  const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
+
+  // Combined view:
+  //   1. ``forceDisconnected`` (set by the catch block) wins.
+  //   2. ``localConnected`` (just completed sign-in in this component) wins.
+  //   3. Live API truth wins over the persisted snapshot — a true tells
+  //      us the cred is there, a false tells us it isn't.
+  //   4. When live state is unknown (loading/network/auth error), fall
+  //      back to the persisted ``initiallyConnected`` snapshot rather
+  //      than defaulting to disconnected.
+  const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
+  const connected = !forceDisconnected && (localConnected || liveSays);
+  // Setter compatible with the existing call-sites — they only ever set
+  // ``true`` after a successful flow or ``false`` to drop the pill.
+  const setConnected = setLocalConnected;
 
   // Abort any in-progress OAuth popup when the component unmounts.
   useEffect(() => () => oauthAbortRef.current?.(), []);
 
   async function handleConnect() {
+    // Re-entrancy guard: a rapid double-click would otherwise race the
+    // two in-flight ``handleConnect`` invocations — the second one aborts
+    // the first's popup (``oauthAbortRef.current?.()``) but the first's
+    // ``await promise`` then rejects with ``OAUTH_ERROR_FLOW_CANCELED``,
+    // which flips ``forceDisconnected=true`` even though the second
+    // attempt is still alive.  Bail out cheaply when a flow is already
+    // running.  Button is also ``disabled={loading}`` but disabled
+    // <button> elements still fire ``click`` in some browsers.
+    if (loading) return;
     setError(null);
+    // Reset showManualToken so a prior 400 doesn't keep the input visible
+    // when a later attempt fails with a non-400 (e.g. network) error.
+    setShowManualToken(false);
     setLoading(true);
     oauthAbortRef.current?.();
 
@@ -93,10 +185,24 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         }
       }
 
+      // Only clear the force-disconnect override AFTER the OAuth dance
+      // completes successfully.  Clearing it earlier would let
+      // ``liveHasCred=true`` (Reconnect path) render the Connected pill
+      // mid-flight, briefly contradicting the in-progress "Reconnecting…"
+      // affordance.
+      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
       const err = e as Record<string, unknown>;
+      // Reconnect failures must drop the Connected view so the user sees
+      // the error / manual-token input rendered by the not-connected
+      // branch.  Setting ``localConnected=false`` alone isn't enough when
+      // a stored cred still exists (``liveHasCred=true``) — flip
+      // ``forceDisconnected`` so the not-connected branch wins until the
+      // user retries.
+      setConnected(false);
+      setForceDisconnected(true);
       if (err?.status === 400) {
         setShowManualToken(true);
         setError(
@@ -121,6 +227,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   }
 
   async function handleManualToken() {
+    // Re-entrancy guard first — mirrors ``handleConnect`` so both flows
+    // present the same shape to readers.  See the comment on
+    // ``handleConnect``'s guard for the double-click race this prevents.
+    if (loading) return;
     const token = manualToken.trim();
     if (!token) return;
     setLoading(true);
@@ -132,9 +242,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       });
       if (!(res.status >= 200 && res.status < 300))
         throw new Error("Failed to store token");
+      // Only clear the force-disconnect override AFTER the API confirms
+      // the token was stored.  Clearing it before the await would let
+      // ``liveHasCred=true`` (from an existing stale cred) re-render the
+      // Connected pill while the request is still in flight, briefly
+      // showing a false "Connected" state to the user.
+      setForceDisconnected(false);
       setConnected(true);
       onSend(retryInstruction ?? "I've connected. Please retry.");
     } catch (e: unknown) {
+      // Keep the force-disconnect override on so the not-connected
+      // branch (error banner + manual-token input) stays visible — an
+      // existing ``liveHasCred=true`` would otherwise re-render the
+      // Connected pill.
+      setForceDisconnected(true);
       const err = e as Record<string, unknown>;
       setError(
         (typeof err?.message === "string" ? err.message : null) ||
@@ -145,10 +266,29 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     }
   }
 
+  // Already-connected state.  Shown when the backend reports
+  // ``has_all_credentials=true`` (model called with
+  // ``surface_connect_card=true`` and creds already exist), or after the
+  // user just completed a Connect flow in this component instance.  Always
+  // expose Reconnect so the user can swap accounts.
   if (connected) {
+    // No error banner here — any caught error flips ``forceDisconnected``
+    // to true which forces ``connected=false``, so an error inside the
+    // connected branch is unreachable.  The not-connected branch below
+    // owns the error display.
     return (
-      <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-        Connected to {service}!
+      <div className="mt-2 grid gap-2">
+        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Connected to {service}.{" "}
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={loading}
+            className="ml-1 underline underline-offset-2 hover:no-underline disabled:opacity-60"
+          >
+            {loading ? "Reconnecting…" : "Reconnect"}
+          </button>
+        </div>
       </div>
     );
   }

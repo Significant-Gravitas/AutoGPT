@@ -455,12 +455,24 @@ async def create_or_add_to_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
     notification_data: NotificationEventModel,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> UserNotificationBatchDTO:
     try:
         if not notification_data.data:
             raise ValueError("Notification data must be provided")
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
+
+        # Stamp the batch with the user's default org/team at creation.
+        # Resolve a default only when the caller supplied NEITHER field (never
+        # overwrite an explicit team_id). resolve_default_tenancy is
+        # best-effort — an unresolvable org or a raised lookup both leave the
+        # batch untenanted rather than crash a notification.
+        if organization_id is None and team_id is None:
+            from backend.api.features.orgs.db import resolve_default_tenancy
+
+            organization_id, team_id = await resolve_default_tenancy(user_id)
 
         # Prisma's upsert is find→INSERT/UPDATE under the hood, not a true
         # SQL ON CONFLICT, so two concurrent calls on a missing row can both
@@ -483,6 +495,12 @@ async def create_or_add_to_user_notification_batch(
                         "create": UserNotificationBatchCreateInput(
                             userId=user_id,
                             type=notification_type,
+                            **(
+                                {"organizationId": organization_id}
+                                if organization_id
+                                else {}
+                            ),
+                            **({"teamId": team_id} if team_id else {}),
                             Notifications={
                                 "create": [
                                     NotificationEventCreateInput(
@@ -521,21 +539,15 @@ async def get_user_notification_oldest_message_in_batch(
     notification_type: NotificationType,
 ) -> UserNotificationEventDTO | None:
     try:
-        batch = await UserNotificationBatch.prisma().find_first(
-            where={"userId": user_id, "type": notification_type},
-            include={"Notifications": True},
+        oldest = await NotificationEvent.prisma().find_first(
+            where={
+                "UserNotificationBatch": {
+                    "is": {"userId": user_id, "type": notification_type}
+                }
+            },
+            order={"createdAt": "asc"},
         )
-        if not batch:
-            return None
-        if not batch.Notifications:
-            return None
-        sorted_notifications = sorted(batch.Notifications, key=lambda x: x.createdAt)
-
-        return (
-            UserNotificationEventDTO.from_db(sorted_notifications[0])
-            if sorted_notifications
-            else None
-        )
+        return UserNotificationEventDTO.from_db(oldest) if oldest else None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -659,6 +671,7 @@ async def get_user_notification_batch(
 async def get_all_batches_by_type(
     notification_type: NotificationType,
 ) -> list[UserNotificationBatchDTO]:
+    # Caller re-fetches events per batch when actually sending; no eager include here.
     try:
         batches = await UserNotificationBatch.prisma().find_many(
             where={
@@ -667,7 +680,6 @@ async def get_all_batches_by_type(
                     "some": {}  # Only return batches with at least one notification
                 },
             },
-            include={"Notifications": True},
         )
         return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:

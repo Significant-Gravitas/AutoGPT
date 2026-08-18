@@ -23,6 +23,7 @@ from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     e2b_credentials,
@@ -30,6 +31,16 @@ from backend.integrations.credentials_store import (
     jina_credentials,
     webshare_proxy_credentials,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_preflight_estimate(monkeypatch):
+    """Force `get_preflight_estimate` to return 0 in this module's tests so
+    the dynamic-cost (E2B SECOND / FAL SECOND) pre-flight assertions don't
+    couple to a populated `block_preflight_estimates.json` once the seeding
+    PR registers non-zero estimates for these blocks."""
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
+
 
 ALL_AYRSHARE_BLOCKS = [
     PostToBlueskyBlock,

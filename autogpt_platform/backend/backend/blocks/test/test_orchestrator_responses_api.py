@@ -82,6 +82,27 @@ class _MockFunctionCall:
         self.status = "completed"
 
 
+class _MockReasoning:
+    """openai.types.responses.ResponseReasoningItem
+
+    Reasoning models (gpt-5*, o3*) emit one of these per turn. With
+    ``store=False`` it is only replayable on the next turn if it carries
+    ``encrypted_content`` (requested via ``include=['reasoning.encrypted_content']``);
+    otherwise OpenAI tries to look it up by ``rs_...`` id and 404s.
+    """
+
+    def __init__(
+        self,
+        encrypted_content: str | None = "gAAAAABencrypted==",
+        rs_id: str = "rs_abc123",
+    ):
+        self.type = "reasoning"
+        self.id = rs_id
+        self.summary: list = []
+        self.encrypted_content = encrypted_content
+        self.status = "completed"
+
+
 class _MockUsage:
     def __init__(self, inp: int = 100, out: int = 50):
         self.input_tokens = inp
@@ -234,6 +255,65 @@ class TestConvertRawResponseToDict:
             assert (
                 "status" not in item
             ), f"'status' must be stripped from Responses API items: {item}"
+
+    def test_responses_api_preserves_reasoning_encrypted_content(self):
+        """Reasoning items must be re-inlined verbatim WITH ``encrypted_content``.
+
+        This is the client-side half of the OPEN-3187 fix: with ``store=False``
+        the reasoning item produced on turn N is only replayable on turn N+1 if
+        its encrypted blob travels with it. Dropping it (or keeping only the
+        ``rs_...`` id) makes OpenAI 404 on the next call.
+        """
+        resp = _MockResponse(
+            output=[
+                _MockReasoning(encrypted_content="gAAAAABblob=="),
+                _MockFunctionCall("my_tool", "{}", call_id="call_xyz"),
+            ]
+        )
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+
+        reasoning_items = [i for i in result if i.get("type") == "reasoning"]
+        assert len(reasoning_items) == 1
+        rs = reasoning_items[0]
+        assert rs["encrypted_content"] == "gAAAAABblob=="
+        # 'status' is a response-only field OpenAI rejects on input items.
+        assert "status" not in rs
+        # Order must be preserved: reasoning precedes the call it produced.
+        assert result[0].get("type") == "reasoning"
+        assert result[1].get("type") == "function_call"
+
+    def test_responses_api_drops_reasoning_without_encrypted_content(self):
+        """A reasoning item missing ``encrypted_content`` must be dropped, not
+        replayed by id.
+
+        With ``store=False`` an un-encrypted reasoning item can only be
+        re-sent as an ``rs_...`` id reference, which 404s server-side. If the
+        API ever omits the blob, dropping the item degrades gracefully (lost
+        reasoning context) rather than killing the loop with a hard error.
+        See OPEN-3187.
+        """
+        resp = _MockResponse(
+            output=[
+                _MockReasoning(encrypted_content=None),
+                _MockFunctionCall("my_tool", "{}", call_id="call_xyz"),
+            ]
+        )
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        assert all(i.get("type") != "reasoning" for i in result)
+        # The function_call it preceded is still replayed.
+        assert [i for i in result if i.get("type") == "function_call"]
+
+    def test_responses_api_drops_only_reasoning_when_it_is_the_sole_item(self):
+        """If the only output item is an un-replayable reasoning item, the
+        result must still be a valid non-empty input list (falls back to an
+        empty assistant message), never an empty list the API rejects."""
+        resp = _MockResponse(output=[_MockReasoning(encrypted_content=None)])
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].get("role") == "assistant"
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -898,11 +978,12 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     resp1.reasoning = None
     resp1.raw_response = _MockResponse(
         output=[
+            _MockReasoning(encrypted_content="gAAAAABturn1=="),
             _MockFunctionCall(
                 "story_improver",
                 '{"prompt_values___story": "draft", "prompt_values___improvement": "polish"}',
                 call_id="call_abc",
-            )
+            ),
         ]
     )
 
@@ -1010,11 +1091,19 @@ async def test_agent_mode_conversation_valid_for_responses_api():
             has_type = item.get("type") in (
                 "function_call",
                 "function_call_output",
+                "reasoning",
                 "message",
             )
             assert (
                 has_role or has_type
             ), f"input[{i}] has neither valid role nor type: {item!r}"
+
+        # The turn-1 reasoning item must be replayed on turn 2 WITH its
+        # encrypted blob — that's what keeps store=false reasoning models from
+        # 404ing on the next call (OPEN-3187).
+        reasoning_items = [i for i in second_prompt if i.get("type") == "reasoning"]
+        assert len(reasoning_items) == 1
+        assert reasoning_items[0].get("encrypted_content") == "gAAAAABturn1=="
 
 
 @pytest.mark.asyncio

@@ -829,7 +829,7 @@ async def test_post_tool_use_no_session_skips_drain(monkeypatch):
 
     ctx_mod.set_execution_context(
         user_id=None,
-        session=None,  # type: ignore[arg-type]
+        session=None,
         sandbox=None,
         sdk_cwd=SDK_CWD,
     )

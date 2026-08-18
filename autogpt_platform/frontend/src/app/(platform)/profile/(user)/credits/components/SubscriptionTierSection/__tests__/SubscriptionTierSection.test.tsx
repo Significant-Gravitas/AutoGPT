@@ -736,24 +736,19 @@ describe("SubscriptionTierSection", () => {
     ).toBeDefined();
   });
 
-  it("renders BASIC cancellation copy in banner when pending_tier is BASIC", () => {
+  it("renders cancellation copy in banner when pending_tier is NO_TIER", () => {
     setupMocks({
       subscription: makeSubscription({
         tier: "MAX",
-        pendingTier: "BASIC",
-        // Noon UTC so the local-formatted date lands on the same day
-        // regardless of the runner's timezone (midnight UTC drifts to
-        // the prior day in any timezone west of UTC).
+        pendingTier: "NO_TIER",
         pendingTierEffectiveAt: new Date("2026-05-15T12:00:00Z"),
       }),
     });
     render(<SubscriptionTierSection />);
-    // Cancellation copy — distinct from the generic downgrade phrasing.
     expect(
       screen.getByText(/scheduled to cancel your subscription on/i),
     ).toBeDefined();
     expect(screen.getByText(/May 15, 2026/)).toBeDefined();
-    // Must NOT render the "downgrade to" phrasing on BASIC cancellation.
     expect(screen.queryByText(/scheduled to downgrade to/i)).toBeNull();
   });
 });

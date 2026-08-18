@@ -9,11 +9,17 @@ from unittest.mock import Mock
 import httpx
 import orjson
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import TypeAdapter
 
 from backend.data.model import User
-from backend.util.exceptions import GraphValidationError
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
+    GraphValidationError,
+)
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -102,7 +108,6 @@ class ServiceTestClient(AppServiceClient):
     fun_with_async = ServiceTest.fun_with_async
     failing_add = ServiceTest.failing_add
     always_failing_add = ServiceTest.always_failing_add
-
     add_async = endpoint_to_async(ServiceTest.add)
     subtract_async = endpoint_to_async(ServiceTest.subtract)
 
@@ -116,6 +121,48 @@ async def test_service_creation(server):
         assert client.fun_with_async(5, 3) == 8
         assert await client.add_async(5, 3) == 8
         assert await client.subtract_async(10, 4) == 6
+
+
+def test_expert_lookup_errors_preserve_rpc_status_and_type():
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.get("/missing-expert")
+    def missing_expert():
+        raise ExpertNotFoundError("expert-1")
+
+    @app.get("/missing-expert-tenancy")
+    def missing_expert_tenancy():
+        raise ExpertPrivateTenancyNotFoundError("expert-1")
+
+    raw = TestClient(app, raise_server_exceptions=False)
+    missing_expert_response = raw.get("/missing-expert")
+    missing_tenancy_response = raw.get("/missing-expert-tenancy")
+
+    assert missing_expert_response.status_code == 404
+    assert missing_expert_response.json()["type"] == "ExpertNotFoundError"
+    assert missing_tenancy_response.status_code == 503
+    assert (
+        missing_tenancy_response.json()["type"] == "ExpertPrivateTenancyNotFoundError"
+    )
+
+    client = cast(
+        _SupportsHandleCallMethodResponse,
+        get_service_client(ServiceTestClient, request_retry=False),
+    )
+    with pytest.raises(ExpertNotFoundError, match="Expert expert-1 not found"):
+        client._handle_call_method_response(
+            response=missing_expert_response,
+            method_name="resolve_private_expert_tenancy",
+        )
+    with pytest.raises(
+        ExpertPrivateTenancyNotFoundError,
+        match="Private tenancy for expert expert-1 not found",
+    ):
+        client._handle_call_method_response(
+            response=missing_tenancy_response,
+            method_name="resolve_private_expert_tenancy",
+        )
 
 
 class TestDynamicClientConnectionHealing:

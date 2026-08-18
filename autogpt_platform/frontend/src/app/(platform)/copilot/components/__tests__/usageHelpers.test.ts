@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatBytes,
   formatCents,
   formatMicrodollarsAsUsd,
   formatResetTime,
+  formatTierLabel,
+  isUsageExhausted,
 } from "../usageHelpers";
 
 describe("formatCents", () => {
@@ -72,5 +75,88 @@ describe("formatResetTime", () => {
     // Not asserting exact format (localized), just that it's not the
     // minute/hour form.
     expect(formatResetTime(future, now)).not.toMatch(/^in \d/);
+  });
+});
+
+describe("formatTierLabel", () => {
+  it("returns null for null", () => {
+    expect(formatTierLabel(null)).toBeNull();
+  });
+
+  it("returns null for undefined", () => {
+    expect(formatTierLabel(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(formatTierLabel("")).toBeNull();
+  });
+
+  it("returns null for the NO_TIER sentinel", () => {
+    expect(formatTierLabel("NO_TIER")).toBeNull();
+  });
+
+  it("capitalizes a known tier", () => {
+    expect(formatTierLabel("PRO")).toBe("Pro");
+    expect(formatTierLabel("BASIC")).toBe("Basic");
+  });
+
+  it("normalizes first-letter casing for lowercase or mixed-case input", () => {
+    expect(formatTierLabel("pro")).toBe("Pro");
+    expect(formatTierLabel("pRo")).toBe("Pro");
+  });
+});
+
+describe("isUsageExhausted", () => {
+  it("returns false for null/undefined usage", () => {
+    expect(isUsageExhausted(null)).toBe(false);
+    expect(isUsageExhausted(undefined)).toBe(false);
+  });
+
+  it("returns false when neither window is over 100%", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 50 },
+        weekly: { percent_used: 60 },
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when daily is exhausted", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 100 },
+        weekly: { percent_used: 10 },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when weekly is exhausted", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 0 },
+        weekly: { percent_used: 100 },
+      }),
+    ).toBe(true);
+  });
+
+  it("treats missing percent_used as 0", () => {
+    expect(isUsageExhausted({ daily: null, weekly: null })).toBe(false);
+    expect(isUsageExhausted({})).toBe(false);
+  });
+});
+
+describe("formatBytes", () => {
+  it.each([
+    [0, "0 B"],
+    [512, "512 B"],
+    [1024, "1 KB"],
+    [250 * 1024, "250 KB"],
+    [1023 * 1024, "1023 KB"],
+    [1024 * 1024, "1 MB"],
+    [250 * 1024 * 1024, "250 MB"],
+    [1024 * 1024 * 1024, "1.0 GB"],
+    [5 * 1024 * 1024 * 1024, "5.0 GB"],
+  ])("formats %d bytes as %s", (input, expected) => {
+    expect(formatBytes(input)).toBe(expected);
   });
 });

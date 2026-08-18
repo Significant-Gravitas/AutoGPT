@@ -63,12 +63,24 @@ vi.mock("../components/helper", () => ({
   convertNodesPlusBlockInfoIntoCustomNodes: vi.fn(),
 }));
 
+let mockIsReadOnly = false;
+
+vi.mock("../hooks/useIsReadOnlyGraph", () => ({
+  useIsReadOnlyGraph: vi.fn(() => ({
+    isReadOnly: mockIsReadOnly,
+    duplicate: vi.fn(),
+    isDuplicating: false,
+    canDuplicate: false,
+  })),
+}));
+
 describe("useFlow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockGraphLoading = false;
     mockBlocksLoading = false;
+    mockIsReadOnly = false;
     mockQueryStateValues = {
       flowID: null,
       flowVersion: null,
@@ -129,6 +141,38 @@ describe("useFlow", () => {
       });
 
       expect(result.current.isInitialLoadComplete).toBe(true);
+    });
+  });
+
+  describe("read-only lock", () => {
+    it("defaults to unlocked and allows toggling for owned graphs", async () => {
+      const { useFlow } = await import("../components/FlowEditor/Flow/useFlow");
+      const { result } = renderHook(() => useFlow());
+
+      expect(result.current.isReadOnly).toBe(false);
+      expect(result.current.isLocked).toBe(false);
+
+      act(() => {
+        result.current.setIsLocked(true);
+      });
+
+      expect(result.current.isLocked).toBe(true);
+    });
+
+    it("forces the canvas locked and ignores unlock attempts when read-only", async () => {
+      mockIsReadOnly = true;
+
+      const { useFlow } = await import("../components/FlowEditor/Flow/useFlow");
+      const { result } = renderHook(() => useFlow());
+
+      expect(result.current.isReadOnly).toBe(true);
+      expect(result.current.isLocked).toBe(true);
+
+      act(() => {
+        result.current.setIsLocked(false);
+      });
+
+      expect(result.current.isLocked).toBe(true);
     });
   });
 });

@@ -41,6 +41,8 @@ class TestManagerWiring:
             "create_user_link_token",
             "get_link_token_status",
             "start_chat_turn",
+            "list_user_server_ids",
+            "get_user_dm_id",
         }
         for name in expected:
             assert hasattr(
@@ -88,6 +90,24 @@ class TestManagerWiring:
             result = await manager.resolve_user_link(Platform.DISCORD, "pu1")
         db_mock.resolve_user_link.assert_awaited_once_with("DISCORD", "pu1")
         assert result.linked is False
+
+    @pytest.mark.asyncio
+    async def test_get_user_dm_id_returns_matching_platform_link(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.list_user_links = AsyncMock(
+            return_value=[
+                MagicMock(platform="TELEGRAM", platform_user_id="tg-9"),
+                MagicMock(platform="DISCORD", platform_user_id="dc-7"),
+            ]
+        )
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            assert await manager.get_user_dm_id(Platform.DISCORD, "u1") == "dc-7"
+            assert await manager.get_user_dm_id(Platform.SLACK, "u1") is None
+        db_mock.list_user_links.assert_awaited_with("u1")
 
     @pytest.mark.asyncio
     async def test_create_server_link_token_delegates(self):
@@ -155,6 +175,20 @@ class TestManagerWiring:
             result = await manager.start_chat_turn(req)
         stub.assert_awaited_once_with(req)
         assert result is fake_response
+
+    @pytest.mark.asyncio
+    async def test_refresh_server_link_name_delegates(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.refresh_server_link_name = AsyncMock()
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            await manager.refresh_server_link_name(Platform.DISCORD, "g1", "AutoGPT HQ")
+        db_mock.refresh_server_link_name.assert_awaited_once_with(
+            "DISCORD", "g1", "AutoGPT HQ"
+        )
 
 
 class TestAdversarialConfirmRace:

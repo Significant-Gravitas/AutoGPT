@@ -15,6 +15,8 @@ from backend.util.exceptions import (
 )
 
 from .db import (
+    LINK_TOKEN_RETENTION_HOURS,
+    cleanup_expired_platform_link_tokens,
     confirm_server_link,
     confirm_user_link,
     create_server_link_token,
@@ -23,6 +25,7 @@ from .db import (
     delete_user_link,
     get_link_token_info,
     get_link_token_status,
+    refresh_server_link_name,
     resolve_server_link,
     resolve_user_link,
 )
@@ -479,3 +482,75 @@ class TestDeleteLinks:
             mock_model.prisma.return_value.find_unique = AsyncMock(return_value=link)
             with pytest.raises(NotAuthorizedError):
                 await delete_user_link("x", "u-other")
+
+
+# ── Cleanup ──────────────────────────────────────────────────────────
+
+
+class TestCleanupExpired:
+    @pytest.mark.asyncio
+    async def test_deletes_with_retention_window_cutoff(self):
+        with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
+            mock_model.prisma.return_value.delete_many = AsyncMock(return_value=7)
+            count = await cleanup_expired_platform_link_tokens()
+
+        assert count == 7
+        mock_model.prisma.return_value.delete_many.assert_awaited_once()
+        where = mock_model.prisma.return_value.delete_many.await_args.kwargs["where"]
+        assert "expiresAt" in where and "lt" in where["expiresAt"]
+        cutoff = where["expiresAt"]["lt"]
+        delta = datetime.now(timezone.utc) - cutoff
+        assert (
+            timedelta(hours=LINK_TOKEN_RETENTION_HOURS - 1)
+            < delta
+            < timedelta(hours=LINK_TOKEN_RETENTION_HOURS + 1)
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_nothing_to_delete(self):
+        with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
+            mock_model.prisma.return_value.delete_many = AsyncMock(return_value=0)
+            count = await cleanup_expired_platform_link_tokens()
+        assert count == 0
+
+
+# ── Refresh server-link display name ───────────────────────────────────
+
+
+class TestRefreshServerLinkName:
+    @pytest.mark.asyncio
+    async def test_no_op_when_name_blank(self):
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock()
+            await refresh_server_link_name("DISCORD", "g1", "")
+        mock_model.prisma.return_value.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_filter_matches_null_rows_and_differing_rows(self):
+        """The filter MUST include both NULL serverName rows and rows whose
+        serverName differs. `{not: 'x'}` alone excludes NULLs (SQL: NULL != 'x'
+        is NULL, not true), which was leaving legacy backfills stuck. The
+        bug surfaced as servers showing as their ID forever on the Bots page."""
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock()
+            await refresh_server_link_name("DISCORD", "g1", "AutoGPT HQ")
+
+        update_many = mock_model.prisma.return_value.update_many
+        update_many.assert_awaited_once()
+        await_args = update_many.await_args
+        assert await_args is not None
+        where = await_args.kwargs["where"]
+        assert where["platform"] == "DISCORD"
+        assert where["platformServerId"] == "g1"
+        # OR clause must cover the NULL case explicitly.
+        assert {"serverName": None} in where["OR"]
+        assert {"serverName": {"not": "AutoGPT HQ"}} in where["OR"]
+
+    @pytest.mark.asyncio
+    async def test_swallows_db_errors(self):
+        with patch("backend.platform_linking.db.PlatformLink") as mock_model:
+            mock_model.prisma.return_value.update_many = AsyncMock(
+                side_effect=RuntimeError("db down")
+            )
+            # Must not raise.
+            await refresh_server_link_name("DISCORD", "g1", "x")

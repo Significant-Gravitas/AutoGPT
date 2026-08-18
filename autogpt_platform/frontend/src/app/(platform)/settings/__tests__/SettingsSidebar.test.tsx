@@ -41,12 +41,11 @@ import { SettingsSidebar } from "../components/SettingsSidebar/SettingsSidebar";
 
 const expectedItems = [
   { label: "Profile", href: "/settings/profile" },
-  { label: "Creator Dashboard", href: "/settings/creator-dashboard" },
+  { label: "Account", href: "/settings/account" },
   { label: "Billing", href: "/settings/billing" },
   { label: "Integrations", href: "/settings/integrations" },
-  { label: "Preferences", href: "/settings/preferences" },
   { label: "AutoGPT API Keys", href: "/settings/api-keys" },
-  { label: "OAuth Apps", href: "/settings/oauth-apps" },
+  { label: "Creator Dashboard", href: "/settings/creator-dashboard" },
 ];
 
 describe("SettingsSidebar", () => {
@@ -54,10 +53,11 @@ describe("SettingsSidebar", () => {
     usePathnameMock.mockReturnValue("/settings/profile");
   });
 
-  it("renders SETTINGS header and all 7 nav items with correct hrefs", () => {
+  it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {
     render(<SettingsSidebar />);
 
-    expect(screen.getByText("SETTINGS")).toBeDefined();
+    const back = screen.getByRole("link", { name: /back/i });
+    expect(back.getAttribute("href")).toBe("/copilot");
 
     for (const { label, href } of expectedItems) {
       const link = screen.getByRole("link", { name: new RegExp(label, "i") });

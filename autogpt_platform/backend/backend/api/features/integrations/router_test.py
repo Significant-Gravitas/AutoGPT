@@ -9,18 +9,51 @@ import pytest
 from pydantic import SecretStr
 
 from backend.api.features.integrations.router import router
+from backend.data.integrations import Webhook
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
     OAuth2Credentials,
     UserPasswordCredentials,
 )
+from backend.integrations.providers import ProviderName
+from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
 app.include_router(router)
+
+
+@app.exception_handler(NotFoundError)
+async def _not_found_handler(
+    request: fastapi.Request, exc: NotFoundError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production NotFoundError → 404 mapping from the REST app."""
+    return fastapi.responses.JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "test-user-id"
+
+
+def _make_webhook(
+    webhook_id: str = "wh-123",
+    user_id: str = TEST_USER_ID,
+    provider: str = "github",
+    credentials_id: str = "cred-456",
+) -> Webhook:
+    return Webhook(
+        id=webhook_id,
+        user_id=user_id,
+        provider=ProviderName(provider),
+        credentials_id=credentials_id,
+        webhook_type="repo",
+        resource="owner/repo",
+        events=["push"],
+        config={},
+        secret="whsecret",
+        provider_webhook_id="provider-wh-1",
+    )
 
 
 def _make_api_key_cred(cred_id: str = "cred-123", provider: str = "openai"):
@@ -746,3 +779,75 @@ class TestGetPickerToken:
         assert "access_token" not in body
         assert "refresh_token" not in body
         assert "ghp_secret_token" not in str(body)
+
+
+class TestWebhookPingOwnership:
+    """POST /webhooks/{webhook_id}/ping must verify the caller owns the webhook.
+
+    Regression guard for SECRT-2434: the endpoint fetched the webhook by
+    primary key alone (`get_webhook` is documented unsafe for user-facing
+    use) and never compared `webhook.user_id` to the caller. That let any
+    authenticated user enumerate webhook IDs and trigger pings on other
+    users' webhooks (IDOR / broken object-level authorization).
+
+    A foreign webhook must be indistinguishable from a non-existent one
+    (both 404), so the endpoint can't be used as an existence oracle.
+    """
+
+    def test_foreign_webhook_returns_404_without_pinging(self):
+        webhook = _make_webhook(user_id="someone-else")
+        with (
+            patch(
+                "backend.api.features.integrations.router.get_webhook",
+                AsyncMock(return_value=webhook),
+            ),
+            patch(
+                "backend.api.features.integrations.router.get_webhook_manager"
+            ) as mock_get_mgr,
+            patch(
+                "backend.api.features.integrations.router.creds_manager"
+            ) as mock_creds,
+        ):
+            resp = client.post("/webhooks/wh-123/ping")
+
+        assert resp.status_code == 404
+        # Ownership check must short-circuit before any side effects.
+        mock_get_mgr.assert_not_called()
+        mock_creds.get.assert_not_called()
+
+    def test_nonexistent_webhook_returns_404(self):
+        with patch(
+            "backend.api.features.integrations.router.get_webhook",
+            AsyncMock(side_effect=NotFoundError("Webhook #wh-x not found")),
+        ):
+            resp = client.post("/webhooks/wh-x/ping")
+
+        assert resp.status_code == 404
+
+    def test_owned_webhook_pings(self, test_user_id):
+        webhook = _make_webhook(user_id=test_user_id)
+        webhook_manager = MagicMock()
+        webhook_manager.trigger_ping = AsyncMock()
+        with (
+            patch(
+                "backend.api.features.integrations.router.get_webhook",
+                AsyncMock(return_value=webhook),
+            ),
+            patch(
+                "backend.api.features.integrations.router.get_webhook_manager",
+                return_value=webhook_manager,
+            ),
+            patch(
+                "backend.api.features.integrations.router.creds_manager"
+            ) as mock_creds,
+            patch(
+                "backend.api.features.integrations.router.wait_for_webhook_event",
+                AsyncMock(return_value=True),
+            ),
+        ):
+            mock_creds.get = AsyncMock(return_value=None)
+            resp = client.post("/webhooks/wh-123/ping")
+
+        assert resp.status_code == 200
+        assert resp.json() is True
+        webhook_manager.trigger_ping.assert_awaited_once()

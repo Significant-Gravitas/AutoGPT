@@ -95,7 +95,7 @@ export function APIKeyList() {
       </AnimatePresence>
 
       <motion.div
-        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
+        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-white"
         initial={reduceMotion ? false : "hidden"}
         animate={reduceMotion ? undefined : "show"}
         variants={reduceMotion ? undefined : LIST_CONTAINER_VARIANTS}

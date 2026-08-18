@@ -219,6 +219,14 @@ export function humanizeCronExpression(cronExpression: string): string {
   return `Cron Expression: ${cronExpression}`;
 }
 
+export function safeHumanizeCronExpression(cronExpression: string): string {
+  try {
+    return humanizeCronExpression(cronExpression);
+  } catch {
+    return "Scheduled";
+  }
+}
+
 function formatTime(hour: string, minute: string): string {
   // Cron expressions are now stored in the schedule's timezone (not UTC)
   // So we just format the time as-is without conversion
@@ -231,8 +239,27 @@ function padZero(value: string): string {
   return value.padStart(2, "0");
 }
 
+function expandCronFieldList(field: string): number[] {
+  const values: number[] = [];
+  for (const part of field.split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const rangeMatch = trimmed.match(/^(\d+)-(\d+)$/);
+    if (rangeMatch) {
+      const start = Number(rangeMatch[1]);
+      const end = Number(rangeMatch[2]);
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end) {
+        for (let v = start; v <= end; v++) values.push(v);
+        continue;
+      }
+    }
+    values.push(Number(trimmed));
+  }
+  return values;
+}
+
 function getDayNames(dayOfWeek: string): string {
-  const days = dayOfWeek.split(",").map(Number);
+  const days = expandCronFieldList(dayOfWeek);
   const dayNames = days
     .map((d) => {
       const names = [
@@ -251,7 +278,7 @@ function getDayNames(dayOfWeek: string): string {
 }
 
 function getMonthNames(month: string): string {
-  const months = month.split(",").map(Number);
+  const months = expandCronFieldList(month);
   const monthNames = months
     .map((m) => {
       const names = [

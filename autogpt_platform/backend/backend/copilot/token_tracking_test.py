@@ -229,6 +229,31 @@ class TestRateLimitRecording:
         mock_record.assert_awaited_once_with(
             user_id="user-abc",
             cost_microdollars=12_300,
+            skip_daily=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_skip_daily_flag_propagates_to_record_cost_usage(self):
+        """Dream pass passes ``skip_daily=True`` so background spend doesn't
+        eat the user's interactive daily cap. Threading must reach
+        ``record_cost_usage`` unchanged."""
+        mock_record = AsyncMock()
+        with patch(
+            "backend.copilot.token_tracking.record_cost_usage",
+            new=mock_record,
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-abc",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd=0.0123,
+                skip_daily=True,
+            )
+        mock_record.assert_awaited_once_with(
+            user_id="user-abc",
+            cost_microdollars=12_300,
+            skip_daily=True,
         )
 
     @pytest.mark.asyncio

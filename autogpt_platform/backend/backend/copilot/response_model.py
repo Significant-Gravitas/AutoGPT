@@ -8,7 +8,7 @@ See: https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol
 import json
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,6 +54,14 @@ class ResponseType(str, Enum):
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
     CURSOR = "data-cursor"
+    # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
+    # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
+    DREAM_OPERATIONS = "data-dream-operations"
+    # Mid-turn hint: the executor just drained the session's pending-message
+    # buffer at a tool boundary. Lets the client promote queued chips to
+    # bubbles immediately instead of waiting for its backstop poll.
+    PENDING_DRAINED = "data-pending-drained"
+    MODE_CHANGED = "data-mode-changed"
 
 
 class StreamBaseResponse(BaseModel):
@@ -329,6 +337,28 @@ class StreamCursor(StreamBaseResponse):
         return f"data: {json.dumps(data)}\n\n"
 
 
+class StreamModeChanged(StreamBaseResponse):
+    """The backend switched the session's engine/mode server-side.
+
+    Emitted when a baseline turn registers an engine switch (agent building
+    mode) so the frontend can sync its Thinking/Fast mode picker to the
+    engine the session will actually run on.
+    """
+
+    type: ResponseType = ResponseType.MODE_CHANGED
+    mode: Literal["extended_thinking", "fast"] = Field(
+        ..., description="New effective mode"
+    )
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {
+            "type": self.type.value,
+            "data": {"mode": self.mode},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
@@ -350,5 +380,33 @@ class StreamStatus(StreamBaseResponse):
         data = {
             "type": self.type.value,
             "data": {"message": self.message},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamPendingDrained(StreamBaseResponse):
+    """Hint that the pending-message buffer was drained mid-turn.
+
+    Emitted at tool boundaries when the executor pulls queued user
+    follow-ups into the running turn. The frontend treats it as a pure
+    wake-up signal: on receipt it re-reads the authoritative buffer count
+    and promotes its queued chips to message bubbles, instead of waiting
+    for its slower backstop poll. ``drainedCount`` is informational only —
+    correctness comes from the client's re-read, so a dropped hint just
+    delays the chip→bubble swap until the next poll.
+    """
+
+    type: ResponseType = ResponseType.PENDING_DRAINED
+    drainedCount: int = Field(
+        default=0, description="How many messages were drained in this batch"
+    )
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part (``type='data-pending-drained'``)
+        so the client surfaces it on ``message.parts`` rather than dropping
+        it as an unknown chunk type."""
+        data = {
+            "type": self.type.value,
+            "data": {"drainedCount": self.drainedCount},
         }
         return f"data: {json.dumps(data)}\n\n"

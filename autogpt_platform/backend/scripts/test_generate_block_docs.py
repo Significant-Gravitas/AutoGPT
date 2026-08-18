@@ -6,6 +6,7 @@ from scripts.generate_block_docs import (
     class_name_to_display_name,
     extract_manual_content,
     generate_anchor,
+    generate_overview_table,
     type_to_readable,
 )
 
@@ -202,6 +203,20 @@ class TestIntegration:
         # Check same block counts per file
         for file_path in mapping1:
             assert len(mapping1[file_path]) == len(mapping2[file_path])
+
+
+class TestOverviewGuideLinks:
+    """The overview's 'Creating Your Own Blocks' guide links must point at the
+    live docs host, not the dead docs.agpt.co one (OPEN-3209)."""
+
+    def test_no_dead_docs_host(self):
+        overview = generate_overview_table([])
+        assert "docs.agpt.co" not in overview
+
+    def test_links_use_agpt_docs_host(self):
+        overview = generate_overview_table([])
+        assert "(https://agpt.co/docs/platform/new-blocks)" in overview
+        assert "(https://agpt.co/docs/platform/block-sdk-guide)" in overview
 
 
 if __name__ == "__main__":

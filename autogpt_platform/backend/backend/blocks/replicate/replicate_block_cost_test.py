@@ -32,14 +32,15 @@ def test_registered_as_cost_usd_150():
 
 
 def test_hardware_rate_constant_in_range():
-    """$0.0014/s is Nvidia L40S tier. Sanity-check we haven't accidentally
-    shipped a rate that's off by an order of magnitude (e.g. $0.014 would
-    10x over-bill every run).
+    """Sanity-check we haven't shipped a rate off by an order of magnitude
+    (e.g. $0.02 would 10x over-bill every run).
+
+    Replicate's hardware tiers span CPU $0.000100 → 8×H100 $0.005600. The
+    flat rate must cover at least up to A100-80GB ($0.001875) to avoid
+    under-billing single-GPU community models, without going so high that
+    cheap-hardware users are over-billed by an order of magnitude.
     """
-    # Replicate's public hardware tiers: L4 $0.000275, A10G $0.000575,
-    # L40S $0.000975, A100 $0.001400, A100-80GB $0.001725. L40S @
-    # $0.0014/s covers most popular models with mild over-bill margin.
-    assert 0.0005 <= _REPLICATE_USD_PER_SEC <= 0.002
+    assert 0.001875 <= _REPLICATE_USD_PER_SEC <= 0.0025
 
 
 def _make_fake_prediction(output, predict_time=None, status="succeeded", error=None):
@@ -99,9 +100,8 @@ async def test_run_model_uses_model_keyword_when_ref_is_unpinned():
 
 @pytest.mark.asyncio
 async def test_run_model_emits_provider_cost_from_predict_time():
-    """Core contract: provider_cost = predict_time * $0.0014/s, cost_usd."""
+    """Core contract: provider_cost = predict_time * _REPLICATE_USD_PER_SEC, cost_usd."""
     block = ReplicateModelBlock()
-    # 5-second run → 5 * 0.0014 = $0.007 → 150 cr/$ * 0.007 ceil = 2 cr
     prediction = _make_fake_prediction(output="result-data", predict_time=5.0)
 
     client = MagicMock()

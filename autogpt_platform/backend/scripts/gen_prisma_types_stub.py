@@ -53,12 +53,15 @@ def _is_safe_type_alias(node: ast.Assign) -> bool:
             # Literal types are safe
             if base_name == "Literal":
                 return True
+            # Union types are safe (e.g. Serializable = Union[...])
+            if base_name == "Union":
+                return True
             # TypeVar is safe
             if base_name == "TypeVar":
                 return True
         elif isinstance(node.value.value, ast.Attribute):
             # Handle typing_extensions.Literal etc.
-            if node.value.value.attr == "Literal":
+            if node.value.value.attr in ("Literal", "Union"):
                 return True
 
     # Check if it's a simple Name reference (like SortMode = _types.SortMode)

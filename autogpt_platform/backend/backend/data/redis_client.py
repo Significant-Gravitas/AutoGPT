@@ -7,7 +7,14 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.asyncio.retry import Retry as AsyncRetry
+from redis.backoff import ExponentialBackoff
 from redis.cluster import ClusterNode, RedisCluster
+from redis.exceptions import ClusterDownError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
 
 from backend.util.cache import cached
 from backend.util.retry import conn_retry
@@ -35,11 +42,41 @@ USE_ANNOUNCED_ADDRESS = os.getenv("REDIS_USE_ANNOUNCED_ADDRESS", "").lower() in 
     "yes",
 )
 
+# Retry transient cluster errors internally so a rotation blip never surfaces
+# as a graph-exec 500.
+REDIS_RETRY_ATTEMPTS = int(os.getenv("REDIS_RETRY_ATTEMPTS", "5"))
+
+# Errors that should trigger a per-command retry inside the redis-py client.
+TRANSIENT_REDIS_ERRORS: tuple[type[RedisError], ...] = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    ClusterDownError,
+)
+
 logger = logging.getLogger(__name__)
 
 # Aliases so call-sites don't care which class this is.
 RedisClient = RedisCluster
 AsyncRedisClient = AsyncRedisCluster
+
+
+def _build_retry() -> Retry:
+    """Per-command retry with exponential backoff (0.1s → 10s cap)."""
+    return Retry(
+        backoff=ExponentialBackoff(cap=10, base=0.1),
+        retries=REDIS_RETRY_ATTEMPTS,
+        supported_errors=TRANSIENT_REDIS_ERRORS,
+    )
+
+
+def _build_async_retry() -> AsyncRetry:
+    """Async sibling of :func:`_build_retry` — redis-py ships separate sync
+    and async ``Retry`` classes; passing the wrong one fails type checks."""
+    return AsyncRetry(
+        backoff=ExponentialBackoff(cap=10, base=0.1),
+        retries=REDIS_RETRY_ATTEMPTS,
+        supported_errors=TRANSIENT_REDIS_ERRORS,
+    )
 
 
 def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
@@ -65,6 +102,8 @@ def connect() -> RedisClient:
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
         address_remap=_address_remap,
+        # Drives both per-command retries and the cluster-level retry counter.
+        retry=_build_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8T1).
     try:
@@ -100,6 +139,10 @@ async def connect_async() -> AsyncRedisClient:
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
         address_remap=_address_remap,
+        # redis-py 6.x AsyncRedisCluster ignores `retry_on_error` — the cluster
+        # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.
+        # Pass `retry` only to match the sync RedisCluster call above.
+        retry=_build_async_retry(),
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
     try:

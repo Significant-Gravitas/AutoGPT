@@ -19,9 +19,14 @@ from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
+from backend.blocks.llm import LLMModel
+from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
+    _MAX_JSON_RETRIES,
+    _call_llm_for_simulation,
     _extract_cost_usd,
+    _make_output_validator,
     _truncate_input_values,
     _truncate_value,
     build_simulation_prompt,
@@ -167,10 +172,132 @@ class TestPrepareDryRun:
         assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
+        # Simulation model must parse as a real LLMModel so OrchestratorBlock's
+        # Pydantic input validation accepts it.
+        assert LLMModel(result["model"]) is not None
+        # The injected model must be a canonical LLMModel value (string equal
+        # to one of the enum's ``.value``s), not an OpenRouter alias slug —
+        # OrchestratorBlock.validate_data → jsonschema only accepts literal
+        # ``LLMModel.value``s in the schema's ``enum``, and the alias map
+        # in ``LLMModel._missing_`` does not surface in the generated
+        # JSON Schema.  Anything else trips
+        # ``"'<slug>' is not one of [...]"`` at runtime.
+        canonical_values = {m.value for m in LLMModel}
+        assert result["model"] in canonical_values, (
+            f"prepare_dry_run injected non-canonical model {result['model']!r}; "
+            f"jsonschema validation will reject it"
+        )
         # credentials left as-is so block schema validation passes —
         # actual creds injected via extra_exec_kwargs in manager.py
         assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
+
+    def test_orchestrator_invalid_sim_model_override_falls_back_to_default(
+        self,
+    ) -> None:
+        """An invalid ``CHAT_SIMULATION_MODEL`` env value must not crash
+        ``prepare_dry_run`` — fall back to the default so dry-run keeps
+        working.  Without the guard, ``LLMModel('<garbage>')`` raises
+        ``ValueError`` and aborts every Orchestrator dry-run."""
+        with (
+            patch(
+                "backend.executor.simulator._get_platform_openrouter_key",
+                return_value="sk-or-test-key",
+            ),
+            patch(
+                "backend.executor.simulator._simulator_model",
+                return_value="not-a-real-model-slug",
+            ),
+        ):
+            result = prepare_dry_run(
+                OrchestratorBlock(),
+                {
+                    "prompt": "test",
+                    "model": LLMModel.CLAUDE_4_7_OPUS.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        # Must land on the default value, not the garbage override.
+        assert result["model"] == LLMModel(_DEFAULT_SIMULATOR_MODEL).value, (
+            "Invalid CHAT_SIMULATION_MODEL should fall back to default; "
+            f"got {result['model']!r}"
+        )
+
+    def test_orchestrator_forces_built_in_execution_mode(self) -> None:
+        """prepare_dry_run overrides ``execution_mode`` to ``BUILT_IN``
+        regardless of user choice.  With ``sim_model`` defaulting to
+        Gemini Flash-Lite (provider=open_router):
+
+          - BUILT_IN routes ``llm.llm_call`` to its open_router branch
+            (OpenAI SDK against openrouter.ai with the OR key) — works.
+          - EXTENDED_THINKING would hit the SDK subprocess's
+            ``model.value.startswith("claude")`` guard and raise
+            ``ValueError`` for any non-Claude sim_model.
+
+        Honouring the user's pick would force sim_model back to Claude
+        (to satisfy EXTENDED_THINKING), which in turn breaks the
+        LLM-simulation path for every non-Orchestrator block in the
+        same graph (Claude wraps JSON-mode output in markdown fences,
+        Gemini doesn't)."""
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            # User explicitly picked EXTENDED_THINKING — the dry-run
+            # still overrides to BUILT_IN.
+            result = prepare_dry_run(
+                block,
+                {
+                    "prompt": "test",
+                    "model": LLMModel.CLAUDE_4_7_OPUS.value,
+                    "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
+                    "agent_mode_max_iterations": 1,
+                },
+            )
+        assert result is not None
+        assert result["execution_mode"] == ExecutionMode.BUILT_IN.value, (
+            f"prepare_dry_run must force BUILT_IN to keep Gemini sim_model "
+            f"off the SDK's Claude-only gate; got {result['execution_mode']!r}"
+        )
+
+    def test_orchestrator_input_passes_jsonschema_validation(self) -> None:
+        """The injected dry-run input must pass OrchestratorBlock.validate_data.
+
+        Pinning this prevents the SECRT-2368 follow-up bug class where
+        prepare_dry_run injects an OpenRouter slug that LLMModel resolves
+        via the alias map at the Pydantic layer, but jsonschema enum
+        validation (which runs *before* Pydantic) rejects.
+        """
+        block = OrchestratorBlock()
+        user_input = {
+            "prompt": "test",
+            "model": LLMModel.CLAUDE_4_7_OPUS.value,
+            "credentials": {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "provider": "open_router",
+                "type": "api_key",
+            },
+            "agent_mode_max_iterations": 1,
+            "execution_mode": "built_in",
+            "multiple_tool_calls": False,
+            "max_tokens": 50,
+            "retry": 0,
+        }
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            dry_input = prepare_dry_run(block, user_input)
+        assert dry_input is not None
+        # Strip simulator-internal markers before validating, just like
+        # manager.py does before calling Input(**...).
+        validation_input = {k: v for k, v in dry_input.items() if not k.startswith("_")}
+        err = block.input_schema.validate_data(validation_input)
+        assert (
+            err is None
+        ), f"prepare_dry_run produced input that fails jsonschema validation: {err}"
 
     def test_orchestrator_zero_stays_zero(self) -> None:
         from unittest.mock import patch
@@ -566,11 +693,31 @@ def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
 
 
 class TestDefaultSimulatorModel:
-    """Pin the default model — anyone flipping this without a cost review
-    trips the test."""
+    """Pin the default model.  Four guards line up with the constraints
+    laid out next to ``_DEFAULT_SIMULATOR_MODEL`` in ``simulator.py``:
+    value pin, ``LLMModel`` parseability, OpenRouter slug shape, and
+    ``open_router`` provider routing (so the BUILT_IN orchestrator path
+    in ``llm.llm_call`` doesn't get routed through ``api.anthropic.com``
+    with the platform OR key)."""
 
-    def test_default_is_flash_lite(self) -> None:
+    def test_default_is_gemini_flash_lite(self) -> None:
         assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
+
+    def test_default_parses_as_llm_model(self) -> None:
+        assert LLMModel(_DEFAULT_SIMULATOR_MODEL) is LLMModel.GEMINI_2_5_FLASH_LITE
+
+    def test_default_is_openrouter_slug(self) -> None:
+        # The LLM-simulation path hits OpenRouter's OpenAI-compat endpoint,
+        # which only accepts canonical ``<vendor>/<model>`` slugs.
+        assert "/" in _DEFAULT_SIMULATOR_MODEL
+
+    def test_default_provider_is_open_router(self) -> None:
+        # ``llm.llm_call`` dispatches on ``llm_model.metadata.provider``.
+        # An ``anthropic`` provider would route OR-dry-run-credentials
+        # at ``api.anthropic.com`` → 401.  Pin ``open_router`` here so
+        # a future default change that breaks this routing trips at
+        # unit-test time.
+        assert LLMModel(_DEFAULT_SIMULATOR_MODEL).metadata.provider == "open_router"
 
 
 class TestExtractCostUsd:
@@ -663,6 +810,11 @@ class TestSimulatorCostTracking:
         assert create_kwargs["extra_body"] == {"usage": {"include": True}}
 
         track_kwargs = mock_track.await_args.kwargs
+        # The simulator routes through ``get_openai_client(prefer_openrouter=True)``,
+        # which only ever hits OpenRouter (or None) under non-local transport — so
+        # the cost row is always ``open_router`` here, never the chat transport's
+        # identity. See ``clients_test.TestOpenrouterHelperCostProvider`` for the
+        # per-transport matrix (incl. the subscription / direct_anthropic regression).
         assert track_kwargs["provider"] == "open_router"
         assert track_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
         assert track_kwargs["user_id"] == "user-42"
@@ -702,6 +854,7 @@ class TestSimulatorCostTracking:
         track_kwargs = mock_track.await_args.kwargs
         assert track_kwargs["cost_usd"] is None
         assert track_kwargs["user_id"] == "user-7"
+        # Non-local prefer_openrouter route → always logged as ``open_router``.
         assert track_kwargs["provider"] == "open_router"
 
     @pytest.mark.asyncio
@@ -732,3 +885,114 @@ class TestSimulatorCostTracking:
                 outputs.append((name, data))
 
         assert ("result", "simulated") in outputs
+
+
+class TestSchemaConformantSimulation:
+    """Simulated outputs are validated against the block's output schema and
+    retried with corrective feedback; structure fabrications (e.g. a list
+    where the schema says object) no longer reach downstream nodes
+    unchallenged."""
+
+    _OUTPUT_SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "main_result": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+            },
+            "response": {"type": "string"},
+        },
+        "required": ["main_result", "response"],
+    }
+
+    def test_validator_accepts_conforming_output(self) -> None:
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        assert validate({"main_result": {"text": "hi"}, "response": "ok"}) == []
+
+    def test_validator_ignores_missing_required_pins(self) -> None:
+        """Omitted pins are legitimate (simulate_block back-fills them)."""
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        assert validate({"response": "ok"}) == []
+
+    def test_validator_flags_wrong_structure(self) -> None:
+        validate = _make_output_validator(self._OUTPUT_SCHEMA)
+        problems = validate({"main_result": [{"type": "string", "value": "x"}]})
+        assert problems
+        assert "main_result" in problems[0]
+
+    def test_prompt_includes_full_output_schema(self) -> None:
+        block = _make_block(output_schema=self._OUTPUT_SCHEMA)
+        system_prompt, _ = build_simulation_prompt(block, {"query": "q"})
+        assert "Full output JSON Schema" in system_prompt
+        assert '"main_result"' in system_prompt
+
+    def _client_with_responses(self, contents: list[str]) -> tuple[Any, AsyncMock]:
+        responses = [_sim_completion(content=c, usage=_sim_usage()) for c in contents]
+        create_mock = AsyncMock(side_effect=responses)
+        client = type(
+            "MC",
+            (),
+            {
+                "chat": type(
+                    "C",
+                    (),
+                    {"completions": type("CC", (), {"create": create_mock})()},
+                )()
+            },
+        )()
+        return client, create_mock
+
+    @pytest.mark.asyncio
+    async def test_nonconforming_output_retried_with_feedback(self) -> None:
+        client, create_mock = self._client_with_responses(
+            [
+                '{"main_result": ["wrong"], "response": "ok"}',
+                '{"main_result": {"text": "right"}, "response": "ok"}',
+            ]
+        )
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            parsed = await _call_llm_for_simulation(
+                "sys",
+                "user",
+                output_validator=_make_output_validator(self._OUTPUT_SCHEMA),
+            )
+
+        assert parsed == {"main_result": {"text": "right"}, "response": "ok"}
+        assert create_mock.call_count == 2
+        retry_messages = create_mock.call_args_list[1].kwargs["messages"]
+        assert any(
+            "does not conform" in str(m.get("content", "")) for m in retry_messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_last_parsed_when_retries_exhausted(self) -> None:
+        """A structurally imperfect simulation beats failing the dry run."""
+        bad = '{"main_result": ["still wrong"], "response": "ok"}'
+        client, create_mock = self._client_with_responses([bad] * _MAX_JSON_RETRIES)
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            parsed = await _call_llm_for_simulation(
+                "sys",
+                "user",
+                output_validator=_make_output_validator(self._OUTPUT_SCHEMA),
+            )
+
+        assert parsed == {"main_result": ["still wrong"], "response": "ok"}
+        assert create_mock.call_count == _MAX_JSON_RETRIES

@@ -16,6 +16,7 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
 
+from ..model_router import ResolvedModel
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
@@ -393,6 +394,10 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the new
+            # ``_validate_aux_client_for_direct_main`` validator — these
+            # tests target the SDK normalizer, not the aux check.
+            aux_api_key="or-aux-key",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
@@ -426,10 +431,7 @@ class TestNormalizeModelName:
             _normalize_model_name("google/gemini-2.5-flash")
 
     def test_already_normalized_unchanged(self, _direct_anthropic_config):
-        assert (
-            _normalize_model_name("claude-sonnet-4-20250514")
-            == "claude-sonnet-4-20250514"
-        )
+        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
 
     def test_empty_string_unchanged(self, _direct_anthropic_config):
         assert _normalize_model_name("") == ""
@@ -533,6 +535,8 @@ class TestEffectiveTransport:
             use_claude_code_subscription=False,
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4-7",
+            # Aux key satisfies the aux-credential validator.
+            aux_api_key="or-aux-key",
         )
         assert cfg.effective_transport == "direct_anthropic"
 
@@ -542,6 +546,11 @@ class TestEffectiveTransport:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
+            # ``_validate_aux_client_for_direct_main`` runs in subscription
+            # mode now (PR #13034 review): pin a direct key + Anthropic
+            # title model so the aux 401-trap validator is satisfied.
+            direct_anthropic_api_key="sk-ant-test",
+            title_model="anthropic/claude-haiku-4-5",
         )
         assert cfg.effective_transport == "subscription"
 
@@ -581,13 +590,16 @@ class TestResolveSdkModelForRequestTransportAware:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv", user_id="user-1"
             )
-        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated form.
-        assert resolved == "claude-opus-4-7"
+        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated
+        # form; and the LD routing source rides along for message stamping.
+        assert resolved == ("claude-opus-4-7", "ld")
 
     @pytest.mark.asyncio
     async def test_subscription_standard_no_override_returns_none(
@@ -608,12 +620,43 @@ class TestResolveSdkModelForRequestTransportAware:
 
         with patch(
             "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
+            ),
         ):
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std", user_id="user-1"
             )
-        assert resolved is None
+        assert resolved == (None, "env")
+
+    @pytest.mark.asyncio
+    async def test_env_default_stamps_env_source(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
+        """No LD opinion, no subscription: the config default serves and the
+        routing source says so — this is the value persisted onto SDK-path
+        assistant messages."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(
+                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
+            ),
+        ):
+            model, source = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-env", user_id="user-1"
+            )
+        assert source == "env"
+        assert model is not None
 
 
 # ---------------------------------------------------------------------------
@@ -736,17 +779,20 @@ def _build_retry_sdk_options(
     ctx_resume_file: str | None,
     session_id: str,
 ) -> dict:
-    """Mirror the retry branch in stream_chat_completion_sdk."""
+    """Mirror the retry branch in stream_chat_completion_sdk.
+
+    Production-side companion: ``delete_stale_cli_session_file`` is invoked
+    on every non-resume retry path so the CLI doesn't trip "Session ID
+    already in use" when we re-attach ``session_id``.  This helper only
+    mirrors the kwarg shape (file-system side effect is tested separately).
+    """
     retry: dict = dict(initial_kwargs)
     if ctx_use_resume and ctx_resume_file:
         retry["resume"] = ctx_resume_file
         retry.pop("session_id", None)
-    elif "session_id" in initial_kwargs:
-        retry.pop("resume", None)
-        retry["session_id"] = session_id
     else:
         retry.pop("resume", None)
-        retry.pop("session_id", None)
+        retry["session_id"] = session_id
     return retry
 
 
@@ -818,12 +864,21 @@ class TestSdkSessionIdSelection:
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
-    def test_retry_removes_session_id_for_t2_plus(self):
-        """Retry for T2+ (initial used --resume) removes session_id to avoid conflict."""
+    def test_retry_keeps_session_id_for_t2_plus(self):
+        """Retry for T2+ now keeps session_id so the recovery turn writes to
+        the predictable ``cli_session_path`` and gets uploaded.  Production
+        clears the stale local file via ``delete_stale_cli_session_file``
+        before this branch runs to dodge "Session ID already in use".
+
+        Regression guard for SENTRY-1207: previously this branch dropped
+        session_id, the CLI wrote to a random path, and the post-turn
+        upload silently grabbed the stale pre-failure file — so GCS stayed
+        bloated and every subsequent turn re-tripped prompt-too-long.
+        """
         initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
         # T2+ retry where context reduction dropped --resume
         retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
-        assert "session_id" not in retry
+        assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
     def test_retry_t2_with_resume_sets_resume(self):
@@ -861,9 +916,11 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="hello-unique-marker"),
-                ChatMessage(role="assistant", content="world-unique-marker"),
-                ChatMessage(role="user", content="follow up"),
+                ChatMessage(role="user", content="hello-unique-marker", sequence=0),
+                ChatMessage(
+                    role="assistant", content="world-unique-marker", sequence=1
+                ),
+                ChatMessage(role="user", content="follow up", sequence=2),
             ],
             title="test",
             usage=[],
@@ -951,9 +1008,9 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="hi"),
-                ChatMessage(role="assistant", content="hello"),
-                ChatMessage(role="user", content="follow up"),
+                ChatMessage(role="user", content="hi", sequence=0),
+                ChatMessage(role="assistant", content="hello", sequence=1),
+                ChatMessage(role="user", content="follow up", sequence=2),
             ],
             title="test",
             usage=[],
@@ -1036,9 +1093,9 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="DB_USER"),
-                ChatMessage(role="assistant", content="DB_ASSISTANT"),
-                ChatMessage(role="user", content="current turn"),
+                ChatMessage(role="user", content="DB_USER", sequence=0),
+                ChatMessage(role="assistant", content="DB_ASSISTANT", sequence=1),
+                ChatMessage(role="user", content="current turn", sequence=2),
             ],
             title="test",
             usage=[],
@@ -1124,11 +1181,11 @@ class TestRestoreCliSessionModeCheck:
             session_id="test-session",
             user_id="user-1",
             messages=[
-                ChatMessage(role="user", content="DB_USER_0"),
-                ChatMessage(role="assistant", content="DB_ASSISTANT_1"),
-                ChatMessage(role="user", content="GAP_USER_2"),
-                ChatMessage(role="assistant", content="GAP_ASSISTANT_3"),
-                ChatMessage(role="user", content="current turn"),
+                ChatMessage(role="user", content="DB_USER_0", sequence=0),
+                ChatMessage(role="assistant", content="DB_ASSISTANT_1", sequence=1),
+                ChatMessage(role="user", content="GAP_USER_2", sequence=2),
+                ChatMessage(role="assistant", content="GAP_ASSISTANT_3", sequence=3),
+                ChatMessage(role="user", content="current turn", sequence=4),
             ],
             title="test",
             usage=[],
@@ -1297,3 +1354,331 @@ class TestCompactionTargetTokens:
 
         # Target derived from the RUNTIME model, not the compactor model.
         assert captured["target_tokens"] == 12345
+
+
+# ---------------------------------------------------------------------------
+# delete_stale_cli_session_file — clears a leftover local session file so a
+# subsequent --session-id (no --resume) invocation doesn't trip "Session ID
+# already in use".  Critical for the prompt-too-long retry path.
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteStaleCliSessionFile:
+    def test_deletes_file_when_present(self, tmp_path) -> None:
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        sdk_cwd = str(tmp_path / "cwd")
+        session_id = "sess-deadbeef"
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(tmp_path / "session.jsonl"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(tmp_path),
+            ),
+        ):
+            target = tmp_path / "session.jsonl"
+            target.write_text("{}\n")
+
+            removed = delete_stale_cli_session_file(sdk_cwd, session_id, "[t]")
+
+            assert removed is True
+            assert not target.exists()
+
+    def test_returns_false_when_file_missing(self, tmp_path) -> None:
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(tmp_path / "missing.jsonl"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(tmp_path),
+            ),
+        ):
+            removed = delete_stale_cli_session_file("/cwd", "sess", "[t]")
+
+        assert removed is False
+
+    def test_path_traversal_guard_rejects_outside_projects_base(self, tmp_path) -> None:
+        """Refuse to delete files outside the projects base, even if they exist."""
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        outside = tmp_path / "outside.jsonl"
+        outside.write_text("data")
+        projects = tmp_path / "projects"
+        projects.mkdir()
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(outside),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(projects),
+            ),
+        ):
+            removed = delete_stale_cli_session_file("/cwd", "sess", "[t]")
+
+        # File was outside projects base — guard rejected, file untouched.
+        assert removed is False
+        assert outside.exists()
+
+
+# ---------------------------------------------------------------------------
+# Empty-tool-call circuit breaker — must NOT false-positive on no-arg tools
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyToolCallNoArgException:
+    """No-arg copilot tools (e.g. ``get_agent_building_guide``) legitimately
+    invoke with ``input == {}``. The breaker must NOT count them as the
+    saturation-failure mode it targets — that would be a false positive
+    every time the model calls such a tool, polluting Sentry and (after 5
+    consecutive) aborting the stream wrongly.
+    """
+
+    def test_no_arg_tool_names_includes_mcp_prefixed_form(self) -> None:
+        from backend.copilot.sdk.service import _no_arg_tool_names
+
+        names = _no_arg_tool_names()
+        # Both bare and MCP-prefixed forms — the SDK's ToolUseBlock.name
+        # carries the MCP prefix when registered through the copilot
+        # MCP server.
+        assert "get_agent_building_guide" in names
+        assert "mcp__copilot__get_agent_building_guide" in names
+
+    def test_no_arg_tool_with_empty_input_does_not_trip_counter(self) -> None:
+        """Regression guard: a single empty-input call to a registered
+        no-arg tool must reset the consecutive counter (returning 0),
+        same as a non-empty AssistantMessage. This proves
+        ``get_agent_building_guide`` mid-session won't trip the
+        circuit-breaker after 5 invocations across a long session."""
+        from claude_agent_sdk import AssistantMessage, ToolUseBlock
+
+        from backend.copilot.sdk.service import _check_empty_tool_breaker
+
+        msg = AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="tu_1",
+                    name="mcp__copilot__get_agent_building_guide",
+                    input={},
+                )
+            ],
+            model="anthropic/claude-sonnet-4-6",
+        )
+        # ctx + state aren't read on the no-arg fast-path — pass MagicMocks.
+        ctx = MagicMock()
+        ctx.log_prefix = "[t]"
+        state = MagicMock()
+
+        result = _check_empty_tool_breaker(msg, consecutive=4, ctx=ctx, state=state)
+
+        # Consecutive counter MUST reset (no-arg tool is a normal action,
+        # not the saturation failure).
+        assert result.count == 0
+        assert result.tripped is False
+
+
+# ---------------------------------------------------------------------------
+# _stamp_turn_messages — turn-bounded model/routing_source stamping
+# ---------------------------------------------------------------------------
+
+
+class TestStampTurnMessages:
+    """The SDK path stamps at persist time; the stamp must be bounded to
+    the turn (never back-stamping pre-feature NULL history) and must not
+    overwrite already-stamped rows."""
+
+    def _messages(self):
+        from backend.copilot.model import ChatMessage
+
+        return [
+            ChatMessage(role="assistant", content="old", sequence=0),
+            ChatMessage(role="user", content="q", sequence=1),
+            ChatMessage(role="assistant", content="new", sequence=2),
+        ]
+
+    def test_stamps_only_this_turns_assistant_rows(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
+        )
+        assert msgs[0].model is None  # pre-turn history untouched
+        assert msgs[1].model is None  # user rows untouched
+        assert msgs[2].model == "claude-sonnet-4-6"
+        assert msgs[2].routing_source == "env"
+
+    def test_never_overwrites_an_existing_stamp(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        msgs[2].model = "already/stamped"
+        msgs[2].routing_source = "ld"
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
+        )
+        assert msgs[2].model == "already/stamped"
+        assert msgs[2].routing_source == "ld"
+
+    def test_fallback_divergence_restamps_source(self):
+        """When the CLI's overload fallback served a different model than
+        the routed one, the stamp records the ACTUAL model and marks the
+        source as "fallback" — never attributing the turn to a layer that
+        routed a different model."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="moonshotai/kimi-k2.6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].model == "claude-sonnet-4-6"
+        assert msgs[0].routing_source == "fallback"
+
+    def test_matching_observed_model_keeps_source(self):
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-sonnet-4-6",
+            actual_model="claude-sonnet-4-6",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"
+
+    def test_subscription_default_never_marks_fallback(self):
+        """Subscription mode requests NO model (requested_model=None) — the
+        CLI's default choice is the resolution itself, not a divergence."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model=None,
+            actual_model="claude-opus-4-6",
+            routing_source="env",
+        )
+        assert msgs[0].model == "claude-opus-4-6"
+        assert msgs[0].routing_source == "env"  # NOT "fallback"
+
+    def test_flushed_rows_flagged_for_stamp_backfill(self):
+        """A row the mid-turn flush already persisted (has a sequence) gets
+        flagged so the save path back-fills its columns — the insert path
+        only covers unsequenced rows."""
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = self._messages()
+        msgs[2].sequence = 7  # flushed mid-turn
+        _stamp_turn_messages(
+            msgs,
+            start_index=1,
+            requested_model="claude-sonnet-4-6",
+            actual_model=None,
+            routing_source="env",
+        )
+        assert msgs[2].model == "claude-sonnet-4-6"
+        assert msgs[2].stamps_pending_save is True
+        assert msgs[1].stamps_pending_save is False  # user row untouched
+
+    def test_turn_boundary_captured_after_message_cleanup(self):
+        """The stamp's ``start_index`` (``pre_turn_message_count``) MUST be
+        taken after the turn-start cleanup that pops trailing error markers
+        and prunes orphan tool rows. Captured before, it overshoots by the
+        number of popped rows and leaves this turn's first assistant row(s)
+        below ``start_index`` — unstamped — precisely on error-recovery
+        turns. Guard the ordering at the source level: the enormous turn
+        handler can't be driven in a unit test, so pin the invariant that
+        the count assignment follows the last cleanup call."""
+        import inspect
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        src = inspect.getsource(stream_chat_completion_sdk)
+        assign_at = src.index("pre_turn_message_count = len(session.messages)")
+        prune_at = src.index("prune_orphan_tool_calls(session.messages")
+        marker_pop_at = src.index("Removing stale error marker")
+        assert (
+            assign_at > prune_at
+        ), "pre_turn_message_count must be captured AFTER prune_orphan_tool_calls"
+        assert (
+            assign_at > marker_pop_at
+        ), "pre_turn_message_count must be captured AFTER error-marker cleanup"
+
+
+class TestChatMessageStampRoundTrip:
+    """model survives client-facing serialization; routing_source is
+    deliberately EXCLUDED from payloads (clients could infer LD cohort
+    membership from "ld" vs "env") while persisting via the explicit
+    field-mapped DB path."""
+
+    def test_model_serializes_routing_source_excluded(self):
+        from backend.copilot.model import ChatMessage
+
+        msg = ChatMessage(
+            role="assistant",
+            content="x",
+            sequence=3,
+            model="claude-sonnet-4-6",
+            routing_source="catalog",
+        )
+        dumped = msg.model_dump()
+        assert dumped["model"] == "claude-sonnet-4-6"
+        assert "routing_source" not in dumped
+        # The DB path reads the attribute, not the dump.
+        assert msg.routing_source == "catalog"
+
+
+class TestSameModelCanonicalization:
+    """Spelling differences between the requested resolution and the CLI's
+    report must never fake a fallback; real model changes must."""
+
+    def test_spelling_variants_are_same_model(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert _same_model("anthropic/claude-opus-4.7", "claude-opus-4-7")
+        assert _same_model("claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5")
+        assert _same_model("anthropic.claude-sonnet-4-6", "claude-sonnet-4.6")
+
+    def test_different_models_diverge(self):
+        from backend.copilot.sdk.service import _same_model
+
+        assert not _same_model("claude-sonnet-4-6", "moonshotai/kimi-k2.6")
+        assert not _same_model("claude-opus-4-7", "claude-sonnet-4-6")
+
+    def test_fallback_not_faked_by_spelling(self):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _stamp_turn_messages
+
+        msgs = [ChatMessage(role="assistant", content="x", sequence=None)]
+        _stamp_turn_messages(
+            msgs,
+            start_index=0,
+            requested_model="claude-opus-4-7",
+            actual_model="anthropic/claude-opus-4.7",
+            routing_source="ld",
+        )
+        assert msgs[0].routing_source == "ld"  # same model, not "fallback"

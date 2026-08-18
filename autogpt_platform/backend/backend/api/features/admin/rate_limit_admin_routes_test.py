@@ -22,6 +22,14 @@ _MOCK_MODULE = "backend.api.features.admin.rate_limit_admin_routes"
 
 _TARGET_EMAIL = "target@example.com"
 
+_MOCK_TIER_MULTIPLIERS = {
+    "NO_TIER": 0.0,
+    "BASIC": 1.0,
+    "PRO": 5.0,
+    "BUSINESS": 20.0,
+    "ENTERPRISE": 60.0,
+}
+
 
 @pytest.fixture(autouse=True)
 def setup_app_admin_auth(mock_jwt_admin):
@@ -69,6 +77,11 @@ def _patch_rate_limit_deps(
         new_callable=AsyncMock,
         return_value=_TARGET_EMAIL,
     )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value=dict(_MOCK_TIER_MULTIPLIERS),
+    )
 
 
 def test_get_rate_limit(
@@ -90,6 +103,8 @@ def test_get_rate_limit(
     assert data["daily_cost_used_microdollars"] == 500_000
     assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "BASIC"
+    # Full per-tier map incl. admin-managed tiers (ENTERPRISE) is passed through.
+    assert data["tier_multipliers"] == _MOCK_TIER_MULTIPLIERS
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
@@ -164,6 +179,7 @@ def test_reset_user_usage_daily_only(
     # Weekly is untouched
     assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "BASIC"
+    assert data["tier_multipliers"] == _MOCK_TIER_MULTIPLIERS
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
 
@@ -242,6 +258,11 @@ def test_get_rate_limit_email_lookup_failure(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
         side_effect=Exception("DB connection lost"),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value=dict(_MOCK_TIER_MULTIPLIERS),
     )
 
     response = client.get("/admin/rate_limit", params={"user_id": target_user_id})

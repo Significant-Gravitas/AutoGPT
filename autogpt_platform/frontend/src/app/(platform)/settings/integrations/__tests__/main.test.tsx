@@ -184,6 +184,31 @@ describe("SettingsIntegrationsPage — delete", () => {
       expect(screen.queryByText("Personal")).toBeNull();
     });
   });
+
+  test("managed credentials hide the trash button and select checkbox", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({
+          id: "a1",
+          provider: "ayrshare",
+          title: "Ayrshare (managed by AutoGPT)",
+          is_managed: true,
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    expect(
+      await screen.findByText("Ayrshare (managed by AutoGPT)"),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /delete ayrshare/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: /select ayrshare/i }),
+    ).toBeNull();
+  });
 });
 
 describe("SettingsIntegrationsPage — selection bar", () => {
@@ -313,6 +338,51 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
     ).toBeDefined();
     expect(within(dialog).getByRole("tab", { name: /oauth/i })).toBeDefined();
     expect(within(dialog).getByRole("tab", { name: /api key/i })).toBeDefined();
+  });
+
+  test("presents ChatGPT sign-in and API keys as one OpenAI integration", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "codex",
+          description: "Use your ChatGPT plan",
+          supported_auth_types: ["oauth2"],
+        }),
+        makeProvider({
+          name: "openai",
+          description: "GPT models",
+          supported_auth_types: ["api_key"],
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    const connectButtons = await screen.findAllByRole("button", {
+      name: /connect.*service/i,
+    });
+    fireEvent.click(connectButtons[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    const description = await within(dialog).findByText(
+      /openai models via api key or your chatgpt subscription/i,
+    );
+    expect(within(dialog).getAllByText("OpenAI")).toHaveLength(1);
+    fireEvent.click(description);
+
+    expect(
+      await within(dialog).findByRole("heading", { name: "OpenAI" }),
+    ).toBeDefined();
+    expect(within(dialog).getByRole("tab", { name: "ChatGPT" })).toBeDefined();
+    expect(within(dialog).getByRole("tab", { name: /api key/i })).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", { name: "Sign in with ChatGPT" }),
+    ).toBeDefined();
+    expect(
+      within(dialog).getByAltText("OpenAI logo").getAttribute("src"),
+    ).toContain("/integrations/openai.png");
+    expect(within(dialog).queryByText("Codex")).toBeNull();
   });
 
   test("API key tab: submitting the form posts credentials and closes the dialog", async () => {

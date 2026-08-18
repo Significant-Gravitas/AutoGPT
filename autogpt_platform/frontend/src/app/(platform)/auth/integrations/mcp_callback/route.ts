@@ -49,8 +49,8 @@ export async function GET(request: Request) {
 
         // Method 1: BroadcastChannel (reliable across tabs/popups, no opener needed)
         try {
-          var bc = new BroadcastChannel("mcp_oauth");
-          bc.postMessage({ type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
+          var bc = new BroadcastChannel("oauth_popup");
+          bc.postMessage({ message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
           bc.close();
           sent = true;
         } catch(e) { /* BroadcastChannel not supported */ }
@@ -66,10 +66,14 @@ export async function GET(request: Request) {
           }
         } catch(e) { /* opener not available (COOP) */ }
 
-        // Method 3: localStorage (most reliable cross-tab fallback)
+        // Method 3: localStorage (most reliable cross-tab fallback).
+        // Key is scoped by state token so concurrent OAuth flows don't race
+        // for a single shared slot (poller destructively reads its own key).
         try {
-          localStorage.setItem("mcp_oauth_result", JSON.stringify(msg));
-          sent = true;
+          if (msg.state) {
+            localStorage.setItem("oauth_popup_result_" + msg.state, JSON.stringify({ message_type: "mcp_oauth_result", ...msg }));
+            sent = true;
+          }
         } catch(e) { /* localStorage not available */ }
 
         var statusEl = document.getElementById("status");

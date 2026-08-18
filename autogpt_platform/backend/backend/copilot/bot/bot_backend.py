@@ -7,17 +7,35 @@ discord/telegram/slack code never touches Pyro / Redis Streams plumbing.
 """
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
-from typing import AsyncGenerator, Awaitable, Callable, Optional
+from datetime import datetime
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+
+from pydantic import BaseModel
 
 from backend.copilot import stream_registry
-from backend.copilot.response_model import StreamError, StreamFinish, StreamTextDelta
+from backend.copilot.model import get_chat_session
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
 from backend.platform_linking.models import (
+    MAX_BOT_MESSAGE_CHARS,
     BotChatRequest,
+    BotEventInput,
+    BotGuildInput,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
+    EnsureSessionResult,
     Platform,
+    TurnDenial,
+    WorkspaceArtifact,
+    WorkspaceUploadRequest,
+    WorkspaceUploadResult,
 )
 from backend.util.clients import get_platform_linking_manager_client
 from backend.util.exceptions import (
@@ -26,6 +44,9 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
+from .adapters.base import InboundAttachment
+from .prompt import clamp_prompt
+
 # How long to wait for a single chunk from the copilot stream before giving
 # up. Covers the case where the backend crashes mid-stream and never sends
 # ``StreamFinish`` — without this, the bot would hang forever on ``queue.get()``.
@@ -33,8 +54,36 @@ STREAM_CHUNK_TIMEOUT_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
+
+class BotStreamError(Exception):
+    """A copilot stream couldn't produce a successful reply.
+
+    Carries a bounded ``error_kind`` so the handler can attribute analytics
+    accurately instead of guessing from the inline text.
+    """
+
+    def __init__(self, error_kind: str, message: str):
+        super().__init__(message)
+        self.error_kind = error_kind
+
+
+class ChatTurnDeniedError(Exception):
+    """The turn was refused before running (subscription paywall / rate limit).
+
+    Carries the :class:`TurnDenial` so the handler can show the user-facing
+    message and, when present, a CTA button (e.g. Subscribe / Upgrade).
+    """
+
+    def __init__(self, denial: TurnDenial):
+        super().__init__(denial.message)
+        self.denial = denial
+
+
 __all__ = [
     "BotBackend",
+    "BotStreamError",
+    "ChatSummary",
+    "ChatTurnDeniedError",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
@@ -55,16 +104,128 @@ class LinkTokenResult:
     expires_at: str
 
 
+class ChatSummary(BaseModel):
+    session_id: str
+    title: str | None
+    updated_at: datetime
+
+
+SetupRequiredCallback = Callable[
+    [str, dict[str, Any], str | None],
+    Awaitable[None],
+]
+
+# Fired when a setup_requirements payload arrives corrupted and is dropped, so
+# the adapter can surface a user-facing notice instead of leaving the user
+# staring at a sign-in prompt that never renders. Args: (session_id, tool_name).
+SetupDroppedCallback = Callable[
+    [str, str | None],
+    Awaitable[None],
+]
+
+
 class BotBackend:
     """Bot-side linking + chat operations, routed over cluster-internal RPC."""
 
     def __init__(self):
         self._client = get_platform_linking_manager_client()
+        self._analytics_tasks: set[asyncio.Task] = set()
 
     async def close(self) -> None:
         # The client's lifecycle is owned by the thread-cached factory; nothing
         # to close here. Kept for API compatibility with older bot code.
         pass
+
+    # ── Analytics (fire-and-forget) ──────────────────────────────────────
+    # Usage telemetry must never block or break a user's reply, so every
+    # write is scheduled as a background task that swallows its own errors.
+    # No message content is ever sent — only counts, enums and metrics.
+
+    def _fire_and_forget(self, coro: Awaitable[None]) -> None:
+        task = asyncio.ensure_future(coro)
+        self._analytics_tasks.add(task)
+        task.add_done_callback(self._on_analytics_done)
+
+    def _on_analytics_done(self, task: asyncio.Task) -> None:
+        self._analytics_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.warning("Bot analytics write failed: %s", exc)
+
+    # NOTE: each track method defers Platform() and Pydantic construction into
+    # the background coroutine — that way a bad platform string or validation
+    # error fails the analytics task (which is swallowed) instead of leaking
+    # back into the caller's reply path.
+
+    def track_event(
+        self,
+        *,
+        platform: str,
+        event_type: str,
+        server_id: str | None = None,
+        channel_type: str | None = None,
+        command_name: str | None = None,
+        error_kind: str | None = None,
+        char_count: int | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        async def _send() -> None:
+            await self._client.record_bot_event(
+                event=BotEventInput(
+                    platform=Platform(platform.upper()),
+                    event_type=event_type,
+                    server_id=server_id,
+                    channel_type=channel_type,
+                    command_name=command_name,
+                    error_kind=error_kind,
+                    char_count=char_count,
+                    duration_ms=duration_ms,
+                )
+            )
+
+        self._fire_and_forget(_send())
+
+    def track_guild_joined(
+        self, platform: str, server_id: str, name: str | None = None
+    ) -> None:
+        async def _send() -> None:
+            await self._client.record_guild_joined(
+                guild=BotGuildInput(
+                    platform=Platform(platform.upper()),
+                    server_id=server_id,
+                    name=name,
+                )
+            )
+
+        self._fire_and_forget(_send())
+
+    def track_guild_left(self, platform: str, server_id: str) -> None:
+        async def _send() -> None:
+            await self._client.mark_guild_left(
+                platform=Platform(platform.upper()),
+                server_id=server_id,
+            )
+
+        self._fire_and_forget(_send())
+
+    def sync_guilds(self, platform: str, guilds: list[tuple[str, str | None]]) -> None:
+        async def _send() -> None:
+            platform_enum = Platform(platform.upper())
+            await self._client.sync_guild_presence(
+                platform=platform_enum,
+                guilds=[
+                    BotGuildInput(
+                        platform=platform_enum,
+                        server_id=server_id,
+                        name=name,
+                    )
+                    for server_id, name in guilds
+                ],
+            )
+
+        self._fire_and_forget(_send())
 
     async def resolve_server(
         self, platform: str, platform_server_id: str
@@ -81,6 +242,47 @@ class BotBackend:
             platform_user_id=platform_user_id,
         )
         return ResolveResult(linked=resp.linked)
+
+    async def list_linked_server_ids(self, platform: str, user_id: str) -> list[str]:
+        """Return the platform server (guild) IDs ``user_id`` has linked.
+
+        Backs the proactive-output authorization check: a scheduled/autopilot
+        post is only allowed into a channel whose server appears in this list.
+        """
+        return await self._client.list_user_server_ids(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
+
+    async def get_dm_user_id(self, platform: str, user_id: str) -> str | None:
+        """Return the platform user ID behind ``user_id``'s DM link, or None.
+
+        Backs proactive DM delivery: the target is always the caller's own
+        linked account, so authorization is the link itself.
+        """
+        return await self._client.get_user_dm_id(
+            platform=Platform(platform.upper()),
+            user_id=user_id,
+        )
+
+    async def refresh_server_name(
+        self, platform: str, platform_server_id: str, server_name: str
+    ) -> None:
+        """Push the bot's authoritative display name for a server into the DB.
+
+        Called by adapters whenever they learn or re-learn a server's name —
+        e.g. Discord's on_ready and on_guild_join. The Bots settings page
+        renders whatever is in the DB, so this keeps stale or missing names
+        in sync with what the bot is actually connected to. Best-effort:
+        failures are logged on the manager side, never raised.
+        """
+        if not server_name:
+            return
+        await self._client.refresh_server_link_name(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            server_name=server_name,
+        )
 
     async def create_link_token(
         self,
@@ -126,6 +328,106 @@ class BotBackend:
             expires_at=resp.expires_at.isoformat(),
         )
 
+    async def get_session_title(self, session_id: str) -> str | None:
+        session = await get_chat_session(session_id)
+        return session.title if session else None
+
+    async def list_user_chats(
+        self, platform: str, platform_user_id: str, limit: int = 25
+    ) -> list[ChatSummary]:
+        resp = await self._client.list_user_chats(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            limit=limit,
+        )
+        return [
+            ChatSummary(
+                session_id=s.session_id,
+                title=s.title,
+                updated_at=s.updated_at,
+            )
+            for s in resp.sessions
+        ]
+
+    async def ensure_session(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        session_id: str | None,
+    ) -> EnsureSessionResult:
+        """Resolve (or create) the copilot session for this conversation.
+
+        Called before uploading attachments so they land in the session folder
+        (``/sessions/<id>/``) where AutoPilot reads them — the same way the web
+        UI uploads into an already-open session. Carries a ``denial`` instead
+        of a session when the turn gate refuses the user, so the caller can
+        skip the upload entirely.
+        """
+        return await self._client.ensure_chat_session(
+            platform=Platform(platform.upper()),
+            platform_user_id=platform_user_id,
+            platform_server_id=platform_server_id,
+            session_id=session_id,
+        )
+
+    async def upload_workspace_files(
+        self,
+        platform: str,
+        platform_user_id: str,
+        platform_server_id: str | None,
+        attachments: tuple[InboundAttachment, ...],
+        session_id: str | None = None,
+    ) -> list[WorkspaceUploadResult]:
+        """Upload each attachment into the conversation owner's workspace.
+
+        ``session_id`` scopes the files to the turn's session so AutoPilot can
+        read them, matching the web upload. Returns one result per file (with a
+        ``file_id`` on success or an ``error`` code) so the caller can attach
+        the successes to the turn and tell the user about any that were
+        rejected.
+        """
+        platform_enum = Platform(platform.upper())
+        results: list[WorkspaceUploadResult] = []
+        for attachment in attachments:
+            # Isolate each upload: a transport/RPC failure (or an unlinked-owner
+            # error) on one file must not abort the rest or crash the handler.
+            try:
+                results.append(
+                    await self._client.upload_workspace_file(
+                        request=WorkspaceUploadRequest(
+                            platform=platform_enum,
+                            platform_server_id=platform_server_id,
+                            platform_user_id=platform_user_id,
+                            filename=attachment.filename,
+                            mime_type=attachment.mime_type,
+                            content=attachment.content,
+                            session_id=session_id,
+                        )
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to upload inbound attachment %s", attachment.filename
+                )
+                results.append(
+                    WorkspaceUploadResult(
+                        filename=attachment.filename, error="upload_failed"
+                    )
+                )
+        return results
+
+    async def fetch_workspace_artifact(
+        self, session_id: str, file_id: str, max_bytes: int
+    ) -> WorkspaceArtifact | None:
+        """Resolve a ``workspace://`` URI from the chat stream to bytes,
+        scoped to the session's owning user. Returns ``None`` when the file
+        is too large, missing, or doesn't belong to the session — in which
+        case the caller drops a link-to-chat fallback button."""
+        return await self._client.fetch_workspace_artifact(
+            session_id=session_id, file_id=file_id, max_bytes=max_bytes
+        )
+
     async def stream_chat(
         self,
         platform: str,
@@ -133,7 +435,10 @@ class BotBackend:
         message: str,
         session_id: Optional[str] = None,
         platform_server_id: Optional[str] = None,
+        file_ids: Optional[list[str]] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_setup_required: SetupRequiredCallback | None = None,
+        on_setup_dropped: SetupDroppedCallback | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -144,11 +449,19 @@ class BotBackend:
             request=BotChatRequest(
                 platform=Platform(platform.upper()),
                 platform_user_id=platform_user_id,
-                message=message,
+                # A long conversation's history can push the assembled prompt
+                # past the request cap; clamp here so it never fails validation
+                # (which the turn streamer would surface as a generic error).
+                message=clamp_prompt(message, MAX_BOT_MESSAGE_CHARS),
                 session_id=session_id,
                 platform_server_id=platform_server_id,
+                file_ids=file_ids or [],
             )
         )
+        if handle.denial is not None:
+            # Refused before running (paywall / rate limit) — no stream exists
+            # to subscribe to. Surface the denial for the handler to render.
+            raise ChatTurnDeniedError(handle.denial)
         if on_session_id:
             await on_session_id(handle.session_id)
 
@@ -158,8 +471,20 @@ class BotBackend:
             last_message_id=handle.subscribe_from,
         )
         if queue is None:
-            yield "\n[Error: failed to subscribe to response stream]"
-            return
+            raise BotStreamError(
+                "subscribe_failed",
+                "failed to subscribe to response stream",
+            )
+
+        setup_notified = False
+        setup_drop_notified = False
+        # Track which text block each delta belongs to. AutoPilot emits text in
+        # separate blocks around tool calls / reasoning (each with its own id);
+        # the frontend renders them as distinct parts, but here we concatenate
+        # into one message, so insert a paragraph break when the block changes —
+        # otherwise the end of one block and the start of the next run together
+        # ("…first thought.second thought…").
+        last_text_block_id: str | None = None
 
         try:
             while True:
@@ -173,17 +498,48 @@ class BotBackend:
                         STREAM_CHUNK_TIMEOUT_SECONDS,
                         handle.session_id,
                     )
-                    yield "\n[Error: response timed out]"
-                    return
+                    raise BotStreamError(
+                        "stream_timeout",
+                        "response timed out",
+                    )
                 if isinstance(chunk, StreamTextDelta):
                     if chunk.delta:
+                        if (
+                            last_text_block_id is not None
+                            and chunk.id != last_text_block_id
+                        ):
+                            yield "\n\n"
+                        last_text_block_id = chunk.id
                         yield chunk.delta
+                elif isinstance(chunk, StreamToolOutputAvailable):
+                    setup_output = _extract_setup_requirements(chunk.output)
+                    if setup_output and on_setup_required and not setup_notified:
+                        setup_notified = True
+                        await on_setup_required(
+                            handle.session_id,
+                            setup_output,
+                            chunk.toolName,
+                        )
+                    elif (
+                        setup_output is None
+                        and not setup_notified
+                        and not setup_drop_notified
+                        and on_setup_dropped
+                        and _is_corrupted_setup_requirements(chunk.output)
+                    ):
+                        # The link was dropped (corrupted payload). Tell the
+                        # user once so they aren't left waiting on a sign-in
+                        # prompt that will never arrive.
+                        setup_drop_notified = True
+                        await on_setup_dropped(handle.session_id, chunk.toolName)
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):
                     logger.error("Stream error from backend: %s", chunk.errorText)
-                    yield f"\n[Error: {chunk.errorText}]"
-                    return
+                    raise BotStreamError(
+                        "backend_stream_error",
+                        chunk.errorText,
+                    )
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
                 # aren't useful for the plain-text bot transcript.
@@ -192,3 +548,47 @@ class BotBackend:
                 session_id=handle.session_id,
                 subscriber_queue=queue,
             )
+
+
+def _is_corrupted_setup_requirements(output: str | dict[str, Any]) -> bool:
+    """True when *output* names setup_requirements but doesn't parse as JSON.
+
+    This is the truncation/corruption signature: the tool intended to surface a
+    sign-in card, but the payload arrived mangled, so the user gets nothing
+    unless the caller surfaces a notice.
+    """
+    if not isinstance(output, str):
+        return False
+    if '"setup_requirements"' not in output:
+        return False
+    try:
+        json.loads(output)
+    except json.JSONDecodeError:
+        return True
+    return False
+
+
+def _extract_setup_requirements(output: str | dict[str, Any]) -> dict[str, Any] | None:
+    """Return setup-requirements payloads from structured tool output."""
+    if isinstance(output, str):
+        try:
+            parsed: Any = json.loads(output)
+        except json.JSONDecodeError:
+            if '"setup_requirements"' in output:
+                # A payload that mentions setup_requirements but doesn't parse
+                # is almost certainly a truncated/corrupted tool output — the
+                # user never gets their sign-in link if we drop it silently.
+                logger.warning(
+                    "Dropping unparseable setup_requirements tool output "
+                    "(%d chars) — sign-in link will not be sent",
+                    len(output),
+                )
+            return None
+    else:
+        parsed = output
+
+    if not isinstance(parsed, dict):
+        return None
+    if parsed.get("type") != "setup_requirements":
+        return None
+    return parsed

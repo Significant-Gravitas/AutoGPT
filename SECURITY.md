@@ -6,6 +6,8 @@ We take the security of our project seriously. If you believe you have found a s
 
 > **Important Note**: Any code within the `classic/` folder is considered legacy, unsupported, and out of scope for security reports. We will not address security vulnerabilities in this deprecated code.
 
+> **Important Note**: The JWKS transport check (the startup warning when `JWT_JWKS_URL` is fetched over cleartext `http://` from a non-local host) is best-effort operator guidance, not a security boundary. It is a warning only, it never blocks startup, and it cannot tell a trusted private network from a hostile one. Securing the network path between the backend and the JWKS endpoint is the operator's responsibility — see the self-hosting security note in `docs/platform/getting-started.md`. Reports that the warning can be missed, silenced, or evaded are not eligible for a CVE.
+
 Instead, please report them via:
 - [GitHub Security Advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)
 <!--- [Huntr.dev](https://huntr.com/repos/significant-gravitas/autogpt) - where you may be eligible for a bounty-->

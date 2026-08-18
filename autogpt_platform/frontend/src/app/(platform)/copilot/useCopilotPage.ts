@@ -1,22 +1,41 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
-import { useMemo, useRef } from "react";
+import { parseAsString, useQueryState } from "nuqs";
+import { useEffect, useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./helpers";
+import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import {
+  buildKickoffMessage,
+  getKickoffAttemptToken,
+  isKickoffMessage,
+  shouldClearKickoffParam,
+  type ExpertKickoffMetadata,
+} from "./expertKickoff";
+import { useExpertKickoff } from "./useExpertKickoff";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
+import { useCompleteBrainDumpGreeting } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
+import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
+import {
+  peekGreetingDone,
+  setGreetingDone,
+  takeIntroAwaitingFollowup,
+} from "@/services/onboarding/brain-dump-handoff";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -35,14 +54,77 @@ function hasAssistantTail(messages: UIMessage[]) {
   return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
 }
 
+function getLatestKickoffAttemptToken(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const attemptToken = getKickoffAttemptToken(messages[index]);
+    if (attemptToken) return attemptToken;
+  }
+  return null;
+}
+
 export function useCopilotPage() {
-  const { isUserLoading, isLoggedIn } = useSupabase();
+  const { user, isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const expertId = isExpertsEnabled ? expertIdParam : null;
+  const [kickoffParam, setKickoffParam] = useQueryState(
+    "kickoff",
+    parseAsString,
+  );
+  const {
+    expertsById,
+    isLoadingExperts,
+    hasExpertsSettled,
+    hasExpertsErrored,
+  } = useExpertMap();
+  const validExpertIdParam =
+    expertIdParam && isValidUUID(expertIdParam) ? expertIdParam : null;
+  // Day one only fires for an expert we can still address. `onKickoff` writes
+  // its opening turn through `sendNewMessage`, bypassing the `onSend` archive
+  // guard, so a bogus id, an unreadable roster or a fired expert has to fall
+  // through to the read-only thread rather than reach the kickoff path.
+  const kickoffExpert = validExpertIdParam
+    ? expertsById.get(validExpertIdParam)
+    : undefined;
+  const kickoffExpertId =
+    isExpertsEnabled && hasExpertsSettled && kickoffExpert?.isArchived === false
+      ? kickoffExpert.id
+      : null;
+  const isKickoffResolving =
+    isExpertsEnabled &&
+    kickoffParam === "1" &&
+    validExpertIdParam !== null &&
+    isLoadingExperts;
+
+  useEffect(() => {
+    if (kickoffParam !== "1") return;
+    if (
+      !shouldClearKickoffParam(
+        isExpertsEnabled,
+        hasExpertsSettled,
+        kickoffExpertId,
+      )
+    )
+      return;
+    void setKickoffParam(null, { history: "replace" });
+  }, [
+    hasExpertsSettled,
+    isExpertsEnabled,
+    kickoffExpertId,
+    kickoffParam,
+    setKickoffParam,
+  ]);
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
     sessionId,
+    setSessionId,
+    sessionExpertId,
+    isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
@@ -56,7 +138,26 @@ export function useCopilotPage() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
-  } = useChatSession({ dryRun: isDryRun });
+    sessionChatStatus,
+  } = useChatSession({ dryRun: isDryRun, expertId });
+
+  // An open session owns its identity: the URL param only describes who the
+  // NEXT session will address, and it is absent whenever a thread is reached
+  // from global search, a bookmark or a shared link.
+  const activeExpertId = sessionId ? sessionExpertId : expertId;
+  const expertIdentity = useMemo(
+    () =>
+      resolveExpertIdentity(activeExpertId, expertsById, {
+        settled: hasExpertsSettled,
+        errored: hasExpertsErrored,
+      }),
+    [activeExpertId, expertsById, hasExpertsErrored, hasExpertsSettled],
+  );
+  const isResolvingExpertIdentity = Boolean(
+    isExpertsEnabled && activeExpertId && !hasExpertsSettled,
+  );
+  const isExpertSendLocked =
+    isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
   const {
     messages: currentMessages,
@@ -72,6 +173,7 @@ export function useCopilotPage() {
     rateLimitMessage,
     dismissRateLimit,
   } = useCopilotStream({
+    userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
     hasActiveStream,
@@ -79,6 +181,7 @@ export function useCopilotPage() {
     copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
+  const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
@@ -147,7 +250,7 @@ export function useCopilotPage() {
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, appendChip } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -170,12 +273,38 @@ export function useCopilotPage() {
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
   // and a turn is already running, POST the follow-up text to the pending
   // endpoint so the backend buffers it; otherwise fall through to normal send.
-  async function onSend(message: string, files?: File[]) {
+  async function onSend(
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+    metadata?: ExpertKickoffMetadata,
+  ) {
     const trimmed = message.trim();
-    if (!trimmed && (!files || files.length === 0)) return;
+    const hasAttachments =
+      (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
+    if (!trimmed && !hasAttachments) return;
+    if (isExpertSendLocked) return;
+
+    // Sending anything retires the greeting for good: flag it done on
+    // the server (kept in the DB, just never shown again) and cache the
+    // fact locally so no future visit even has to ask.
+    // Gated on the flag: the endpoint 404s without it, and because the
+    // local cache is only written on success, an ungated call retried on
+    // every single message the user ever sent.
+    if (isBrainDumpEnabled && !peekGreetingDone(user?.id)) {
+      completeGreeting(undefined, {
+        onSuccess: () => setGreetingDone(user?.id),
+        // Retiring the greeting is bookkeeping — the worst case is
+        // seeing it once more — so a failure must never surface here.
+        onError: () => undefined,
+      });
+    }
+    if (takeIntroAwaitingFollowup()) {
+      trackBrainDump("intro_followup_sent", { chars: trimmed.length });
+    }
 
     if (sessionId && isInflightRef.current) {
-      if (files && files.length > 0) {
+      if (hasAttachments) {
         toast({
           title: "Please wait to attach files",
           description:
@@ -187,13 +316,13 @@ export function useCopilotPage() {
 
       try {
         await queueFollowUpMessage(sessionId, trimmed);
-        appendChip(trimmed);
+        queueMessage(trimmed);
       } catch (err) {
         if (
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          await sendNewMessage(message, files);
+          await sendNewMessage(message, files, workspaceFiles, metadata);
           return;
         }
         toast({
@@ -212,10 +341,41 @@ export function useCopilotPage() {
     if (sessionId) {
       isInflightRef.current = true;
     }
-    await sendNewMessage(message, files);
+    await sendNewMessage(message, files, workspaceFiles, metadata);
   }
 
-  useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
+  useWorkflowImportAutoSubmit({
+    onSend,
+    setPendingFileParts,
+    isSendLocked: isExpertSendLocked,
+  });
+
+  const { isKickoffStarting } = useExpertKickoff({
+    userId: user?.id ?? null,
+    expertId: kickoffExpertId,
+    kickoff: isExpertsEnabled && kickoffParam === "1",
+    sessionId,
+    sessionExpertId,
+    hasPersistedExpertHistory:
+      sessionId && hydratedMessages !== undefined
+        ? hydratedMessages.some((message) => !isKickoffMessage(message))
+        : null,
+    kickoffAttemptToken,
+    isClientThreadEmpty: messages.every(isKickoffMessage),
+    onAdoptSession: setSessionId,
+    async onKickoff(id, attemptToken) {
+      const kickoffMessage = buildKickoffMessage(id, attemptToken);
+      await sendNewMessage(
+        kickoffMessage.text,
+        undefined,
+        undefined,
+        kickoffMessage.metadata,
+      );
+    },
+    onSettled() {
+      void setKickoffParam(null, { history: "replace" });
+    },
+  });
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
@@ -252,5 +412,10 @@ export function useCopilotPage() {
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionChatStatus,
+    expertIdentity,
+    isResolvingExpertIdentity,
+    isAdoptingExpertSession,
+    isKickoffStarting: isKickoffResolving || isKickoffStarting,
   };
 }

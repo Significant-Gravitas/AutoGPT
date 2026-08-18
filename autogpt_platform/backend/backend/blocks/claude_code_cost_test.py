@@ -16,7 +16,17 @@ from backend.blocks._base import BlockCostType
 from backend.blocks.claude_code import ClaudeCodeBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import NodeExecutionStats
+from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
+
+
+@pytest.fixture(autouse=True)
+def _stub_preflight_estimate(monkeypatch):
+    """Force `get_preflight_estimate` to return 0 in this module's tests so
+    the COST_USD pre-flight assertion doesn't couple to a populated
+    `block_preflight_estimates.json` once the seeding PR registers a non-zero
+    estimate for ClaudeCodeBlock."""
+    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
 
 
 def test_claude_code_registered_as_cost_usd_150():

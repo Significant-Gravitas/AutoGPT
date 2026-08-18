@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { isAgentScheduled } from "../../hooks/executionHelpers";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -75,6 +76,7 @@ export function useLibraryAgentList({
       sort_by: librarySort,
       folder_id: selectedFolderId ?? undefined,
       include_root_only: selectedFolderId === null ? true : undefined,
+      is_hidden: false,
     },
     {
       query: {
@@ -326,6 +328,7 @@ function filterAgentsByStatus<
   T extends {
     graph_id: string;
     has_external_trigger: boolean;
+    is_scheduled?: boolean;
     recommended_schedule_cron?: string | null;
   },
 >(
@@ -339,6 +342,7 @@ function filterAgentsByStatus<
   return agents.filter((agent) => {
     const isRunning = activeGraphIds.has(agent.graph_id);
     const hasError = errorGraphIds.has(agent.graph_id);
+    const isScheduled = isAgentScheduled(agent);
 
     if (statusFilter === "running") return isRunning;
     if (statusFilter === "attention") return hasError && !isRunning;
@@ -348,17 +352,11 @@ function filterAgentsByStatus<
       return !isRunning && !hasError && agent.has_external_trigger;
     if (statusFilter === "scheduled")
       return (
-        !isRunning &&
-        !hasError &&
-        !agent.has_external_trigger &&
-        !!agent.recommended_schedule_cron
+        !isRunning && !hasError && !agent.has_external_trigger && isScheduled
       );
     if (statusFilter === "idle")
       return (
-        !isRunning &&
-        !hasError &&
-        !agent.has_external_trigger &&
-        !agent.recommended_schedule_cron
+        !isRunning && !hasError && !agent.has_external_trigger && !isScheduled
       );
     if (statusFilter === "healthy") return !hasError;
     return true;

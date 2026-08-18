@@ -2,10 +2,12 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import type { ToolUIPart } from "ai";
-import { useState } from "react";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ContentMessage } from "../../components/ToolAccordion/AccordionContent";
-import { SetupRequirementsCard } from "../RunBlock/components/SetupRequirementsCard/SetupRequirementsCard";
+import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
+import {
+  isUnparseableJsonOutput,
+  reportCorruptedToolOutput,
+} from "../../helpers/toolOutput";
 
 type Props = {
   part: ToolUIPart;
@@ -39,22 +41,29 @@ function parseError(raw: unknown): string | null {
 }
 
 export function ConnectIntegrationTool({ part }: Props) {
-  // Persist dismissed state here so SetupRequirementsCard remounts don't re-enable Proceed.
-  const [isDismissed, setIsDismissed] = useState(false);
-
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
-  const isError = part.state === "output-error";
 
   const output =
     part.state === "output-available"
       ? parseOutput((part as { output?: unknown }).output)
       : null;
 
-  const errorMessage = isError
-    ? (parseError((part as { output?: unknown }).output) ??
-      "Failed to connect integration")
-    : null;
+  const isCorrupted =
+    part.state === "output-available" &&
+    !output &&
+    isUnparseableJsonOutput((part as { output?: unknown }).output);
+  if (isCorrupted) reportCorruptedToolOutput(part.toolCallId, part.type);
+
+  const isError = part.state === "output-error" || isCorrupted;
+
+  // Only genuine output-error states get the generic failure message; a
+  // corrupted payload renders its own dedicated message below.
+  const errorMessage =
+    part.state === "output-error"
+      ? (parseError((part as { output?: unknown }).output) ??
+        "Failed to connect integration")
+      : null;
 
   const rawProvider =
     (part as { input?: { provider?: string } }).input?.provider ?? "";
@@ -85,18 +94,20 @@ export function ConnectIntegrationTool({ part }: Props) {
         <p className="mt-1 text-sm text-red-500">{errorMessage}</p>
       )}
 
+      {isCorrupted && (
+        <p className="mt-1 text-sm text-red-500">
+          The sign-in card data arrived corrupted and can&apos;t be shown. Ask
+          AutoPilot to retry connecting {providerName}.
+        </p>
+      )}
+
       {output && (
         <div className="mt-2">
-          {isDismissed ? (
-            <ContentMessage>Connected. Continuing…</ContentMessage>
-          ) : (
-            <SetupRequirementsCard
-              output={output}
-              credentialsLabel={`${output.setup_info?.agent_name ?? providerName} credentials`}
-              retryInstruction="I've connected my account. Please continue."
-              onComplete={() => setIsDismissed(true)}
-            />
-          )}
+          <SetupRequirementsCard
+            output={output}
+            credentialsLabel={`${output.setup_info?.agent_name ?? providerName} credentials`}
+            retryInstruction="I've connected my account. Please continue."
+          />
         </div>
       )}
     </div>

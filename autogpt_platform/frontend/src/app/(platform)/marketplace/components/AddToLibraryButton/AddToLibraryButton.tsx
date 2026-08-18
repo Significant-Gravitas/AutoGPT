@@ -11,12 +11,13 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { analytics } from "@/services/analytics";
-import { PlusIcon } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function UndoActions({
   libraryAgentID,
@@ -77,19 +78,22 @@ export function AddToLibraryButton({
   className,
   isInLibrary,
 }: Props) {
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
-  const { data: libraryAgents } = useGetV2ListLibraryAgents(undefined, {
-    query: {
-      enabled: isLoggedIn && isInLibrary === undefined,
-      select: (res) =>
-        res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+  const { data: libraryAgents } = useGetV2ListLibraryAgents(
+    { is_hidden: false },
+    {
+      query: {
+        enabled: isLoggedIn && isInLibrary === undefined,
+        select: (res) =>
+          res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
+      },
     },
-  });
+  );
 
   const { mutateAsync: addToLibrary, isPending } =
     usePostV2AddMarketplaceAgent();
@@ -180,12 +184,12 @@ export function AddToLibraryButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="secondary"
       size="small"
       loading={isPending}
-      leftIcon={<PlusIcon size={14} weight="bold" />}
+      leftIcon={<Icon icon={PlusSignIcon} size={14} />}
       onClick={handleClick}
-      className={`z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`}
+      className={`z-10 ${className ?? ""}`}
       aria-label={`Add ${agentName} to library`}
     >
       {isPending ? "Adding..." : "Add"}

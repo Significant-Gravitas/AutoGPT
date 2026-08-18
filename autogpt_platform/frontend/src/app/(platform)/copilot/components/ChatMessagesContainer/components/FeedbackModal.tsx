@@ -1,7 +1,7 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 
@@ -53,11 +53,11 @@ export function FeedbackModal({ isOpen, onSubmit, onCancel }: Props) {
               {comment.length}/2000
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleClose}>
+              <Button variant="outline" size="small" onClick={handleClose}>
                 Cancel
               </Button>
               <Button
-                size="sm"
+                size="small"
                 onClick={handleSubmit}
                 disabled={!comment.trim()}
               >

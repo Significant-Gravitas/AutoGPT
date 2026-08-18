@@ -121,7 +121,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
               <InfoIcon className="h-4 w-4 text-amber-600" />
               <p className="text-sm text-amber-800">
                 No timezone set. Schedule will run in UTC.
-                <a href="/profile/settings" className="ml-1 underline">
+                <a href="/settings/account" className="ml-1 underline">
                   Set your timezone
                 </a>
               </p>

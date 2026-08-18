@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import secrets
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
-from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -19,6 +21,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.data.db_accessors import experts_db
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -34,11 +37,20 @@ from backend.data.model import (
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
+    OAuthState,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
+from backend.integrations.codex.access import (
+    enforce_codex_access_http,
+    has_codex_access_for_discovery,
+)
+from backend.integrations.codex.login import (
+    CodexLoginFailedError,
+    CodexLoginPendingError,
+)
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -64,6 +76,7 @@ from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import (
+    ExpertRunPausedError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -71,6 +84,14 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
+from .codex import (
+    CODEX_LOGIN_STATE_KEY,
+    build_device_login_cancel_url,
+    build_device_login_url,
+    codex_login_coordinator,
+    revoke_codex_credentials,
+)
+from .codex import router as codex_router
 from .models import (
     ProviderConstants,
     ProviderMetadata,
@@ -86,6 +107,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 settings = Settings()
 router = APIRouter()
+router.include_router(codex_router, prefix="/codex")
 
 creds_manager = IntegrationCredentialsManager()
 
@@ -93,6 +115,7 @@ creds_manager = IntegrationCredentialsManager()
 class LoginResponse(BaseModel):
     login_url: str
     state_token: str
+    cancel_url: str | None = None
 
 
 @router.get("/{provider}/login", summary="Initiate OAuth flow")
@@ -110,6 +133,10 @@ async def login(
         Query(title="ID of existing credential to upgrade scopes for"),
     ] = None,
 ) -> LoginResponse:
+    if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
+        return await _start_codex_login(user_id, scopes, credential_id)
+
     handler = _get_provider_oauth_handler(request, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
@@ -128,6 +155,64 @@ async def login(
     )
 
     return LoginResponse(login_url=login_url, state_token=state_token)
+
+
+async def _start_codex_login(
+    user_id: str,
+    scopes: str,
+    credential_id: str | None,
+) -> LoginResponse:
+    if scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex sign-in does not accept OAuth scopes",
+        )
+    if credential_id:
+        await _prepare_scope_upgrade(user_id, ProviderName.CODEX, credential_id, [])
+    frontend_base_url = settings.config.frontend_base_url
+    if not frontend_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+    try:
+        login_attempt = await codex_login_coordinator.start(user_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A ChatGPT sign-in is already active",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+    except Exception as error:
+        logger.warning("Could not start Codex device login: %s", type(error).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatGPT sign-in is temporarily unavailable",
+        ) from None
+
+    try:
+        state_token, _ = await creds_manager.store.store_state_token(
+            user_id,
+            ProviderName.CODEX.value,
+            [],
+            expires_in_seconds=settings.config.codex_login_timeout_seconds + 60,
+            credential_id=credential_id,
+            state_metadata={CODEX_LOGIN_STATE_KEY: login_attempt.login_id},
+        )
+    except Exception:
+        with suppress(Exception):
+            await codex_login_coordinator.cancel(user_id, login_attempt.login_id)
+        raise
+
+    return LoginResponse(
+        login_url=build_device_login_url(frontend_base_url, login_attempt, state_token),
+        state_token=state_token,
+        cancel_url=build_device_login_cancel_url(login_attempt),
+    )
 
 
 class CredentialsMetaResponse(BaseModel):
@@ -184,6 +269,35 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
     )
 
 
+async def _complete_codex_login(
+    user_id: str,
+    login_id: str,
+    oauth_state: OAuthState,
+) -> CredentialsMetaResponse:
+    expected_login_id = oauth_state.state_metadata.get(CODEX_LOGIN_STATE_KEY)
+    if not isinstance(expected_login_id, str) or not secrets.compare_digest(
+        login_id.encode(), expected_login_id.encode()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Codex login completion",
+        )
+    try:
+        credentials = await codex_login_coordinator.complete(user_id, login_id)
+    except CodexLoginPendingError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="ChatGPT sign-in is still pending",
+        ) from None
+    except CodexLoginFailedError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ChatGPT sign-in failed. Try again.",
+        ) from None
+
+    return to_meta_response(credentials)
+
+
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
 async def callback(
     provider: Annotated[
@@ -195,7 +309,9 @@ async def callback(
     request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
-    handler = _get_provider_oauth_handler(request, provider)
+
+    if provider == ProviderName.CODEX:
+        await enforce_codex_access_http(user_id)
 
     # Verify the state token
     valid_state = await creds_manager.store.verify_state_token(
@@ -208,6 +324,11 @@ async def callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
         )
+
+    if provider == ProviderName.CODEX:
+        return await _complete_codex_login(user_id, code, valid_state)
+
+    handler = _get_provider_oauth_handler(request, provider)
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -612,6 +733,19 @@ async def create_credentials(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create credentials with a reserved ID",
         )
+    if provider == ProviderName.CODEX:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex credentials must be created through ChatGPT sign-in",
+        )
+    if (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.refresh_strategy == "provider_runtime"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provider-runtime credentials cannot be created directly",
+        )
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -686,10 +820,13 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
-    await creds_manager.delete(user_id, cred_id)
-
     tokens_revoked = None
-    if isinstance(creds, OAuth2Credentials):
+    if provider == ProviderName.CODEX:
+        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
+    else:
+        await creds_manager.delete(user_id, cred_id)
+
+    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
@@ -718,7 +855,29 @@ async def webhook_ingress_generic(
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
-        user_id = webhook.user_id
+        # Sanity check: `provider` from URL and fetched webhook must match.
+        # Otherwise the URL provider's verifier runs instead of the webhook's
+        # own (a no-op for unsigned providers like Compass), bypassing it.
+        if webhook.provider.value.lower() != provider.value.lower():
+            logger.warning(
+                f"Webhook #{webhook_id} provider mismatch: "
+                f"registered as {webhook.provider.value}, ingress via {provider.value}"
+            )
+            # Same as the actual "webhook not found" response to conceal existence
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    # `secret` and `config` are excluded: both can hold platform- or
+    # provider-issued signing secrets, which must not reach the logs.
+    # Guarded so the dump doesn't run on every delivery when DEBUG is off.
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"Webhook #{webhook_id}: {webhook.model_dump(exclude={'secret', 'config'})}"
+        )
+
+    user_id = webhook.user_id
+    try:
         credentials = (
             await creds_manager.get(user_id, webhook.credentials_id)
             if webhook.credentials_id
@@ -727,7 +886,23 @@ async def webhook_ingress_generic(
     except NotFoundError as e:
         logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    logger.debug(f"Webhook #{webhook_id}: {webhook}")
+
+    # Run provider signature verification (no-op for providers whose protocol
+    # has no signing scheme). 403 on failure; not 404 — that would leak
+    # webhook existence.
+    try:
+        await webhook_manager.verify_signature(webhook, request)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook signature",
+        )
+
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
@@ -773,6 +948,12 @@ async def webhook_ping(
     user_id: Annotated[str, Security(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
+    if webhook.user_id != user_id:
+        # Treat a webhook the caller doesn't own as if it doesn't exist, so this
+        # endpoint can't be used to enumerate webhook IDs or ping others' webhooks.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+        )
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
@@ -807,11 +988,23 @@ async def _execute_webhook_node_trigger(
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
+        # Resource-follows-parent: the webhook is tagged with its graph's
+        # org/team at creation (and backfilled by the org migration), so
+        # triggered runs attribute there — not the owner's personal org.
+        # Untagged legacy webhooks fall back to the owner's default team.
+        if webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
             nodes_input_masks={node.id: {"payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -842,6 +1035,28 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
+    # A webhook only ever runs triggers owned by the webhook owner
+    if preset.user_id != webhook.user_id:
+        logger.warning(
+            f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
+            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+        )
+        return
+
+    expert_tenancy: tuple[str, str | None] | None = None
+    if preset.expert_id is not None:
+        try:
+            expert_tenancy = await experts_db().resolve_private_expert_tenancy(
+                webhook.user_id, preset.expert_id
+            )
+        except Exception:
+            logger.warning(
+                "Refusing private expert webhook preset because its tenancy "
+                "could not be validated",
+                exc_info=True,
+            )
+            return
+
     graph = await get_graph(
         preset.graph_id, preset.graph_version, user_id=webhook.user_id
     )
@@ -868,6 +1083,20 @@ async def _execute_webhook_preset_trigger(
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
     try:
+        # Expert resources survive personal-org conversion: active ownership
+        # above is authoritative and the run follows the owner's current
+        # private owner scope even when legacy preset/webhook tags are stale.
+        # Non-expert resources continue to follow their stored parent scope.
+        if expert_tenancy is not None:
+            org_id, ws_id = expert_tenancy
+        elif preset.organization_id:
+            org_id, ws_id = preset.organization_id, preset.team_id
+        elif webhook.organization_id:
+            org_id, ws_id = webhook.organization_id, webhook.team_id
+        else:
+            from backend.api.features.orgs.db import get_user_default_team
+
+            org_id, ws_id = await get_user_default_team(webhook.user_id)
         await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
@@ -875,7 +1104,14 @@ async def _execute_webhook_preset_trigger(
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
             nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            organization_id=org_id,
+            team_id=ws_id,
+            expert_id=preset.expert_id,
         )
+    except ExpertRunPausedError as e:
+        # Expected steady-state while the expert is paused/over budget —
+        # not an error worth a stack trace on every webhook delivery.
+        logger.info(f"Skipping triggered run for preset #{preset.id}: {e}")
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
@@ -959,8 +1195,39 @@ async def _merge_or_create_credential(
     When *credential_id* is set (explicit upgrade), merges scopes and updates
     the existing credential.  Otherwise, checks for an implicit merge (same
     provider + username) before falling back to creating a new credential.
+
+    Both paths enforce a scope-coverage guard: a "merge" only happens when
+    the freshly-minted token covers every scope the existing record already
+    advertises.  Without that guard a narrowed re-auth would overwrite the
+    stored ``access_token`` with a token whose grant is smaller than the
+    ``scopes`` list — the record would claim authorizations the token does
+    not grant, the credential matcher would happily route AutoPilot tools
+    to that "more capable" credential, and the tool would fail with opaque
+    401/403s on the missing scopes ("AutoPilot keeps picking the old
+    creds" symptom).  On a narrowing re-auth we keep the existing
+    credential intact and persist the new one alongside it instead.
     """
     if credential_id:
+        existing = await creds_manager.store.get_creds_by_id(user_id, credential_id)
+        # Gate the scope-coverage guard on the same defense-in-depth invariants
+        # that `_upgrade_existing_credential` enforces — provider drift, missing
+        # records, and non-OAuth2 targets must still raise via the upgrade path
+        # instead of being silently bypassed by the new-credential fallback.
+        if (
+            existing
+            and isinstance(existing, OAuth2Credentials)
+            and not existing.is_managed
+            and not is_system_credential(existing.id)
+            and provider_matches(existing.provider, credentials.provider)
+            and not set(credentials.scopes).issuperset(set(existing.scopes))
+        ):
+            # Narrowing re-auth: keep existing intact, persist new alongside.
+            # The frontend `executeOAuthFlow` has already pre-screened that
+            # the new credential covers the scopes the card asked for; the
+            # mismatch here is with the *existing* record's wider scope set,
+            # which the explicit-upgrade path tried to preserve via union.
+            await creds_manager.create(user_id, credentials)
+            return credentials
         return await _upgrade_existing_credential(user_id, credential_id, credentials)
 
     # Implicit merge: check for existing credential with same provider+username.
@@ -1326,8 +1593,7 @@ async def get_ayrshare_sso_url(
     ]
     if not ayrshare_creds:
         logger.error(
-            "Ayrshare credential provisioning did not produce a credential "
-            "for user %s",
+            "Ayrshare credential provisioning did not produce a credential for user %s",
             user_id,
         )
         raise HTTPException(
@@ -1372,7 +1638,9 @@ async def get_ayrshare_sso_url(
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
 @router.get("/providers", response_model=List[ProviderMetadata])
-async def list_providers() -> List[ProviderMetadata]:
+async def list_providers(
+    user_id: Annotated[str | None, Security(get_optional_user_id)],
+) -> List[ProviderMetadata]:
     """
     Get metadata for every available provider.
 
@@ -1394,6 +1662,8 @@ async def list_providers() -> List[ProviderMetadata]:
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
+    if user_id is None or not await has_codex_access_for_discovery(user_id):
+        all_providers = [name for name in all_providers if name != ProviderName.CODEX]
     return [
         ProviderMetadata(
             name=name,

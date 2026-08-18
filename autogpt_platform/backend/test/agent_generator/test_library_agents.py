@@ -50,6 +50,7 @@ class TestGetLibraryAgentsForGeneration:
                 page=1,
                 page_size=15,
                 include_executions=True,
+                is_hidden=False,
             )
 
         # Verify result format
@@ -124,6 +125,7 @@ class TestGetLibraryAgentsForGeneration:
                 page=1,
                 page_size=5,
                 include_executions=True,
+                is_hidden=False,
             )
 
 

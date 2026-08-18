@@ -29,6 +29,16 @@ _CONFIG_ENV_VARS = (
     "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
     "CHAT_CLAUDE_AGENT_CLI_PATH",
     "CLAUDE_AGENT_CLI_PATH",
+    # Aux-client + title-model + direct-key vars: read by
+    # ``_validate_aux_client_for_direct_main`` to decide whether
+    # subscription / direct-Anthropic configs are safe.  Local ``.env``
+    # files often set these; clearing them ensures the test's explicit
+    # constructor kwargs (or lack thereof) drive the validator.
+    "CHAT_AUX_API_KEY",
+    "CHAT_AUX_BASE_URL",
+    "CHAT_TITLE_MODEL",
+    "CHAT_DIRECT_ANTHROPIC_API_KEY",
+    "ANTHROPIC_API_KEY",
 )
 
 

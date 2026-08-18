@@ -5,8 +5,9 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { COOKIE_CATEGORIES } from "@/services/consent/cookies";
-import { CheckIcon } from "@phosphor-icons/react/dist/ssr";
 import { useCookieSettingsModal } from "./useCookieSettingsModal";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isOpen: boolean;
@@ -58,7 +59,7 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
                 </Text>
               </div>
               <div className="flex items-center">
-                <CheckIcon className="h-5 w-5 text-green-600" weight="bold" />
+                <Icon icon={Tick02Icon} className="h-5 w-5 text-green-600" />
               </div>
             </div>
           </div>

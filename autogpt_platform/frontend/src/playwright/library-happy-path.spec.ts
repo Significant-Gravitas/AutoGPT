@@ -504,7 +504,7 @@ test("library happy path: user can delete a completed task from the run sidebar"
   // Sidebar should drop the only run, returning the page to initial
   // task-entry state.
   await expect(
-    page.getByRole("button", { name: /^(Setup your task|New task)$/i }),
+    page.getByRole("button", { name: /^(Setup your task|New agent task)$/i }),
   ).toBeVisible({ timeout: 15000 });
 });
 

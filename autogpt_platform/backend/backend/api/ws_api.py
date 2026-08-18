@@ -4,7 +4,7 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
-from autogpt_libs.auth.jwt_utils import parse_jwt_token
+from autogpt_libs.auth.jwt_utils import parse_jwt_token_async
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -82,7 +82,7 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         return ""
 
     try:
-        payload = parse_jwt_token(token)
+        payload = await parse_jwt_token_async(token)
         user_id = payload.get("sub")
         if not user_id:
             await websocket.close(code=4002, reason="Invalid token")
@@ -333,6 +333,7 @@ async def websocket_router(
 
 
 @app.get("/")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 

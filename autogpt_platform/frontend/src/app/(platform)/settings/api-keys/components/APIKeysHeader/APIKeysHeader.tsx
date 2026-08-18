@@ -1,8 +1,8 @@
 "use client";
-
-import { PlusIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onCreate: () => void;
@@ -10,7 +10,7 @@ interface Props {
 
 export function APIKeysHeader({ onCreate }: Props) {
   return (
-    <div className="flex flex-col items-start gap-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col items-start gap-4 pb-6 pl-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-col">
         <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
           AutoGPT API Keys
@@ -23,7 +23,7 @@ export function APIKeysHeader({ onCreate }: Props) {
       <Button
         variant="primary"
         size="small"
-        leftIcon={<PlusIcon size={16} />}
+        leftIcon={<Icon icon={PlusSignIcon} size={16} />}
         onClick={onCreate}
         className="sm:hidden"
       >
@@ -32,7 +32,7 @@ export function APIKeysHeader({ onCreate }: Props) {
       <Button
         variant="primary"
         size="large"
-        leftIcon={<PlusIcon size={20} />}
+        leftIcon={<Icon icon={PlusSignIcon} size={20} />}
         onClick={onCreate}
         className="hidden sm:inline-flex"
       >

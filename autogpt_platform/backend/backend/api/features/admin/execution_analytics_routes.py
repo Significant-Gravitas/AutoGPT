@@ -7,7 +7,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import DEFAULT_LLM_MODEL, LLMModel
 from backend.data.analytics import (
     AccuracyTrendsResponse,
     get_accuracy_trends_and_alerts,
@@ -125,11 +125,11 @@ async def get_execution_analytics_config(
     """
     logger.info(f"Admin user {admin_user_id} requesting execution analytics config")
 
-    # Generate model list from LlmModel enum with provider information
+    # Generate model list from LLMModel enum with provider information
     available_models = []
 
     # Function to generate friendly display names from model values
-    def generate_model_label(model: LlmModel) -> str:
+    def generate_model_label(model: LLMModel) -> str:
         """Generate a user-friendly label from the model enum value."""
         value = model.value
 
@@ -176,9 +176,10 @@ async def get_execution_analytics_config(
         # Return with provider prefix for clarity
         return f"{provider_name}: {model_name}"
 
-    # Include all LlmModel values (no more filtering by hardcoded list)
-    recommended_model = LlmModel.GPT4O_MINI.value
-    for model in LlmModel:
+    # Label the platform default so the admin dropdown's "(Recommended)"
+    # tracks the catalog's is_recommended model instead of a hardcoded slug.
+    recommended_model = DEFAULT_LLM_MODEL.value
+    for model in LLMModel:
         label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model
         if model.value == recommended_model:

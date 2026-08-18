@@ -34,10 +34,19 @@ function TabsLine(
   );
 }
 
+interface TabsLineListProps
+  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
+  /**
+   * When `true`, removes the left padding on the first tab trigger so it
+   * aligns flush with the list's left edge. Defaults to `false`.
+   */
+  flush?: boolean;
+}
+
 const TabsLineList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => {
+  TabsLineListProps
+>(({ className, flush = false, ...props }, ref) => {
   const { activeTabElement } = useTabsLine();
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -53,6 +62,7 @@ const TabsLineList = React.forwardRef<
         }}
         className={cn(
           "inline-flex w-full items-center justify-start border-b border-zinc-100",
+          flush && "[&>button:first-child]:!pl-0",
           className,
         )}
         {...props}

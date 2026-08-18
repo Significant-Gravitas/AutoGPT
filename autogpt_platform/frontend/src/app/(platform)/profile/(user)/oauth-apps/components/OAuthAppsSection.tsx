@@ -1,11 +1,16 @@
 "use client";
 
 import { useRef } from "react";
-import { UploadIcon, ImageIcon, PowerIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { useOAuthApps } from "./useOAuthApps";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import {
+  Image01Icon,
+  PowerIcon,
+  Upload01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function OAuthAppsSection() {
   const {
@@ -71,7 +76,10 @@ export function OAuthAppsSection() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                <Icon
+                  icon={Image01Icon}
+                  className="h-7 w-7 text-muted-foreground"
+                />
               )}
             </div>
             <div className="min-w-0 flex-1">
@@ -116,7 +124,7 @@ export function OAuthAppsSection() {
                 size="small"
                 onClick={() => handleToggleStatus(app.id, app.is_active)}
                 loading={updatingAppId === app.id}
-                leftIcon={<PowerIcon className="h-4 w-4" />}
+                leftIcon={<Icon icon={PowerIcon} className="h-4 w-4" />}
               >
                 {app.is_active ? "Disable" : "Enable"}
               </Button>
@@ -134,7 +142,7 @@ export function OAuthAppsSection() {
                 size="small"
                 onClick={() => fileInputRefs.current[app.id]?.click()}
                 loading={uploadingAppId === app.id}
-                leftIcon={<UploadIcon className="h-4 w-4" />}
+                leftIcon={<Icon icon={Upload01Icon} className="h-4 w-4" />}
               >
                 {app.logo_url ? "Change " : "Upload "}Logo
               </Button>

@@ -15,7 +15,7 @@ export function ColumnHeader({ label, filter, align = "left", width }: Props) {
       className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}
     >
       <div
-        className={`inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500 ${
+        className={`inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-700 ${
           align === "right" ? "flex-row-reverse" : ""
         }`}
       >

@@ -474,8 +474,18 @@ class TestCompressMessages:
         assert compacted is True
 
     @pytest.mark.asyncio
-    async def test_scenario_o_run_compression_exception_returns_originals(self):
-        """Scenario O: _run_compression raises → return original messages, False."""
+    async def test_scenario_o_run_compression_exception_drops_history(self):
+        """Scenario O: when both LLM AND truncation paths inside
+        ``_run_compression`` fail, ``_compress_messages`` MUST drop history
+        entirely instead of returning the originals.
+
+        Returning the originals would feed the same too-long payload back
+        into the retry loop, guaranteeing another ``Prompt is too long`` and
+        burning the retry budget without progress (regression guard for
+        SENTRY-1207's persistent recurrence: a session whose stored history
+        exceeds the model's context window cannot be rescued by re-trying
+        with the same history).
+        """
         msgs = [
             ChatMessage(role="user", content="q"),
             ChatMessage(role="assistant", content="a"),
@@ -487,8 +497,10 @@ class TestCompressMessages:
         ):
             result, compacted = await _compress_messages(msgs)
 
-        assert result == msgs
-        assert compacted is False
+        # History dropped, marked as compacted so callers know reduction
+        # occurred (current message goes alone, smallest possible payload).
+        assert result == []
+        assert compacted is True
 
     @pytest.mark.asyncio
     async def test_compaction_messages_filtered_before_compression(self):
@@ -517,10 +529,19 @@ class TestRetryTargetTokens:
 
         assert _RETRY_TARGET_TOKENS[0] == 50_000
 
-    def test_second_retry_uses_second_slot(self):
-        from backend.copilot.sdk.service import _RETRY_TARGET_TOKENS
+    def test_second_retry_lowered_to_bare_message_floor(self):
+        """The second retry's target must be at or below the bare-message
+        floor so ``_build_query_message`` triggers its escape hatch and
+        sends the current message alone. Without this, sessions whose
+        stored history exceeds the model's context window can exhaust all
+        retries without ever falling through to the floor (regression guard
+        for SENTRY-1207's persistent ``Prompt is too long``)."""
+        from backend.copilot.sdk.service import (
+            _BARE_MESSAGE_TOKEN_FLOOR,
+            _RETRY_TARGET_TOKENS,
+        )
 
-        assert _RETRY_TARGET_TOKENS[1] == 15_000
+        assert _RETRY_TARGET_TOKENS[1] <= _BARE_MESSAGE_TOKEN_FLOOR
 
     def test_second_slot_smaller_than_first(self):
         from backend.copilot.sdk.service import _RETRY_TARGET_TOKENS

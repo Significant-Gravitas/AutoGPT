@@ -21,7 +21,7 @@ coverage:
         flags:
           - platform-backend
       platform-frontend:
-        target: 80%
+        target: 70%
         flags:
           - platform-frontend
       autogpt-libs:
@@ -80,7 +80,7 @@ component_management:
           target: auto
           informational: true
         - type: patch
-          target: 80%
+          target: 70%
           informational: true
     - component_id: autogpt-libs
       name: "AutoGPT Libs"

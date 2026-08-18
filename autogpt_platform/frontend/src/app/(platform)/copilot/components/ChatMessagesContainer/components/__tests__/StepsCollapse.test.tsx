@@ -2,8 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StepsCollapse } from "../StepsCollapse";
 
-vi.mock("@phosphor-icons/react", () => ({
-  ListBulletsIcon: () => <span data-testid="list-icon" />,
+vi.mock("@hugeicons/core-free-icons", () => ({
+  LeftToRightListBulletIcon: "list-icon",
+}));
+
+vi.mock("@/components/atoms/Icon/Icon", () => ({
+  Icon: ({ icon }: { icon: string }) => <span data-testid={icon} />,
 }));
 
 vi.mock("@/components/molecules/Dialog/Dialog", async () => {

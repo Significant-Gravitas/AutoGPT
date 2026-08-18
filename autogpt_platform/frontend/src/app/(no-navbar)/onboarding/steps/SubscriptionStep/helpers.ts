@@ -1,88 +1,96 @@
-export const PRO_USD_MONTHLY = 50;
-export const MAX_USD_MONTHLY = 320;
-// Fraction of the full monthly price paid when billed yearly. 0.85 = 15% off.
-export const YEARLY_PRICE_FACTOR = 0.85;
-export const TEAM_INTAKE_FORM_URL = "https://tally.so/r/2Eb9zj";
+import {
+  PLAN_KEYS,
+  PLANS,
+  type PlanDef,
+} from "@/components/molecules/PlanCard/plans";
 
-export const PLAN_KEYS = {
-  PRO: "PRO",
-  MAX: "MAX",
-  TEAM: "TEAM",
-} as const;
-export type PlanKey = (typeof PLAN_KEYS)[keyof typeof PLAN_KEYS];
+export const SUBSCRIPTION_PRICING_EXPERIMENT_FLAG =
+  "subscription-pricing-page-initial-state";
 
-export interface PlanDef {
-  key: PlanKey;
-  name: string;
-  usage: string | null;
-  usdMonthly: number | null;
-  description: string;
-  features: string[];
-  cta: string;
-  highlighted: boolean;
-  badge: string | null;
-  buttonVariant: "primary" | "secondary";
+const HIGHLIGHT_BADGE = "Best value";
+
+export type BillingCycle = "monthly" | "yearly";
+export type HighlightedPlanKey = typeof PLAN_KEYS.PRO | typeof PLAN_KEYS.MAX;
+export type SubscriptionPricingExperimentVariant =
+  | "monthly-pro"
+  | "monthly-max"
+  | "yearly-pro"
+  | "yearly-max";
+
+interface SubscriptionPricingExperimentConfig {
+  billing: BillingCycle;
+  highlightedPlan: HighlightedPlanKey | null;
+  variant: SubscriptionPricingExperimentVariant | "control";
 }
 
-export const PLANS: PlanDef[] = [
-  {
-    key: PLAN_KEYS.PRO,
-    name: "Pro",
-    usage: "1x",
-    usdMonthly: PRO_USD_MONTHLY,
-    description:
-      "For individuals getting started with dependable everyday automation.",
-    features: [
-      "1x usage allowance",
-      "Up to 1,000 agent runs / month",
-      "Access to core models",
-      "Core agent library",
-      "Standard support",
-    ],
-    cta: "Get Pro",
-    highlighted: false,
-    badge: null,
-    buttonVariant: "secondary",
+// Control (the flag isn't wired up yet) matches the paywall: monthly billing
+// and no highlighted plan. Each PostHog variant below opts back into a specific
+// billing cycle + highlighted plan when the experiment is live.
+const DEFAULT_EXPERIMENT_CONFIG: SubscriptionPricingExperimentConfig = {
+  billing: "monthly",
+  highlightedPlan: null,
+  variant: "control",
+};
+
+const EXPERIMENT_CONFIGS: Record<
+  SubscriptionPricingExperimentVariant,
+  SubscriptionPricingExperimentConfig
+> = {
+  "monthly-pro": {
+    billing: "monthly",
+    highlightedPlan: PLAN_KEYS.PRO,
+    variant: "monthly-pro",
   },
-  {
-    key: PLAN_KEYS.MAX,
-    name: "Max",
-    usage: "7x",
-    usdMonthly: MAX_USD_MONTHLY,
-    description:
-      "For power users running more workflows and higher-volume automations.",
-    features: [
-      "7x usage allowance",
-      "Up to 10,000 agent runs / month",
-      "Access to premium models",
-      "Advanced workflows & tools",
-      "Priority processing",
-      "Faster support",
-      "Custom integrations (beta)",
-    ],
-    cta: "Upgrade to Max",
-    highlighted: true,
-    badge: "Best value",
-    buttonVariant: "primary",
+  "monthly-max": {
+    billing: "monthly",
+    highlightedPlan: PLAN_KEYS.MAX,
+    variant: "monthly-max",
   },
-  {
-    key: PLAN_KEYS.TEAM,
-    name: "Team",
-    usage: null,
-    usdMonthly: null,
-    description:
-      "For teams that need collaboration, controls, and custom usage.",
-    features: [
-      "Multi-user workspaces",
-      "Admin controls & roles",
-      "Shared billing & usage pools",
-      "Collaboration & approvals",
-      "Security & compliance options",
-      "Premium support",
-    ],
-    cta: "Contact sales",
-    highlighted: false,
-    badge: "Coming soon",
-    buttonVariant: "secondary",
+  "yearly-pro": {
+    billing: "yearly",
+    highlightedPlan: PLAN_KEYS.PRO,
+    variant: "yearly-pro",
   },
-];
+  "yearly-max": {
+    billing: "yearly",
+    highlightedPlan: PLAN_KEYS.MAX,
+    variant: "yearly-max",
+  },
+};
+
+function isExperimentVariant(
+  variant: string,
+): variant is SubscriptionPricingExperimentVariant {
+  return variant in EXPERIMENT_CONFIGS;
+}
+
+function isPaidExperimentPlan(plan: PlanDef) {
+  return plan.key === PLAN_KEYS.PRO || plan.key === PLAN_KEYS.MAX;
+}
+
+export function getSubscriptionPricingExperimentConfig(
+  variant: string | boolean | undefined,
+) {
+  if (typeof variant === "string" && isExperimentVariant(variant)) {
+    return EXPERIMENT_CONFIGS[variant];
+  }
+  return DEFAULT_EXPERIMENT_CONFIG;
+}
+
+export function getSubscriptionPricingExperimentPlans(
+  highlightedPlan: HighlightedPlanKey | null,
+  plans: PlanDef[] = PLANS,
+) {
+  return plans.map((plan) => {
+    if (!isPaidExperimentPlan(plan)) return plan;
+
+    const highlighted =
+      highlightedPlan !== null && plan.key === highlightedPlan;
+    return {
+      ...plan,
+      highlighted,
+      badge: highlighted ? HIGHLIGHT_BADGE : null,
+      buttonVariant: highlighted ? "primary" : "secondary",
+    } satisfies PlanDef;
+  });
+}

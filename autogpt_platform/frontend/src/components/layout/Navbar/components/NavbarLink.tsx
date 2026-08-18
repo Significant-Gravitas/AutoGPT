@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
@@ -10,6 +9,8 @@ import {
   HomepageIcon,
   MarketplaceIcon,
 } from "./MenuIcon/MenuIcon";
+import { CheckListIcon, LaptopIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const iconBaseClass = "h-4 w-4 shrink-0";
 const iconNudgedClass = "relative bottom-[2px] h-4 w-4 shrink-0";
@@ -57,7 +58,8 @@ export function NavbarLink({ name, href }: Props) {
           </div>
         )}
         {href === "/monitor" && (
-          <Laptop
+          <Icon
+            icon={LaptopIcon}
             className={cn(
               iconBaseClass,
               isActive && "text-white dark:text-black",
@@ -75,7 +77,8 @@ export function NavbarLink({ name, href }: Props) {
           </div>
         )}
         {href === "/library" && (
-          <ListChecksIcon
+          <Icon
+            icon={CheckListIcon}
             className={cn(
               "h-5 w-5 shrink-0",
               isActive && "text-white dark:text-black",

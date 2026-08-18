@@ -138,7 +138,7 @@ export function useBuilderChatPanel({
       copilotModel: undefined,
     });
 
-  const { queuedMessages, appendChip } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -469,7 +469,7 @@ export function useBuilderChatPanel({
     if (!sessionId) return;
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
-      appendChip(trimmed);
+      queueMessage(trimmed);
       try {
         const { queueFollowUpMessage } = await import(
           "@/app/(platform)/copilot/helpers/queueFollowUpMessage"

@@ -17,6 +17,13 @@ import {
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import {
+  clearKickoffPending,
+  getKickoffAttemptTokenFromMetadata,
+  getKickoffExpertId,
+  getKickoffExpertIdFromMetadata,
+  withKickoffLock,
+} from "./expertKickoff";
+import {
   deduplicateMessages,
   extractSendMessageText,
   getLatestAssistantStatusMessage,
@@ -24,6 +31,7 @@ import {
   hasActiveBackendStream,
   hasInProgressAssistantParts,
   hasVisibleAssistantContent,
+  resolveModeChangedMode,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
@@ -41,8 +49,25 @@ import { useWakeResync } from "./useWakeResync";
  * `active_stream=true`, triggering unnecessary reconnect cycles.
  */
 const FINISH_REFETCH_SETTLE_MS = 500;
+// Server-initiated continuation turns (e.g. the engine switch after
+// enter_agent_building_mode) are dispatched via RabbitMQ right after the
+// previous turn completes — one 500ms check can outrun the dispatch, so the
+// post-finish active-stream probe retries before giving up. Ordinary turns
+// keep a single probe; the extended window only runs when this turn emitted
+// a data-mode-changed part (a continuation is actually pending), and it
+// brackets the backend's dispatch retry ceiling (3 attempts, ~3s backoff).
+const FINISH_REFETCH_ATTEMPTS_DEFAULT = 1;
+const FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH = 8;
+
+/**
+ * Batch AI SDK message updates into ~30 ms paints. The smoothing transform in
+ * the transport emits word-sized deltas ~10 ms apart; without throttling each
+ * word would re-render the whole chat tree.
+ */
+const STREAM_RENDER_THROTTLE_MS = 30;
 
 interface UseCopilotStreamArgs {
+  userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
@@ -54,6 +79,7 @@ interface UseCopilotStreamArgs {
 }
 
 export function useCopilotStream({
+  userId = null,
   sessionId,
   hydratedMessages,
   hasActiveStream,
@@ -90,12 +116,18 @@ export function useCopilotStream({
   // mount (= this session), so a boolean is enough; cross-session scoping
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
+  const pendingEngineSwitchRef = useRef(false);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
   // inside SDK callbacks, the state drives UI so a click on the stop button
   // immediately overrides ``isStreaming`` regardless of whether AI SDK has
   // flipped ``status`` back to ``ready`` yet (which can lag by many seconds
   // when aborting a GET-based resume fetch).
   const [isUserStopping, setIsUserStopping] = useState(false);
+  // True while `handleFinish`'s post-turn active-stream probe is still
+  // deciding whether a continuation turn is starting. Gates the force-hydrate
+  // in `useHydrateOnStreamEnd` so it can't swap message ids (and flash the
+  // whole list) in the window before the reconnect is scheduled.
+  const [isFinishProbing, setIsFinishProbing] = useState(false);
   // Flipped to `false` during mount cleanup so async callbacks that were
   // already in flight (e.g. the post-stream settle in `onFinish`) bail out
   // instead of arming new timers / HTTP requests against a torn-down mount.
@@ -119,7 +151,10 @@ export function useCopilotStream({
     resumeStream,
   } = useChat(
     chatRuntime
-      ? { chat: chatRuntime.chat }
+      ? {
+          chat: chatRuntime.chat,
+          experimental_throttle: STREAM_RENDER_THROTTLE_MS,
+        }
       : {
           id: "new",
         },
@@ -143,17 +178,38 @@ export function useCopilotStream({
         return;
       }
 
-      await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
-      if (!isMountedRef.current) return;
-      const result = await refetchSession();
-      if (!isMountedRef.current) return;
-      if (hasActiveBackendStream(result)) {
-        handleReconnectRef.current();
+      const attempts = pendingEngineSwitchRef.current
+        ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
+        : FINISH_REFETCH_ATTEMPTS_DEFAULT;
+      pendingEngineSwitchRef.current = false;
+      setIsFinishProbing(true);
+      try {
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
+          if (!isMountedRef.current) return;
+          const result = await refetchSession();
+          if (!isMountedRef.current) return;
+          if (hasActiveBackendStream(result)) {
+            handleReconnectRef.current();
+            return;
+          }
+        }
+      } finally {
+        if (isMountedRef.current) setIsFinishProbing(false);
       }
     }
 
     function handleError(error: Error) {
       if (!sessionId) return;
+      const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+      const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+      const kickoffAttemptToken = coord.lastSubmittedKickoffAttemptToken;
+      function releaseKickoffPending() {
+        if (!userId || !kickoffExpertId || !kickoffAttemptToken) return;
+        void withKickoffLock(userId, kickoffExpertId, async () => {
+          clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
+        }).catch(() => undefined);
+      }
       handleStreamError({
         error,
         onRateLimit: (message) => {
@@ -161,29 +217,45 @@ export function useCopilotStream({
           // optimistic user bubble added by useChat is a lie. Restore the text
           // into the composer (via the same store slot URL pre-fills use) and
           // drop the unsent bubble so the user can edit/resend after reset.
-          const unsentText =
-            useCopilotStreamStore.getState().getCoord(sessionId)
-              .lastSubmittedMessageText ?? null;
+          const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+          const unsentText = coord.lastSubmittedMessageText;
           if (unsentText) {
-            // The 429 callback fires async — by the time it lands, the user
-            // may have started typing a new draft. Only restore + clear the
-            // recovery slot when the composer is empty; otherwise leave the
-            // unsent text in the per-session store so a reload / resume can
-            // surface it later instead of silently dropping it.
-            const composer = document.getElementById(
-              "chat-input",
-            ) as HTMLTextAreaElement | null;
-            const composerEmpty = !composer || composer.value.length === 0;
-            if (composerEmpty) {
-              setInitialPrompt(unsentText);
-              useCopilotStreamStore
-                .getState()
-                .updateCoord(sessionId, { lastSubmittedMessageText: null });
+            // The expert-kickoff control prompt must never surface in the
+            // user's composer — drop the recovery slot instead of restoring
+            // it. Its bubble below is dropped too; the once-per-expert
+            // pending latch expires so a later visit can retry the kickoff.
+            if (kickoffExpertId) {
+              useCopilotStreamStore.getState().updateCoord(sessionId, {
+                lastSubmittedMessageText: null,
+                lastSubmittedKickoffExpertId: null,
+                lastSubmittedKickoffAttemptToken: null,
+              });
+            } else {
+              // The 429 callback fires async — by the time it lands, the user
+              // may have started typing a new draft. Only restore + clear the
+              // recovery slot when the composer is empty; otherwise leave the
+              // unsent text in the per-session store so a reload / resume can
+              // surface it later instead of silently dropping it.
+              const composer = document.getElementById(
+                "chat-input",
+              ) as HTMLTextAreaElement | null;
+              const composerEmpty = !composer || composer.value.length === 0;
+              if (composerEmpty) {
+                setInitialPrompt(unsentText);
+                useCopilotStreamStore.getState().updateCoord(sessionId, {
+                  lastSubmittedMessageText: null,
+                  lastSubmittedKickoffExpertId: null,
+                  lastSubmittedKickoffAttemptToken: null,
+                });
+              }
             }
             setMessages((prev) => {
               const last = prev[prev.length - 1];
-              if (last?.role === "user") return prev.slice(0, -1);
-              return prev;
+              const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+              useCopilotStreamStore
+                .getState()
+                .setMessageSnapshot(sessionId, next);
+              return next;
             });
           }
           setRateLimitMessage(message);
@@ -191,20 +263,58 @@ export function useCopilotStream({
         onReconnect: () => handleReconnectRef.current(),
         isUserStoppingRef,
       });
+      if (kickoffExpertId) {
+        releaseKickoffPending();
+        useCopilotStreamStore.getState().updateCoord(sessionId, {
+          lastSubmittedMessageText: null,
+          lastSubmittedKickoffExpertId: null,
+          lastSubmittedKickoffAttemptToken: null,
+        });
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+          useCopilotStreamStore.getState().setMessageSnapshot(sessionId, next);
+          return next;
+        });
+      }
+    }
+
+    function handleData(dataPart: { type: string; data?: unknown }) {
+      const mode = resolveModeChangedMode(dataPart);
+      if (mode) {
+        pendingEngineSwitchRef.current = true;
+        // Server-forced switch: session-scoped UI state only — must not
+        // persist to localStorage and rewrite the user's global default.
+        // The pin locks the toggle for the rest of this session (the
+        // backend overrides a manual flip anyway).
+        useCopilotUIStore.getState().applyServerModeChange(mode);
+      }
     }
 
     chatRuntime.onFinish = handleFinish;
     chatRuntime.onError = handleError;
+    chatRuntime.onData = handleData;
 
     return () => {
       if (chatRuntime.onFinish === handleFinish) {
         chatRuntime.onFinish = undefined;
       }
+      if (chatRuntime.onData === handleData) {
+        chatRuntime.onData = undefined;
+        useCopilotUIStore.getState().clearCopilotModePin();
+      }
       if (chatRuntime.onError === handleError) {
         chatRuntime.onError = undefined;
       }
     };
-  }, [chatRuntime, sessionId, refetchSession]);
+  }, [
+    chatRuntime,
+    sessionId,
+    refetchSession,
+    setInitialPrompt,
+    setMessages,
+    userId,
+  ]);
 
   // Flipped to ``true`` the first time the user actually hits Send on this
   // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish
@@ -246,6 +356,7 @@ export function useCopilotStream({
   }
 
   function resumeStreamFromStart() {
+    if (!chatRuntime) return;
     if (sessionId) {
       markCopilotChatRuntimeHealthy(sessionId);
     }
@@ -281,6 +392,12 @@ export function useCopilotStream({
     ...args: Parameters<typeof sdkSendMessage>
   ): ReturnType<typeof sdkSendMessage> {
     const text = extractSendMessageText(args[0]);
+    const metadata =
+      args[0] && typeof args[0] === "object" && "metadata" in args[0]
+        ? args[0].metadata
+        : undefined;
+    const kickoffExpertId = getKickoffExpertIdFromMetadata(metadata);
+    const kickoffAttemptToken = getKickoffAttemptTokenFromMetadata(metadata);
     const sid = sessionId;
     const coord = sid ? useCopilotStreamStore.getState().getCoord(sid) : null;
 
@@ -306,9 +423,11 @@ export function useCopilotStream({
 
     if (sid) {
       markCopilotChatRuntimeHealthy(sid);
-      useCopilotStreamStore
-        .getState()
-        .updateCoord(sid, { lastSubmittedMessageText: text });
+      useCopilotStreamStore.getState().updateCoord(sid, {
+        lastSubmittedMessageText: text,
+        lastSubmittedKickoffExpertId: kickoffExpertId,
+        lastSubmittedKickoffAttemptToken: kickoffAttemptToken,
+      });
     }
     hasSentThisMountRef.current = true;
     if (isUserStoppingRef.current) {
@@ -328,6 +447,25 @@ export function useCopilotStream({
     if (messages.length === 0) return;
     useCopilotStreamStore.getState().setMessageSnapshot(sessionId, messages);
   }, [sessionId, messages]);
+
+  useEffect(() => {
+    if (!sessionId || !hydratedMessages) return;
+    const coord = useCopilotStreamStore.getState().getCoord(sessionId);
+    const kickoffExpertId = coord.lastSubmittedKickoffExpertId;
+    if (!kickoffExpertId) return;
+    if (
+      !hydratedMessages.some(
+        (message) => getKickoffExpertId(message) === kickoffExpertId,
+      )
+    ) {
+      return;
+    }
+    useCopilotStreamStore.getState().updateCoord(sessionId, {
+      lastSubmittedMessageText: null,
+      lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
+    });
+  }, [hydratedMessages, sessionId]);
 
   // Cheap signal that changes on any stream activity — drives the stall
   // watchdog. Counts messages, the last message's parts, and the total
@@ -401,6 +539,7 @@ export function useCopilotStream({
     hydratedMessages,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
     setMessages,
   });
 
@@ -421,6 +560,16 @@ export function useCopilotStream({
       pending();
     }
   }, [sessionId, hydratedMessages, status, isReconnectScheduled]);
+
+  // Mirror the live stream status onto the shared store so out-of-tree views
+  // (workspace sidebar's Progress tab) can react to "agent is actively
+  // working" without prop-drilling status through the layout. `sessionId` is a
+  // dependency so the flag is re-synced on session change and the previous
+  // session's "live" state never bleeds into the newly opened one.
+  useEffect(() => {
+    const isLive = status === "streaming" || status === "submitted";
+    useCopilotStreamStore.getState().setStreaming(isLive);
+  }, [status, sessionId]);
 
   // Invalidate session + usage caches when the stream completes.
   // Reconnect counter/timer reset on the same transition is owned by

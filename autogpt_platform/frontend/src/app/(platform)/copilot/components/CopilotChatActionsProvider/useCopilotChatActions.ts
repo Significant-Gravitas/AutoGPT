@@ -12,12 +12,23 @@ import { createContext, useContext } from "react";
  *   is already looking at the builder and the panel auto-switches URL on
  *   edit_agent / run_agent completion, so the navigation CTAs are
  *   redundant and open duplicate tabs.
+ * `"share"` — the public ``/share/chat/[token]`` viewer; navigation CTAs
+ *   point at auth-gated /library /build routes that anonymous viewers
+ *   can't reach, so hide them.
  */
-export type CopilotChatSurface = "copilot" | "builder";
+export type CopilotChatSurface = "copilot" | "builder" | "share";
 
 interface CopilotChatActions {
   onSend: (message: string) => void | Promise<void>;
   chatSurface: CopilotChatSurface;
+  /**
+   * Optional: maps execution_id → public share_token for the executions
+   * linked to the current chat.  Only populated on the ``"share"``
+   * surface, where ``ExecutionStartedCard`` uses it to rewrite the
+   * "View Execution" CTA to ``/share/{token}`` instead of the
+   * auth-gated ``/library/agents/...`` link.
+   */
+  getExecutionShareToken?: (executionId: string) => string | null | undefined;
 }
 
 const CopilotChatActionsContext = createContext<CopilotChatActions | null>(

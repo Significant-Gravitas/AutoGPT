@@ -36,5 +36,12 @@
     "total_pages": 1,
     "current_page": 1,
     "page_size": 20
+  },
+  "stats": {
+    "total": 1,
+    "approved": 1,
+    "pending": 0,
+    "total_runs": 50,
+    "average_rating": 4.2
   }
 }

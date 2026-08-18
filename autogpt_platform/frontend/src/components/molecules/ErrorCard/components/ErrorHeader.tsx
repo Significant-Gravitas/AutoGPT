@@ -1,12 +1,13 @@
 import React from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Warning } from "@phosphor-icons/react";
+import { Alert01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function ErrorHeader() {
   return (
     <div className="flex items-center gap-3">
       <div className="flex-shrink-0">
-        <Warning size={24} weight="fill" className="text-red-400" />
+        <Icon icon={Alert01Icon} size={24} className="text-red-400" />
       </div>
       <div>
         <Text variant="large-semibold" className="text-zinc-800">

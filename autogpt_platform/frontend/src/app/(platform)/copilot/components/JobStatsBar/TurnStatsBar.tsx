@@ -82,7 +82,7 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
   if (counters.length === 0 && showTimeLabel === null) return null;
 
   return (
-    <div className="mt-2 flex items-center gap-1.5">
+    <div className="mt-2 flex items-center gap-1.5 text-xs opacity-50 transition-opacity group-hover:opacity-100">
       {showTimeLabel !== null && (
         <TimeLabel displaySeconds={showTimeLabel} localDate={localDate} />
       )}

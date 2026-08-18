@@ -1,9 +1,25 @@
 import { expect, Page } from "@playwright/test";
+import path from "path";
 import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
 const DETERMINISTIC_MARKETPLACE_AGENT_SEARCH = "E2E Calculator Agent";
+
+// Small local PNG selected in the publish flow to satisfy the "at least one
+// image is required" rule. The upload request itself is stubbed (see
+// submitAgentForReview) because the CI stack has no GCS media bucket — so the
+// file content is irrelevant, only that a file is chosen.
+const THUMBNAIL_FIXTURE_PATH = path.join(
+  __dirname,
+  "../assets/test-thumbnail.png",
+);
+
+// The store media upload endpoint requires a configured GCS bucket, which the
+// E2E stack does not provide. Stub it with a local asset URL: this test covers
+// the publish → track → delete dashboard flow, not GCS storage. The stubbed URL
+// is served locally (no external fetch) and satisfies the image-required rule.
+const STUBBED_THUMBNAIL_URL = "/placeholder.png";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -215,7 +231,7 @@ export class MarketplacePage extends BasePage {
     await expect(publishAgentModal).toBeVisible();
     await expect(
       publishAgentModal.getByText(
-        "Select your project that you'd like to publish",
+        "Pick the saved agent version you want to send to marketplace review.",
       ),
     ).toBeVisible();
 
@@ -226,7 +242,7 @@ export class MarketplacePage extends BasePage {
     await expect(publishableAgentCard).toBeVisible({ timeout: 15000 });
     await publishableAgentCard.click();
     await publishAgentModal
-      .getByRole("button", { name: "Next", exact: true })
+      .getByRole("button", { name: "Continue", exact: true })
       .click();
 
     await expect(
@@ -242,18 +258,43 @@ export class MarketplacePage extends BasePage {
       .getByLabel("Subheader")
       .fill("A deterministic marketplace submission");
     await publishAgentModal.getByLabel("Slug").fill(agentSlug);
-    await publishAgentModal
-      .getByLabel("YouTube video link")
-      .fill("https://www.youtube.com/watch?v=test123");
 
     await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
     await this.page.getByRole("option", { name: "Other" }).click();
+
+    // Stub the GCS-backed media upload so the flow is hermetic in CI, then
+    // select a file to trigger it. This satisfies the "at least one image is
+    // required" rule without a real storage bucket.
+    await this.page.route(
+      "**/api/store/submissions/media",
+      async (route) =>
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(STUBBED_THUMBNAIL_URL),
+        }),
+    );
+    await publishAgentModal.getByRole("button", { name: /Thumbnails/ }).click();
+    await publishAgentModal
+      .locator("#image-upload")
+      .setInputFiles(THUMBNAIL_FIXTURE_PATH);
+    await expect(
+      publishAgentModal.getByTestId("thumbnail-remove-0"),
+      "uploaded thumbnail should appear before submitting",
+    ).toBeVisible({ timeout: 15000 });
+
+    await publishAgentModal
+      .getByRole("button", { name: /Experience details/ })
+      .click();
 
     await publishAgentModal
       .getByLabel("Description")
       .fill(
         "A deterministic publish flow for consolidated Playwright coverage.",
       );
+    await publishAgentModal
+      .getByLabel("YouTube video link")
+      .fill("https://www.youtube.com/watch?v=test123");
 
     const submitButton = publishAgentModal.getByRole("button", {
       name: "Submit for review",
@@ -262,7 +303,7 @@ export class MarketplacePage extends BasePage {
     await submitButton.click();
 
     await expect(
-      publishAgentModal.getByText("Agent is awaiting review"),
+      publishAgentModal.getByText("Submission received"),
     ).toBeVisible();
     await expect(
       publishAgentModal.getByTestId("view-progress-button"),
@@ -274,19 +315,22 @@ export class MarketplacePage extends BasePage {
   async waitForDashboardSubmission(agentTitle: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const submissionRow = this.page
-        .getByTestId("agent-table-row")
+        .getByTestId("submission-row")
         .filter({ hasText: agentTitle })
         .first();
 
-      // Row may not appear immediately after redirect — allow a short render
-      // window before deciding the submission is absent on this attempt.
       if (await submissionRow.isVisible({ timeout: 5000 }).catch(() => false)) {
         return submissionRow;
       }
 
       await this.page.reload();
-      await expect(this.page).toHaveURL(/\/profile\/dashboard/);
-      await expect(this.page.getByText("Agent dashboard")).toBeVisible();
+      await expect(this.page).toHaveURL(/\/settings\/creator-dashboard/);
+      await expect(
+        this.page.getByRole("heading", {
+          name: "Creator dashboard",
+          level: 1,
+        }),
+      ).toBeVisible();
     }
 
     throw new Error(`Submission row for "${agentTitle}" did not appear`);

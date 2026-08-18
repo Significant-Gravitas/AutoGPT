@@ -9,9 +9,17 @@ import {
   unpaginate,
 } from "@/app/api/helpers";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
+import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  activeItemParamFor,
+  isWebhookPreset,
+  retryUnlessClientError,
+} from "../../../helpers";
+import { useAgentPresetsQuery } from "../../../hooks/useAgentPresetsQuery";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 
@@ -30,7 +38,7 @@ function parseTab(
 }
 
 type Args = {
-  graphId: string;
+  agent: LibraryAgent;
   onSelectRun: (
     runId: string,
     tab?: "runs" | "scheduled" | "templates" | "triggers",
@@ -45,10 +53,12 @@ type Args = {
 };
 
 export function useSidebarRunsList({
-  graphId,
+  agent,
   onSelectRun,
   onCountsChange,
 }: Args) {
+  const graphId = agent.graph_id;
+  const libraryAgentID = agent.id;
   const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({
     activeItem: parseAsString,
     activeTab: parseAsString,
@@ -76,15 +86,16 @@ export function useSidebarRunsList({
     },
   });
 
-  const presetsQuery = useGetV2ListPresets(
-    { graph_id: graphId, page: 1, page_size: 100 },
-    {
-      query: {
-        enabled: !!graphId,
-        select: (r) => okData(r)?.presets,
-      },
+  const presetsQuery = useAgentPresetsQuery(graphId || undefined);
+
+  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
+  const triggerAgentsQuery = useGetV2ListTriggerAgents(libraryAgentID, {
+    query: {
+      enabled: triggerAgentsEnabled && !!libraryAgentID,
+      select: okData,
+      retry: retryUnlessClientError,
     },
-  );
+  });
 
   const runs = useMemo(
     () => (runsQuery.data ? unpaginate(runsQuery.data, "executions") : []),
@@ -92,26 +103,38 @@ export function useSidebarRunsList({
   );
 
   const schedules = schedulesQuery.data || [];
-  const allPresets = presetsQuery.data || [];
+  const allPresets = useMemo(
+    () => presetsQuery.presets ?? [],
+    [presetsQuery.presets],
+  );
   const triggers = useMemo(
-    () => allPresets.filter((preset) => preset.webhook_id),
+    () => allPresets.filter(isWebhookPreset),
     [allPresets],
   );
   const templates = useMemo(
-    () => allPresets.filter((preset) => !preset.webhook_id),
+    () => allPresets.filter((preset) => !isWebhookPreset(preset)),
     [allPresets],
   );
+  const triggerAgents = triggerAgentsEnabled
+    ? triggerAgentsQuery.data || []
+    : [];
 
   const runsCount = getPaginatedTotalCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
   const templatesCount = templates.length;
-  const triggersCount = triggers.length;
+  // Combined count: webhook triggers + trigger agents (both shown
+  // under the "Triggers" tab as separate sections).
+  const triggersCount = triggers.length + triggerAgents.length;
   const loading =
     !runsQuery.isSuccess ||
     !schedulesQuery.isSuccess ||
-    !presetsQuery.isSuccess;
+    !presetsQuery.presetsSettled ||
+    (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const stale =
-    runsQuery.isStale || schedulesQuery.isStale || presetsQuery.isStale;
+    runsQuery.isStale ||
+    schedulesQuery.isStale ||
+    presetsQuery.isStale ||
+    (triggerAgentsEnabled && triggerAgentsQuery.isStale);
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -167,17 +190,31 @@ export function useSidebarRunsList({
   }, [templates, activeItem, tabValue, onSelectRun]);
 
   useEffect(() => {
-    if (triggers.length > 0 && tabValue === "triggers" && !activeItem) {
-      onSelectRun(triggers[0].id, "triggers");
+    if (tabValue !== "triggers" || activeItem) return;
+    if (triggers.length > 0) {
+      onSelectRun(
+        activeItemParamFor("webhook-trigger", triggers[0].id),
+        "triggers",
+      );
+    } else if (triggerAgents.length > 0) {
+      onSelectRun(
+        activeItemParamFor("trigger-agent", triggerAgents[0].id),
+        "triggers",
+      );
     }
-  }, [triggers, activeItem, tabValue, onSelectRun]);
+  }, [triggers, triggerAgents, activeItem, tabValue, onSelectRun]);
 
   return {
     runs,
     schedules,
     templates,
     triggers,
-    error: schedulesQuery.error || runsQuery.error || presetsQuery.error,
+    triggerAgents,
+    error:
+      schedulesQuery.error ||
+      runsQuery.error ||
+      presetsQuery.error ||
+      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
     loading,
     runsQuery,
     tabValue,

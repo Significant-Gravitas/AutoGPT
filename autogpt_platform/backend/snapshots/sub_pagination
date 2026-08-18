@@ -5,5 +5,12 @@
     "total_pages": 2,
     "current_page": 2,
     "page_size": 5
+  },
+  "stats": {
+    "total": 10,
+    "approved": 4,
+    "pending": 3,
+    "total_runs": 12345,
+    "average_rating": 3.7
   }
 }

@@ -1,7 +1,10 @@
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
-import type { FileUIPart } from "ai";
+import type { ChatTransport, FileUIPart, UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
+import { createSmoothingTransform } from "./copilotStreamSmoothing";
+import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
@@ -23,6 +26,23 @@ interface CreateTransportArgs {
 }
 
 /**
+ * `DefaultChatTransport` with typewriter smoothing on live sends.
+ *
+ * POST streams (new user turns) are piped through the word-pacing transform
+ * so bursty backend deltas render as steady text. GET-resume streams are
+ * deliberately left raw — they replay the whole turn from `0-0`, and slow-
+ * typing already-produced history would be worse than a single jump.
+ */
+class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
+  async sendMessages(
+    options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
+  ) {
+    const stream = await super.sendMessages(options);
+    return stream.pipeThrough(createSmoothingTransform());
+  }
+}
+
+/**
  * Build the `DefaultChatTransport` that wires `useChat` directly at the
  * Python backend's SSE endpoint (bypassing the Next.js serverless proxy to
  * avoid the Vercel 800 s function timeout on long-running tasks).
@@ -41,10 +61,11 @@ export function createCopilotTransport({
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
-  return new DefaultChatTransport({
+  return new SmoothedCopilotChatTransport({
     api: baseUrl,
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];
+      const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
       // Extract file_ids from FileUIPart entries on the message
       const fileIds = last.parts
         ?.filter((p): p is FileUIPart => p.type === "file")
@@ -54,6 +75,19 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
+      // ``message_id`` is the client idempotency key. The backend scopes it
+      // to the authenticated user + session before using the result as the
+      // persisted PK, so retransmits collide atomically without letting one
+      // tenant preclaim another tenant's global ChatMessage id.
+      //
+      // Generated here (rather than in ``useSendMessage``) for two
+      // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
+      // "replace-existing-message" semantics — passing a fresh UUID
+      // puts the SDK into edit-mode with no target and breaks
+      // optimistic render. (2) ``prepareSendMessagesRequest`` is
+      // called once per logical ``sendMessages`` call and the
+      // prepared body is reused across SDK-internal retries, so a
+      // single per-call UUID is exactly the stability we need.
       return {
         body: {
           message: (
@@ -64,6 +98,12 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
+          // Supplying options forces uuid's
+          // getRandomValues path. Unlike crypto.randomUUID,
+          // getRandomValues is available on plain-HTTP LAN origins used
+          // by the local single-container appliance.
+          message_id: uuidv4({}),
+          expert_kickoff: kickoffExpertId !== null,
         },
         headers: await getCopilotAuthHeaders(),
       };

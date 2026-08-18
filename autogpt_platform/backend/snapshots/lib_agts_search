@@ -10,6 +10,7 @@
       "status": "COMPLETED",
       "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
+      "last_run_at": null,
       "name": "Test Agent 1",
       "description": "Test Description 1",
       "instructions": null,
@@ -39,6 +40,7 @@
       "is_favorite": false,
       "folder_id": null,
       "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
@@ -47,7 +49,8 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
-      "marketplace_listing": null
+      "marketplace_listing": null,
+      "store_listing_version_id": null
     },
     {
       "id": "test-agent-2",
@@ -59,6 +62,7 @@
       "status": "COMPLETED",
       "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
+      "last_run_at": null,
       "name": "Test Agent 2",
       "description": "Test Description 2",
       "instructions": null,
@@ -88,6 +92,7 @@
       "is_favorite": false,
       "folder_id": null,
       "folder_name": null,
+      "is_hidden": false,
       "recommended_schedule_cron": null,
       "is_scheduled": false,
       "next_scheduled_run": null,
@@ -96,7 +101,8 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
-      "marketplace_listing": null
+      "marketplace_listing": null,
+      "store_listing_version_id": null
     }
   ],
   "pagination": {
