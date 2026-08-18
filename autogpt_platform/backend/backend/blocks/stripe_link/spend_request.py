@@ -615,7 +615,10 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
                 yield "next_action_url", action.get("action_url", "")
                 yield "auto_resumes", action.get("resolution") == "auto_resume"
 
-            spt = result.get("shared_payment_token") or {}
+            # Defensive: Link returns an object here, but a bare string or a
+            # null would make `.get` raise and take down the whole retrieve.
+            spt = result.get("shared_payment_token")
+            spt = spt if isinstance(spt, dict) else {}
             if spt:
                 yield "shared_payment_token", spt.get("id", "")
 
