@@ -2540,16 +2540,25 @@ def test_only_known_blocks_use_discriminator_type_mapping():
     from backend.blocks import load_all_blocks
 
     users = set()
+    construction_failures: list[str] = []
     for block_cls in load_all_blocks().values():
         try:
             block = block_cls()
-        except Exception:
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check, so the assertion below could pass while a new
+            # block quietly adopts schema-default discrimination.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
             continue
         rendered = block.input_schema.get_credentials_fields()
         for name, info in block.input_schema.get_credentials_fields_info().items():
             if name in rendered and info.discriminator_type_mapping:
                 users.add((block.name, name))
 
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
     assert users == {("CodeGenerationBlock", "credentials")}
 
 
@@ -2559,10 +2568,12 @@ def test_graph_credential_slots_agree_with_executor_defaults():
     for an unpinned node must be reachable from the block's own default."""
     from backend.blocks import load_all_blocks
 
+    construction_failures: list[str] = []
     for block_cls in load_all_blocks().values():
         try:
             block = block_cls()
-        except Exception:
+        except Exception as e:
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
             continue
         rendered = block.input_schema.get_credentials_fields()
         info = block.input_schema.get_credentials_fields_info()
@@ -2580,3 +2591,8 @@ def test_graph_credential_slots_agree_with_executor_defaults():
                     getattr(p, "value", p) for p in expected.provider
                 }, f"{block.name}.{name} advertises unreachable providers"
                 assert types == set(expected.supported_types)
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )

@@ -274,6 +274,98 @@ describe("Transport options gated by provider entitlement", () => {
     expect(transportOptionLabels()).toEqual(["openai_api", "codex_app_server"]);
   });
 
+  it("leaves the enum intact when every option would be filtered out", () => {
+    // An empty dropdown is worse than an unusable option. Needs a node with
+    // no saved transport and a schema with no default, otherwise those two
+    // escape hatches keep an option and the guard never fires.
+    const noDefault = JSON.parse(
+      JSON.stringify(codeGenerationSchema),
+    ) as Record<string, any>;
+    delete noDefault.properties.transport.default;
+
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...createCodeGenerationNode(),
+          data: {
+            ...createCodeGenerationNode().data,
+            hardcodedValues: { prompt: "hi" },
+            inputSchema: noDefault,
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <FormCreator
+          jsonSchema={noDefault as unknown as RJSFSchema}
+          nodeId="code-generation-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    expect(transportOptionLabels()).toEqual(["openai_api", "codex_app_server"]);
+  });
+
+  it("keeps the schema default even when its provider is gated", () => {
+    // RJSF falls back to the schema default when the node has no saved value;
+    // filtering it out would leave a select whose selection is not an option.
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...createCodeGenerationNode(),
+          data: {
+            ...createCodeGenerationNode().data,
+            hardcodedValues: { prompt: "hi" },
+            inputSchema: {
+              ...(codeGenerationSchema as Record<string, any>),
+              properties: {
+                ...(codeGenerationSchema as Record<string, any>).properties,
+                transport: {
+                  ...(codeGenerationSchema as Record<string, any>).properties
+                    .transport,
+                  default: "codex_app_server",
+                },
+              },
+            },
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider
+        value={{ openai: makeProvider("openai", "OpenAI", []) }}
+      >
+        <FormCreator
+          jsonSchema={
+            {
+              ...(codeGenerationSchema as Record<string, any>),
+              properties: {
+                ...(codeGenerationSchema as Record<string, any>).properties,
+                transport: {
+                  ...(codeGenerationSchema as Record<string, any>).properties
+                    .transport,
+                  default: "codex_app_server",
+                },
+              },
+            } as unknown as RJSFSchema
+          }
+          nodeId="code-generation-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    expect(transportOptionLabels()).toContain("codex_app_server");
+  });
+
   it("does not touch the model dropdown, which no credential discriminates on", () => {
     renderTransport({ openai: makeProvider("openai", "OpenAI", []) });
 
