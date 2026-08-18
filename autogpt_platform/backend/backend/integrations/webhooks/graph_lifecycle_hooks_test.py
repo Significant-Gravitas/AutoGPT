@@ -52,7 +52,6 @@ async def test_before_graph_activate_oauth_refresh_failure_raises_clear_error():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
-        mgr.store.get_all_creds = AsyncMock(return_value=[])
         with pytest.raises(GraphActivationError) as excinfo:
             await _before_graph_activate(graph, "user-1")
 
@@ -81,7 +80,6 @@ async def test_before_graph_activate_clears_optional_unloadable_credentials():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
-        mgr.store.get_all_creds = AsyncMock(return_value=[])
         await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"] == {}
@@ -99,7 +97,6 @@ async def test_before_graph_activate_missing_required_credential_raises_clear_er
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = AsyncMock(return_value=None)
-        mgr.store.get_all_creds = AsyncMock(return_value=[])
         with pytest.raises(GraphActivationError) as excinfo:
             await _before_graph_activate(graph, "user-1")
 

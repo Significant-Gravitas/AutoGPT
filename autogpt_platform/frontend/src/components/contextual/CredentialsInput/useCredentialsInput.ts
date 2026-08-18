@@ -60,6 +60,9 @@ export function useCredentialsInput({
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupBlocked, setOAuthPopupBlocked] = useState(false);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
+  const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
+    string | null
+  >(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -117,9 +120,15 @@ export function useCredentialsInput({
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)
     ) {
+      // Remember what was configured before dropping it. Disconnecting an
+      // integration mints a new credential on reconnect, so the old id stops
+      // resolving; without this the field just goes blank (or silently adopts
+      // whatever else is lying around) and the user is never told the
+      // connection their agent was using is gone.
+      setRemovedCredentialTitle(
+        selectedCredential.title || credentials.providerName,
+      );
       onSelectCredential(undefined);
-      // Reset auto-selection flag so it can run again after unsetting invalid credential
-      hasAttemptedAutoSelect.current = false;
     }
   }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
@@ -133,6 +142,11 @@ export function useCredentialsInput({
 
       const savedCreds = credentials.savedCredentials;
       if (savedCreds.length === 0) return;
+
+      // A removed connection is not the same as never having configured one.
+      // Substituting silently could route the agent through a different
+      // account, so make the choice explicit.
+      if (removedCredentialTitle) return;
 
       if (hasAttemptedAutoSelect.current) return;
       hasAttemptedAutoSelect.current = true;
@@ -155,6 +169,7 @@ export function useCredentialsInput({
       readOnly,
       isOptional,
       onSelectCredential,
+      removedCredentialTitle,
     ],
   );
 
@@ -477,6 +492,7 @@ export function useCredentialsInput({
     systemCredentials,
     allCredentials: savedCredentials,
     selectedCredential,
+    removedCredentialTitle,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,

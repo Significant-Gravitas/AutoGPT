@@ -521,3 +521,102 @@ describe("CredentialsInput – device auth", () => {
     expect(mockPreOpenOAuthPopup).not.toHaveBeenCalled();
   });
 });
+
+describe("CredentialsInput – a removed connection", () => {
+  const codexCredential = {
+    id: "codex-1",
+    provider: "codex",
+    type: "oauth2" as const,
+    title: "ChatGPT for Codex",
+    scopes: [],
+  };
+
+  it("tells the user their connection was removed instead of going quietly blank", async () => {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [codexCredential],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "deleted-cred",
+          provider: "codex",
+          type: "oauth2",
+          title: "ChatGPT for Codex",
+        }}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    expect(await screen.findByText(/was removed/i)).toBeDefined();
+  });
+
+  it("does not silently adopt the one remaining connection", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [codexCredential],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "deleted-cred",
+          provider: "codex",
+          type: "oauth2",
+          title: "ChatGPT for Codex",
+        }}
+        onSelectCredentials={onSelectCredentials}
+        showTitle={false}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
+    );
+    // Auto-selection would route the agent through a different account
+    // without telling anyone; the only call must be the unset.
+    await waitFor(() =>
+      expect(
+        onSelectCredentials.mock.calls.filter((c) => c[0] !== undefined),
+      ).toHaveLength(0),
+    );
+  });
+
+  it("still auto-selects a lone connection when nothing was configured before", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [codexCredential],
+      }),
+    );
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={undefined}
+        onSelectCredentials={onSelectCredentials}
+        showTitle={false}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "codex-1" }),
+      ),
+    );
+    expect(screen.queryByText(/was removed/i)).toBeNull();
+  });
+});

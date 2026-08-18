@@ -87,6 +87,7 @@ export function CredentialsInput({
     userCredentials,
     systemCredentials,
     oAuthError,
+    removedCredentialTitle,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
@@ -232,6 +233,13 @@ export function CredentialsInput({
               }}
               siblingInputs={siblingInputs}
             />
+          )}
+
+          {removedCredentialTitle && (
+            <Text variant="body" className="mt-2 text-amber-600">
+              {removedCredentialTitle} was removed. Choose a connection to keep
+              this step running.
+            </Text>
           )}
 
           {oAuthError && (
