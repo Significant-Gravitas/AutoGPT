@@ -203,20 +203,28 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
 
+        # First resolved credential wins. Assigning unconditionally per field
+        # meant a block with several credential fields passed only the last
+        # one, and a failed lookup on that last field discarded a credential
+        # an earlier field had resolved successfully.
         node_credentials = None
         for creds_field_name in block_input_schema.get_credentials_fields().keys():
             # Same shape guard as activation: a meta without `id` means no
             # credential was selected, and indexing it would raise KeyError.
-            # Graphs saved before that guard existed still carry this shape,
-            # so deactivation has to tolerate it.
+            # Persisted graphs can carry this id-less shape, so deactivation
+            # has to tolerate it.
             creds_meta = node.input_default.get(creds_field_name)
             if not creds_meta or not (creds_id := creds_meta.get("id")):
                 continue
-            if not (node_credentials := await get_credentials(creds_id)):
+            resolved = await get_credentials(creds_id)
+            if not resolved:
                 logger.warning(
                     f"Node #{node.id} input '{creds_field_name}' referenced "
                     f"non-existent credentials #{creds_id}"
                 )
+                continue
+            if node_credentials is None:
+                node_credentials = resolved
 
         updated_node = await on_node_deactivate(
             user_id, node, credentials=node_credentials

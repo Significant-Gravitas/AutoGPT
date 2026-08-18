@@ -42,12 +42,19 @@ export function gateDiscriminatorOptions(
     const fieldSchema = properties[fieldName];
     if (!isRecord(fieldSchema) || !Array.isArray(fieldSchema.enum)) continue;
 
+    const saved = currentValues[fieldName];
+    const fallback = fieldSchema.default;
     const kept = fieldSchema.enum.filter(
       (option) =>
         !blocked.has(String(option)) ||
         // Never drop the value a graph is already saved with; hiding it would
-        // silently rewrite the node on the next change.
-        option === currentValues[fieldName],
+        // silently rewrite the node on the next change. Nor the schema's own
+        // default, which RJSF falls back to when the node has no saved value —
+        // filtering it out leaves a select whose selection is not in its
+        // options. Compared as strings to match `blocked`, so a numeric enum
+        // and a string-typed saved value still line up.
+        (saved !== undefined && String(option) === String(saved)) ||
+        (fallback !== undefined && String(option) === String(fallback)),
     );
     if (kept.length === fieldSchema.enum.length) continue;
     // An empty dropdown is worse than an unusable option.

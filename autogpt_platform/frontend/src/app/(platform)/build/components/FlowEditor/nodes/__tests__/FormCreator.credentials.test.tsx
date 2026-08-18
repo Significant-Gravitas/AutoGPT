@@ -73,9 +73,13 @@ function makeProviders(...names: string[]): CredentialsProvidersContextType {
   return Object.fromEntries(entries) as CredentialsProvidersContextType;
 }
 
-function renderNode(providers: CredentialsProvidersContextType) {
+function renderNode(
+  providers: CredentialsProvidersContextType,
+  schema: RJSFSchema = autopilotSchema,
+  nodeId = "autopilot-node",
+) {
   useNodeStore.setState({
-    nodes: [makeNode(autopilotSchema)],
+    nodes: [{ ...makeNode(schema), id: nodeId } as unknown as CustomNode],
     nodeAdvancedStates: {},
   });
   useEdgeStore.setState({ edges: [] });
@@ -84,8 +88,8 @@ function renderNode(providers: CredentialsProvidersContextType) {
   return render(
     <CredentialsProvidersContext.Provider value={providers}>
       <FormCreator
-        jsonSchema={autopilotSchema}
-        nodeId="autopilot-node"
+        jsonSchema={schema}
+        nodeId={nodeId}
         uiType={BlockUIType.STANDARD}
         showHandles={false}
       />
@@ -383,6 +387,18 @@ describe("unavailable required field", () => {
     // The row survives so the toggle stays reachable, but carries no star.
     const title = await screen.findByText("OpenAI credential");
     expect(title.parentElement?.textContent).not.toContain("*");
+
+    // Dropping the star removes the only visual cue that the field matters,
+    // so the explanation has to be present to replace it.
+    expect(screen.getByText("Not available on your account.")).toBeDefined();
+  });
+
+  it("explains why a required gated field cannot be filled", async () => {
+    renderNode(makeProviders("openai"), requiredCodexSchema, "required-node");
+
+    const note = await screen.findByText("Not available on your account.");
+    // Wired to the control so assistive tech connects the two.
+    expect(note.getAttribute("id")).toBeTruthy();
   });
 });
 
