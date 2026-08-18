@@ -131,6 +131,16 @@ export default function useCredentials(
       return null;
     }
     providerName = discriminatedProvider;
+  } else if (
+    credsInputSchema.discriminator &&
+    credsInputSchema.discriminator_mapping
+  ) {
+    // A single-provider field that still declares a mapping is saying some of
+    // its discriminator values need no credential at all (AutoPilot's
+    // `platform` transport). Returning the lone provider regardless would ask
+    // for a credential the selected option will never use.
+    if (!discriminatedProvider) return null;
+    providerName = discriminatedProvider;
   } else {
     providerName = credsInputSchema.credentials_provider[0];
   }
