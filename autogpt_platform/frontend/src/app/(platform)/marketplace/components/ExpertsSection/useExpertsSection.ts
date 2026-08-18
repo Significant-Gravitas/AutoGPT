@@ -5,6 +5,7 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
+import { getHiredExpertsLookup } from "./helpers";
 
 export function useExpertsSection() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
@@ -19,17 +20,17 @@ export function useExpertsSection() {
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 
-  const hiredTemplateIds = new Set<string>();
-  for (const expert of expertsQuery.data ?? []) {
-    if (!expert.is_archived && expert.source_template_id) {
-      hiredTemplateIds.add(expert.source_template_id);
-    }
-  }
+  const hiredLookup = getHiredExpertsLookup(expertsQuery.data, {
+    enabled: isLoggedIn,
+    isError: expertsQuery.isError,
+    isFetching: expertsQuery.isFetching,
+  });
 
   return {
     isLoggedIn,
     templates: templatesQuery.data ?? [],
-    hiredTemplateIds,
+    hiredTemplateIds: new Set(hiredLookup.byTemplateId.keys()),
+    hiredLookupState: hiredLookup.state,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     selectedTemplateId,

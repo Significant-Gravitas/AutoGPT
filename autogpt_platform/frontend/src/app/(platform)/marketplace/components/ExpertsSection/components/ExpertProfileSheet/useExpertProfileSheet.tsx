@@ -12,10 +12,12 @@ import {
   buildVoicePreferences,
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { getHiredExpertsLookup } from "../../helpers";
 
 function celebrate(result: HireResult) {
   toast({
@@ -38,21 +40,34 @@ export function useExpertProfileSheet(
 ) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
   // Set once a hire succeeds for a persona that ships writing samples: it
   // swaps the sheet to the voice pick before the hire is celebrated.
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
   const pendingCelebrationRef = useRef<HireResult | null>(null);
 
   const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[] },
+    query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
   });
 
-  const isHired =
-    expert !== null &&
-    (!expert.is_template ||
-      (expertsQuery.data ?? []).some(
-        (hired) => hired.source_template_id === expert.id,
-      ));
+  const hiredExpertsLookup = getHiredExpertsLookup(expertsQuery.data, {
+    enabled: isLoggedIn,
+    isError: expertsQuery.isError,
+    isFetching: expertsQuery.isFetching,
+  });
+  const hiredLookup =
+    expert === null || !expert.is_template
+      ? ("loaded" as const)
+      : hiredExpertsLookup.state;
+
+  const hiredExpert =
+    expert === null
+      ? null
+      : expert.is_template
+        ? (hiredExpertsLookup.byTemplateId.get(expert.id) ?? null)
+        : expert;
+
+  const isHired = hiredLookup === "loaded" && hiredExpert !== null;
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
   const { mutateAsync: updateSoul, isPending: isSavingVoice } =
@@ -92,6 +107,10 @@ export function useExpertProfileSheet(
         variant: "destructive",
       });
     }
+  }
+
+  function retryHiredLookup() {
+    void expertsQuery.refetch();
   }
 
   async function pickVoice(result: VoicePickResult) {
@@ -147,6 +166,9 @@ export function useExpertProfileSheet(
     isHired,
     isHiring,
     hire,
+    hiredExpertId: hiredExpert?.id ?? null,
+    hiredLookup,
+    retryHiredLookup,
     hireResult,
     pickVoice,
     skipVoice,

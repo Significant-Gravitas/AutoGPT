@@ -27,6 +27,8 @@ export default function TeamPage() {
     schedulesForExpert,
     isLoading,
     isError,
+    schedulesStatus,
+    retrySchedules,
     refetch,
     installWorkflow,
     pickerExpertId,
@@ -78,6 +80,8 @@ export default function TeamPage() {
                 key={expert.id}
                 expert={expert}
                 schedules={schedulesForExpert(expert)}
+                schedulesStatus={schedulesStatus}
+                onRetrySchedules={retrySchedules}
                 onInstallWorkflow={installWorkflow}
                 onEditSoul={openSoul}
               />

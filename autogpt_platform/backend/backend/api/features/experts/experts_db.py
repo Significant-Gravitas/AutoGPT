@@ -50,7 +50,12 @@ ACTIVE_EXPERT_LIMIT = 20
 LIFETIME_RAISED_EXPERT_LIMIT = 100
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
-_WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_WORKFLOW_INCLUDE = {
+    "Workflows": {
+        "include": _WORKFLOW_ROW_INCLUDE,
+        "order_by": [{"createdAt": "asc"}, {"id": "asc"}],
+    }
+}
 
 
 class ExpertTemplateNotFoundError(Exception):

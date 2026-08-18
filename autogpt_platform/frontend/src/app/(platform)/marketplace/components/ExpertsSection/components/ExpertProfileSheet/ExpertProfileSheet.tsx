@@ -23,6 +23,9 @@ export function ExpertProfileSheet({
     isHired,
     isHiring,
     hire,
+    hiredExpertId,
+    hiredLookup,
+    retryHiredLookup,
     hireResult,
     pickVoice,
     skipVoice,
@@ -46,6 +49,9 @@ export function ExpertProfileSheet({
       isHired={isHired}
       isHiring={isHiring}
       onHire={hire}
+      hiredExpertId={hiredExpertId}
+      hiredLookup={hiredLookup}
+      onRetryHiredLookup={retryHiredLookup}
     />
   ) : null;
 

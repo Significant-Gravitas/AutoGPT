@@ -6,6 +6,7 @@ import Link from "next/link";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
 import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
+import { getExpertCardHiredState } from "./helpers";
 import { useExpertsSection } from "./useExpertsSection";
 
 export function ExpertsSection() {
@@ -13,6 +14,7 @@ export function ExpertsSection() {
     isLoggedIn,
     templates,
     hiredTemplateIds,
+    hiredLookupState,
     isLoading,
     isError,
     selectedTemplateId,
@@ -45,6 +47,19 @@ export function ExpertsSection() {
       <div className="-mt-3 mb-6">
         <RaiseLink />
       </div>
+      {!isLoading && hiredLookupState === "error" ? (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <p className="text-sm font-medium text-amber-800">
+            Team status unavailable
+          </p>
+          <p className="text-sm text-amber-700">
+            You can still open an expert to retry or continue hiring.
+          </p>
+        </div>
+      ) : null}
       {isLoading ? (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -57,7 +72,11 @@ export function ExpertsSection() {
             <ExpertCard
               key={template.id}
               expert={template}
-              isHired={hiredTemplateIds.has(template.id)}
+              hiredState={getExpertCardHiredState(
+                template.id,
+                hiredTemplateIds,
+                hiredLookupState,
+              )}
               onClick={() => openTemplate(template.id)}
             />
           ))}

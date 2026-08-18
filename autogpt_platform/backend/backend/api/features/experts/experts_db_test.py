@@ -2,6 +2,7 @@ import asyncio
 import re
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
@@ -2513,6 +2514,64 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
     fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert fetched is not None
     assert fetched.last_run_status == "COMPLETED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hired_workflows_order_by_created_at_then_id(
+    server: SpinTestServer, test_user
+):
+    oldest_listing = await _seed_store_listing(server)
+    earlier_listing = await _seed_store_listing(server)
+    later_listing = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    now = datetime.now(timezone.utc)
+
+    later_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": later_listing,
+            "createdAt": now,
+        }
+    )
+    earlier_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": earlier_listing,
+            "createdAt": now,
+        }
+    )
+    oldest_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": hired.expert.id,
+            "storeListingVersionId": oldest_listing,
+            "createdAt": now - timedelta(days=1),
+        }
+    )
+
+    expected_workflows = sorted(
+        [later_workflow, earlier_workflow, oldest_workflow],
+        key=lambda workflow: (workflow.createdAt, workflow.id),
+    )
+    rehired = await experts_db.hire_expert(test_user.id, template.id, None)
+    assert [workflow.id for workflow in rehired.expert.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [
+        workflow.store_listing_version_id for workflow in rehired.expert.workflows
+    ] == [workflow.storeListingVersionId for workflow in expected_workflows]
+
+    listed = next(
+        expert
+        for expert in await experts_db.list_experts(test_user.id)
+        if expert.id == rehired.expert.id
+    )
+    assert [workflow.id for workflow in listed.workflows] == [
+        workflow.id for workflow in expected_workflows
+    ]
+    assert [workflow.store_listing_version_id for workflow in listed.workflows] == [
+        workflow.storeListingVersionId for workflow in expected_workflows
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")

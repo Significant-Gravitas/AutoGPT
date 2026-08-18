@@ -4,8 +4,13 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import { getExpertAccent } from "../helpers";
+import {
+  type ExpertCardHiredState,
+  getExpertAccent,
+  getExpertAvatarUrl,
+} from "../helpers";
 import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
@@ -15,12 +20,13 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   expert: Expert;
-  isHired: boolean;
+  hiredState: ExpertCardHiredState;
   onClick: () => void;
 }
 
-export function ExpertCard({ expert, isHired, onClick }: Props) {
+export function ExpertCard({ expert, hiredState, onClick }: Props) {
   const accent = getExpertAccent(expert.role);
+  const avatarUrl = getExpertAvatarUrl(expert);
 
   return (
     <button
@@ -37,8 +43,8 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
       <div className="relative flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-3">
           <Avatar className="h-20 w-20 bg-white shadow-sm ring-1 ring-black/5">
-            {expert.avatar_url ? (
-              <AvatarImage src={expert.avatar_url} alt={expert.name} />
+            {avatarUrl ? (
+              <AvatarImage src={avatarUrl} alt={expert.name} />
             ) : null}
             <AvatarFallback>{expert.name}</AvatarFallback>
           </Avatar>
@@ -93,10 +99,21 @@ export function ExpertCard({ expert, isHired, onClick }: Props) {
             {expert.workflows.length}{" "}
             {expert.workflows.length === 1 ? "workflow" : "workflows"}
           </span>
-          {isHired ? (
+          {hiredState === "hired" ? (
             <span className="flex items-center gap-1.5 text-base font-medium text-emerald-600">
               <Icon icon={CheckmarkCircle02Icon} size={18} />
-              Hired
+              On your team
+            </span>
+          ) : hiredState === "unknown" ? (
+            <Skeleton
+              aria-busy="true"
+              aria-label="Loading team status"
+              className="h-5 w-20 rounded-full"
+            />
+          ) : hiredState === "error" ? (
+            <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">
+              View details
+              <Icon icon={ArrowRight02Icon} size={16} />
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-base font-medium text-zinc-400 transition-colors duration-200 group-hover:text-zinc-900">

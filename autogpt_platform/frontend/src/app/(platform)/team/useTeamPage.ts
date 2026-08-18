@@ -2,6 +2,7 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
+import { queryToAsyncStatus } from "@/types/async-status";
 import { useState } from "react";
 import { getExpertSchedules } from "./helpers";
 
@@ -26,6 +27,16 @@ export function useTeamPage({ enabled }: Args) {
   );
   const schedules = schedulesQuery.data ?? [];
 
+  const schedulesStatus = queryToAsyncStatus(
+    {
+      data: schedulesQuery.data,
+      enabled,
+      isError: schedulesQuery.isError,
+      isFetching: schedulesQuery.isFetching,
+    },
+    { keepCachedData: false },
+  );
+
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedules);
   }
@@ -42,6 +53,10 @@ export function useTeamPage({ enabled }: Args) {
     return Promise.all([expertsQuery.refetch(), schedulesQuery.refetch()]);
   }
 
+  function retrySchedules() {
+    void schedulesQuery.refetch();
+  }
+
   function closeSoul() {
     setSoulExpertId(null);
   }
@@ -55,8 +70,13 @@ export function useTeamPage({ enabled }: Args) {
     hiredExperts,
     schedules,
     schedulesForExpert,
-    isLoading: enabled && (expertsQuery.isLoading || schedulesQuery.isLoading),
-    isError: expertsQuery.isError || schedulesQuery.isError,
+    // Gate loading/error on the primary experts query only; the schedules
+    // query keeps its own status so cards can distinguish "no schedules"
+    // from "schedules still loading / unavailable" without hiding the roster.
+    isLoading: enabled && expertsQuery.isPending,
+    isError: expertsQuery.isError,
+    schedulesStatus,
+    retrySchedules,
     refetch,
     installWorkflow,
     pickerExpertId,

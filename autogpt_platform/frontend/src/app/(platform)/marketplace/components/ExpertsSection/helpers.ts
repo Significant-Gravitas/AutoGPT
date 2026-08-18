@@ -1,3 +1,6 @@
+import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
+import { type AsyncStatus, queryToAsyncStatus } from "@/types/async-status";
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
@@ -52,15 +55,82 @@ const ACCENTS: Record<string, ExpertAccent> = {
   },
 };
 
-const ROLE_ACCENTS: Array<[RegExp, string]> = [
-  [/marketing|growth|brand/i, "violet"],
-  [/sales|revenue/i, "amber"],
-  [/ops|operations|support/i, "sky"],
+const ROLE_ACCENTS: Array<[RegExp, ExpertAccent]> = [
+  [/marketing|growth|brand/i, ACCENTS.violet],
+  [/sales|revenue/i, ACCENTS.amber],
+  [/ops|operations|support/i, ACCENTS.sky],
 ];
 
-export function getExpertAccent(role: string): ExpertAccent {
-  for (const [pattern, key] of ROLE_ACCENTS) {
-    if (pattern.test(role)) return ACCENTS[key];
+function matchRoleAccent(role: string): ExpertAccent | null {
+  for (const [pattern, accent] of ROLE_ACCENTS) {
+    if (pattern.test(role)) return accent;
   }
-  return ACCENTS.zinc;
+  return null;
+}
+
+export function getExpertAccent(role: string): ExpertAccent {
+  return matchRoleAccent(role) ?? ACCENTS.zinc;
+}
+
+export function getExpertAvatarUrl(
+  expert: Pick<Expert, "avatar_url">,
+): string | null {
+  const avatarUrl = expert.avatar_url?.trim();
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith("/") && !avatarUrl.startsWith("//")) {
+    return avatarUrl;
+  }
+  try {
+    return new URL(avatarUrl).protocol === "https:" ? avatarUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getHiredExpertsLookup<
+  T extends Pick<Expert, "id" | "source_template_id" | "is_archived">,
+>(
+  experts: T[] | undefined,
+  query: { enabled: boolean; isError: boolean; isFetching: boolean },
+) {
+  const byTemplateId = new Map<string, T>();
+  for (const expert of experts ?? []) {
+    // A fired (archived) expert must not count as hired — the template
+    // becomes hireable again.
+    if (!expert.is_archived && expert.source_template_id) {
+      byTemplateId.set(expert.source_template_id, expert);
+    }
+  }
+  const state = queryToAsyncStatus(
+    { data: experts, ...query },
+    { keepCachedData: true },
+  );
+  return { byTemplateId, state };
+}
+
+export type ExpertCardHiredState = "hired" | "available" | "unknown" | "error";
+
+export function getExpertCardHiredState(
+  templateId: string,
+  hiredTemplateIds: Set<string>,
+  lookupState: AsyncStatus,
+): ExpertCardHiredState {
+  if (lookupState === "loading") return "unknown" as const;
+  if (lookupState === "error") return "error" as const;
+  return hiredTemplateIds.has(templateId)
+    ? ("hired" as const)
+    : ("available" as const);
+}
+
+export function getExpertFirstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || "Expert";
+}
+
+/** The workflow promised in the day-one highlight. API ordering is not
+ *  contractual and dangling refs have null names, so pick the first workflow
+ *  with displayable copy instead of trusting index 0. */
+export function getDayOneWorkflow(
+  workflows: ExpertWorkflowRef[],
+): ExpertWorkflowRef | null {
+  return workflows.find((workflow) => workflow.name?.trim()) ?? null;
 }

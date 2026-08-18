@@ -7,6 +7,7 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
+import type { AsyncStatus } from "@/types/async-status";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -26,6 +27,8 @@ import { useExpertTeamCard } from "./useExpertTeamCard";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
+  schedulesStatus: AsyncStatus;
+  onRetrySchedules: () => void;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
 }
@@ -33,6 +36,8 @@ interface Props {
 export function ExpertTeamCard({
   expert,
   schedules,
+  schedulesStatus,
+  onRetrySchedules,
   onInstallWorkflow,
   onEditSoul,
 }: Props) {
@@ -54,7 +59,7 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[border-color,box-shadow] duration-200 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div className="relative flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <div className="absolute right-3 top-3 z-10">
         <FireExpertMenu
           expertName={expert.name}
@@ -102,20 +107,37 @@ export function ExpertTeamCard({
             className={cn("h-1.5", !weeklySpend && "opacity-50")}
           />
         </div>
-        <Text variant="small" className="min-h-5 text-zinc-500">
-          {scheduleLabel ?? "No schedules yet"}
-        </Text>
-        <div className="flex min-h-5 items-center gap-2">
-          <Text variant="small" className="text-zinc-500">
-            {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
-          </Text>
-          {needsSetupCount > 0 ? (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
-              {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
-            </span>
-          ) : null}
-        </div>
       </Link>
+      <Text variant="small" className="min-h-5 text-zinc-500">
+        {schedulesStatus === "loading" ? (
+          "Loading schedules…"
+        ) : schedulesStatus === "error" ? (
+          <>
+            Schedules unavailable{" "}
+            <Button
+              type="button"
+              variant="ghost"
+              size="small"
+              onClick={onRetrySchedules}
+              className="h-auto min-w-0 border-0 px-1 py-0 text-xs underline underline-offset-2 hover:bg-transparent hover:text-zinc-700"
+            >
+              Retry
+            </Button>
+          </>
+        ) : (
+          (scheduleLabel ?? "No schedules yet")
+        )}
+      </Text>
+      <div className="flex min-h-5 items-center gap-2">
+        <Text variant="small" className="text-zinc-500">
+          {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
+        </Text>
+        {needsSetupCount > 0 ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
+            {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
+          </span>
+        ) : null}
+      </div>
       {isPaused ? (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
           <Text variant="small" className="text-amber-700">

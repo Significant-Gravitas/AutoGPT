@@ -16,7 +16,10 @@ import {
   getGetV2ListLibraryAgentsMockHandler401,
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
-import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListExecutionSchedulesForAUserMockHandler,
+  getGetV1ListExecutionSchedulesForAUserMockHandler401,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -841,6 +844,61 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(await screen.findByText("Something went wrong")).toBeDefined();
+  });
+
+  test("keeps the roster visible and offers a retry when only the schedules query fails", async () => {
+    let resolveRetry:
+      | ((schedules: GraphExecutionJobInfo[]) => void)
+      | undefined;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler401(),
+    );
+
+    render(<TeamPage />);
+
+    // The primary experts list must not be trapped behind skeletons or an
+    // error card when the secondary schedules fetch fails — and the failure
+    // must not masquerade as "No schedules yet".
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(await screen.findByText("Schedules unavailable")).toBeDefined();
+    expect(screen.queryByText("No schedules yet")).toBeNull();
+
+    server.use(
+      getGetV1ListExecutionSchedulesForAUserMockHandler(
+        () =>
+          new Promise<GraphExecutionJobInfo[]>((resolve) => {
+            resolveRetry = resolve;
+          }),
+      ),
+    );
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry.closest("a")).toBeNull();
+    await userEvent.click(retry);
+
+    expect(await screen.findByText("Loading schedules…")).toBeDefined();
+    expect(screen.queryByText("Schedules unavailable")).toBeNull();
+    await waitFor(() => expect(resolveRetry).toBeDefined());
+    resolveRetry?.([]);
+
+    expect(await screen.findByText("No schedules yet")).toBeDefined();
+    expect(screen.queryByText("Schedules unavailable")).toBeNull();
+  });
+
+  test("shows a schedules loading state instead of claiming no schedules", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler(
+        () => new Promise<GraphExecutionJobInfo[]>(() => {}),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.getByText("Loading schedules…")).toBeDefined();
+    expect(screen.queryByText("No schedules yet")).toBeNull();
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
