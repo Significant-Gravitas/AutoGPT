@@ -201,3 +201,24 @@ async def test_credentials_manager_resolves_the_device_handler():
 
     handler = await IntegrationCredentialsManager()._get_oauth_handler(credentials())
     assert isinstance(handler, StripeLinkDeviceAuthHandler)
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("platform.agpt.co", "AutoGPT on platform.agpt.co"),
+        # Link truncates at 32 chars, and this is the approval sheet's headline —
+        # a clean name beats "AutoGPT on prompt-neat-flea.ngro".
+        ("prompt-neat-flea.ngrok-free.app", "AutoGPT"),
+        ("", "AutoGPT"),
+    ],
+)
+def test_connection_label_never_exceeds_links_limit(host, expected):
+    from backend.integrations.oauth.stripe_link import (
+        CONNECTION_LABEL_MAX_LEN,
+        _connection_label,
+    )
+
+    label = _connection_label(host)
+    assert label == expected
+    assert len(label) <= CONNECTION_LABEL_MAX_LEN

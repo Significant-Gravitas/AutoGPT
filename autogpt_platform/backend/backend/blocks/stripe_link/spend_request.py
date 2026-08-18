@@ -204,6 +204,34 @@ class StripeLinkCreateSpendRequestBlock(Block):
             description="Use test mode (fake card 4242424242424242)",
             default=False,
         )
+        line_items: list[dict[str, Any]] = SchemaField(
+            description=(
+                "Itemised breakdown shown to the user on the approval sheet. "
+                "Each item takes `name` (required) plus optional `quantity`, "
+                "`unit_amount`, `description`, `sku`, `url`, `image_url` and "
+                "`product_url`."
+            ),
+            default_factory=list,
+            advanced=True,
+        )
+        totals: list[dict[str, Any]] = SchemaField(
+            description=(
+                "Total lines shown on the approval sheet. Each takes `type`, "
+                "`display_text` and `amount`. `type` is one of: subtotal, tax, "
+                "total, items_base_amount, items_discount, discount, "
+                "fulfillment, shipping, fee, gift_wrap, tip, store_credit."
+            ),
+            default_factory=list,
+            advanced=True,
+        )
+        metadata: dict[str, str] = SchemaField(
+            description=(
+                "Arbitrary key/value data stored on the spend request. Max 50 "
+                "keys; keys <= 40 chars, values <= 500 chars."
+            ),
+            default_factory=dict,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         spend_request_id: str = SchemaField(
@@ -271,6 +299,18 @@ class StripeLinkCreateSpendRequestBlock(Block):
                     "currency": input_data.currency,
                     "request_approval": input_data.request_approval,
                     "test": input_data.test_mode,
+                    # Omitted when empty rather than sent as [] / {} — these
+                    # drive the approval sheet's presentation, and an explicit
+                    # empty is not the same as "unspecified".
+                    **(
+                        {"line_items": input_data.line_items}
+                        if input_data.line_items
+                        else {}
+                    ),
+                    **({"totals": input_data.totals} if input_data.totals else {}),
+                    **(
+                        {"metadata": input_data.metadata} if input_data.metadata else {}
+                    ),
                 },
             )
             # Note: do NOT also call POST /spend_requests/{id}/request_approval
@@ -338,6 +378,30 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             description="ISO timestamp when the virtual card expires",
             default="",
         )
+        next_action_type: str = SchemaField(
+            description=(
+                "Set when status is `requires_action`: what the user must "
+                "resolve before approval can be requested, e.g. a 3D Secure "
+                "challenge. Empty otherwise."
+            ),
+            default="",
+        )
+        next_action_message: str = SchemaField(
+            description="Human-readable explanation of the required action",
+            default="",
+        )
+        next_action_url: str = SchemaField(
+            description="Where the user resolves the required action",
+            default="",
+        )
+        auto_resumes: bool = SchemaField(
+            description=(
+                "True when the action resolves itself and this block can "
+                "simply be polled again (3D Secure). False means a new spend "
+                "request is needed once the user has acted."
+            ),
+            default=False,
+        )
         error: str = SchemaField(
             description="Error message if the request failed",
             default="",
@@ -394,7 +458,23 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
 
             result = await self._link_api_request(credentials, "GET", path)
 
-            yield "status", result["status"]
+            status = result["status"]
+            yield "status", status
+
+            # `requires_action` is not a failure and not an approval: the card
+            # or account needs attention first. For 3D Secure the resolution is
+            # `auto_resume` and the request clears itself, so the caller should
+            # poll rather than give up; anything else needs a fresh request.
+            if status == "requires_action":
+                action = (
+                    result.get("status_details", {})
+                    .get("requires_action", {})
+                    .get("next_action", {})
+                )
+                yield "next_action_type", action.get("type", "")
+                yield "next_action_message", action.get("display_message", "")
+                yield "next_action_url", action.get("action_url", "")
+                yield "auto_resumes", action.get("resolution") == "auto_resume"
 
             card = result.get("card")
             if card:

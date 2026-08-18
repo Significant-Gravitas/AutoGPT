@@ -30,6 +30,24 @@ LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 LINK_CLIENT_NAME = "AutoGPT"
 
 
+# Link truncates `connection_label` at 32 characters, and the label is the
+# headline of the approval sheet ("<label> is requesting to spend $X"), so an
+# overlong host renders as e.g. "AutoGPT on prompt-neat-flea.ngro".
+CONNECTION_LABEL_MAX_LEN = 32
+
+
+def _connection_label(platform_host: str) -> str:
+    """Build the approval-sheet label, dropping the host if it will not fit."""
+    if not platform_host:
+        return LINK_CLIENT_NAME
+    label = f"{LINK_CLIENT_NAME} on {platform_host}"
+    if len(label) <= CONNECTION_LABEL_MAX_LEN:
+        return label
+    # A truncated host is worse than none: better a clean "AutoGPT" than
+    # "AutoGPT on prompt-neat-flea.ngro".
+    return LINK_CLIENT_NAME
+
+
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
     """Device code handler for Stripe Link."""
 
@@ -55,11 +73,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
         # container ID the user has never seen — the platform they are actually
         # connecting to is the useful half.
         platform_host = urlparse(app_config.platform_base_url or "").netloc
-        connection_label = (
-            f"{LINK_CLIENT_NAME} on {platform_host}"
-            if platform_host
-            else LINK_CLIENT_NAME
-        )
+        connection_label = _connection_label(platform_host)
 
         # RFC 9396 rich authorization details. Link gates its read endpoints
         # (/balances, /transactions, /sources) on these source actions being
