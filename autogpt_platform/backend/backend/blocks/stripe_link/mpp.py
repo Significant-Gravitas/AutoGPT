@@ -13,13 +13,16 @@ virtual-card flow instead — see `spend_request.py`.
 
 import base64
 import json
-import logging
 import re
 from typing import Any
 
-import httpx
-
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.stripe_link._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -29,10 +32,12 @@ from backend.blocks.stripe_link._auth import (
 )
 from backend.blocks.stripe_link.spend_request import link_api_request
 from backend.data.model import SchemaField
-
-logger = logging.getLogger(__name__)
+from backend.util.request import Requests, Response
 
 PAYMENT_SCHEME = "Payment"
+# Merchant-controlled data: bound what we decode and what we echo back.
+MAX_REQUEST_BLOB_BYTES = 16 * 1024
+MAX_ERROR_BODY_CHARS = 1000
 # Fields `mppx` keeps on the wire challenge; anything else the server sends is
 # dropped rather than echoed back.
 CHALLENGE_FIELDS = frozenset(
@@ -68,9 +73,18 @@ def parse_payment_challenges(header: str) -> list[dict[str, str]]:
 
 
 def decode_payment_request(encoded: str) -> dict[str, Any]:
-    """Decode a challenge's base64url `request` blob."""
+    """Decode a challenge's base64url `request` blob.
+
+    The blob comes from the merchant, so it is size-bounded and the result is
+    type-checked — `json.loads` can return a list or a scalar just as easily.
+    """
+    if len(encoded) > MAX_REQUEST_BLOB_BYTES:
+        raise ValueError("Payment challenge request blob is implausibly large")
     padded = encoded + "=" * (-len(encoded) % 4)
-    return json.loads(base64.urlsafe_b64decode(padded))
+    decoded = json.loads(base64.urlsafe_b64decode(padded))
+    if not isinstance(decoded, dict):
+        raise ValueError("Payment challenge request must decode to an object")
+    return decoded
 
 
 def build_credential(challenge: dict[str, str], spt: str) -> str:
@@ -90,6 +104,18 @@ def build_credential(challenge: dict[str, str], spt: str) -> str:
         .rstrip("=")
     )
     return f"{PAYMENT_SCHEME} {encoded}"
+
+
+def select_stripe_challenge(header: str) -> dict[str, str] | None:
+    """Pick the Stripe challenge from a `WWW-Authenticate` value, if offered.
+
+    Merchants may advertise several methods (an onchain one alongside Stripe);
+    only the Stripe one is payable with a Link token.
+    """
+    return next(
+        (c for c in parse_payment_challenges(header) if c.get("method") == "stripe"),
+        None,
+    )
 
 
 class StripeLinkGetPaymentChallengeBlock(Block):
@@ -136,7 +162,7 @@ class StripeLinkGetPaymentChallengeBlock(Block):
                 "challenge to learn the network ID and amount. Feed those into "
                 "Create Spend Request with credential type 'shared_payment_token'."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"url": "https://merchant.example/api/buy"},
@@ -169,16 +195,19 @@ class StripeLinkGetPaymentChallengeBlock(Block):
         )
 
     @staticmethod
-    async def _probe(url: str, method: str, body: dict) -> tuple[int, str]:
-        """Make the unauthenticated request and return (status, challenge header)."""
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.request(
-                method,
-                url,
-                json=body or None,
-                headers={"Content-Type": "application/json"},
-            )
-        return response.status_code, response.headers.get("www-authenticate", "")
+    async def _probe(url: str, method: str, body: dict[str, Any]) -> tuple[int, str]:
+        """Make the unauthenticated request and return (status, challenge header).
+
+        Goes through `Requests`, which validates the URL before connecting. The
+        URL comes from the agent, so a raw client here would be an SSRF hole.
+        """
+        response = await Requests(raise_for_status=False).request(
+            method,
+            url,
+            json=body or None,
+            headers={"Content-Type": "application/json"},
+        )
+        return response.status, response.headers.get("www-authenticate", "")
 
     async def run(self, input_data: Input, **kwargs: Any) -> BlockOutput:
         try:
@@ -254,7 +283,7 @@ class StripeLinkMPPPayBlock(Block):
                 "no checkout form. The token is single-use — a failed payment "
                 "needs a fresh spend request."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -322,48 +351,52 @@ class StripeLinkMPPPayBlock(Block):
             yield "error", str(e)
 
     async def _pay_with_token(
-        self, spt: str, url: str, method: str, body: dict, headers: dict
+        self,
+        spt: str,
+        url: str,
+        method: str,
+        body: dict[str, Any],
+        headers: dict[str, str],
     ) -> tuple[int, dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=45) as client:
-            base_headers = {"Content-Type": "application/json", **headers}
-            first = await client.request(
-                method, url, json=body or None, headers=base_headers
+        """Probe for a challenge, then retry the request carrying the token.
+
+        Every hop goes through `Requests`. The URL is agent-supplied and the
+        retry carries the SPT — a bearer credential that can authorize a charge
+        — so an unvalidated client could be steered into handing a payment
+        token to an arbitrary or internal host.
+        """
+        client = Requests(raise_for_status=False)
+        # Caller headers first, so they cannot displace Content-Type or, more
+        # importantly, the Authorization we are about to attach.
+        base_headers = {**headers, "Content-Type": "application/json"}
+
+        first = await client.request(
+            method, url, json=body or None, headers=base_headers
+        )
+        if first.status != 402:
+            # Nothing to pay — it either succeeded outright or failed for an
+            # unrelated reason. Report what happened either way.
+            return first.status, _json_or_text(first)
+
+        challenge = select_stripe_challenge(first.headers.get("www-authenticate", ""))
+        if challenge is None:
+            raise RuntimeError(
+                "Merchant returned 402 without a Stripe payment challenge"
             )
-            if first.status_code != 402:
-                # Nothing to pay — either it succeeded outright or it failed for
-                # an unrelated reason. Either way, report what happened.
-                return first.status_code, _json_or_text(first)
 
-            challenge = next(
-                (
-                    c
-                    for c in parse_payment_challenges(
-                        first.headers.get("www-authenticate", "")
-                    )
-                    if c.get("method") == "stripe"
-                ),
-                None,
-            )
-            if challenge is None:
-                raise RuntimeError(
-                    "Merchant returned 402 without a Stripe payment challenge"
-                )
-
-            retry = await client.request(
-                method,
-                url,
-                json=body or None,
-                headers={
-                    **base_headers,
-                    "Authorization": build_credential(challenge, spt),
-                },
-            )
-            return retry.status_code, _json_or_text(retry)
+        retry = await client.request(
+            method,
+            url,
+            json=body or None,
+            headers={**base_headers, "Authorization": build_credential(challenge, spt)},
+        )
+        return retry.status, _json_or_text(retry)
 
 
-def _json_or_text(response: httpx.Response) -> dict[str, Any]:
+def _json_or_text(response: Response) -> dict[str, Any]:
+    """Normalize a merchant response into a dict output, bounded in size."""
     try:
         parsed = response.json()
         return parsed if isinstance(parsed, dict) else {"data": parsed}
     except Exception:
-        return {"body": response.text[:1000]}
+        return {"body": response.text()[:MAX_ERROR_BODY_CHARS]}

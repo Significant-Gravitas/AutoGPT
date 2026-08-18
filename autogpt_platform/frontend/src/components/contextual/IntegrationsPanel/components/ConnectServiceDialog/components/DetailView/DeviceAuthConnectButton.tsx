@@ -59,10 +59,13 @@ export function DeviceAuthConnectButton({
           <Text variant="small" className="font-medium text-[#83838C]">
             Your code
           </Text>
+          {/* unmask={false}: Text unmasks for session replay by default, and
+              this is a live authorization code — it must not be recorded. */}
           <Text
             variant="h3"
             as="p"
-            className="select-all text-center font-mono text-2xl tracking-widest text-[#1F1F20]"
+            unmask={false}
+            className="select-all text-center font-mono text-2xl tracking-widest text-zinc-800"
           >
             {userCode}
           </Text>

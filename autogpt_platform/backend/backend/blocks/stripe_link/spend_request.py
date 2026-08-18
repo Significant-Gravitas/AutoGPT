@@ -7,9 +7,18 @@ card or shared payment token from the user's Link wallet.
 """
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+import httpx
+from pydantic import model_validator
+
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.stripe_link._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -26,6 +35,8 @@ logger = logging.getLogger(__name__)
 # Shared helpers
 # ---------------------------------------------------------------------------
 LINK_API_BASE = "https://api.link.com"
+CREDENTIAL_TYPE_CARD = "card"
+CREDENTIAL_TYPE_SPT = "shared_payment_token"
 
 
 async def link_api_request(
@@ -44,8 +55,6 @@ async def link_api_request(
     lock, and persists the rotated tokens. Refreshing inside the block would
     bypass both and let concurrent nodes stampede the token endpoint.
     """
-    import httpx
-
     headers = {
         "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
         "Content-Type": "application/json",
@@ -102,7 +111,7 @@ class StripeLinkListPaymentMethodsBlock(Block):
                 "Use this first to pick a payment method ID for Create Spend "
                 "Request."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -238,7 +247,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
             default_factory=list,
             advanced=True,
         )
-        credential_type: str = SchemaField(
+        credential_type: Literal["card", "shared_payment_token"] = SchemaField(
             description=(
                 "What the spend request provisions. `card` (default) yields a "
                 "one-time virtual card. `shared_payment_token` yields an SPT "
@@ -257,6 +266,23 @@ class StripeLinkCreateSpendRequestBlock(Block):
             default="",
             advanced=True,
         )
+
+        @model_validator(mode="after")
+        def _network_id_required_for_spt(self):
+            """`shared_payment_token` identifies the merchant by network ID.
+
+            Without it we strip merchant_name/merchant_url *and* send no
+            network_id, so Link receives a request with no merchant at all and
+            fails obscurely. Catch it at the boundary instead.
+            """
+            if self.credential_type == CREDENTIAL_TYPE_SPT and not self.network_id:
+                raise ValueError(
+                    "network_id is required when credential_type is "
+                    "'shared_payment_token' — read it from the merchant's "
+                    "HTTP 402 challenge (see the Get Payment Challenge block)"
+                )
+            return self
+
         metadata: dict[str, str] = SchemaField(
             description=(
                 "Arbitrary key/value data stored on the spend request. Max 50 "
@@ -295,7 +321,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
                 "the Get Payment Challenge block. The user approves on their "
                 "phone before anything is spendable."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
@@ -327,7 +353,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
         credentials: StripeLinkCredentials,
         **kwargs: Any,
     ) -> BlockOutput:
-        is_spt = input_data.credential_type == "shared_payment_token"
+        is_spt = input_data.credential_type == CREDENTIAL_TYPE_SPT
         try:
             result = await self._link_api_request(
                 credentials,
@@ -365,7 +391,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
                     ),
                     **(
                         {"credential_type": input_data.credential_type}
-                        if input_data.credential_type != "card"
+                        if input_data.credential_type != CREDENTIAL_TYPE_CARD
                         else {}
                     ),
                     **(
@@ -466,9 +492,12 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
         shared_payment_token: str = SchemaField(
             description=(
                 "One-time Shared Payment Token, when the request was created "
-                "with `credential_type: shared_payment_token`. Empty otherwise."
+                "with `credential_type: shared_payment_token`. Empty otherwise. "
+                "This is a bearer credential that can authorize a charge, and "
+                "block outputs are persisted — treat it like the card fields."
             ),
             default="",
+            secret=True,
         )
         next_action_type: str = SchemaField(
             description=(
@@ -511,7 +540,7 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
                 "poll again when `auto_resumes` is true, otherwise resolve the "
                 "action and create a new request."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

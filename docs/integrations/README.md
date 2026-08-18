@@ -86,13 +86,6 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
 | [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
 | [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
-| [Stripe Link Create Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-spend-request) | Ask the user to authorize a payment, then provision a single-use credential for it |
-| [Stripe Link Get Payment Challenge](block-integrations/stripe_link/mpp.md#stripe-link-get-payment-challenge) | Step 1 of paying an MPP merchant: read its HTTP 402 payment challenge to learn the network ID and amount |
-| [Stripe Link Get Shipping Address](block-integrations/stripe_link/profile.md#stripe-link-get-shipping-address) | Get the delivery addresses saved on the user's Link wallet, with the default one resolved for you |
-| [Stripe Link Get User Info](block-integrations/stripe_link/profile.md#stripe-link-get-user-info) | Get the Link account holder's name, email and phone |
-| [Stripe Link List Payment Methods](block-integrations/stripe_link/spend_request.md#stripe-link-list-payment-methods) | List the cards and bank accounts in the user's Link wallet |
-| [Stripe Link MPP Pay](block-integrations/stripe_link/mpp.md#stripe-link-mpp-pay) | Step 3 of paying an MPP merchant: spend an approved Shared Payment Token at the merchant's endpoint |
-| [Stripe Link Retrieve Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-spend-request) | Check a spend request and collect its credential once the user has approved |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
 | [Zip Lists](block-integrations/basic.md#zip-lists) | Zips multiple lists together into a list of grouped elements |
@@ -192,6 +185,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
+| [Stripe Link Create Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-spend-request) | Ask the user to authorize a payment, then provision a single-use credential for it |
+| [Stripe Link Get Payment Challenge](block-integrations/stripe_link/mpp.md#stripe-link-get-payment-challenge) | Step 1 of paying an MPP merchant: read its HTTP 402 payment challenge to learn the network ID and amount |
+| [Stripe Link Get Shipping Address](block-integrations/stripe_link/profile.md#stripe-link-get-shipping-address) | Get the delivery addresses saved on the user's Link wallet, with the default one resolved for you |
+| [Stripe Link Get User Info](block-integrations/stripe_link/profile.md#stripe-link-get-user-info) | Get the Link account holder's name, email and phone |
+| [Stripe Link List Payment Methods](block-integrations/stripe_link/spend_request.md#stripe-link-list-payment-methods) | List the cards and bank accounts in the user's Link wallet |
+| [Stripe Link MPP Pay](block-integrations/stripe_link/mpp.md#stripe-link-mpp-pay) | Step 3 of paying an MPP merchant: spend an approved Shared Payment Token at the merchant's endpoint |
+| [Stripe Link Retrieve Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-spend-request) | Check a spend request and collect its credential once the user has approved |
 | [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
 
 ## Text Processing

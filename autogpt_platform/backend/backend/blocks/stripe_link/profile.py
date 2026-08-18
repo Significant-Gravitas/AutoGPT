@@ -5,10 +5,15 @@ Read-only lookups an agent needs to actually complete a purchase: who the
 user is, and where to ship. Both are separate from the spend-request flow.
 """
 
-import logging
 from typing import Any
 
-from backend.blocks._base import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.stripe_link._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -18,8 +23,6 @@ from backend.blocks.stripe_link._auth import (
 )
 from backend.blocks.stripe_link.spend_request import link_api_request
 from backend.data.model import SchemaField
-
-logger = logging.getLogger(__name__)
 
 
 class StripeLinkGetUserInfoBlock(Block):
@@ -52,7 +55,7 @@ class StripeLinkGetUserInfoBlock(Block):
                 "to fill in a checkout that asks who the buyer is. Pairs with "
                 "Get Shipping Address for anything physical."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
@@ -133,7 +136,7 @@ class StripeLinkGetShippingAddressBlock(Block):
                 "with the default one resolved for you. Use it for any "
                 "purchase that ships something."
             ),
-            categories=set(),
+            categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},

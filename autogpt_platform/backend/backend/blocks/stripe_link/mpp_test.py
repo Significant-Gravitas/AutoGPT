@@ -163,3 +163,149 @@ async def test_challenge_block_ignores_a_402_without_a_stripe_method():
     outputs = {n: v async for n, v in block.run(inp)}
 
     assert outputs["supports_mpp"] is False
+
+
+class _FakeResponse:
+    """Stands in for `backend.util.request.Response`."""
+
+    def __init__(self, status: int, payload=None, headers=None, text=""):
+        self.status = status
+        self._payload = payload
+        self.headers = headers or {}
+        self._text = text
+
+    def json(self):
+        if self._payload is None:
+            raise ValueError("no json")
+        return self._payload
+
+    def text(self):
+        return self._text
+
+
+class _RecordingClient:
+    """Returns queued responses and records every request made."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls: list[dict] = []
+
+    async def request(self, method, url, *, json=None, headers=None):
+        self.calls.append(
+            {"method": method, "url": url, "json": json, "headers": headers or {}}
+        )
+        return self._responses.pop(0)
+
+
+def _patch_requests(monkeypatch, client):
+    from backend.blocks.stripe_link import mpp
+
+    monkeypatch.setattr(mpp, "Requests", lambda *a, **kw: client)
+
+
+CHALLENGE_HEADER = (
+    'Payment id="ch_1", realm="merchant.example", method="stripe", '
+    'intent="charge", request="eyJhIjoxfQ"'
+)
+
+
+@pytest.mark.asyncio
+async def test_pay_attaches_the_credential_on_the_retry(monkeypatch):
+    """The heart of MPP: probe unauthenticated, then retry carrying the token."""
+    client = _RecordingClient(
+        [
+            _FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER}),
+            _FakeResponse(200, payload={"contribution_id": "pi_1"}),
+        ]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    status, payload = await block._pay_with_token(
+        "spt_abc", "https://merchant.example/buy", "POST", {"amount": 100}, {}
+    )
+
+    assert status == 200
+    assert payload == {"contribution_id": "pi_1"}
+    assert len(client.calls) == 2
+    # First hop must be unauthenticated — that is what elicits the challenge.
+    assert "Authorization" not in client.calls[0]["headers"]
+    credential = client.calls[1]["headers"]["Authorization"]
+    assert credential.startswith("Payment ")
+    assert (
+        "spt_abc"
+        in base64.urlsafe_b64decode(credential.split(" ", 1)[1] + "==").decode()
+    )
+
+
+@pytest.mark.asyncio
+async def test_pay_does_not_retry_when_the_merchant_did_not_ask_for_payment(
+    monkeypatch,
+):
+    """A 200 on the first hop means nothing is owed; sending the token anyway
+    would leak a bearer credential for no reason."""
+    client = _RecordingClient([_FakeResponse(200, payload={"ok": True})])
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    status, payload = await block._pay_with_token(
+        "spt_abc", "https://merchant.example/buy", "POST", {}, {}
+    )
+
+    assert status == 200 and payload == {"ok": True}
+    assert len(client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_pay_raises_when_402_offers_no_stripe_method(monkeypatch):
+    onchain_only = (
+        'Payment id="c", realm="m", method="tempo", intent="charge", request="e30"'
+    )
+    client = _RecordingClient(
+        [_FakeResponse(402, headers={"www-authenticate": onchain_only})]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    with pytest.raises(RuntimeError, match="without a Stripe payment challenge"):
+        await block._pay_with_token(
+            "spt_abc", "https://merchant.example/buy", "POST", {}, {}
+        )
+
+
+@pytest.mark.asyncio
+async def test_caller_headers_cannot_displace_the_credential(monkeypatch):
+    """A caller-supplied Authorization must not survive into the paid retry."""
+    client = _RecordingClient(
+        [
+            _FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER}),
+            _FakeResponse(200, payload={"ok": True}),
+        ]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    await block._pay_with_token(
+        "spt_abc",
+        "https://merchant.example/buy",
+        "POST",
+        {},
+        {"Authorization": "Bearer attacker", "Content-Type": "text/plain"},
+    )
+
+    retry_headers = client.calls[1]["headers"]
+    assert retry_headers["Authorization"].startswith("Payment ")
+    assert retry_headers["Content-Type"] == "application/json"
+
+
+def test_oversized_request_blob_is_refused():
+    """The blob is merchant-controlled; decoding it unbounded is a DoS vector."""
+    with pytest.raises(ValueError, match="implausibly large"):
+        decode_payment_request("A" * (17 * 1024))
+
+
+def test_non_object_request_blob_is_refused():
+    """`json.loads` can return a list; downstream `.get()` would explode."""
+    encoded = base64.urlsafe_b64encode(b"[1,2,3]").decode().rstrip("=")
+    with pytest.raises(ValueError, match="must decode to an object"):
+        decode_payment_request(encoded)
