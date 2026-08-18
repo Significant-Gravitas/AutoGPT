@@ -4,6 +4,11 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { formatDistanceToNow } from "date-fns";
 
+/** Section headings sit outside the cards, so they need the cards' own content
+ *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
+ *  up with the text inside them instead of with the card edge. */
+export const SECTION_INSET_CLASS = "px-5";
+
 interface PodGroup {
   pod: ExpertPod;
   experts: Expert[];

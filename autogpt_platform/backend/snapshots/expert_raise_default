@@ -3,6 +3,7 @@
     "avatar_url": null,
     "bio": null,
     "boundaries": "",
+    "color": "",
     "id": "raised-1",
     "identity": "I'm Otto, raised by you. I learn how you work and grow with you.",
     "is_archived": false,
@@ -26,6 +27,5 @@
     "weekly_spend": 0,
     "workflows": []
   },
-  "first_job_failure_reason": null,
-  "first_job_installed": false
+  "failed_attachments": []
 }

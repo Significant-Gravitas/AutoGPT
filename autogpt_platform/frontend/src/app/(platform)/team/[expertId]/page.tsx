@@ -1,6 +1,6 @@
 "use client";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import {
   Avatar,
   AvatarFallback,
@@ -27,7 +27,7 @@ import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-8 pb-20 pt-16 sm:px-8 md:px-12";
+  "container min-h-screen space-y-8 pb-20 pt-8 sm:px-8 md:px-12";
 
 function BackToTeamLink() {
   return (
@@ -92,7 +92,7 @@ export default function ExpertDetailPage() {
     );
   }
 
-  const accent = getExpertAccent(expert.role);
+  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   return (

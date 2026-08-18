@@ -27,6 +27,7 @@ import { getOttoMock } from "@/app/api/__generated__/endpoints/otto/otto.msw";
 import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
+import { getSkillsMock } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 
@@ -71,6 +72,7 @@ export const mockHandlers = [
   ...getPresetsMock(),
   ...getSchedulesMock(),
   ...getSearchMock(),
+  ...getSkillsMock(),
   ...getStoreMock(),
   ...getWorkspaceMock(),
 ];

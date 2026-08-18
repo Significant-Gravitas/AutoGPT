@@ -715,14 +715,10 @@ describe("ChatMessagesContainer — readOnly mode", () => {
   });
 });
 
-// ── expert-kickoff hiding ─────────────────────────────────────────────────
+// ── expert kickoff ────────────────────────────────────────────────────────
 
-describe("ChatMessagesContainer — expert kickoff hiding", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("hides the marked kickoff user message but renders the reply", () => {
+describe("ChatMessagesContainer — expert kickoff", () => {
+  it("shows the kickoff prompt as a user message above the reply", () => {
     const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
     render(
       <ChatMessagesContainer
@@ -744,7 +740,7 @@ describe("ChatMessagesContainer — expert kickoff hiding", () => {
       />,
     );
 
-    expect(screen.queryAllByTestId("message-user")).toHaveLength(0);
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
     expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
       0,
     );

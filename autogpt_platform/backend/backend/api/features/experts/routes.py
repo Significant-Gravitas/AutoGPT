@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
+    EXPERT_AVATAR_URL_MAX_LENGTH,
+    EXPERT_COLOR_MAX_LENGTH,
+    EXPERT_IDENTITY_MAX_LENGTH,
+    MAX_RAISE_ATTACHMENTS,
+    WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
     ExpertDetachPreview,
     ExpertIdentity,
@@ -13,7 +18,9 @@ from backend.api.features.experts.models import (
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
     RaiseResult,
+    validate_avatar_url,
 )
 
 router = APIRouter(
@@ -54,16 +61,43 @@ class AssignPodRequest(BaseModel):
 class CreateRaisedExpertRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     role: str | None = Field(default=None, max_length=100)
+    avatar_url: str | None = Field(
+        default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
+    )
+    # Opaque design token (e.g. "sky-300"); the client maps it to a palette.
+    color: str | None = Field(default=None, max_length=EXPERT_COLOR_MAX_LENGTH)
     voice_preferences: str | None = Field(default=None, max_length=4_000)
-    first_job_store_listing_version_id: str | None = Field(default=None, max_length=100)
+    # Free-text "about them" answer from the raise flow; becomes the identity.
+    about: str | None = Field(default=None, max_length=EXPERT_IDENTITY_MAX_LENGTH)
+    # Credits (100 = $1). Omitted/null keeps the platform default at read time.
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+    attachments: list[RaiseAttachment] = Field(
+        default_factory=list, max_length=MAX_RAISE_ATTACHMENTS
+    )
 
-    @field_validator("name")
+    # "before" so the length bounds apply to the trimmed name and a blank one
+    # fails with the message below rather than the generic min_length error.
+    @field_validator("name", mode="before")
     @classmethod
-    def strip_name(cls, value: str) -> str:
+    def strip_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         stripped = value.strip()
         if not stripped:
             raise ValueError("Name must not be blank")
         return stripped
+
+    @field_validator("avatar_url")
+    @classmethod
+    def check_avatar_url(cls, value: str | None) -> str | None:
+        return validate_avatar_url(value)
+
+    @field_validator("color", "about")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 @router.get("/templates", operation_id="list_expert_templates")
@@ -111,7 +145,7 @@ async def hire_expert(
     "/raise",
     operation_id="create_raised_expert",
     responses={
-        404: {"description": "First job listing not found or unavailable"},
+        404: {"description": "Attachment not found or unavailable"},
         409: {"description": "Active expert limit reached"},
     },
 )
@@ -125,14 +159,20 @@ async def create_raised_expert(
             request.name,
             request.role,
             request.voice_preferences,
-            request.first_job_store_listing_version_id,
+            avatar_url=request.avatar_url,
+            color=request.color,
+            about=request.about,
+            weekly_budget=request.weekly_budget,
+            attachments=request.attachments,
         )
     except experts_db.FirstJobUnavailableError as e:
         raise fastapi.HTTPException(
             status_code=404,
             detail={
-                "code": "first_job_unavailable",
-                "store_listing_version_id": e.store_listing_version_id,
+                "code": "attachment_unavailable",
+                "kind": e.kind,
+                "source": e.source,
+                "id": e.id,
             },
         )
     except experts_db.ExpertLimitExceededError as e:

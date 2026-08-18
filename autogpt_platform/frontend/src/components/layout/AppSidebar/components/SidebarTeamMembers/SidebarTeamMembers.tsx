@@ -10,24 +10,25 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  SidebarMenuAction,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
-import { MARKETPLACE_EXPERTS_HREF } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import {
-  getExpertChatHref,
-  getPresenceColor,
-  getPresenceLabel,
-} from "./helpers";
+import { getExpertHref, getPresenceColor, getPresenceLabel } from "./helpers";
 import { useSidebarTeamMembers } from "./useSidebarTeamMembers";
 
 // Caps the nested list so the sidebar's overflow-hidden container can never
-// clip the trailing "Hire" action; the full roster lives on /team.
-export const SIDEBAR_TEAM_PREVIEW_COUNT = 5;
+// clip the trailing "View all" row; the full roster lives on /team.
+export const SIDEBAR_TEAM_PREVIEW_COUNT = 3;
 
 export function SidebarTeamMembers() {
   const { isEnabled, members } = useSidebarTeamMembers();
@@ -38,39 +39,36 @@ export function SidebarTeamMembers() {
   const hasHiddenMembers = members.length > visibleMembers.length;
 
   return (
-    <SidebarMenuSub>
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton asChild>
-          <Link href="/copilot">
-            <ExpertAvatar name={null} avatarUrl={null} size={20} />
-            <span className="truncate">Your AI</span>
-          </Link>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
+    <Collapsible defaultOpen className="group/team">
+      {/* Rendered as a menu action so the row's <Link> keeps navigating to
+          /team while the chevron only toggles the nested roster. */}
+      <CollapsibleTrigger asChild>
+        <SidebarMenuAction aria-label="Toggle team members">
+          <Icon
+            icon={ArrowDown01Icon}
+            className="ease-[cubic-bezier(0.33,1,0.68,1)] size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[state=open]/team:rotate-180 motion-reduce:transition-none"
+          />
+        </SidebarMenuAction>
+      </CollapsibleTrigger>
 
-      {visibleMembers.map((member) => (
-        <TeamMemberRow key={member.expert.id} member={member} />
-      ))}
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+        <SidebarMenuSub>
+          {visibleMembers.map((member) => (
+            <TeamMemberRow key={member.expert.id} member={member} />
+          ))}
 
-      {hasHiddenMembers && (
-        <SidebarMenuSubItem>
-          <SidebarMenuSubButton asChild className="text-zinc-500">
-            <Link href="/team">
-              <span className="truncate">View all ({members.length})</span>
-            </Link>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      )}
-
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton asChild className="text-zinc-500">
-          <Link href={MARKETPLACE_EXPERTS_HREF}>
-            <Icon icon={PlusSignIcon} className="size-4" />
-            <span className="truncate">Hire</span>
-          </Link>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
-    </SidebarMenuSub>
+          {hasHiddenMembers && (
+            <SidebarMenuSubItem>
+              <SidebarMenuSubButton asChild className="text-zinc-500">
+                <Link href="/team">
+                  <span className="truncate">View all ({members.length})</span>
+                </Link>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          )}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -85,7 +83,7 @@ function TeamMemberRow({ member }: Props) {
   return (
     <SidebarMenuSubItem>
       <SidebarMenuSubButton asChild>
-        <Link href={getExpertChatHref(expert.id)}>
+        <Link href={getExpertHref(expert.id)}>
           <ExpertAvatar
             name={expert.name}
             avatarUrl={expert.avatar_url}

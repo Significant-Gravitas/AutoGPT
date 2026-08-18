@@ -6031,9 +6031,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": {
-            "description": "First job listing not found or unavailable"
-          },
+          "404": { "description": "Attachment not found or unavailable" },
           "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
@@ -17095,6 +17093,20 @@
             ],
             "title": "Role"
           },
+          "avatar_url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
           "voice_preferences": {
             "anyOf": [
               { "type": "string", "maxLength": 4000 },
@@ -17102,12 +17114,25 @@
             ],
             "title": "Voice Preferences"
           },
-          "first_job_store_listing_version_id": {
+          "about": {
             "anyOf": [
-              { "type": "string", "maxLength": 100 },
+              { "type": "string", "maxLength": 10000 },
               { "type": "null" }
             ],
-            "title": "First Job Store Listing Version Id"
+            "title": "About"
+          },
+          "weekly_budget": {
+            "anyOf": [
+              { "type": "integer", "maximum": 1000000.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Weekly Budget"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachment" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Attachments"
           }
         },
         "type": "object",
@@ -18367,6 +18392,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23407,32 +23433,67 @@
         "title": "QueuePendingMessageResponse",
         "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
       },
-      "RaiseResult": {
+      "RaiseAttachment": {
         "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "first_job_installed": {
-            "type": "boolean",
-            "title": "First Job Installed"
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
           },
-          "first_job_failure_reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": ["unavailable", "installation_failed"]
-              },
-              { "type": "null" }
-            ],
-            "title": "First Job Failure Reason"
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Id"
           }
         },
         "type": "object",
-        "required": [
-          "expert",
-          "first_job_installed",
-          "first_job_failure_reason"
-        ],
+        "required": ["kind", "source", "id"],
+        "title": "RaiseAttachment",
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+      },
+      "RaiseAttachmentFailure": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "reason": {
+            "type": "string",
+            "enum": ["unavailable", "installation_failed"],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "source", "id", "reason"],
+        "title": "RaiseAttachmentFailure"
+      },
+      "RaiseResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachmentFailure" },
+            "type": "array",
+            "title": "Failed Attachments",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["expert"],
         "title": "RaiseResult",
-        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op. The stable\nfailure reason distinguishes a listing withdrawn mid-flow from an install\nfailure."
+        "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
       },
       "RateLimitResetResponse": {
         "properties": {

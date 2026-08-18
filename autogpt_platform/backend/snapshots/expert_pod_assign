@@ -2,6 +2,7 @@
   "avatar_url": null,
   "bio": null,
   "boundaries": "Ask before external actions.",
+  "color": "",
   "id": "expert-1",
   "identity": "You are Maria, a pragmatic marketing specialist.",
   "is_archived": false,

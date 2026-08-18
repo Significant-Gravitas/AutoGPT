@@ -4,9 +4,43 @@ import {
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 
-export type RaiseStep = "name" | "voice" | "firstJob" | "review";
+export type RaiseStep =
+  | "role"
+  | "name"
+  | "color"
+  | "avatar"
+  | "about"
+  | "voice"
+  | "budget"
+  | "marketplace"
+  | "skills"
+  | "done";
 
-export const NAME_CHIPS = ["Otto", "Nova", "Juno"];
+export const STEP_ORDER: RaiseStep[] = [
+  "role",
+  "name",
+  "color",
+  "avatar",
+  "about",
+  "voice",
+  "budget",
+  "marketplace",
+  "skills",
+  "done",
+];
+
+export interface RaiseAttachmentDraft {
+  kind: "workflow" | "skill";
+  source: "marketplace" | "library";
+  id: string;
+  name: string;
+  marketplaceKey?: string;
+}
+
+export interface RaiseKit {
+  weeklyBudget: number | null;
+  attachments: RaiseAttachmentDraft[];
+}
 
 export const VOICE_SAMPLES: VoiceSample[] = [
   {
@@ -20,31 +54,60 @@ export const VOICE_SAMPLES: VoiceSample[] = [
 ];
 
 export const RAISE_PROMPTS = {
-  name: "Hi. I don't have a name yet — that's where you come in.",
-  voice: (name: string) =>
-    `Nice to meet you, ${name}. How should I sound when I write?`,
-  firstJob:
-    "What should I take on first? Pick a starter job, or skip and we'll figure it out together.",
-  review: "That's me so far. Ready when you are — I'll open our first chat.",
+  greeting: "Hello, I'm Autopilot. I'll help you raise your own expert.",
+  roleQuestion: "First — what should your expert do for you?",
+  nameQuestion: "Good pick. What do you want to call it?",
+  colorQuestion: "Nice. Now choose a color for it.",
+  avatarQuestion: (name: string) =>
+    `Want to give ${name || "it"} a face? Upload a picture, let me generate one, or skip it.`,
+  aboutQuestion: (name: string) =>
+    `Anything else I should know about ${name || "your expert"}? How it should work, what matters to you — or skip it.`,
+  voiceQuestion: (name: string) =>
+    `How should ${name || "your expert"} sound when it writes? Pick the one that feels right.`,
+  budgetQuestion: (name: string) =>
+    `How much weekly budget should ${name || "your expert"} have? 500 credits is the default — pick an amount, or skip.`,
+  marketplaceQuestion: (name: string) =>
+    `Want ${name || "your expert"} to run workflows? Search the marketplace and your library, then add any you like — or skip.`,
+  skillsQuestion: (name: string) =>
+    `Should ${name || "your expert"} have extra skills? Add from your library, or a marketplace agent as a skill — or skip.`,
 };
 
+// Beat before each question lands, so the control that triggered it settles
+// into its new state first.
+export const PROMPT_DELAY_MS = 500;
+
 export const VOICE_SKIPPED_LABEL = "I'll decide the voice later";
-export const FIRST_JOB_SKIPPED_LABEL = "Skip for now";
 
 export interface RaiseDraft {
   step: RaiseStep;
+  hasStarted: boolean;
+  role: string | null;
   name: string;
+  color: string | null;
+  // "" once the user skips, so the question is not asked again on restore.
+  avatarUrl: string | null;
+  about: string | null;
   voicePreferences: string;
   voiceLabel: string | null;
-  firstJob: { id: string; name: string } | null;
+  // Outer null = not answered yet. credits null = skipped (platform default).
+  budget: { credits: number | null } | null;
+  marketplace: RaiseAttachmentDraft[] | null;
+  skills: RaiseAttachmentDraft[] | null;
 }
 
 export const EMPTY_DRAFT: RaiseDraft = {
-  step: "name",
+  step: "role",
+  hasStarted: false,
+  role: null,
   name: "",
+  color: null,
+  avatarUrl: null,
+  about: null,
   voicePreferences: "",
   voiceLabel: null,
-  firstJob: null,
+  budget: null,
+  marketplace: null,
+  skills: null,
 };
 
 const DRAFT_STORAGE_KEY = "raise-expert-draft";
@@ -54,11 +117,30 @@ export function loadDraft(): RaiseDraft {
   try {
     const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return EMPTY_DRAFT;
-    const parsed = JSON.parse(raw) as Partial<RaiseDraft>;
-    return { ...EMPTY_DRAFT, ...parsed };
+    const parsed = JSON.parse(raw) as Omit<Partial<RaiseDraft>, "step"> & {
+      step?: string;
+    };
+    const step = parsed.step === "kit" ? "budget" : parsed.step;
+    return backfillSkippedVoice({
+      ...EMPTY_DRAFT,
+      ...parsed,
+      step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
+    });
   } catch {
     return EMPTY_DRAFT;
   }
+}
+
+// A draft written by an earlier build recorded a skipped voice as a null
+// label. The flow now treats null as "not answered", which would leave a
+// restored session parked on the voice beat with no way forward, so a draft
+// that has already moved past voice gets the sentinel back.
+function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
+  if (draft.voiceLabel !== null) return draft;
+  if (STEP_ORDER.indexOf(draft.step) <= STEP_ORDER.indexOf("voice")) {
+    return draft;
+  }
+  return { ...draft, voiceLabel: VOICE_SKIPPED_LABEL };
 }
 
 export function saveDraft(draft: RaiseDraft) {
@@ -77,66 +159,27 @@ export function clearDraft() {
   }
 }
 
-interface RaiseMessage {
-  id: string;
-  role: "assistant" | "user";
-  text: string;
+function isRaiseStep(step: string | undefined): step is RaiseStep {
+  return STEP_ORDER.includes(step as RaiseStep);
 }
 
-const STEP_ORDER: RaiseStep[] = ["name", "voice", "firstJob", "review"];
+export function assembledKit(draft: RaiseDraft): RaiseKit | null {
+  if (
+    draft.budget === null &&
+    draft.marketplace === null &&
+    draft.skills === null
+  ) {
+    return null;
+  }
+  return {
+    weeklyBudget: draft.budget?.credits ?? null,
+    attachments: [...(draft.marketplace ?? []), ...(draft.skills ?? [])],
+  };
+}
 
 export function previousStep(step: RaiseStep): RaiseStep {
   const index = STEP_ORDER.indexOf(step);
   return STEP_ORDER[Math.max(index - 1, 0)];
-}
-
-// The transcript is derived from the draft rather than accumulated, so
-// back transitions and refresh restores always rebuild it consistently.
-export function buildTranscript(draft: RaiseDraft): RaiseMessage[] {
-  const messages: RaiseMessage[] = [
-    { id: "assistant-name", role: "assistant", text: RAISE_PROMPTS.name },
-  ];
-  const stepIndex = STEP_ORDER.indexOf(draft.step);
-
-  if (stepIndex >= 1) {
-    messages.push(
-      { id: "user-name", role: "user", text: draft.name },
-      {
-        id: "assistant-voice",
-        role: "assistant",
-        text: RAISE_PROMPTS.voice(draft.name),
-      },
-    );
-  }
-  if (stepIndex >= 2) {
-    messages.push(
-      {
-        id: "user-voice",
-        role: "user",
-        text: draft.voiceLabel ?? VOICE_SKIPPED_LABEL,
-      },
-      {
-        id: "assistant-first-job",
-        role: "assistant",
-        text: RAISE_PROMPTS.firstJob,
-      },
-    );
-  }
-  if (stepIndex >= 3) {
-    messages.push(
-      {
-        id: "user-first-job",
-        role: "user",
-        text: draft.firstJob?.name ?? FIRST_JOB_SKIPPED_LABEL,
-      },
-      {
-        id: "assistant-review",
-        role: "assistant",
-        text: RAISE_PROMPTS.review,
-      },
-    );
-  }
-  return messages;
 }
 
 export function voiceSummaryLabel(
@@ -158,6 +201,22 @@ export function resolveVoicePreferences(
 export function raisedIdentity(name: string): string {
   // Keep this preview copy aligned with backend experts_db._raised_identity.
   return `I'm ${name}, raised by you. I learn how you work and grow with you.`;
+}
+
+export function creditsToUsdLabel(credits: number): string {
+  const dollars = credits / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+export function kitBudgetLabel(kit: RaiseKit | null): string | null {
+  if (!kit || kit.weeklyBudget === null) return null;
+  if (kit.weeklyBudget === 0) return "No weekly limit";
+  return `${kit.weeklyBudget.toLocaleString()} credits (${creditsToUsdLabel(kit.weeklyBudget)}/week)`;
+}
+
+export function kitToolsLabel(kit: RaiseKit | null): string | null {
+  if (!kit || kit.attachments.length === 0) return null;
+  return kit.attachments.map((attachment) => attachment.name).join(", ");
 }
 
 export function getExpertLimitCode(response: unknown): string | null {
