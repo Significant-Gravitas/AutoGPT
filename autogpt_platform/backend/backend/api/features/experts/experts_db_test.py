@@ -2649,9 +2649,11 @@ def _output_node_exec(
     execution_data: dict | None = None,
     added_minutes: int = 0,
     queued_minutes: int | None = None,
+    stats: dict | None = None,
 ) -> SimpleNamespace:
     base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
     return SimpleNamespace(
+        stats=stats,
         executionData=execution_data,
         queuedTime=(
             base + timedelta(minutes=queued_minutes)
@@ -2709,6 +2711,40 @@ def test_outputs_from_node_execs_skips_rows_without_name():
         [_output_node_exec("", None, execution_data={"other": "x"})]
     )
     assert outputs == {}
+
+
+def test_outputs_from_node_execs_prefers_moderation_cleared_inputs():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                execution_data={"name": "stale", "value": "stale"},
+                stats={"cleared_inputs": {"name": ["report"], "value": ["cleared"]}},
+            )
+        ]
+    )
+    assert outputs == {"report": ["cleared"]}
+
+
+def test_outputs_from_node_execs_uses_last_cleared_input_message():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                stats={"cleared_inputs": {"name": ["rows"], "value": ["a", "b"]}},
+            )
+        ]
+    )
+    assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("status", "ok", stats={"cleared_inputs": "not-a-dict"})]
+    )
+    assert outputs == {"status": ["ok"]}
 
 
 @pytest.mark.asyncio

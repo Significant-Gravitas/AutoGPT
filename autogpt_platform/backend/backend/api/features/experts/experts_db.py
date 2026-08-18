@@ -8,7 +8,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 from prisma.enums import ResourceVisibility
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import (
@@ -35,11 +35,11 @@ from backend.data.expert_attribution import (
 )
 from backend.data.expert_run_output import (
     OutputType,
-    RunOutputEntry,
     classify_run_output,
     reconstruct_run_outputs,
 )
 from backend.data.expert_spend import get_weekly_spend
+from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.exceptions import (
@@ -413,20 +413,41 @@ async def _classify_run_outputs(
 def _outputs_from_node_execs(
     node_execs: list[prisma.models.AgentNodeExecution],
 ) -> dict[str, list[JsonValue]]:
-    entries: list[RunOutputEntry] = []
-    for node_exec in node_execs:
-        if node_exec.executionData is not None:
-            input_data = cast(
-                dict[str, JsonValue],
-                type_utils.convert(node_exec.executionData, dict),
-            )
-        else:
-            input_data = {
-                row.name: type_utils.convert(row.data, JsonValue)
-                for row in node_exec.Input or []
-            }
-        entries.append((node_exec.queuedTime, node_exec.addedTime, input_data))
-    return reconstruct_run_outputs(entries)
+    return reconstruct_run_outputs(
+        [
+            (node_exec.queuedTime, node_exec.addedTime, _node_exec_inputs(node_exec))
+            for node_exec in node_execs
+        ]
+    )
+
+
+def _node_exec_inputs(
+    node_exec: prisma.models.AgentNodeExecution,
+) -> dict[str, JsonValue]:
+    """Mirror ``NodeExecutionResult.from_db`` input precedence: moderation-cleared
+    inputs win over the denormalized ``executionData`` blob, which wins over the
+    Input rows. Skipping the cleared branch would drop the name/value pins of a
+    moderated OUTPUT node and misclassify the run as ``unknown``.
+    """
+    try:
+        stats = NodeExecutionStats.model_validate(node_exec.stats or {})
+    except (ValueError, ValidationError):
+        stats = NodeExecutionStats()
+
+    if stats.cleared_inputs:
+        return {
+            name: (messages[-1] if messages else "")
+            for name, messages in stats.cleared_inputs.items()
+        }
+    if node_exec.executionData is not None:
+        return cast(
+            dict[str, JsonValue],
+            type_utils.convert(node_exec.executionData, dict),
+        )
+    return {
+        row.name: type_utils.convert(row.data, JsonValue)
+        for row in node_exec.Input or []
+    }
 
 
 def _to_expert_run(
