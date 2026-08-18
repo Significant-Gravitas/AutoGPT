@@ -1,5 +1,6 @@
 "use client";
 
+import { Expert } from "@/app/api/__generated__/models/expert";
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -7,22 +8,27 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
-import { AutopilotCard } from "./components/AutopilotCard";
 import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
+import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
+import { TeamRoster } from "./components/TeamRoster/TeamRoster";
+import { TEAM_GRID_CLASS } from "./helpers";
 import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
   "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
-const GRID_CLASS = "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
+    pods,
+    podForExpert,
+    podGroups,
+    ungroupedExperts,
     schedules,
     schedulesForExpert,
     isLoading,
@@ -35,12 +41,18 @@ export default function TeamPage() {
     soulDrawerKey,
     openSoul,
     closeSoul,
+    isNewPodOpen,
+    openNewPod,
+    closeNewPod,
+    createPod,
+    isCreatingPod,
+    assignPod,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
 
   if (!ready) {
     return (
       <main className={MAIN_CLASS}>
-        <div className={GRID_CLASS}>
+        <div className={TEAM_GRID_CLASS}>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-48 w-full rounded-2xl" />
           ))}
@@ -51,6 +63,21 @@ export default function TeamPage() {
 
   if (!enabled) {
     notFound();
+  }
+
+  function renderCard(expert: Expert) {
+    return (
+      <ExpertTeamCard
+        key={expert.id}
+        expert={expert}
+        schedules={schedulesForExpert(expert)}
+        pods={pods}
+        currentPod={podForExpert(expert)}
+        onInstallWorkflow={installWorkflow}
+        onEditSoul={openSoul}
+        onAssignPod={assignPod}
+      />
+    );
   }
 
   return (
@@ -65,27 +92,19 @@ export default function TeamPage() {
             Autopilot and your hired experts, ready to work.
           </Text>
         </div>
-        <CreateMenu />
-      </div>
-      <div className={GRID_CLASS}>
-        <AutopilotCard />
-        {isLoading
-          ? [0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-2xl" />
-            ))
-          : hiredExperts.map((expert) => (
-              <ExpertTeamCard
-                key={expert.id}
-                expert={expert}
-                schedules={schedulesForExpert(expert)}
-                onInstallWorkflow={installWorkflow}
-                onEditSoul={openSoul}
-              />
-            ))}
+        <CreateMenu onNewPod={openNewPod} />
       </div>
       {!isLoading && !isError && hiredExperts.length > 0 ? (
         <WhatRunsZone experts={hiredExperts} schedules={schedules} />
       ) : null}
+
+      <TeamRoster
+        isLoading={isLoading}
+        podGroups={podGroups}
+        ungroupedExperts={ungroupedExperts}
+        renderCard={renderCard}
+      />
+
       {isError ? (
         <ErrorCard
           context="your team"
@@ -93,7 +112,10 @@ export default function TeamPage() {
           onRetry={() => refetch()}
         />
       ) : null}
-      {!isLoading && !isError && hiredExperts.length === 0 ? (
+      {!isLoading &&
+      !isError &&
+      hiredExperts.length === 0 &&
+      podGroups.length === 0 ? (
         <EmptyTeamState />
       ) : null}
       <InstallWorkflowPicker
@@ -103,6 +125,12 @@ export default function TeamPage() {
         onClose={closeWorkflowPicker}
       />
       <SoulDrawer key={soulDrawerKey} expert={soulExpert} onClose={closeSoul} />
+      <NewPodDialog
+        open={isNewPodOpen}
+        onClose={closeNewPod}
+        onCreate={createPod}
+        isCreating={isCreatingPod}
+      />
     </main>
   );
 }
