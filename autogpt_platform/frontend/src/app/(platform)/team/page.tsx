@@ -100,16 +100,16 @@ export default function TeamPage() {
         </div>
         <CreateMenu onNewPod={openNewPod} />
       </div>
-      {!isLoading && !isError && hiredExperts.length > 0 ? (
-        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
-      ) : null}
-
       <TeamRoster
         isLoading={isLoading}
         podGroups={podGroups}
         ungroupedExperts={ungroupedExperts}
         renderCard={renderCard}
       />
+
+      {!isLoading && !isError && hiredExperts.length > 0 ? (
+        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
+      ) : null}
 
       {isError ? (
         <ErrorCard
