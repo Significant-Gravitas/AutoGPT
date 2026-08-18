@@ -1,8 +1,17 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { http } from "msw";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
+import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
 import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetV2GetSessionMockHandler200,
+  getGetV2GetSessionResponseMock200,
+  getPostV2CreateSessionMockHandler200,
+  getPostV2CreateSessionResponseMock200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
   getEraseMyMemoryMockHandler200,
   getForgetMyMemoryFactMockHandler200,
@@ -10,13 +19,43 @@ import {
   getListMyMemoryFactsMockHandler200,
 } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import { server } from "@/mocks/mock-server";
+import {
+  assistantTextChunks,
+  streamSseResponse,
+} from "@/tests/integrations/copilot-sse";
+
+// The CoPilot stream transport talks to the backend host directly (it
+// bypasses the Next proxy), so MSW must match an absolute URL.
+vi.mock("@/services/environment", async (importActual) => {
+  const actual = await importActual<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: {
+      ...actual.environment,
+      getAGPTServerBaseUrl: () => TEST_BACKEND_BASE_URL,
+    },
+  };
+});
+
+vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
+  const actual =
+    await importActual<typeof import("@/app/(platform)/copilot/helpers")>();
+  return {
+    ...actual,
+    getCopilotAuthHeaders: async () => ({ "x-test-auth": "yes" }),
+  };
+});
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     GRAPHITI_MEMORY: "graphiti-memory",
     HIRE_EXPERTS: "hire-experts",
+    ARTIFACTS: "artifacts",
+    CHAT_MODE_OPTION: "chat-mode-option",
+    ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
-  useGetFlag: () => true,
+  useGetFlag: (flag: string) =>
+    flag === "graphiti-memory" || flag === "hire-experts",
 }));
 
 vi.mock("@/services/feature-flags/with-feature-flag", () => ({
@@ -24,6 +63,8 @@ vi.mock("@/services/feature-flags/with-feature-flag", () => ({
 }));
 
 import SettingsMemoryPage from "../page";
+
+const SESSION_ID = "memory-chat-session-1";
 
 const FACTS = {
   expert_id: null,
@@ -60,6 +101,10 @@ function mockHappyPath() {
   );
 }
 
+beforeEach(() => {
+  resetCopilotChatRegistry();
+});
+
 describe("Settings memory page", () => {
   it("renders recent memories for the AutoPilot scope", async () => {
     mockHappyPath();
@@ -72,13 +117,12 @@ describe("Settings memory page", () => {
       screen.getByText("Prefers weekly summary emails on Monday mornings"),
     ).toBeDefined();
     expect(screen.getByRole("heading", { name: "Memory" })).toBeDefined();
-
-    const summaryLink = screen.getByRole("link", { name: "View my summary" });
-    expect(summaryLink.getAttribute("href")).toBe(
-      "/copilot?seed=memory-summary",
-    );
-    const topicLink = screen.getByRole("link", { name: "Forget a topic…" });
-    expect(topicLink.getAttribute("href")).toBe("/copilot?seed=memory-forget");
+    expect(
+      screen.getByRole("button", { name: "View my summary" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Forget a topic…" }),
+    ).toBeDefined();
   });
 
   it("shows the empty state when nothing is remembered yet", async () => {
@@ -141,5 +185,49 @@ describe("Settings memory page", () => {
 
     await user.click(confirm);
     await waitFor(() => expect(erased).toBe(true));
+  });
+
+  it("opens the summary chat in-pane and auto-sends the seeded prompt", async () => {
+    mockHappyPath();
+    const createBodies: unknown[] = [];
+    const streamBodies: string[] = [];
+    server.use(
+      getPostV2CreateSessionMockHandler200(async (info) => {
+        createBodies.push(await info.request.clone().json());
+        return getPostV2CreateSessionResponseMock200({ id: SESSION_ID });
+      }),
+      getGetV2GetSessionMockHandler200(
+        getGetV2GetSessionResponseMock200({
+          id: SESSION_ID,
+          messages: [],
+          active_stream: null,
+        }),
+      ),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${SESSION_ID}/stream`,
+        async ({ request }) => {
+          streamBodies.push(await request.clone().text());
+          return streamSseResponse(
+            assistantTextChunks("Here's what I know about you."),
+            { abortSignal: request.signal },
+          );
+        },
+      ),
+    );
+    render(<SettingsMemoryPage />);
+
+    await screen.findByText("Runs a DTC candle brand called Emberline");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "View my summary" }));
+
+    expect(await screen.findByText("AutoPilot's memory")).toBeDefined();
+    await waitFor(() => expect(createBodies.length).toBe(1));
+    await waitFor(() => expect(streamBodies.length).toBe(1));
+    expect(streamBodies[0]).toContain(
+      "Give me a summary of everything you know about me",
+    );
+    expect(
+      await screen.findByText("Here's what I know about you."),
+    ).toBeDefined();
   });
 });

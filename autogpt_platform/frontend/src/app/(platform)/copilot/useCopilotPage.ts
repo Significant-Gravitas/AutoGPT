@@ -22,8 +22,6 @@ import {
   type ExpertKickoffMetadata,
 } from "./expertKickoff";
 import { useExpertKickoff } from "./useExpertKickoff";
-import { getSeededPrompt } from "./seededPrompts";
-import { useSeededPrompt } from "./useSeededPrompt";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
@@ -75,8 +73,6 @@ export function useCopilotPage() {
     "kickoff",
     parseAsString,
   );
-  const [seedParam, setSeedParam] = useQueryState("seed", parseAsString);
-  const seededPrompt = getSeededPrompt(seedParam);
   const {
     expertsById,
     isLoadingExperts,
@@ -101,18 +97,6 @@ export function useCopilotPage() {
     kickoffParam === "1" &&
     validExpertIdParam !== null &&
     isLoadingExperts;
-
-  // A seeded chat must open a NEW thread. Pre-latching the expert-thread
-  // adoption here (before `useChatSession` is called, so this effect runs
-  // first) keeps the page from jumping into the expert's latest
-  // conversation ahead of the seed send.
-  const markExpertThreadAdopted = useCopilotUIStore(
-    (s) => s.markExpertThreadAdopted,
-  );
-  useEffect(() => {
-    if (!seededPrompt || !validExpertIdParam) return;
-    markExpertThreadAdopted(validExpertIdParam);
-  }, [seededPrompt, validExpertIdParam, markExpertThreadAdopted]);
 
   useEffect(() => {
     if (kickoffParam !== "1") return;
@@ -390,30 +374,6 @@ export function useCopilotPage() {
     },
     onSettled() {
       void setKickoffParam(null, { history: "replace" });
-    },
-  });
-
-  // Drop a seed param that can never fire: unknown key, or a session is
-  // already open (a seed only ever targets a fresh thread).
-  useEffect(() => {
-    if (!seedParam) return;
-    if (seededPrompt && !sessionId) return;
-    void setSeedParam(null, { history: "replace" });
-  }, [seedParam, seededPrompt, sessionId, setSeedParam]);
-
-  useSeededPrompt({
-    prompt: seededPrompt,
-    ready:
-      !isUserLoading &&
-      isLoggedIn &&
-      !sessionId &&
-      !isCreatingSession &&
-      (!expertId || (hasExpertsSettled && !isExpertSendLocked)),
-    async onSend(prompt) {
-      await sendNewMessage(prompt);
-    },
-    onSettled() {
-      void setSeedParam(null, { history: "replace" });
     },
   });
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { buildSeededChatHref } from "@/app/(platform)/copilot/seededPrompts";
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -8,19 +7,19 @@ import { Text } from "@/components/atoms/Text/Text";
 import { formatWhen } from "../helpers";
 
 interface Props {
-  scopeExpertID: string | null;
   facts: MemoryFact[];
   isLoading: boolean;
   forgettingUuid: string | null;
   onForget: (uuid: string) => void;
+  onForgetTopic: () => void;
 }
 
 export function RecentMemoriesCard({
-  scopeExpertID,
   facts,
   isLoading,
   forgettingUuid,
   onForget,
+  onForgetTopic,
 }: Props) {
   return (
     <div className="flex flex-col rounded-[18px] border border-zinc-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
@@ -77,12 +76,7 @@ export function RecentMemoriesCard({
       </div>
 
       <div className="mt-3">
-        <Button
-          as="NextLink"
-          href={buildSeededChatHref("memory-forget", scopeExpertID)}
-          variant="secondary"
-          size="small"
-        >
+        <Button variant="secondary" size="small" onClick={onForgetTopic}>
           Forget a topic…
         </Button>
       </div>
