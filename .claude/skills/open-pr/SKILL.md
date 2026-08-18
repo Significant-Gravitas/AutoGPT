@@ -74,7 +74,11 @@ This is common for agents running in worktrees without a full stack. In this cas
 1. Run `/pr-review` locally to catch obvious issues before pushing
 2. **Comment `/review` on the PR** after creating it to trigger the review bot
 3. **Poll for the review** rather than blindly waiting — check for new review comments every 30 seconds using `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate` and the GraphQL inline threads query. The bot typically responds within 30 minutes, but polling lets the agent react as soon as it arrives.
-4. Do NOT proceed or merge until the bot review comes back
+4. Do NOT proceed or merge until the bot review comes back — but bound the
+   wait at **60 minutes** from the `/review` comment, the same budget
+   `/pr-address` and `/pr-polish` use. If nothing has arrived by then, stop
+   waiting and tell the user the requested review never came. Never block
+   indefinitely on a bot.
 5. Address any issues the bot raises — use `/pr-address` which has a full polling loop with CI + comment tracking
 
 ```bash

@@ -37,7 +37,7 @@ gh pr comment {N} --body "/review"
 
 This is an **option, not a required step**. Skip it whenever the PR already has reviews (bot or human) — those are what you are here to address. See the `open-pr` skill's "Review workflow" step for the same trigger in the PR-creation flow.
 
-`autogpt-reviewer` typically responds within ~30 minutes. **Poll for it rather than sleeping** — the loop in [Polling for CI + new comments](#polling-for-ci--new-comments) already re-checks every source every 30 seconds, so run that loop and react the moment the review lands. Note the `id` and `created_at` of the `/review` comment you posted; [Waiting on a requested review](#waiting-on-a-requested-review) needs them for the exit condition.
+`autogpt-pr-reviewer[bot]` typically responds within ~30 minutes. **Poll for it rather than sleeping** — the loop in [Polling for CI + new comments](#polling-for-ci--new-comments) already re-checks every source every 30 seconds, so run that loop and react the moment the review lands. Note the `id` and `created_at` of the `/review` comment you posted; [Waiting on a requested review](#waiting-on-a-requested-review) needs them for the exit condition.
 
 ## Fetch comments (all sources)
 
@@ -133,14 +133,14 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
 
 > **Already REST — unaffected by GraphQL rate limits or outages. Continue polling reviews normally even when GraphQL is exhausted.**
 
-**CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-reviewer`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
+**CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-pr-reviewer[bot]`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
 
 Two things to extract:
 - **Overall state**: look for `CHANGES_REQUESTED` or `APPROVED` reviews.
 - **Actionable feedback**: non-empty bodies only. Empty-body reviews are thread-resolution events — they indicate progress but have no feedback to act on.
 
 **Where each reviewer posts:**
-- `autogpt-reviewer` — posts detailed structured reviews ("Blockers", "Should Fix", "Nice to Have") as **top-level reviews**. Not present on every PR. Address ALL items.
+- `autogpt-pr-reviewer[bot]` — posts detailed structured reviews ("Blockers", "Should Fix", "Nice to Have") as **top-level reviews**. Not present on every PR. Address ALL items.
 - `sentry[bot]` — posts bug predictions as **inline threads**. Fix real bugs, explain false positives.
 - `coderabbitai[bot]` — posts summaries as **top-level reviews** AND actionable items as **inline threads**. Address actionable items.
 - Human reviewers — can post in any source. Address ALL non-empty feedback.
@@ -296,7 +296,11 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 
    **Conversation comments:**
    ```bash
-   gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
+   # Exclude slash-command triggers here, not just when reading — otherwise a
+   # `/review` (yours or a maintainer's) counts as a "new comment" and forces
+   # an address round over a comment with nothing to address.
+   gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate --slurp \
+     --jq '[.[][] | select((.body // "") | test("^\\s*/[a-z-]+\\s*$") | not)]'
    ```
    Compare total count and newest `id` against baseline. Filter to non-empty, non-bot, non-author-update messages.
 
@@ -324,10 +328,37 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 
 If a `/review` comment was posted on this PR and the bot has not answered it yet, the "2 consecutive green+quiet polls" exit is **premature** — a pending bot review looks identical to a quiet PR. Keep polling until one of these is true:
 
-- **The review arrived.** In `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate`, a review with `user.login == "autogpt-reviewer"` has a `submitted_at` later than the `created_at` of the `/review` comment in `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate`. New inline threads whose `comments(last: 1)` node has `author.login == "autogpt-reviewer"` count as arrival too. Once it lands, treat it as "New comments detected" and address it normally.
-- **The budget ran out.** Stop waiting **45 minutes** after the `/review` comment's `created_at` (90 polls at 30s). Then exit per the normal rule and tell the user the requested review never arrived. Never hang indefinitely on a bot.
+- **The review arrived.** An answer is *either* a top-level review or an inline review comment from `autogpt-pr-reviewer[bot]`, whichever is later — an inline-only reply is still an answer, and counting only top-level reviews leaves the gate waiting after its threads have already been addressed. Once it lands, treat it as "New comments detected" and address it normally.
+- **The budget ran out.** Stop waiting **60 minutes** after the `/review` comment's `created_at`. Then exit per the normal rule and tell the user the requested review never arrived. Never hang indefinitely on a bot.
 
-A `/review` posted before this session still counts as pending if no `autogpt-reviewer` review has been submitted after it. If the newest `autogpt-reviewer` review is already newer than the newest `/review` comment, nothing is pending and the normal exit rule applies unchanged.
+Recompute both timestamps from the API on every poll rather than tracking
+elapsed time in a loop variable — a counter that some branch forgets to
+increment is how this gate becomes an infinite wait.
+
+```bash
+# `--slurp` cannot be combined with `--jq`; pipe to standalone jq instead.
+REQUESTED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/issues/{N}/comments" --paginate --slurp \
+  | jq -r '[.[][] | select((.body // "") | test("^\\s*/review\\s*$"))] | max_by(.created_at) | .created_at // empty')
+REVIEWED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews" --paginate --slurp \
+  | jq -r '[.[][] | select(.user.login == "autogpt-pr-reviewer[bot]")] | max_by(.submitted_at) | .submitted_at // empty')
+COMMENTED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments" --paginate --slurp \
+  | jq -r '[.[][] | select(.user.login == "autogpt-pr-reviewer[bot]")] | max_by(.created_at) | .created_at // empty')
+ANSWERED_AT=$(printf '%s\n%s\n' "$REVIEWED_AT" "$COMMENTED_AT" | grep -v '^$' | sort | tail -1)
+
+# Pending iff a request exists and no answer is strictly newer than it.
+# `[ a \< b ]` is not portable (fails under zsh), so compare via sort.
+NEWEST=$(printf '%s\n%s\n' "$REQUESTED_AT" "$ANSWERED_AT" | grep -v '^$' | sort | tail -1)
+if [ -n "$REQUESTED_AT" ] && { [ -z "$ANSWERED_AT" ] || [ "$NEWEST" = "$REQUESTED_AT" ]; }; then
+  pending=true
+fi
+```
+
+A `/review` posted before this session still counts. Budget is **60 minutes**
+from `REQUESTED_AT`: an observed reply on this repo took 46 minutes, so 45
+would have abandoned a review that was about to land.
+
+**Do not post another `/review` while one is unanswered** — check this same
+condition before triggering, or each round queues a duplicate request.
 
 ### Resolving merge conflicts
 
