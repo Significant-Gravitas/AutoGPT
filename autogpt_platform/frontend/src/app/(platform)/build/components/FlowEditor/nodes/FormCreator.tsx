@@ -1,9 +1,11 @@
 import { RJSFSchema } from "@rjsf/utils";
-import React from "react";
+import React, { useContext } from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { gateDiscriminatorOptions } from "@/components/renderers/InputRenderer/custom/CredentialField/gateDiscriminatorOptions";
 
 interface FormCreatorProps {
   jsonSchema: RJSFSchema;
@@ -29,6 +31,8 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
     const getHardCodedValues = useNodeStore(
       (state) => state.getHardCodedValues,
     );
+
+    const credentialsProviders = useContext(CredentialsProvidersContext);
 
     const isAgent = uiType === BlockUIType.AGENT;
 
@@ -85,13 +89,19 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       initialValues = hardcodedValues;
     }
 
+    const gatedSchema = gateDiscriminatorOptions(
+      jsonSchema,
+      credentialsProviders,
+      initialValues,
+    );
+
     return (
       <div
         className={className}
         data-id={`form-creator-container-${nodeId}-node`}
       >
         <FormRenderer
-          jsonSchema={jsonSchema}
+          jsonSchema={gatedSchema}
           handleChange={handleChange}
           uiSchema={uiSchema}
           initialValues={initialValues}

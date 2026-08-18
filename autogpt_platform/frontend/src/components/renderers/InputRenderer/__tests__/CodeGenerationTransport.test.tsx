@@ -207,3 +207,155 @@ describe("Code Generation transport fields", () => {
     });
   });
 });
+
+function renderTransport(
+  providers: Record<string, CredentialsProviderData> | null,
+) {
+  return render(
+    <CredentialsProvidersContext.Provider value={providers}>
+      <FormCreator
+        jsonSchema={codeGenerationSchema}
+        nodeId="code-generation-node"
+        uiType={BlockUIType.STANDARD}
+        showHandles={false}
+      />
+    </CredentialsProvidersContext.Provider>,
+  );
+}
+
+function transportOptionLabels() {
+  const select = screen.getByLabelText("agpt_%_transport");
+  return Array.from(select.querySelectorAll("option")).map(
+    (option) => option.textContent,
+  );
+}
+
+describe("Transport options gated by provider entitlement", () => {
+  it("hides the codex transport when the provider is not on the account", () => {
+    renderTransport({ openai: makeProvider("openai", "OpenAI", []) });
+
+    expect(transportOptionLabels()).toEqual(["openai_api"]);
+  });
+
+  it("offers the codex transport when the provider is on the account", () => {
+    renderTransport({
+      openai: makeProvider("openai", "OpenAI", []),
+      codex: makeProvider("codex", "Codex", [codexCredential]),
+    });
+
+    expect(transportOptionLabels()).toEqual(["openai_api", "codex_app_server"]);
+  });
+
+  it("leaves options alone while the provider map is still loading", () => {
+    renderTransport(null);
+
+    expect(transportOptionLabels()).toEqual(["openai_api", "codex_app_server"]);
+  });
+
+  it("keeps a saved codex transport selectable after entitlement is lost", () => {
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...createCodeGenerationNode(),
+          data: {
+            ...createCodeGenerationNode().data,
+            hardcodedValues: {
+              prompt: "Write a hello-world function",
+              transport: "codex_app_server",
+            },
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    renderTransport({ openai: makeProvider("openai", "OpenAI", []) });
+
+    expect(transportOptionLabels()).toEqual(["openai_api", "codex_app_server"]);
+  });
+
+  it("does not touch the model dropdown, which no credential discriminates on", () => {
+    renderTransport({ openai: makeProvider("openai", "OpenAI", []) });
+
+    const model = screen.getByLabelText("agpt_%_model");
+    expect(
+      Array.from(model.querySelectorAll("option")).map((o) => o.textContent),
+    ).toEqual(["gpt-5.3-codex", "gpt-5.1-codex"]);
+  });
+});
+
+describe("LLM blocks keep every model option", () => {
+  const llmSchema = {
+    type: "object",
+    properties: {
+      prompt: { advanced: false, title: "Prompt", type: "string" },
+      model: {
+        advanced: false,
+        default: "gpt-4o",
+        enum: ["gpt-4o", "claude-opus-4-5-20251101", "llama3.3"],
+        title: "Model",
+        type: "string",
+      },
+      credentials: {
+        credentials_provider: ["openai", "anthropic", "ollama"],
+        credentials_types: ["api_key"],
+        discriminator: "model",
+        discriminator_mapping: {
+          "gpt-4o": "openai",
+          "claude-opus-4-5-20251101": "anthropic",
+          "llama3.3": "ollama",
+        },
+        properties: {
+          id: { type: "string" },
+          provider: {
+            enum: ["openai", "anthropic", "ollama"],
+            type: "string",
+          },
+          type: { const: "api_key", type: "string" },
+        },
+        required: ["id", "provider", "type"],
+        title: "Credentials",
+        type: "object",
+      },
+    },
+    required: ["prompt", "credentials"],
+  } as unknown as RJSFSchema;
+
+  it("keeps all models when every LLM provider is present, as list_providers guarantees", () => {
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...createCodeGenerationNode(),
+          data: {
+            ...createCodeGenerationNode().data,
+            hardcodedValues: { prompt: "hi", model: "gpt-4o" },
+            inputSchema: llmSchema,
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider
+        value={{
+          openai: makeProvider("openai", "OpenAI", []),
+          anthropic: makeProvider("anthropic", "Anthropic", []),
+          ollama: makeProvider("ollama", "Ollama", []),
+        }}
+      >
+        <FormCreator
+          jsonSchema={llmSchema}
+          nodeId="code-generation-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    const model = screen.getByLabelText("agpt_%_model");
+    expect(
+      Array.from(model.querySelectorAll("option")).map((o) => o.textContent),
+    ).toEqual(["gpt-4o", "claude-opus-4-5-20251101", "llama3.3"]);
+  });
+});
