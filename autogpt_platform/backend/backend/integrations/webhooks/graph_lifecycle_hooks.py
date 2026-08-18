@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, cast, overload
 
 from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
+from backend.integrations.credentials_store import SYSTEM_CREDENTIAL_IDS
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from . import get_webhook_manager, supports_webhooks
@@ -89,6 +91,13 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
         zip(unique_ids, results)
     )
 
+    # Only pay for the extra lookup when something actually failed to resolve.
+    any_unusable = any(
+        isinstance(result, BaseException) or result is None
+        for result in cred_by_id.values()
+    )
+    replacements = await _sole_credential_per_kind(user_id) if any_unusable else {}
+
     for new_node, creds_field_name, creds_meta, block_input_schema in refs:
         _apply_credential_result(
             new_node,
@@ -96,9 +105,34 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
             creds_meta,
             block_input_schema,
             cred_by_id[creds_meta["id"]],
+            replacements,
         )
 
     return graph
+
+
+async def _sole_credential_per_kind(
+    user_id: str,
+) -> dict[tuple[str, str], "Credentials"]:
+    """Map (provider, type) -> that user's only credential of that kind.
+
+    Used to re-point a graph whose credential was deleted and re-created, which
+    mints a fresh id: disconnecting and reconnecting ChatGPT leaves every graph
+    referencing an id that no longer exists.
+
+    A kind with more than one candidate is omitted — adopting a guessed
+    credential is only safe when there is exactly one it could mean. System
+    credentials are excluded outright: silently re-pointing a user's deleted
+    key at platform credits would move who pays for the run.
+    """
+    all_credentials = await credentials_manager.store.get_all_creds(user_id)
+    by_kind: dict[tuple[str, str], list["Credentials"]] = defaultdict(list)
+    for credential in all_credentials:
+        if credential.is_managed or credential.id in SYSTEM_CREDENTIAL_IDS:
+            continue
+        by_kind[(credential.provider, credential.type)].append(credential)
+
+    return {kind: found[0] for kind, found in by_kind.items() if len(found) == 1}
 
 
 def _apply_credential_result(
@@ -107,10 +141,12 @@ def _apply_credential_result(
     creds_meta: dict,
     block_input_schema: BlockSchema,
     result: "Credentials | None | BaseException",
+    replacements: dict[tuple[str, str], "Credentials"],
 ) -> None:
     """Apply the resolution outcome for one credential reference: leave
-    usable ones alone, clear stale optional ones in-memory, or raise
-    `GraphActivationError` for required + unusable ones.
+    usable ones alone, adopt an unambiguous replacement, clear stale optional
+    ones in-memory, or raise `GraphActivationError` for required + unusable
+    ones.
 
     Treats both `None` (credential missing from DB) and an exception
     (OAuth refresh raised, infra error) as "unusable" — failures are
@@ -149,6 +185,30 @@ def _apply_credential_result(
         resolved = result
 
     if resolved:
+        return
+
+    # The referenced credential is gone, but the user may hold exactly one
+    # credential of the same kind — the shape left behind by disconnecting and
+    # reconnecting an integration, which mints a new id. Adopt it rather than
+    # clearing: for an optional field the clear is silent, so the node quietly
+    # falls back to a different transport and the user never learns their
+    # reconnected account went unused.
+    replacement = replacements.get(
+        (creds_meta.get("provider", ""), creds_meta.get("type", ""))
+    )
+    if replacement is not None:
+        new_node.input_default[creds_field_name] = {
+            "id": replacement.id,
+            "provider": replacement.provider,
+            "type": replacement.type,
+            "title": replacement.title,
+        }
+        logger.info(
+            f"Node #{new_node.id}: re-pointed '{creds_field_name}' from "
+            f"deleted credentials #{creds_meta['id']} to the user's only "
+            f"{replacement.provider} {replacement.type} credential "
+            f"#{replacement.id}"
+        )
         return
 
     # If the credential field is optional (has a default in the schema, or
