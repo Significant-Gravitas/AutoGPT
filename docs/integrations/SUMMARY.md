@@ -122,6 +122,7 @@
 * [Smartlead Campaign](block-integrations/smartlead/campaign.md)
 * [Stagehand Blocks](block-integrations/stagehand/blocks.md)
 * [Stripe Triggers](block-integrations/stripe/triggers.md)
+* [Stripe Link Spend Request](block-integrations/stripe_link/spend_request.md)
 * [System Library Operations](block-integrations/system/library_operations.md)
 * [System Store Operations](block-integrations/system/store_operations.md)
 * [Tavily Crawl](block-integrations/tavily/crawl.md)

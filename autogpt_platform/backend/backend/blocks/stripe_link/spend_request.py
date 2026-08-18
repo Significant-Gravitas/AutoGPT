@@ -38,7 +38,11 @@ async def link_api_request(
     Make an authenticated request to the Link API.
 
     Uses the access_token from OAuth2Credentials as a Bearer token.
-    In a real implementation, this should handle 401 → token refresh.
+
+    Refresh is deliberately not handled here: `IntegrationCredentialsManager`
+    already refreshes on acquire (`_refresh_locked`), under a per-credential
+    lock, and persists the rotated tokens. Refreshing inside the block would
+    bypass both and let concurrent nodes stampede the token endpoint.
     """
     import httpx
 
