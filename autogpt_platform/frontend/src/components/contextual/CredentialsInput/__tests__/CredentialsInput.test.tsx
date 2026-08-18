@@ -110,7 +110,7 @@ afterEach(() => {
 });
 
 // These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
-// abort/supersede handling). variant="node" wires the Add credential button
+// abort/supersede handling). variant="node" wires the add-credential button
 // straight to that flow; the default variant routes through
 // ConnectCredentialDialog instead.
 describe("CredentialsInput – OAuth flow", () => {
@@ -178,6 +178,7 @@ describe("CredentialsInput – OAuth flow", () => {
         }}
         onSelectCredentials={vi.fn()}
         showTitle
+        variant="node"
       />,
     );
 
@@ -192,7 +193,7 @@ describe("CredentialsInput – OAuth flow", () => {
     });
   });
 
-  it("clicking the Add credential button calls oAuthLogin without a credentialID", async () => {
+  it("clicking the Add account button calls oAuthLogin without a credentialID", async () => {
     const oAuthLoginMock = vi.fn().mockResolvedValue({
       login_url: "https://accounts.google.com/o/oauth2/auth",
       state_token: "state-xyz",
@@ -217,10 +218,10 @@ describe("CredentialsInput – OAuth flow", () => {
       />,
     );
 
-    const addCredentialButton = await screen.findByRole("button", {
-      name: /add credential/i,
+    const addAccountButton = await screen.findByRole("button", {
+      name: /add account/i,
     });
-    fireEvent.click(addCredentialButton);
+    fireEvent.click(addAccountButton);
 
     await waitFor(() => {
       expect(oAuthLoginMock).toHaveBeenCalledWith(
@@ -267,7 +268,7 @@ describe("CredentialsInput – OAuth flow", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add credential/i }),
+      await screen.findByRole("button", { name: /add account/i }),
     );
     await waitFor(() => expect(mockOpenOAuthPopup).toHaveBeenCalled());
 
@@ -304,7 +305,7 @@ describe("CredentialsInput – OAuth flow", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add credential/i }),
+      await screen.findByRole("button", { name: /add account/i }),
     );
 
     await waitFor(() =>
@@ -341,7 +342,7 @@ describe("CredentialsInput – OAuth flow", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add credential/i }),
+      await screen.findByRole("button", { name: /add account/i }),
     );
 
     // The failure happens before openOAuthPopup adopts the window, so the
@@ -380,7 +381,7 @@ describe("CredentialsInput – OAuth flow", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /add credential/i }),
+      await screen.findByRole("button", { name: /add account/i }),
     );
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalled());
 
@@ -442,14 +443,14 @@ describe("CredentialsInput – OAuth flow", () => {
       />,
     );
 
-    const addCredentialButton = await screen.findByRole("button", {
-      name: /add credential/i,
+    const addAccountButton = await screen.findByRole("button", {
+      name: /add account/i,
     });
 
     // Flow A starts, then flow B supersedes it while A's request is pending.
-    fireEvent.click(addCredentialButton);
+    fireEvent.click(addAccountButton);
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(1));
-    fireEvent.click(addCredentialButton);
+    fireEvent.click(addAccountButton);
     await waitFor(() => expect(oAuthLoginMock).toHaveBeenCalledTimes(2));
 
     // Starting B closes A's still-pending pre-opened window.

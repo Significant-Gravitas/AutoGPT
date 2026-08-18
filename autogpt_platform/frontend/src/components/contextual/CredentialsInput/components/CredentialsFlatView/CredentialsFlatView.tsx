@@ -23,10 +23,12 @@ type Credential = {
 function ProviderConnectRow({
   provider,
   displayName,
+  actionButtonText,
   onAddCredential,
 }: {
   provider: string;
   displayName: string;
+  actionButtonText: string;
   onAddCredential: () => void;
 }) {
   const src = `/integrations/${provider}.png`;
@@ -63,7 +65,7 @@ function ProviderConnectRow({
         className="shrink-0"
         type="button"
       >
-        Add credential
+        {actionButtonText}
       </Button>
     </div>
   );
@@ -75,6 +77,7 @@ type Props = {
   displayName: string;
   credentials: Credential[];
   selectedCredential?: CredentialsMetaInput;
+  actionButtonText: string;
   isOptional: boolean;
   showTitle: boolean;
   readOnly: boolean;
@@ -91,6 +94,7 @@ export function CredentialsFlatView({
   displayName,
   credentials,
   selectedCredential,
+  actionButtonText,
   isOptional,
   showTitle,
   readOnly,
@@ -178,7 +182,7 @@ export function CredentialsFlatView({
               className="w-fit"
               type="button"
             >
-              Add credential
+              {actionButtonText}
             </Button>
           )}
           {showAyrshareConnect && <AyrshareConnectButton className="mt-2" />}
@@ -187,6 +191,7 @@ export function CredentialsFlatView({
         <ProviderConnectRow
           provider={provider}
           displayName={displayName}
+          actionButtonText={actionButtonText}
           onAddCredential={onAddCredential}
         />
       ) : showAyrshareConnect ? (

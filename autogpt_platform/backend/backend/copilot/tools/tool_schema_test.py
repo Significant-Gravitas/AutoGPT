@@ -100,10 +100,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Includes the two-step Soul edit flow (update_expert_soul preview +
 # confirm_expert_soul_update); registry measures ~52.2k chars locally, with
 # ~800 headroom for CI env deltas and wording tweaks.
-# Bumped 53000 -> 53_800 for the copilot tool-chain UI: ``ask_question`` is back
+# Bumped 53000 -> 54_000 for the copilot tool-chain UI: ``ask_question`` is back
 # in TOOL_REGISTRY as a first-class tool (docked clarifying-question flow), so
-# its ~800-char schema counts again on top of the Soul edit flow.
-_CHAR_BUDGET = 53_800
+# its schema counts again on top of the Soul edit flow. Merged registry measures
+# 53349 chars; ~650 headroom for CI env deltas and wording tweaks.
+_CHAR_BUDGET = 54_000
 
 
 @pytest.fixture(scope="module")

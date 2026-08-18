@@ -87,6 +87,7 @@ export function CredentialsInput({
     isOAuth2FlowInProgress,
     oAuthPopupBlocked,
     cancelOAuthFlow,
+    actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
@@ -128,6 +129,7 @@ export function CredentialsInput({
             : handleActionButtonClick
         }
         onDeleteCredential={readOnly ? undefined : handleDeleteCredential}
+        actionButtonText={actionButtonText}
         isOptional={isOptional}
         showTitle={showTitle}
         readOnly={readOnly}
