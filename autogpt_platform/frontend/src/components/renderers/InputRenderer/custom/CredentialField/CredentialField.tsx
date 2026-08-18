@@ -69,12 +69,14 @@ export const CredentialsField = (props: FieldProps) => {
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // The schema's `required` array is authoritative in both surfaces. In the
-  // builder canvas the node-level toggle can additionally relax a required
-  // field to optional, but it must never mark a schema-optional field
-  // required — blocks declaring an optional credential (default=None) would
-  // otherwise render an unfillable star.
-  const schemaRequired = nodeId ? !credentialsOptional && required : required;
+  // Combines the schema's `required` array with the node-level toggle, which
+  // is why it is not named for the schema alone: in the builder canvas the
+  // toggle can relax a required field to optional. It must never mark a
+  // schema-optional field required — blocks declaring an optional credential
+  // (default=None) would otherwise render an unfillable star.
+  const effectiveRequired = nodeId
+    ? !credentialsOptional && required
+    : required;
 
   const availability = useCredentialAvailability(
     schema as BlockIOCredentialsSubSchema,
@@ -86,7 +88,7 @@ export const CredentialsField = (props: FieldProps) => {
   // providers map, which used to leave a bare title with no control under it.
   // An optional field then has nothing actionable in it at all, so drop the row.
   //
-  // Keyed off the schema's own `required`, not `schemaRequired` above: the
+  // Keyed off the schema's own `required`, not `effectiveRequired` above: the
   // node-level toggle also feeds that value, so turning "Optional" on for a
   // required gated field would hide the row and the toggle along with it,
   // leaving no way to turn it back off.
@@ -98,10 +100,17 @@ export const CredentialsField = (props: FieldProps) => {
   // marker only misleads: it demands something the UI gives no way to supply.
   // The schema still requires it and execution-time validation still enforces
   // that — this only suppresses the star on a field that cannot be filled.
-  const isRequired = isUnavailable ? false : schemaRequired;
+  const isRequired = isUnavailable ? false : effectiveRequired;
+  // Ties the explanation to the control for assistive tech: dropping the
+  // required marker also removes the only programmatic cue that a visible
+  // field cannot be filled.
+  const unavailableNoteId = `${fieldPathId?.$id ?? "credentials"}-unavailable`;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className="flex flex-col gap-2"
+      aria-describedby={isUnavailable ? unavailableNoteId : undefined}
+    >
       <CredentialFieldTitle
         fieldPathId={fieldPathId}
         registry={registry}
@@ -110,7 +119,12 @@ export const CredentialsField = (props: FieldProps) => {
         required={isRequired}
       />
       {availability === "unavailable" && (
-        <Text variant="small" className="text-zinc-500">
+        <Text
+          id={unavailableNoteId}
+          variant="small"
+          className="text-zinc-500"
+          aria-live="polite"
+        >
           Not available on your account.
         </Text>
       )}
