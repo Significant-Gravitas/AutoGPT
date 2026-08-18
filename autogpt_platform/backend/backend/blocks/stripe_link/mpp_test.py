@@ -325,3 +325,28 @@ def test_challenges_parse_regardless_of_field_order():
     assert [c["method"] for c in challenges] == ["stripe", "tempo"]
     assert challenges[0]["id"] == "x"
     assert select_stripe_challenge(header)["id"] == "x"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_probe_drops_a_caller_supplied_authorization(monkeypatch):
+    """The first hop must be unauthenticated — an Authorization header the
+    caller passed through would suppress the 402 and break the flow."""
+    client = _RecordingClient(
+        [
+            _FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER}),
+            _FakeResponse(200, payload={"ok": True}),
+        ]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    await block._pay_with_token(
+        "spt_abc",
+        "https://merchant.example/buy",
+        "POST",
+        {},
+        {"Authorization": "Bearer caller-token"},
+    )
+
+    assert "Authorization" not in client.calls[0]["headers"]
+    assert client.calls[1]["headers"]["Authorization"].startswith("Payment ")

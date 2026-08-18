@@ -380,9 +380,15 @@ class StripeLinkMPPPayBlock(Block):
         # Caller headers first, so they cannot displace Content-Type or, more
         # importantly, the Authorization we are about to attach.
         base_headers = {**headers, "Content-Type": "application/json"}
+        # The probe must be unauthenticated — that is what elicits the 402
+        # challenge — so a caller-supplied Authorization is dropped for it
+        # rather than silently suppressing the challenge.
+        probe_headers = {
+            k: v for k, v in base_headers.items() if k.lower() != "authorization"
+        }
 
         first = await client.request(
-            method, url, json=body or None, headers=base_headers
+            method, url, json=body or None, headers=probe_headers
         )
         if first.status != 402:
             # Nothing to pay — it either succeeded outright or failed for an
