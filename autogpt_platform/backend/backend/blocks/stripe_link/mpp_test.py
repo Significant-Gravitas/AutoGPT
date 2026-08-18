@@ -18,6 +18,7 @@ from backend.blocks.stripe_link.mpp import (
     build_credential,
     decode_payment_request,
     parse_payment_challenges,
+    select_stripe_challenge,
 )
 
 # Shape of a real climate.stripe.dev response: two challenges in one header.
@@ -309,3 +310,18 @@ def test_non_object_request_blob_is_refused():
     encoded = base64.urlsafe_b64encode(b"[1,2,3]").decode().rstrip("=")
     with pytest.raises(ValueError, match="must decode to an object"):
         decode_payment_request(encoded)
+
+
+def test_challenges_parse_regardless_of_field_order():
+    """RFC 7235 does not fix auth-param order; Link merely happens to send
+    `id` first. Splitting on `id=` would have merged these into one."""
+    header = (
+        'Payment realm="m", method="stripe", intent="charge", id="x", '
+        'request="eyJhIjoxfQ", '
+        'Payment method="tempo", id="y", realm="m", intent="charge", request="e30"'
+    )
+    challenges = parse_payment_challenges(header)
+
+    assert [c["method"] for c in challenges] == ["stripe", "tempo"]
+    assert challenges[0]["id"] == "x"
+    assert select_stripe_challenge(header)["id"] == "x"  # type: ignore[index]

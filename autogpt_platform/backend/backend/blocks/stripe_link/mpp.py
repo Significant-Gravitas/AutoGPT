@@ -62,7 +62,7 @@ def parse_payment_challenges(header: str) -> list[dict[str, str]]:
     returns all of them and the caller picks.
     """
     challenges: list[dict[str, str]] = []
-    for chunk in re.split(r"(?i)(?=Payment\s+id=)", header):
+    for chunk in re.split(r"(?i)(?=\bPayment\s+\w+=)", header):
         chunk = chunk.strip().rstrip(",")
         if not chunk.lower().startswith(PAYMENT_SCHEME.lower()):
             continue
@@ -158,9 +158,11 @@ class StripeLinkGetPaymentChallengeBlock(Block):
         super().__init__(
             id="0518625e-5c08-40d4-b1fe-7953250cbe80",
             description=(
-                "Step 1 of paying an MPP merchant: read its HTTP 402 payment "
-                "challenge to learn the network ID and amount. Feed those into "
-                "Create Spend Request with credential type 'shared_payment_token'."
+                "MPP step 1 of 3: read a merchant's HTTP 402 payment challenge "
+                "to learn its network ID and amount. Step 2 is Create Spend "
+                "Request with credential type 'shared_payment_token' and that "
+                "network ID; step 3 is MPP Pay. Returns supports_mpp=false for "
+                "ordinary merchants — use the virtual-card flow for those."
             ),
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -278,9 +280,10 @@ class StripeLinkMPPPayBlock(Block):
         super().__init__(
             id="b219415c-8b36-4f49-937b-f11b1bbddfb2",
             description=(
-                "Step 3 of paying an MPP merchant: spend an approved Shared "
-                "Payment Token at the merchant's endpoint. No card number and "
-                "no checkout form. The token is single-use — a failed payment "
+                "MPP step 3 of 3: spend an approved Shared Payment Token at "
+                "the merchant's endpoint. Follows Get Payment Challenge (step "
+                "1) and Create Spend Request (step 2). No card number and no "
+                "checkout form. The token is single-use, so a failed payment "
                 "needs a fresh spend request."
             ),
             categories={BlockCategory.DATA},

@@ -6,7 +6,7 @@ _Add a description of this category of blocks._
 ## Stripe Link Get Payment Challenge
 
 ### What it is
-Step 1 of paying an MPP merchant: read its HTTP 402 payment challenge to learn the network ID and amount. Feed those into Create Spend Request with credential type 'shared_payment_token'.
+MPP step 1 of 3: read a merchant's HTTP 402 payment challenge to learn its network ID and amount. Step 2 is Create Spend Request with credential type 'shared_payment_token' and that network ID; step 3 is MPP Pay. Returns supports_mpp=false for ordinary merchants — use the virtual-card flow for those.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -42,7 +42,7 @@ _Add practical use case examples here._
 ## Stripe Link MPP Pay
 
 ### What it is
-Step 3 of paying an MPP merchant: spend an approved Shared Payment Token at the merchant's endpoint. No card number and no checkout form. The token is single-use — a failed payment needs a fresh spend request.
+MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoint. Follows Get Payment Challenge (step 1) and Create Spend Request (step 2). No card number and no checkout form. The token is single-use, so a failed payment needs a fresh spend request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
