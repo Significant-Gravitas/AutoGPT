@@ -90,9 +90,23 @@ class TestAddCopilotTurnScheduleExpertAttribution:
 
     def _persisted_args(self, *, expert_id=None):
         s = _stub_scheduler()
-        with patch.object(
-            s, "_persist_schedule", return_value=self._fake_job()
-        ) as persist:
+        experts_store = MagicMock()
+        experts_store.resolve_private_expert_tenancy = MagicMock(
+            return_value=("personal-org", "personal-team")
+        )
+        with (
+            patch.object(
+                s, "_persist_schedule", return_value=self._fake_job()
+            ) as persist,
+            # Creation-time expert validation resolves tenancy via
+            # run_async; the stub scheduler has no event loop, so hand
+            # run_async the mock's (non-coroutine) return value directly.
+            patch(
+                "backend.executor.scheduler.experts_db",
+                return_value=experts_store,
+            ),
+            patch("backend.executor.scheduler.run_async", new=lambda v: v),
+        ):
             s.add_copilot_turn_schedule(
                 user_id="user-1",
                 session_id=None,

@@ -88,14 +88,16 @@ export function getExpertAvatarUrl(
 }
 
 export function getHiredExpertsLookup<
-  T extends Pick<Expert, "id" | "source_template_id">,
+  T extends Pick<Expert, "id" | "source_template_id" | "is_archived">,
 >(
   experts: T[] | undefined,
   query: { enabled: boolean; isError: boolean; isFetching: boolean },
 ) {
   const byTemplateId = new Map<string, T>();
   for (const expert of experts ?? []) {
-    if (expert.source_template_id) {
+    // A fired (archived) expert must not count as hired — the template
+    // becomes hireable again.
+    if (!expert.is_archived && expert.source_template_id) {
       byTemplateId.set(expert.source_template_id, expert);
     }
   }

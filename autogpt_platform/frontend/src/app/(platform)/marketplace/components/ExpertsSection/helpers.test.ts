@@ -56,7 +56,11 @@ describe("getExpertAvatarUrl", () => {
 
 describe("getHiredExpertsLookup", () => {
   test("indexes hired experts by source template", () => {
-    const hired = { id: "hired-1", source_template_id: "template-1" };
+    const hired = {
+      id: "hired-1",
+      source_template_id: "template-1",
+      is_archived: false,
+    };
     const lookup = getHiredExpertsLookup([hired], {
       enabled: true,
       isError: false,
@@ -68,7 +72,11 @@ describe("getHiredExpertsLookup", () => {
   });
 
   test("keeps cached lookup data usable during a refetch error", () => {
-    const hired = { id: "hired-1", source_template_id: "template-1" };
+    const hired = {
+      id: "hired-1",
+      source_template_id: "template-1",
+      is_archived: false,
+    };
     const lookup = getHiredExpertsLookup([hired], {
       enabled: true,
       isError: true,

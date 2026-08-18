@@ -1,6 +1,6 @@
 """Tests for graphiti_forget delete helpers."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
     MemoryForgetConfirmTool,
+    MemoryForgetSearchTool,
     _build_confirm_message,
     _hard_delete_edges,
     _retract_edges,
@@ -39,6 +40,89 @@ class TestSoftDeleteOverReportsSuccess:
         # Should NOT report success when nothing was actually updated
         assert deleted == [], f"over-reported success: {deleted}"
         assert failed == ["nonexistent-uuid"]
+
+
+class TestExpertMemoryScope:
+    @pytest.mark.asyncio
+    async def test_forget_search_uses_expert_memory_group(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _enabled(_user_id: str) -> bool:
+            return True
+
+        derive = MagicMock(return_value="expert_private_group")
+        client = type("Client", (), {"search": AsyncMock(return_value=[])})()
+
+        async def _get_client(group_id: str):
+            assert group_id == "expert_private_group"
+            return client
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.derive_memory_group_id", derive
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
+        )
+
+        session = ChatSession.new(
+            "user-abc",
+            dry_run=False,
+            expert_id="expert-1",
+        )
+        await MemoryForgetSearchTool()._execute(
+            "user-abc",
+            session,
+            query="private fact",
+        )
+
+        derive.assert_called_once_with("user-abc", "expert-1")
+        client.search.assert_awaited_once_with(
+            query="private fact",
+            group_ids=["expert_private_group"],
+            num_results=10,
+        )
+
+    @pytest.mark.asyncio
+    async def test_forget_confirm_uses_expert_memory_group(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _enabled(_user_id: str) -> bool:
+            return True
+
+        derive = MagicMock(return_value="expert_private_group")
+        driver = AsyncMock()
+        driver.execute_query.return_value = ([], None, None)
+        client = type("Client", (), {"graph_driver": driver})()
+
+        async def _get_client(group_id: str):
+            assert group_id == "expert_private_group"
+            return client
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.is_enabled_for_user", _enabled
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.derive_memory_group_id", derive
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.graphiti_forget.get_graphiti_client", _get_client
+        )
+
+        session = ChatSession.new(
+            "user-abc",
+            dry_run=False,
+            expert_id="expert-1",
+        )
+        await MemoryForgetConfirmTool()._execute(
+            "user-abc",
+            session,
+            uuids=["private-edge"],
+        )
+
+        derive.assert_called_once_with("user-abc", "expert-1")
 
 
 class TestSoftDeleteNoMatchReportsFailure:

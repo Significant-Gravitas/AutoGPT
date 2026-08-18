@@ -1,6 +1,5 @@
 import {
   getGetExpertQueryKey,
-  getListExpertsQueryKey,
   useHireExpert,
   useListExperts,
   useUpdateExpertSoul,
@@ -14,6 +13,7 @@ import {
   type VoicePickResult,
 } from "@/components/organisms/VoicePicker/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -91,9 +91,7 @@ export function useExpertProfileSheet(
     try {
       const response = await hireExpert({ data: { template_id: expert.id } });
       const result = response.data as HireResult;
-      await queryClient.invalidateQueries({
-        queryKey: getListExpertsQueryKey(),
-      });
+      await invalidateExpertRosterQueries(queryClient);
       pendingCelebrationRef.current = result;
       // Offer the voice pick when the persona ships writing samples; otherwise
       // finish with the classic celebration toast.
@@ -142,7 +140,7 @@ export function useExpertProfileSheet(
       // this, a Soul edit within the stale window would silently write that
       // old description back over the chosen voice.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        invalidateExpertRosterQueries(queryClient),
         queryClient.invalidateQueries({
           queryKey: getGetExpertQueryKey(hired.id),
         }),

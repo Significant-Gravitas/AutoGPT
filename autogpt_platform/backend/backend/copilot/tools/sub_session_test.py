@@ -28,14 +28,20 @@ from .run_sub_session import (
 )
 
 
-def _session(user_id: str = "u", session_id: str = "s1") -> MagicMock:
+def _session(
+    user_id: str = "u",
+    session_id: str = "s1",
+    expert_id: str | None = None,
+) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
+    sess.user_id = user_id
     sess.dry_run = False
     sess.organization_id = None
     sess.team_id = None
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
+    sess.expert_id = expert_id
     return sess
 
 
@@ -138,6 +144,7 @@ def mock_model(monkeypatch):
         team_id: str | None = None,
         llm_auth_provider: str = "platform",
         llm_credential_id: str | None = None,
+        expert_id: str | None = None,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
@@ -147,6 +154,7 @@ def mock_model(monkeypatch):
         sess.team_id = team_id
         sess.metadata.llm_auth_provider = llm_auth_provider
         sess.metadata.llm_credential_id = llm_credential_id
+        sess.expert_id = expert_id
         sess.messages = []
         created.append(sess)
         return sess
@@ -230,6 +238,45 @@ class TestRunSubSession:
         )
         assert mock_model["created"], "create_chat_session was never awaited"
         assert mock_model["created"][0].dry_run is True
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_inherits_expert_scope(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        parent = _session("alice", expert_id="expert-a")
+
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert mock_model["created"][0].expert_id == "expert-a"
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_different_expert_scope(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        other_scope = _session("alice", "other-session", expert_id="expert-b")
+
+        async def fake_get(_session_id: str):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "current memory scope" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
@@ -406,7 +453,7 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_other_user_cannot_access(self, monkeypatch):
         """Cross-user lookups are indistinguishable from 'not found'."""
-        foreign = MagicMock(user_id="bob", messages=[])
+        foreign = MagicMock(user_id="bob", expert_id=None, messages=[])
 
         async def foreign_get(_sid):
             return foreign
@@ -422,8 +469,30 @@ class TestGetSubSessionResult:
         assert "No sub-session" in r.message
 
     @pytest.mark.asyncio
+    async def test_other_expert_scope_cannot_access(self, monkeypatch):
+        other_scope = _session("alice", "expert-b-session", expert_id="expert-b")
+        other_scope.messages = []
+
+        async def fake_get(_sid):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+
+        result = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            sub_session_id="expert-b-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "No sub-session" in result.message
+
+    @pytest.mark.asyncio
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
-        sub = MagicMock(user_id="alice", messages=[])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
 
         async def fake_get(_sid):
             return sub
@@ -455,7 +524,9 @@ class TestGetSubSessionResult:
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
 
-        sub = MagicMock(user_id="alice", messages=[])  # not terminal-looking
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[]
+        )  # not terminal-looking
 
         async def fake_get(_sid):
             return sub
@@ -492,7 +563,7 @@ class TestGetSubSessionResult:
         in flight, the tool returns 'completed' without ever calling
         wait_for_session_result — it rebuilds the response from the
         persisted message instead."""
-        sub = MagicMock(user_id="alice")
+        sub = MagicMock(user_id="alice", expert_id=None)
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "already done"
@@ -538,7 +609,7 @@ class TestGetSubSessionResult:
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
-        sub = MagicMock(user_id="alice", messages=[prior])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
 
         async def fake_get(_sid):
             return sub
@@ -577,7 +648,7 @@ class TestGetSubSessionResult:
     ):
         """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
         without waiting for the sub to finish (the worker will finalise)."""
-        sub = MagicMock(user_id="alice", messages=[])
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
 
         async def fake_get(_sid):
             return sub
@@ -607,7 +678,7 @@ class TestGetSubSessionResult:
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
 
-        sub = MagicMock(user_id="alice")
+        sub = MagicMock(user_id="alice", expert_id=None)
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"

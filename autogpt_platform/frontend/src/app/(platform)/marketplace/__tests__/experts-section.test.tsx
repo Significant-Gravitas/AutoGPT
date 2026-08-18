@@ -125,22 +125,6 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
   });
 
-  test("hides the experts section when the templates query fails", async () => {
-    server.use(
-      getListExpertTemplatesMockHandler401(),
-      getListExpertsMockHandler([]),
-    );
-
-    renderMarketplace();
-
-    // Marketplace still renders; only the experts section drops out once the
-    // templates query settles into its error state.
-    expect(await screen.findByText("All AI Workflows")).toBeDefined();
-    await waitFor(() =>
-      expect(screen.queryByText("Meet the AI Experts")).toBeNull(),
-    );
-  });
-
   test("renders the profile sections from a fully populated template", async () => {
     server.use(
       getListExpertTemplatesMockHandler([mariaRichTemplate]),
@@ -273,6 +257,7 @@ describe("Marketplace ExpertsSection", () => {
     ).toBeDefined();
     expect(screen.queryByText(/She'll always tell you/)).toBeNull();
   });
+
   test("captures a voice pick as a plain-text soul PATCH after hire", async () => {
     let savedVoice = "";
     server.use(
@@ -440,5 +425,70 @@ describe("Marketplace ExpertsSection", () => {
       expect(screen.queryByText("How should Maria write?")).toBeNull(),
     );
     expect(screen.getAllByText("Maria joined your team")).toHaveLength(1);
+  });
+
+  test("keeps the raise-your-own door open when no templates exist", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await waitFor(
+      () => {
+        const raiseLink = screen.getByRole("link", {
+          name: "Raise your own expert from scratch",
+        });
+        expect(raiseLink.getAttribute("href")).toBe("/raise");
+        expect(raiseLink.textContent).not.toContain("…or");
+        expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+      },
+      { timeout: 5_000 },
+    );
+  });
+
+  test("uses standalone raise copy when templates fail to load", async () => {
+    server.use(
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
+      ),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    const raiseLink = await screen.findByRole("link", {
+      name: "Raise your own expert from scratch",
+    });
+    expect(raiseLink.getAttribute("href")).toBe("/raise");
+    expect(raiseLink.textContent).not.toContain("…or");
+  });
+
+  test("hired template shows hired state", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([hiredMaria]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    // #14037 renamed the hired badge from "Hired" to "On your team".
+    expect(await screen.findByText("On your team")).toBeDefined();
+  });
+
+  test("template becomes hireable again once the expert is fired", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([{ ...hiredMaria, is_archived: true }]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    await screen.findByText("Maria");
+    expect(screen.getByText("Hire")).toBeDefined();
+    expect(screen.queryByText("Hired")).toBeNull();
   });
 });

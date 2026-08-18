@@ -25,6 +25,7 @@ export function useTeamPage({ enabled }: Args) {
   const hiredExperts = (expertsQuery.data ?? []).filter(
     (expert) => !expert.is_template && !expert.is_archived,
   );
+  const schedules = schedulesQuery.data ?? [];
 
   const schedulesStatus = queryToAsyncStatus(
     {
@@ -37,7 +38,7 @@ export function useTeamPage({ enabled }: Args) {
   );
 
   function schedulesForExpert(expert: Expert) {
-    return getExpertSchedules(expert, schedulesQuery.data ?? []);
+    return getExpertSchedules(expert, schedules);
   }
 
   function installWorkflow(expertId: string) {
@@ -67,6 +68,7 @@ export function useTeamPage({ enabled }: Args) {
 
   return {
     hiredExperts,
+    schedules,
     schedulesForExpert,
     // Gate loading/error on the primary experts query only; the schedules
     // query keeps its own status so cards can distinguish "no schedules"

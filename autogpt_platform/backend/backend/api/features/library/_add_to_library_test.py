@@ -53,7 +53,11 @@ async def test_add_graph_to_library_create_new_agent() -> None:
         result = await add_graph_to_library(graph_model, "user-id", _make_slv())
 
     assert result is converted_agent
-    mock_from_db.assert_called_once_with(created_agent, schedule_info={})
+    mock_from_db.assert_called_once_with(
+        created_agent,
+        schedule_info={},
+        store_listing_version_id="slv-id",
+    )
     # Verify create was called with correct data
     create_call = mock_prisma.return_value.create.call_args
     create_data = create_call.kwargs["data"]
@@ -178,7 +182,11 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
         result = await add_graph_to_library(graph_model, "user-id", _make_slv())
 
     assert result is converted_agent
-    mock_from_db.assert_called_once_with(updated_agent, schedule_info={})
+    mock_from_db.assert_called_once_with(
+        updated_agent,
+        schedule_info={},
+        store_listing_version_id="slv-id",
+    )
     # Verify update was called with correct where and data
     update_call = mock_prisma.return_value.update.call_args
     assert update_call.kwargs["where"] == {
@@ -191,6 +199,7 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     update_data = update_call.kwargs["data"]
     assert update_data["isDeleted"] is False
     assert update_data["isArchived"] is False
+    assert "settings" not in update_data
     # Restoring a soft-deleted agent refreshes the marketplace snapshot too
     assert update_data["name"] == "Marketplace Title"
     assert update_data["description"] == "Marketplace description"

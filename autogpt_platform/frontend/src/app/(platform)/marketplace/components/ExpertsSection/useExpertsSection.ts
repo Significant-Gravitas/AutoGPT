@@ -27,6 +27,7 @@ export function useExpertsSection() {
   });
 
   return {
+    isLoggedIn,
     templates: templatesQuery.data ?? [],
     hiredTemplateIds: new Set(hiredLookup.byTemplateId.keys()),
     hiredLookupState: hiredLookup.state,

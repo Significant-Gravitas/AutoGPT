@@ -12,6 +12,7 @@ import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
+import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
@@ -22,6 +23,7 @@ export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     hiredExperts,
+    schedules,
     schedulesForExpert,
     isLoading,
     isError,
@@ -58,7 +60,7 @@ export default function TeamPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2.5">
-            <AITeamIcon size={36} className="shrink-0 text-black" />
+            <AITeamIcon size={36} className="shrink-0 text-zinc-950" />
             <Text variant="h3">Your Team</Text>
           </div>
           <Text variant="body" className="max-w-prose text-zinc-600">
@@ -85,6 +87,9 @@ export default function TeamPage() {
               />
             ))}
       </div>
+      {!isLoading && !isError && hiredExperts.length > 0 ? (
+        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
+      ) : null}
       {isError ? (
         <ErrorCard
           context="your team"
