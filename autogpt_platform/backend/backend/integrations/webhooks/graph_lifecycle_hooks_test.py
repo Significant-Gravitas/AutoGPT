@@ -51,6 +51,7 @@ async def test_before_graph_activate_oauth_refresh_failure_raises_clear_error():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
+        mgr.store.get_all_creds = AsyncMock(return_value=[])
         with pytest.raises(GraphActivationError) as excinfo:
             await _before_graph_activate(graph, "user-1")
 
@@ -79,6 +80,7 @@ async def test_before_graph_activate_clears_optional_unloadable_credentials():
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = failing_getter
+        mgr.store.get_all_creds = AsyncMock(return_value=[])
         await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"] == {}
@@ -96,6 +98,7 @@ async def test_before_graph_activate_missing_required_credential_raises_clear_er
         "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
     ) as mgr:
         mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(return_value=[])
         with pytest.raises(GraphActivationError) as excinfo:
             await _before_graph_activate(graph, "user-1")
 
@@ -140,3 +143,172 @@ async def test_before_graph_activate_ignores_credential_meta_without_id():
         await _before_graph_activate(graph, "user-1")
 
     getter.assert_not_awaited()
+
+
+def _stored_credential(
+    *,
+    cred_id: str = "cred-2",
+    provider: str = "codex",
+    cred_type: str = "oauth2",
+    title: str | None = "ChatGPT for Codex",
+    is_managed: bool = False,
+):
+    credential = MagicMock()
+    credential.id = cred_id
+    credential.provider = provider
+    credential.type = cred_type
+    credential.title = title
+    credential.is_managed = is_managed
+    return credential
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_adopts_sole_replacement_for_optional_field():
+    """Disconnecting and reconnecting an integration mints a new credential id,
+    leaving every graph pointing at one that no longer exists. For an optional
+    field the old behaviour cleared it silently, so the node fell back to a
+    different transport and the user never learned their reconnected account
+    was going unused. With exactly one credential of the same kind, adopt it."""
+    node = _make_node(
+        creds_field="codex_credentials",
+        creds_id="deleted-cred",
+        creds_provider="codex",
+        required=False,
+        optional_marker=True,
+    )
+    node.input_default["codex_credentials"]["type"] = "oauth2"
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(return_value=[_stored_credential()])
+        await _before_graph_activate(graph, "user-1")
+
+    assert node.input_default["codex_credentials"] == {
+        "id": "cred-2",
+        "provider": "codex",
+        "type": "oauth2",
+        "title": "ChatGPT for Codex",
+    }
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_adopts_sole_replacement_for_required_field():
+    """A required field would otherwise hard-fail the save; an unambiguous
+    replacement should let it through."""
+    node = _make_node(creds_id="deleted-cred", creds_provider="codex", required=True)
+    node.input_default["credentials"]["type"] = "oauth2"
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(return_value=[_stored_credential()])
+        await _before_graph_activate(graph, "user-1")
+
+    assert node.input_default["credentials"]["id"] == "cred-2"
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_does_not_adopt_when_kind_is_ambiguous():
+    """Two credentials of the same kind means there is no single obvious
+    successor, so fall back to the existing clear-or-raise behaviour rather
+    than picking one for the user."""
+    node = _make_node(
+        creds_field="codex_credentials",
+        creds_id="deleted-cred",
+        creds_provider="codex",
+        required=False,
+        optional_marker=True,
+    )
+    node.input_default["codex_credentials"]["type"] = "oauth2"
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(
+            return_value=[
+                _stored_credential(cred_id="cred-a"),
+                _stored_credential(cred_id="cred-b"),
+            ]
+        )
+        await _before_graph_activate(graph, "user-1")
+
+    assert node.input_default["codex_credentials"] == {}
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_never_adopts_a_system_credential():
+    """Re-pointing a user's deleted key at a platform-credit credential would
+    silently change who pays for the run, so system credentials are never
+    replacement candidates."""
+    node = _make_node(
+        creds_id="deleted-cred",
+        creds_provider="openai",
+        required=False,
+        optional_marker=True,
+    )
+    node.input_default["credentials"]["type"] = "api_key"
+    graph = MagicMock(nodes=[node])
+
+    managed = _stored_credential(
+        cred_id="system-openai",
+        provider="openai",
+        cred_type="api_key",
+        title="Use Credits for OpenAI",
+        is_managed=True,
+    )
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(return_value=[managed])
+        await _before_graph_activate(graph, "user-1")
+
+    assert node.input_default["credentials"] == {}
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_does_not_adopt_across_credential_types():
+    """A codex oauth2 reference must not adopt a codex api_key credential."""
+    node = _make_node(
+        creds_field="codex_credentials",
+        creds_id="deleted-cred",
+        creds_provider="codex",
+        required=False,
+        optional_marker=True,
+    )
+    node.input_default["codex_credentials"]["type"] = "oauth2"
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        mgr.store.get_all_creds = AsyncMock(
+            return_value=[_stored_credential(cred_type="api_key")]
+        )
+        await _before_graph_activate(graph, "user-1")
+
+    assert node.input_default["codex_credentials"] == {}
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_skips_replacement_lookup_on_happy_path():
+    """The extra lookup is only worth paying for when something failed."""
+    node = _make_node()
+    graph = MagicMock(nodes=[node])
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=MagicMock())
+        mgr.store.get_all_creds = AsyncMock(return_value=[])
+        await _before_graph_activate(graph, "user-1")
+
+    mgr.store.get_all_creds.assert_not_awaited()
