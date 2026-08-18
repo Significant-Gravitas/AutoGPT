@@ -14,10 +14,15 @@ import {
   PlusSignIcon,
   SparklesIcon,
   UserAdd01Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
-export function CreateMenu() {
+interface Props {
+  onNewPod: () => void;
+}
+
+export function CreateMenu({ onNewPod }: Props) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -46,6 +51,10 @@ export function CreateMenu() {
             <Icon icon={FlowIcon} className="mr-2 size-4" />
             Build an agent from scratch
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onNewPod}>
+          <Icon icon={UserGroupIcon} className="mr-2 size-4" />
+          New pod
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

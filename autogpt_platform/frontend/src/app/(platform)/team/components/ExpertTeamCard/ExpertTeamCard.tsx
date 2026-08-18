@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   Avatar,
@@ -6,11 +7,23 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
-import Image from "next/image";
-import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { PencilEdit02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import {
+  PencilEdit02Icon,
+  PlusSignIcon,
+  Tick02Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
+import Image from "next/image";
+import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { CreditsMeter } from "./components/CreditsMeter";
@@ -28,15 +41,21 @@ const TEAM_CARD_BANNER_SRC = "/images/team-card-banner.jpg";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
+  pods: ExpertPod[];
+  currentPod: ExpertPod | undefined;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
+  onAssignPod: (expertId: string, podId: string | null) => void;
 }
 
 export function ExpertTeamCard({
   expert,
   schedules,
+  pods,
+  currentPod,
   onInstallWorkflow,
   onEditSoul,
+  onAssignPod,
 }: Props) {
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert, schedules);
@@ -183,8 +202,51 @@ export function ExpertTeamCard({
           >
             Install workflow
           </Button>
+          {pods.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  leftIcon={<Icon icon={UserGroupIcon} size={16} />}
+                  aria-label={
+                    currentPod
+                      ? `Move to pod (currently ${currentPod.name})`
+                      : "Move to pod"
+                  }
+                >
+                  {currentPod ? currentPod.name : "Move to pod"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="max-h-72 w-52 overflow-y-auto"
+              >
+                {pods.map((pod) => (
+                  <DropdownMenuItem
+                    key={pod.id}
+                    onSelect={() => onAssignPod(expert.id, pod.id)}
+                  >
+                    <span className="flex-1 truncate">{pod.name}</span>
+                    {expert.pod_id === pod.id ? (
+                      <Icon icon={Tick02Icon} size={16} className="ml-2" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+                {expert.pod_id ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => onAssignPod(expert.id, null)}
+                    >
+                      Remove from pod
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
-      </div>
       <FireExpertDialog
         expertId={expert.id}
         expertName={expert.name}

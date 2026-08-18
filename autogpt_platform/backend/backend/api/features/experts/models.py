@@ -121,6 +121,18 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # Owner-scoped grouping. None = ungrouped ("unpodded").
+    pod_id: str | None = None
+
+
+# Membership is deliberately not embedded: clients already hold the expert
+# list and each Expert carries `pod_id`, so the roster groups client-side.
+class ExpertPod(BaseModel):
+    """A named group of hired experts, scoped to the owner."""
+
+    id: str
+    name: str
+    created_at: datetime
 
 
 class ExpertRun(BaseModel):

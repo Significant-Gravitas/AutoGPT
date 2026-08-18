@@ -15,6 +15,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertPod,
     ExpertRun,
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
@@ -78,6 +79,24 @@ class ExpertHireUnavailableError(Exception):
     def __init__(self, expert_id: str):
         super().__init__(expert_id)
         self.expert_id = expert_id
+
+
+class ExpertPodNotFoundError(Exception):
+    def __init__(self, pod_id: str):
+        super().__init__(f"Pod {pod_id} not found")
+        self.pod_id = pod_id
+
+
+class ExpertPodNameTakenError(Exception):
+    def __init__(self, name: str):
+        super().__init__(f"A pod named {name!r} already exists")
+        self.name = name
+
+
+class ExpertPodLimitReachedError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"You can have at most {limit} pods")
+        self.limit = limit
 
 
 class ExpertLimitExceededError(Exception):
@@ -156,6 +175,7 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        pod_id=row.podId,
     )
 
 
@@ -1106,3 +1126,85 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
         logger.exception(
             f"Failed to detach triggers while archiving expert #{expert_id}"
         )
+
+
+# ─── Pods (owner-scoped named groups) ──────────────────────────────────
+
+# Pods are a personal organisation aid, not a modelling primitive: a roster
+# large enough to need more groups than this is not a roster any more. The cap
+# also bounds what a scripted client can create.
+MAX_PODS_PER_USER = 100
+
+
+async def create_pod(user_id: str, name: str) -> ExpertPod:
+    """Create a pod owned by *user_id*.
+
+    The count is deliberately not serialized against the insert. This cap is a
+    guardrail on a self-scoped resource, not a billed quota, so a burst of
+    concurrent creates may overshoot by the burst width before the next call is
+    rejected — the bound that matters (a scripted client cannot grow the table
+    without limit) still holds. Making it exact would mean an advisory lock or
+    row lock on every create, which is the treatment ``credit.py`` reserves for
+    balances and is not warranted here.
+    """
+    existing = await prisma.models.ExpertPod.prisma().count(where={"userId": user_id})
+    if existing >= MAX_PODS_PER_USER:
+        raise ExpertPodLimitReachedError(MAX_PODS_PER_USER)
+    try:
+        row = await prisma.models.ExpertPod.prisma().create(
+            data={"userId": user_id, "name": name}
+        )
+    except prisma.errors.UniqueViolationError:
+        raise ExpertPodNameTakenError(name)
+    return _to_pod(row)
+
+
+async def list_pods(user_id: str) -> list[ExpertPod]:
+    rows = await prisma.models.ExpertPod.prisma().find_many(
+        where={"userId": user_id},
+        order={"createdAt": "asc"},
+    )
+    return [_to_pod(row) for row in rows]
+
+
+async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert:
+    """Move a hired expert into *pod_id*, or clear it when ``None``.
+
+    Both the expert and the target pod must belong to *user_id*; a pod owned
+    by someone else is treated as not found rather than silently ignored.
+    """
+    if pod_id is not None:
+        pod = await prisma.models.ExpertPod.prisma().find_first(
+            where={"id": pod_id, "userId": user_id}
+        )
+        if pod is None:
+            raise ExpertPodNotFoundError(pod_id)
+
+    try:
+        updated = await prisma.models.Expert.prisma().update_many(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            },
+            data={"podId": pod_id},
+        )
+    except prisma.errors.ForeignKeyViolationError:
+        # Clearing the FK cannot violate it, so pod_id is set here: the pod was
+        # deleted between the ownership check above and this write. The None
+        # branch is unreachable; re-raise rather than name a pod that isn't.
+        if pod_id is None:
+            raise
+        raise ExpertPodNotFoundError(pod_id)
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
+    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
