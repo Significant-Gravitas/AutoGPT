@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -26,37 +27,52 @@ _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
 EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
 
-# Avatars come from our own upload (an absolute storage URL) or ship with a
-# roster template (a path under /public). Anything else — notably data: and
-# javascript: — is refused so a stored value can never carry script.
-_ALLOWED_AVATAR_URL_SCHEMES = ("https://", "http://")
+# Avatars come from our own upload (an absolute https URL) or ship with a
+# roster template (a path under /public). Anything else — notably data:,
+# javascript: and plaintext http: — is refused so a stored value can never
+# carry script or be fetched unencrypted.
+# Backslashes and tab/CR/LF are refused outright: browsers strip the control
+# characters and treat "\" as "/" for special schemes, so "/\evil.example/a.png"
+# would resolve to a third-party origin despite looking site-relative.
+_AVATAR_URL_FORBIDDEN_CHARS = ("\\", "\t", "\r", "\n")
 
 
 def validate_avatar_url(value: str | None) -> str | None:
-    """Accept an absolute http(s) URL or a site-relative path, else reject."""
+    """Accept an absolute https URL or a site-relative path, else reject."""
     if value is None:
         return None
     stripped = value.strip()
     if not stripped:
         return None
+    if any(char in stripped for char in _AVATAR_URL_FORBIDDEN_CHARS):
+        raise ValueError(
+            "Avatar URL must not contain backslashes or control characters"
+        )
     if stripped.startswith("//"):
         raise ValueError("Avatar URL must not be protocol-relative")
     if stripped.startswith("/"):
         return stripped
-    if stripped.startswith(_ALLOWED_AVATAR_URL_SCHEMES):
-        return stripped
-    raise ValueError("Avatar URL must be an http(s) URL or a relative path")
+    parsed = urlparse(stripped)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("Avatar URL must be an https URL or a relative path")
+    return stripped
 
 
-def _strip_required_soul_field(value: str) -> str:
+# The soul strippers run as "before" validators, ahead of the length
+# constraints, so a padded value is measured after trimming and a blank one
+# fails with the field's own message. Non-str input passes through untouched
+# for Pydantic to reject with its type error.
+def _strip_required_soul_field(value: object) -> object:
+    if not isinstance(value, str):
+        return value
     stripped = value.strip()
     if not stripped:
         raise ValueError("Field must not be blank")
     return stripped
 
 
-def _strip_optional_soul_field(value: str) -> str:
-    return value.strip()
+def _strip_optional_soul_field(value: object) -> object:
+    return value.strip() if isinstance(value, str) else value
 
 
 class VoiceSample(BaseModel):
@@ -183,9 +199,14 @@ class RaiseAttachment(BaseModel):
     source: RaiseAttachmentSource
     id: str = Field(min_length=1, max_length=100)
 
-    @field_validator("id")
+    # "before" so the length bounds apply to the trimmed id: a padded but
+    # in-range id is accepted, and a whitespace-only one fails with the
+    # message below instead of the generic min_length error.
+    @field_validator("id", mode="before")
     @classmethod
-    def strip_id(cls, value: str) -> str:
+    def strip_id(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         stripped = value.strip()
         if not stripped:
             raise ValueError("Attachment id must not be blank")
@@ -217,14 +238,14 @@ class ExpertSoulUpdate(BaseModel):
     voice_preferences: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
     boundaries: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
 
-    @field_validator("name", "identity")
+    @field_validator("name", "identity", mode="before")
     @classmethod
-    def strip_required_fields(cls, value: str) -> str:
+    def strip_required_fields(cls, value: object) -> object:
         return _strip_required_soul_field(value)
 
-    @field_validator("voice_preferences", "boundaries")
+    @field_validator("voice_preferences", "boundaries", mode="before")
     @classmethod
-    def strip_optional_fields(cls, value: str) -> str:
+    def strip_optional_fields(cls, value: object) -> object:
         return _strip_optional_soul_field(value)
 
 
@@ -246,17 +267,15 @@ class ExpertSoulFieldsPatch(BaseModel):
         default=None, max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH
     )
 
-    @field_validator("identity")
+    @field_validator("identity", mode="before")
     @classmethod
-    def strip_required_fields(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def strip_required_fields(cls, value: object) -> object:
         return _strip_required_soul_field(value)
 
-    @field_validator("voice_preferences", "boundaries")
+    @field_validator("voice_preferences", "boundaries", mode="before")
     @classmethod
-    def strip_optional_fields(cls, value: str | None) -> str | None:
-        return None if value is None else _strip_optional_soul_field(value)
+    def strip_optional_fields(cls, value: object) -> object:
+        return _strip_optional_soul_field(value)
 
 
 def encode_voice_preferences(description: str, samples: list[VoiceSample]) -> str:

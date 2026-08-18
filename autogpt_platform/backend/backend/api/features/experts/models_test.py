@@ -4,11 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from backend.api.features.experts.models import (
+    EXPERT_IDENTITY_MAX_LENGTH,
+    ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     RaiseAttachment,
     VoiceSample,
     decode_voice_preferences,
     encode_voice_preferences,
+    validate_avatar_url,
 )
 
 
@@ -122,3 +125,98 @@ def test_raise_attachment_strips_id():
 def test_raise_attachment_rejects_blank_id():
     with pytest.raises(ValidationError):
         RaiseAttachment(kind="skill", source="library", id="   ")
+
+
+def test_raise_attachment_strips_before_length_bounds():
+    # The trim runs ahead of max_length, so padding around a full-length id
+    # cannot push it over the limit.
+    padded = f"  {'a' * 100}  "
+
+    attachment = RaiseAttachment(kind="skill", source="library", id=padded)
+
+    assert attachment.id == "a" * 100
+
+
+def test_raise_attachment_blank_id_reports_the_blank_message():
+    # Whitespace satisfies min_length, so the blank check must own the error.
+    with pytest.raises(ValidationError) as error:
+        RaiseAttachment(kind="skill", source="library", id="   ")
+
+    assert "Attachment id must not be blank" in str(error.value)
+
+
+def test_raise_attachment_rejects_non_string_id():
+    # The "before" validator hands a non-str through so Pydantic still owns
+    # the type error.
+    with pytest.raises(ValidationError):
+        RaiseAttachment.model_validate({"kind": "skill", "source": "library", "id": 7})
+
+
+def test_soul_update_strips_before_length_bounds():
+    padded_name = f"  {'n' * 100}  "
+    padded_identity = f"  {'i' * EXPERT_IDENTITY_MAX_LENGTH}  "
+
+    soul = ExpertSoulUpdate(
+        name=padded_name,
+        identity=padded_identity,
+        voice_preferences="",
+        boundaries="",
+    )
+
+    assert soul.name == "n" * 100
+    assert soul.identity == "i" * EXPERT_IDENTITY_MAX_LENGTH
+
+
+def test_soul_patch_strips_before_length_bounds():
+    patch = ExpertSoulFieldsPatch(identity=f"  {'i' * EXPERT_IDENTITY_MAX_LENGTH}  ")
+
+    assert patch.identity == "i" * EXPERT_IDENTITY_MAX_LENGTH
+
+
+def test_soul_patch_leaves_omitted_fields_none():
+    patch = ExpertSoulFieldsPatch()
+
+    assert patch.identity is None
+    assert patch.voice_preferences is None
+    assert patch.boundaries is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("   ", None),
+        ("  https://cdn.example.com/a.png  ", "https://cdn.example.com/a.png"),
+        ("/experts/maria.svg", "/experts/maria.svg"),
+    ],
+)
+def test_validate_avatar_url_accepts_https_and_relative_paths(
+    value: str | None, expected: str | None
+):
+    assert validate_avatar_url(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        # Plaintext http would fetch the avatar unencrypted.
+        "http://cdn.example.com/a.png",
+        # Browsers read "\" as "/" for special schemes, so these look
+        # site-relative but resolve to a third-party origin.
+        "/\\tracker.example/avatar.png",
+        "https:/\\tracker.example/avatar.png",
+        # Tab/CR/LF are stripped by the URL parser, turning this into
+        # "//evil.example/x.png" — protocol-relative to another origin.
+        "/\t/evil.example/x.png",
+        "//evil.example/x.png",
+        "javascript:alert(1)",
+        "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        "ftp://example.com/x.png",
+        # https with no host is not fetchable from our origin.
+        "https:///a.png",
+        "https://",
+    ],
+)
+def test_validate_avatar_url_rejects_unsafe_values(value: str):
+    with pytest.raises(ValueError):
+        validate_avatar_url(value)

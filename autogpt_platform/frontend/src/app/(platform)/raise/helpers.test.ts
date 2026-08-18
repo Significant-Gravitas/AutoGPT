@@ -1,13 +1,16 @@
 import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import {
   assembledKit,
   EMPTY_DRAFT,
   getExpertLimitCode,
   kitBudgetLabel,
   kitToolsLabel,
+  loadDraft,
   raisedIdentity,
   resolveVoicePreferences,
+  saveDraft,
+  VOICE_SKIPPED_LABEL,
   voiceSummaryLabel,
 } from "./helpers";
 
@@ -103,5 +106,29 @@ describe("raise helpers", () => {
         },
       ],
     });
+  });
+});
+
+describe("restoring a persisted draft", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  test("backfills the skipped-voice label when the draft is past the voice beat", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "budget", voiceLabel: null });
+
+    expect(loadDraft().voiceLabel).toBe(VOICE_SKIPPED_LABEL);
+  });
+
+  test("leaves the voice beat unanswered when the draft has not reached it", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "about", voiceLabel: null });
+
+    expect(loadDraft().voiceLabel).toBeNull();
+  });
+
+  test("keeps an explicitly picked voice label", () => {
+    saveDraft({ ...EMPTY_DRAFT, step: "budget", voiceLabel: "Direct" });
+
+    expect(loadDraft().voiceLabel).toBe("Direct");
   });
 });

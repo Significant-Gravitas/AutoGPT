@@ -25,24 +25,21 @@ export function useDitheredWaves(colors: readonly string[]) {
     const gl = canvas?.getContext("webgl2", { antialias: false });
     if (!canvas || !gl) return;
 
-    const compiled = createDitherProgram(gl);
-    if (!compiled) return;
+    const program = createDitherProgram(gl);
+    if (!program) return;
 
-    gl.useProgram(compiled.program);
+    gl.useProgram(program);
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
 
-    const resolutionLocation = gl.getUniformLocation(
-      compiled.program,
-      "uResolution",
-    );
-    const timeLocation = gl.getUniformLocation(compiled.program, "u_time");
-    const wipeLocation = gl.getUniformLocation(compiled.program, "uWipe");
+    const resolutionLocation = gl.getUniformLocation(program, "uResolution");
+    const timeLocation = gl.getUniformLocation(program, "u_time");
+    const wipeLocation = gl.getUniformLocation(program, "uWipe");
     const colorLocations = DITHER_COLORS.map((_, index) =>
-      gl.getUniformLocation(compiled.program, `uColor${index}`),
+      gl.getUniformLocation(program, `uColor${index}`),
     );
     const previousColorLocations = DITHER_COLORS.map((_, index) =>
-      gl.getUniformLocation(compiled.program, `uPrevColor${index}`),
+      gl.getUniformLocation(program, `uPrevColor${index}`),
     );
 
     let width = 0;
@@ -101,9 +98,7 @@ export function useDitheredWaves(colors: readonly string[]) {
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      gl.deleteProgram(compiled.program);
-      gl.deleteShader(compiled.vert);
-      gl.deleteShader(compiled.frag);
+      gl.deleteProgram(program);
       gl.deleteVertexArray(vao);
     };
   }, []);

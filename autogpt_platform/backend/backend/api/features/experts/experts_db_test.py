@@ -513,9 +513,13 @@ async def test_raise_expert_restores_existing_first_job_library_agent(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_first_job_install_rolls_back_library_agent_on_link_failure(
+async def test_first_job_install_rolls_back_library_agent_on_link_race(
     server: SpinTestServer,
 ):
+    """A concurrent raise already attached this listing, so the link insert
+    loses the unique constraint: the transaction — including the library agent
+    it created — rolls back, and the caller still sees success because the
+    workflow is attached."""
     owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
     expert = await prisma.models.Expert.prisma().create(
@@ -533,8 +537,7 @@ async def test_first_job_install_rolls_back_library_agent_on_link_failure(
         }
     )
 
-    with pytest.raises(prisma.errors.UniqueViolationError):
-        await experts_db._install_first_job(owner.id, expert.id, slv_id)
+    await experts_db._install_first_job(owner.id, expert.id, slv_id)
 
     listing = await prisma.models.StoreListingVersion.prisma().find_unique(
         where={"id": slv_id}, include={"AgentGraph": True}

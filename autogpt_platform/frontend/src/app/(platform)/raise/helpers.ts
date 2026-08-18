@@ -125,14 +125,26 @@ export function loadDraft(): RaiseDraft {
       step?: string;
     };
     const step = parsed.step === "kit" ? "budget" : parsed.step;
-    return {
+    return backfillSkippedVoice({
       ...EMPTY_DRAFT,
       ...parsed,
       step: isRaiseStep(step) ? step : EMPTY_DRAFT.step,
-    };
+    });
   } catch {
     return EMPTY_DRAFT;
   }
+}
+
+// A draft written by an earlier build recorded a skipped voice as a null
+// label. The flow now treats null as "not answered", which would leave a
+// restored session parked on the voice beat with no way forward, so a draft
+// that has already moved past voice gets the sentinel back.
+function backfillSkippedVoice(draft: RaiseDraft): RaiseDraft {
+  if (draft.voiceLabel !== null) return draft;
+  if (STEP_ORDER.indexOf(draft.step) <= STEP_ORDER.indexOf("voice")) {
+    return draft;
+  }
+  return { ...draft, voiceLabel: VOICE_SKIPPED_LABEL };
 }
 
 export function saveDraft(draft: RaiseDraft) {

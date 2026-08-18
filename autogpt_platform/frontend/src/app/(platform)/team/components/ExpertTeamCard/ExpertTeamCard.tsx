@@ -143,7 +143,11 @@ export function ExpertTeamCard({
               <Text variant="small" className="text-zinc-500">
                 Credits this week
               </Text>
-              <Text variant="small" className="tabular-nums text-zinc-500">
+              <Text
+                variant="small"
+                unmask={false}
+                className="tabular-nums text-zinc-500"
+              >
                 {weeklySpend
                   ? `${weeklySpend.spent} / ${weeklySpend.budget}`
                   : "No budget"}

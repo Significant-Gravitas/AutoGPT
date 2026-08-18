@@ -75,9 +75,13 @@ class CreateRaisedExpertRequest(BaseModel):
         default_factory=list, max_length=MAX_RAISE_ATTACHMENTS
     )
 
-    @field_validator("name")
+    # "before" so the length bounds apply to the trimmed name and a blank one
+    # fails with the message below rather than the generic min_length error.
+    @field_validator("name", mode="before")
     @classmethod
-    def strip_name(cls, value: str) -> str:
+    def strip_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
         stripped = value.strip()
         if not stripped:
             raise ValueError("Name must not be blank")

@@ -2,6 +2,7 @@
 
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
+import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { kitBudgetLabel, kitToolsLabel, type RaiseKit } from "../../helpers";
 import { roleLabelFor } from "../RoleStep/helpers";
@@ -42,7 +43,7 @@ export function SoulPreviewPanel({
   return (
     <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
       <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border bg-background px-8 py-12 shadow-2xl">
-        <span className="size-28 shrink-0 overflow-hidden rounded-full">
+        <div className="size-28 shrink-0 overflow-hidden rounded-full">
           {avatarUrl ? (
             <Image
               src={avatarUrl}
@@ -55,20 +56,17 @@ export function SoulPreviewPanel({
           ) : (
             <GlassOrb params={DEFAULT_GLASS_PARAMS} showRim={false} />
           )}
-        </span>
+        </div>
 
         <div className="flex flex-col items-center gap-1.5">
-          {name ? (
-            <h2
-              className={`text-center text-2xl font-semibold tracking-[-0.02em] text-foreground ${REVEAL}`}
-            >
-              {name}
-            </h2>
-          ) : (
-            <p className="text-center text-2xl font-semibold tracking-[-0.02em] text-muted-foreground/50">
-              No name yet
-            </p>
-          )}
+          <h2
+            className={cn(
+              "text-center text-2xl font-semibold tracking-[-0.02em]",
+              name ? `text-foreground ${REVEAL}` : "text-muted-foreground/50",
+            )}
+          >
+            {name || "No name yet"}
+          </h2>
           {roleLabel ? (
             <p
               className={`text-sm uppercase tracking-[0.12em] text-muted-foreground ${REVEAL}`}

@@ -5,6 +5,7 @@ from typing import Literal
 
 import prisma.errors
 import prisma.models
+from pydantic import BaseModel
 
 from backend.api.features.experts.models import (
     RaiseAttachment,
@@ -43,23 +44,15 @@ class RaiseAttachmentUnavailableError(Exception):
         self.id = attachment_id
 
 
-class ResolvedWorkflow:
-    def __init__(
-        self,
-        attachment: RaiseAttachment,
-        *,
-        store_listing_version_id: str | None,
-        library_agent_id: str | None,
-    ):
-        self.attachment = attachment
-        self.store_listing_version_id = store_listing_version_id
-        self.library_agent_id = library_agent_id
+class ResolvedWorkflow(BaseModel):
+    attachment: RaiseAttachment
+    store_listing_version_id: str | None
+    library_agent_id: str | None
 
 
-class ResolvedRaiseAttachments:
-    def __init__(self, workflows: list[ResolvedWorkflow], skill_names: list[str]):
-        self.workflows = workflows
-        self.skill_names = skill_names
+class ResolvedRaiseAttachments(BaseModel):
+    workflows: list[ResolvedWorkflow]
+    skill_names: list[str]
 
 
 async def resolve_attachments(
@@ -113,6 +106,28 @@ async def install_marketplace_workflow(
     expert_id: str,
     store_listing_version_id: str,
 ) -> None:
+    """Install a marketplace listing and attach it to the expert.
+
+    A concurrent or retried raise can win the ExpertWorkflow insert; that row
+    is the same attachment, so a unique violation counts as success. The
+    re-check runs after the failed transaction has rolled back, never inside
+    it — Postgres aborts a transaction on the first failed statement.
+    """
+    try:
+        await _install_marketplace_workflow_once(
+            user_id, expert_id, store_listing_version_id
+        )
+    except prisma.errors.UniqueViolationError:
+        raced = await _existing_listing_workflow(expert_id, store_listing_version_id)
+        if raced is None:
+            raise
+
+
+async def _install_marketplace_workflow_once(
+    user_id: str,
+    expert_id: str,
+    store_listing_version_id: str,
+) -> None:
     async with transaction() as tx:
         is_installable = (
             await library_db.is_store_listing_version_available_for_install(
@@ -153,13 +168,13 @@ async def _resolve_workflow(
     if attachment.source == "marketplace":
         await _validate_marketplace_listing(attachment.id, "workflow")
         return ResolvedWorkflow(
-            attachment,
+            attachment=attachment,
             store_listing_version_id=attachment.id,
             library_agent_id=None,
         )
     row = await _library_agent_row(user_id, attachment.id)
     return ResolvedWorkflow(
-        attachment,
+        attachment=attachment,
         store_listing_version_id=await _matching_store_listing_version_id(row),
         library_agent_id=row.id,
     )
@@ -273,17 +288,26 @@ async def _existing_workflow(
     store_listing_version_id: str | None,
 ) -> prisma.models.ExpertWorkflow | None:
     if store_listing_version_id is not None:
-        by_listing = await prisma.models.ExpertWorkflow.prisma().find_first(
-            where={
-                "expertId": expert_id,
-                "storeListingVersionId": store_listing_version_id,
-            },
-            include=_WORKFLOW_ROW_INCLUDE,
+        by_listing = await _existing_listing_workflow(
+            expert_id, store_listing_version_id
         )
         if by_listing is not None:
             return by_listing
     return await prisma.models.ExpertWorkflow.prisma().find_first(
         where={"expertId": expert_id, "libraryAgentId": library_agent_id},
+        include=_WORKFLOW_ROW_INCLUDE,
+    )
+
+
+async def _existing_listing_workflow(
+    expert_id: str,
+    store_listing_version_id: str,
+) -> prisma.models.ExpertWorkflow | None:
+    return await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={
+            "expertId": expert_id,
+            "storeListingVersionId": store_listing_version_id,
+        },
         include=_WORKFLOW_ROW_INCLUDE,
     )
 

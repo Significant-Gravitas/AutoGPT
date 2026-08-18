@@ -16,7 +16,7 @@ import {
   type RaiseFlowItem,
 } from "../../flowItems";
 import { VOICE_SAMPLES } from "../../helpers";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useRaisePage } from "../../useRaisePage";
 import { useConversationScroll } from "../../useConversationScroll";
 import { AboutStep } from "../AboutStep/AboutStep";
@@ -37,6 +37,7 @@ import { RoleStep } from "../RoleStep/RoleStep";
 import { SkillsStep } from "../SkillsStep/SkillsStep";
 import { nameSuggestionsFor } from "../RoleStep/helpers";
 import { SoulPreviewPanel } from "../SoulPreviewPanel/SoulPreviewPanel";
+import { RestartConfirmDialog } from "./components/RestartConfirmDialog";
 
 const STEP_ANIMATION =
   "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
@@ -53,6 +54,7 @@ export function RaiseFlow() {
     voiceLabel,
     budget,
     marketplace,
+    skills,
     kit,
     isSubmitting,
     canGoBack,
@@ -77,6 +79,7 @@ export function RaiseFlow() {
     skipSkills,
   } = useRaisePage();
   const { scrollRef, canScrollUp, canScrollDown } = useConversationScroll();
+  const [isRestartOpen, setIsRestartOpen] = useState(false);
   const initialMessageIds = useRef<Set<string> | null>(null);
   if (initialMessageIds.current === null) {
     initialMessageIds.current = new Set(
@@ -159,7 +162,7 @@ export function RaiseFlow() {
           <SkillsStep
             name={name}
             color={color}
-            submitted={null}
+            submitted={skills}
             existingCount={marketplace?.length ?? 0}
             isSubmitting={isSubmitting}
             onSubmit={submitSkills}
@@ -238,13 +241,12 @@ export function RaiseFlow() {
             >
               <Icon icon={ArrowLeft02Icon} size={16} />
             </Button>
-            {/* Testing only: wipes the persisted draft and replays the flow. */}
             <Button
               variant="icon"
               size="small"
-              aria-label="Restart flow"
+              aria-label="Start over"
               className="bg-white p-2 hover:bg-zinc-100"
-              onClick={restart}
+              onClick={() => setIsRestartOpen(true)}
             >
               <Icon icon={RefreshIcon} size={16} />
             </Button>
@@ -263,6 +265,14 @@ export function RaiseFlow() {
           </div>
         </div>
       </div>
+      <RestartConfirmDialog
+        open={isRestartOpen}
+        onOpenChange={setIsRestartOpen}
+        onConfirm={() => {
+          setIsRestartOpen(false);
+          restart();
+        }}
+      />
     </main>
   );
 }

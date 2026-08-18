@@ -121,7 +121,9 @@ void main() {
   // sweeps the whole surface on one diagonal pass.
   vec2 st = gl_FragCoord.xy / uResolution.xy;
   float diagonal = (st.x + st.y) * 0.5;
-  float front = smoothstep(uWipe + 0.12, uWipe - 0.12, diagonal);
+  // Edges must stay ordered: smoothstep is undefined for edge0 >= edge1, so the
+  // descending ramp is expressed as an inverted ascending one.
+  float front = 1.0 - smoothstep(uWipe - 0.12, uWipe + 0.12, diagonal);
 
   vec3 previous = ramp(v, uPrevColor0, uPrevColor1, uPrevColor2, uPrevColor3);
   vec3 next = ramp(v, uColor0, uColor1, uColor2, uColor3);

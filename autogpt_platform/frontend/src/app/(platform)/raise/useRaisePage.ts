@@ -125,6 +125,9 @@ export function useRaisePage() {
     update({ marketplace: [], step: "skills" });
   }
 
+  // Skills stays unanswered in the draft until the raise succeeds, and a
+  // successful raise clears the draft. Recording it up front would render the
+  // step as answered and take away the retry control when the POST fails.
   function submitSkills(attachments: RaiseAttachmentDraft[]) {
     finish({
       weeklyBudget: draft.budget?.credits ?? null,
