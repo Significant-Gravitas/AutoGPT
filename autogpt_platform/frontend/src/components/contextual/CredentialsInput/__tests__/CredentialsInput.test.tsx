@@ -620,3 +620,55 @@ describe("CredentialsInput – a removed connection", () => {
     expect(screen.queryByText(/was removed/i)).toBeNull();
   });
 });
+
+describe("CredentialsInput – removal notice lifecycle", () => {
+  it("clears the removal notice once a real connection is selected", async () => {
+    const codexCredential = {
+      id: "codex-1",
+      provider: "codex",
+      type: "oauth2" as const,
+      title: "ChatGPT for Codex",
+      scopes: [],
+    };
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: [codexCredential],
+      }),
+    );
+
+    const { rerender } = render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "deleted-cred",
+          provider: "codex",
+          type: "oauth2",
+          title: "ChatGPT for Codex",
+        }}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    expect(await screen.findByText(/was removed/i)).toBeDefined();
+
+    // The user picks the connection that does exist.
+    rerender(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={{
+          id: "codex-1",
+          provider: "codex",
+          type: "oauth2",
+          title: "ChatGPT for Codex",
+        }}
+        onSelectCredentials={vi.fn()}
+        showTitle={false}
+      />,
+    );
+
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+});
