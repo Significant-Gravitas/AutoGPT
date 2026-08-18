@@ -43,6 +43,7 @@ from typing_extensions import TypedDict
 
 from backend.data.onboarding_steps import OnboardingStep
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import ExecutionFailureReason
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
 from backend.util.settings import Secrets
@@ -970,6 +971,10 @@ class GraphExecutionStats(BaseModel):
     )
 
     error: Optional[Exception | str] = None
+    failure_reason: Optional[ExecutionFailureReason] = Field(
+        default=None,
+        description="Structured reason for a terminal execution failure",
+    )
     walltime: float = Field(
         default=0, description="Time between start and end of run (seconds)"
     )
