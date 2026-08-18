@@ -350,3 +350,125 @@ async def test_probe_drops_a_caller_supplied_authorization(monkeypatch):
 
     assert "Authorization" not in client.calls[0]["headers"]
     assert client.calls[1]["headers"]["Authorization"].startswith("Payment ")
+
+
+@pytest.mark.asyncio
+async def test_a_declined_payment_is_reported_as_unpaid(monkeypatch):
+    """The money-sensitive case: a decline must never read as `paid`.
+
+    The retry carries the token, so a 402/4xx on the second hop means the
+    merchant refused the credential. Reporting that as success would tell an
+    agent a purchase completed when nothing was bought.
+    """
+    client = _RecordingClient(
+        [
+            _FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER}),
+            _FakeResponse(402, payload={"error": "card_declined"}),
+        ]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    status, payload = await block._pay_with_token(
+        "spt_abc", "https://merchant.example/buy", "POST", {"amount": 100}, {}
+    )
+
+    assert status == 402
+    assert payload == {"error": "card_declined"}
+    assert not (200 <= status < 300)
+
+
+@pytest.mark.asyncio
+async def test_a_lowercase_caller_authorization_cannot_duplicate_the_header(
+    monkeypatch,
+):
+    """Stripping only the canonical spelling left a second Authorization.
+
+    The probe dropped `authorization` case-insensitively but the retry merged
+    over `Authorization`, so a lowercase caller header survived and the
+    merchant received two — defeating the guarantee that callers cannot
+    displace the credential.
+    """
+    client = _RecordingClient(
+        [
+            _FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER}),
+            _FakeResponse(200, payload={"ok": True}),
+        ]
+    )
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+    await block._pay_with_token(
+        "spt_abc",
+        "https://merchant.example/buy",
+        "POST",
+        {"amount": 100},
+        {"authorization": "Bearer caller-token"},
+    )
+
+    retry_headers = client.calls[1]["headers"]
+    auth_headers = [k for k in retry_headers if k.lower() == "authorization"]
+    assert len(auth_headers) == 1
+    assert retry_headers[auth_headers[0]].startswith("Payment ")
+    assert "caller-token" not in str(retry_headers)
+
+
+def test_an_oversized_merchant_response_is_truncated_not_persisted_whole():
+    """`response` is persisted with the execution, so it needs a ceiling."""
+    from backend.blocks.stripe_link.mpp import _json_or_text
+
+    huge = _FakeResponse(200, payload={"blob": "x" * (32 * 1024)})
+    out = _json_or_text(huge)
+
+    assert out["truncated"] is True
+    assert len(out["body"]) <= 1000
+
+
+def test_a_list_merchant_response_is_wrapped_into_a_dict():
+    from backend.blocks.stripe_link.mpp import _json_or_text
+
+    assert _json_or_text(_FakeResponse(200, payload=[1, 2, 3])) == {"data": [1, 2, 3]}
+
+
+def test_a_non_json_merchant_response_falls_back_to_bounded_text():
+    from backend.blocks.stripe_link.mpp import _json_or_text
+
+    out = _json_or_text(_FakeResponse(500, text="y" * 5000))
+
+    assert len(out["body"]) == 1000
+
+
+@pytest.mark.asyncio
+async def test_a_failed_probe_is_not_reported_as_a_non_mpp_merchant():
+    """A 503 or a typo'd URL used to yield supports_mpp=false, which routes the
+    agent into the virtual-card flow as though the merchant had been checked."""
+
+    async def _probe(url, method, body):
+        return 503, ""
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    block._probe = _probe  # type: ignore[method-assign]
+
+    inp = block.Input.model_validate({"url": "https://shop.example/checkout"})
+    outputs = {n: v async for n, v in block.run(inp)}
+
+    assert "supports_mpp" not in outputs
+    assert "503" in outputs["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_plain_success_still_reports_a_non_mpp_merchant():
+    """A merchant that serves the request without demanding payment is a
+    definitive 'not MPP', unlike a failed probe."""
+
+    async def _probe(url, method, body):
+        return 200, ""
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    block._probe = _probe  # type: ignore[method-assign]
+
+    inp = block.Input.model_validate({"url": "https://shop.example/checkout"})
+    outputs = {n: v async for n, v in block.run(inp)}
+
+    assert outputs["supports_mpp"] is False
+    assert "error" not in outputs

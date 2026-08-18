@@ -13,8 +13,10 @@ virtual-card flow instead — see `spend_request.py`.
 
 import base64
 import json
+import logging
 import re
 from typing import Any
+from urllib.parse import quote
 
 from backend.blocks._base import (
     Block,
@@ -33,6 +35,8 @@ from backend.blocks.stripe_link._auth import (
 from backend.blocks.stripe_link.spend_request import link_api_request
 from backend.data.model import SchemaField
 from backend.util.request import Requests, Response
+
+logger = logging.getLogger(__name__)
 
 PAYMENT_SCHEME = "Payment"
 # Merchant-controlled data: bound what we decode and what we echo back.
@@ -223,18 +227,26 @@ class StripeLinkGetPaymentChallengeBlock(Block):
             status, header = await self._probe(
                 input_data.url, input_data.method, input_data.body
             )
-            if status != 402 or not header:
+            # Distinguish "definitely not an MPP merchant" from "the probe did
+            # not get an answer". Both used to yield supports_mpp=false, so a
+            # typo'd URL or a transient 503 quietly routed the agent into the
+            # virtual-card flow as though the merchant had been checked.
+            if status == 402 and not header:
+                # 402 without any challenge header: it wants payment but does
+                # not speak MPP.
                 yield "supports_mpp", False
                 return
+            if status != 402:
+                if 200 <= status < 300:
+                    # Served without demanding payment — a definitive answer.
+                    yield "supports_mpp", False
+                    return
+                raise RuntimeError(
+                    f"Payment challenge probe failed with HTTP {status}; "
+                    "cannot tell whether this merchant supports MPP"
+                )
 
-            stripe_challenge = next(
-                (
-                    c
-                    for c in parse_payment_challenges(header)
-                    if c.get("method") == "stripe"
-                ),
-                None,
-            )
+            stripe_challenge = select_stripe_challenge(header)
             if not stripe_challenge:
                 # 402 but no Stripe method — e.g. onchain-only merchants.
                 yield "supports_mpp", False
@@ -247,7 +259,7 @@ class StripeLinkGetPaymentChallengeBlock(Block):
             yield "currency", request.get("currency", "")
             yield "description", stripe_challenge.get("description", "")
         except Exception as e:
-            yield "error", str(e)
+            yield "error", _safe_error(e)
 
 
 class StripeLinkMPPPayBlock(Block):
@@ -328,7 +340,7 @@ class StripeLinkMPPPayBlock(Block):
             spend_request = await self._link_api_request(
                 credentials,
                 "GET",
-                f"/spend_requests/{input_data.spend_request_id}"
+                f"/spend_requests/{quote(input_data.spend_request_id, safe='')}"
                 "?include=shared_payment_token",
             )
             if spend_request.get("status") != "approved":
@@ -358,7 +370,7 @@ class StripeLinkMPPPayBlock(Block):
             yield "paid", 200 <= status_code < 300
             yield "response", payload
         except Exception as e:
-            yield "error", str(e)
+            yield "error", _safe_error(e)
 
     async def _pay_with_token(
         self,
@@ -375,20 +387,29 @@ class StripeLinkMPPPayBlock(Block):
         — so an unvalidated client could be steered into handing a payment
         token to an arbitrary or internal host.
         """
-        # Bounded, and deliberately not retried: see PAY_MAX_ATTEMPTS.
-        client = Requests(raise_for_status=False, retry_max_attempts=PAY_MAX_ATTEMPTS)
+        # Two clients: the probe is idempotent and safe to retry through a
+        # transient 429/503, while the paying hop is not. Sharing one client at
+        # PAY_MAX_ATTEMPTS meant a blip on the probe aborted the payment before
+        # the token was ever sent.
+        probe_client = Requests(
+            raise_for_status=False, retry_max_attempts=PROBE_MAX_ATTEMPTS
+        )
+        pay_client = Requests(
+            raise_for_status=False, retry_max_attempts=PAY_MAX_ATTEMPTS
+        )
         # Caller headers first, so they cannot displace Content-Type or, more
         # importantly, the Authorization we are about to attach.
         base_headers = {**headers, "Content-Type": "application/json"}
-        # The probe must be unauthenticated — that is what elicits the 402
-        # challenge — so a caller-supplied Authorization is dropped for it
-        # rather than silently suppressing the challenge.
-        probe_headers = {
+        # Strip any caller Authorization case-insensitively. Re-adding ours
+        # under the canonical spelling would otherwise leave a lowercase
+        # `authorization` in place and send the merchant two of them.
+        base_headers = {
             k: v for k, v in base_headers.items() if k.lower() != "authorization"
         }
-
-        first = await client.request(
-            method, url, json=body or None, headers=probe_headers
+        # The probe must be unauthenticated — that is what elicits the 402
+        # challenge.
+        first = await probe_client.request(
+            method, url, json=body or None, headers=base_headers
         )
         if first.status != 402:
             # Nothing to pay — it either succeeded outright or failed for an
@@ -401,7 +422,7 @@ class StripeLinkMPPPayBlock(Block):
                 "Merchant returned 402 without a Stripe payment challenge"
             )
 
-        retry = await client.request(
+        retry = await pay_client.request(
             method,
             url,
             json=body or None,
@@ -410,10 +431,34 @@ class StripeLinkMPPPayBlock(Block):
         return retry.status, _json_or_text(retry)
 
 
+def _safe_error(exc: Exception) -> str:
+    """Message for the `error` output, without SSRF-probe detail.
+
+    `Requests` names the offending host or resolved IP when it blocks a URL.
+    That message is useful in the logs but the `error` output is agent- and
+    user-visible, and repeating it back turns a blocked request into a
+    readout of what resolves on the internal network.
+    """
+    if isinstance(exc, ValueError):
+        logger.warning("Blocked MPP request: %s", exc)
+        return "Request blocked: the URL is not allowed."
+    return str(exc)
+
+
 def _json_or_text(response: Response) -> dict[str, Any]:
     """Normalize a merchant response into a dict output, bounded in size."""
     try:
         parsed = response.json()
-        return parsed if isinstance(parsed, dict) else {"data": parsed}
     except Exception:
         return {"body": response.text()[:MAX_ERROR_BODY_CHARS]}
+
+    # The success path was unbounded: this is persisted as a block output, so
+    # a hostile or buggy merchant could balloon the executor's memory and the
+    # execution record with a single reply.
+    encoded = json.dumps(parsed, separators=(",", ":"), default=str)
+    if len(encoded.encode()) > MAX_REQUEST_BLOB_BYTES:
+        return {
+            "truncated": True,
+            "body": encoded[:MAX_ERROR_BODY_CHARS],
+        }
+    return parsed if isinstance(parsed, dict) else {"data": parsed}
