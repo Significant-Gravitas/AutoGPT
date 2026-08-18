@@ -58,7 +58,17 @@ async def link_api_request(
             headers=headers,
             json=body,
         )
-        response.raise_for_status()
+        if response.is_error:
+            # Link explains itself in the body; `raise_for_status()` alone
+            # reports "400 Bad Request" and throws that explanation away.
+            try:
+                detail = response.json().get("error", {}).get("message")
+            except Exception:
+                detail = None
+            raise RuntimeError(
+                f"Link API {response.status_code} on {method} {path}: "
+                f"{detail or response.text[:200]}"
+            )
         return response.json()
 
 
@@ -224,6 +234,25 @@ class StripeLinkCreateSpendRequestBlock(Block):
             default_factory=list,
             advanced=True,
         )
+        credential_type: str = SchemaField(
+            description=(
+                "What the spend request provisions. `card` (default) yields a "
+                "one-time virtual card. `shared_payment_token` yields an SPT "
+                "for merchants speaking the Machine Payments Protocol "
+                "(HTTP 402), which also needs `network_id`."
+            ),
+            default="card",
+            advanced=True,
+        )
+        network_id: str = SchemaField(
+            description=(
+                "Merchant network ID, required for `shared_payment_token`. "
+                "Read it from the merchant's HTTP 402 `WWW-Authenticate: "
+                "Payment` challenge."
+            ),
+            default="",
+            advanced=True,
+        )
         metadata: dict[str, str] = SchemaField(
             description=(
                 "Arbitrary key/value data stored on the spend request. Max 50 "
@@ -285,6 +314,7 @@ class StripeLinkCreateSpendRequestBlock(Block):
         credentials: StripeLinkCredentials,
         **kwargs: Any,
     ) -> BlockOutput:
+        is_spt = input_data.credential_type == "shared_payment_token"
         try:
             result = await self._link_api_request(
                 credentials,
@@ -292,8 +322,17 @@ class StripeLinkCreateSpendRequestBlock(Block):
                 "/spend_requests",
                 body={
                     "payment_details": input_data.payment_method_id,
-                    "merchant_name": input_data.merchant_name,
-                    "merchant_url": input_data.merchant_url,
+                    # Rejected outright for shared_payment_token: there the
+                    # merchant is identified by `network_id` from the 402
+                    # challenge, not by name and URL.
+                    **(
+                        {}
+                        if is_spt
+                        else {
+                            "merchant_name": input_data.merchant_name,
+                            "merchant_url": input_data.merchant_url,
+                        }
+                    ),
                     "context": input_data.context,
                     "amount": input_data.amount,
                     "currency": input_data.currency,
@@ -310,6 +349,16 @@ class StripeLinkCreateSpendRequestBlock(Block):
                     **({"totals": input_data.totals} if input_data.totals else {}),
                     **(
                         {"metadata": input_data.metadata} if input_data.metadata else {}
+                    ),
+                    **(
+                        {"credential_type": input_data.credential_type}
+                        if input_data.credential_type != "card"
+                        else {}
+                    ),
+                    **(
+                        {"network_id": input_data.network_id}
+                        if input_data.network_id
+                        else {}
                     ),
                 },
             )
@@ -351,6 +400,13 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
             description="Include unmasked card details in the response",
             default=True,
         )
+        include_shared_payment_token: bool = SchemaField(
+            description=(
+                "Include the Shared Payment Token, for spend requests created "
+                "with `credential_type: shared_payment_token`."
+            ),
+            default=False,
+        )
 
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Current status of the spend request")
@@ -376,6 +432,13 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
         )
         valid_until: str = SchemaField(
             description="ISO timestamp when the virtual card expires",
+            default="",
+        )
+        shared_payment_token: str = SchemaField(
+            description=(
+                "One-time Shared Payment Token, when the request was created "
+                "with `credential_type: shared_payment_token`. Empty otherwise."
+            ),
             default="",
         )
         next_action_type: str = SchemaField(
@@ -452,6 +515,8 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
     ) -> BlockOutput:
         try:
             include = ["card"] if input_data.include_card else []
+            if input_data.include_shared_payment_token:
+                include.append("shared_payment_token")
             path = f"/spend_requests/{input_data.spend_request_id}"
             if include:
                 path += f"?include={','.join(include)}"
@@ -475,6 +540,10 @@ class StripeLinkRetrieveSpendRequestBlock(Block):
                 yield "next_action_message", action.get("display_message", "")
                 yield "next_action_url", action.get("action_url", "")
                 yield "auto_resumes", action.get("resolution") == "auto_resume"
+
+            spt = result.get("shared_payment_token") or {}
+            if spt:
+                yield "shared_payment_token", spt.get("id", "")
 
             card = result.get("card")
             if card:
