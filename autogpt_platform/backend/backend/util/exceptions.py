@@ -1,3 +1,5 @@
+import re
+from enum import Enum
 from typing import Mapping
 
 
@@ -108,6 +110,49 @@ class InsufficientBalanceError(ValueError):
     def __str__(self):
         """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
         return self.message
+
+
+class ExecutionFailureReason(str, Enum):
+    """Structured reasons for terminal graph execution failures."""
+
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+
+
+# Keep this legacy-only fallback synchronized with the equivalent predicates in
+# autogpt_platform/analytics/queries/graph_execution.sql and the shared corpus in
+# exceptions_test.py. Live failures are classified by type, never by these messages.
+_LEGACY_INSUFFICIENT_BALANCE_PATTERNS = (
+    re.compile(r"You have no credits left to run an agent\."),
+    re.compile(
+        r"Insufficient balance of \$-?\d+(?:\.\d+)?, "
+        r"where this will cost \$-?\d+(?:\.\d+)?"
+    ),
+    re.compile(
+        r"Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: "
+        r"dynamic-cost blocks require a positive balance\."
+    ),
+    re.compile(r"Organization has -?\d+ credits but needs \d+"),
+)
+
+
+def get_execution_failure_reason(
+    error: BaseException | str | None,
+    *,
+    allow_legacy_text: bool = False,
+) -> ExecutionFailureReason | None:
+    """Classify trusted exceptions, with an opt-in fallback for persisted text."""
+    if isinstance(error, InsufficientBalanceError):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    if (
+        allow_legacy_text
+        and isinstance(error, str)
+        and any(
+            pattern.fullmatch(error)
+            for pattern in _LEGACY_INSUFFICIENT_BALANCE_PATTERNS
+        )
+    ):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    return None
 
 
 class ModerationError(ValueError):
