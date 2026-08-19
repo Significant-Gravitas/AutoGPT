@@ -287,6 +287,27 @@ class TestTimestampFormats:
 
         await AllQuietWebhooksManager.verify_signature(_signed_webhook(), request)
 
+    @pytest.mark.parametrize(
+        "millis",
+        [
+            # Leading digits spell a valid YYYYMMDD (1787-12-16), so
+            # `fromisoformat` claims it on Python 3.11+ and returns a date
+            # centuries in the past, which then fails the replay window.
+            "1787121651526",
+            # Leading digits are not a valid date (month 20), so this one
+            # always fell through to the epoch branch and passed — which is why
+            # the failure came and went with the wall clock.
+            "1787207590123",
+        ],
+    )
+    def test_epoch_millis_are_never_read_as_a_basic_format_date(self, millis: str):
+        from backend.blocks.allquiet._webhook import _parse_timestamp
+
+        parsed = _parse_timestamp(millis)
+
+        assert parsed is not None
+        assert parsed.year >= 2020, f"{millis} parsed as {parsed}"
+
     async def test_fails_closed_on_an_unrecognized_format(self):
         # Previously this was waved through, which left the replay window
         # permanently open for any sender using an unusual timestamp format.
