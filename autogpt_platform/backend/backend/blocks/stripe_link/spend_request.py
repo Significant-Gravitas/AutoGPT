@@ -8,8 +8,9 @@ card or shared payment token from the user's Link wallet.
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
-import httpx
+from pydantic import field_validator
 
 from backend.blocks._base import (
     Block,
@@ -19,13 +20,12 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.stripe_link._auth import (
-    LINK_API_BASE_URL,
-    LINK_HTTP_TIMEOUT,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     StripeLinkCredentials,
     StripeLinkCredentialsField,
     StripeLinkCredentialsInput,
+    link_api_request,
 )
 from backend.data.model import SchemaField
 from backend.util.settings import BehaveAs, Settings
@@ -53,14 +53,17 @@ CARD_FLOW_DISABLED = settings.config.behave_as == BehaveAs.CLOUD
 CREDENTIAL_TYPE_CARD = "card"
 CREDENTIAL_TYPE_SPT = "shared_payment_token"
 
+# The key Link returns card data under. Same spelling as CREDENTIAL_TYPE_CARD
+# today, but one is a request value and the other a response envelope; they
+# are free to diverge.
+CARD_RESPONSE_KEY = "card"
+
 
 def _nested_dict(source: Any, *keys: str) -> dict[str, Any]:
     """Walk nested dict keys, yielding {} at the first non-dict.
 
-    `.get(key, {})` only defaults when the key is *missing*; Link sends
-    explicit nulls, and a `None` in the middle of a chain raises
-    AttributeError. Retrieve had already yielded `status` by that point, so
-    the block emitted a partial result and then errored.
+    `.get(key, {})` only defaults when the key is *missing*, and Link sends
+    explicit nulls — so a `None` mid-chain raises AttributeError.
     """
     current: Any = source
     for key in keys:
@@ -68,51 +71,6 @@ def _nested_dict(source: Any, *keys: str) -> dict[str, Any]:
             return {}
         current = current.get(key)
     return current if isinstance(current, dict) else {}
-
-
-async def link_api_request(
-    credentials: StripeLinkCredentials,
-    method: str,
-    path: str,
-    body: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """
-    Make an authenticated request to the Link API.
-
-    Uses the access_token from OAuth2Credentials as a Bearer token.
-
-    Refresh is deliberately not handled here: `IntegrationCredentialsManager`
-    already refreshes on acquire (`_refresh_locked`), under a per-credential
-    lock, and persists the rotated tokens. Refreshing inside the block would
-    bypass both and let concurrent nodes stampede the token endpoint.
-    """
-    headers = {
-        "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
-        response = await client.request(
-            method=method,
-            url=f"{LINK_API_BASE_URL}{path}",
-            headers=headers,
-            json=body,
-        )
-        if response.is_error:
-            # Link explains itself in the body, so surface that rather than a
-            # bare "400 Bad Request" with the explanation discarded.
-            try:
-                detail = response.json().get("error", {}).get("message")
-            # ValueError: not JSON. AttributeError/TypeError: JSON, but not the
-            # object shape we index into. Anything else is our bug, and masking
-            # it as "API text" would hide it.
-            except (ValueError, AttributeError, TypeError):
-                detail = None
-            raise RuntimeError(
-                f"Link API {response.status_code} on {method} {path}: "
-                f"{detail or response.text[:200]}"
-            )
-        return response.json()
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +167,7 @@ class StripeLinkListPaymentMethodsBlock(Block):
 # ---------------------------------------------------------------------------
 # Presentation fields shared by both create blocks
 # ---------------------------------------------------------------------------
-def _presentation_body(input_data: Any) -> dict[str, Any]:
+def _presentation_body(input_data: "_BaseSpendRequestInput") -> dict[str, Any]:
     """Approval-sheet fields common to both spend-request types.
 
     Each is omitted when empty rather than sent as [] / {}: these drive how the
@@ -224,6 +182,35 @@ def _presentation_body(input_data: Any) -> dict[str, Any]:
     if input_data.metadata:
         body["metadata"] = input_data.metadata
     return body
+
+
+async def _create_spend_request(
+    api_request: Any,
+    credentials: StripeLinkCredentials,
+    input_data: "_BaseSpendRequestInput",
+    merchant_identity: dict[str, Any],
+) -> dict[str, Any]:
+    """POST a spend request, differing only in how the merchant is named.
+
+    The base-schema rationale applies here too: leaving the two bodies
+    copy-pasted means a field added later lands on one create block and not
+    the other.
+    """
+    return await api_request(
+        credentials,
+        "POST",
+        "/spend_requests",
+        body={
+            "payment_details": input_data.payment_method_id,
+            **merchant_identity,
+            "context": input_data.context,
+            "amount": input_data.amount,
+            "currency": input_data.currency,
+            "request_approval": input_data.request_approval,
+            "test": input_data.test_mode,
+            **_presentation_body(input_data),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +241,14 @@ class _BaseSpendRequestInput(BlockSchemaInput):
         # when deciding whether to approve a charge.
         min_length=100,
     )
-    amount: int = SchemaField(description="Amount in cents (max 50000)", ge=1, le=50000)
+    amount: int = SchemaField(
+        description=(
+            "Amount in the currency's smallest unit — cents for USD, but "
+            "whole units for zero-decimal currencies like JPY (max 50000)"
+        ),
+        ge=1,
+        le=50000,
+    )
     currency: str = SchemaField(description="3-letter ISO currency code", default="usd")
     request_approval: bool = SchemaField(
         description=(
@@ -264,7 +258,10 @@ class _BaseSpendRequestInput(BlockSchemaInput):
         default=True,
     )
     test_mode: bool = SchemaField(
-        description="Use test mode (fake card 4242424242424242)",
+        description=(
+            "Use Stripe test mode — no real money moves. A card request yields "
+            "the 4242… test card; a token request yields a test token."
+        ),
         default=False,
     )
     line_items: list[dict[str, Any]] = SchemaField(
@@ -380,20 +377,13 @@ class StripeLinkCreateCardSpendRequestBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            result = await self._link_api_request(
+            result = await _create_spend_request(
+                self._link_api_request,
                 credentials,
-                "POST",
-                "/spend_requests",
-                body={
-                    "payment_details": input_data.payment_method_id,
+                input_data,
+                {
                     "merchant_name": input_data.merchant_name,
                     "merchant_url": input_data.merchant_url,
-                    "context": input_data.context,
-                    "amount": input_data.amount,
-                    "currency": input_data.currency,
-                    "request_approval": input_data.request_approval,
-                    "test": input_data.test_mode,
-                    **_presentation_body(input_data),
                 },
             )
             # Note: do NOT also call POST /spend_requests/{id}/request_approval
@@ -441,6 +431,23 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
             min_length=1,
         )
 
+        @field_validator("network_id")
+        @classmethod
+        def _network_id_must_not_be_blank(cls, value: str) -> str:
+            """`min_length=1` accepts "   ".
+
+            Without a real network ID Link receives a request with no merchant
+            identity at all and fails obscurely, so catch it at the boundary.
+            A trim guard existed before the block split removed the cross-field
+            validator it lived on.
+            """
+            if not value.strip():
+                raise ValueError(
+                    "network_id is required — read it from the merchant's HTTP "
+                    "402 challenge (see the Get Payment Challenge block)"
+                )
+            return value
+
     class Output(_SpendRequestCreatedOutput):
         pass
 
@@ -484,20 +491,13 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
         **kwargs: Any,
     ) -> BlockOutput:
         try:
-            result = await self._link_api_request(
+            result = await _create_spend_request(
+                self._link_api_request,
                 credentials,
-                "POST",
-                "/spend_requests",
-                body={
-                    "payment_details": input_data.payment_method_id,
+                input_data,
+                {
                     "credential_type": CREDENTIAL_TYPE_SPT,
-                    "network_id": input_data.network_id,
-                    "context": input_data.context,
-                    "amount": input_data.amount,
-                    "currency": input_data.currency,
-                    "request_approval": input_data.request_approval,
-                    "test": input_data.test_mode,
-                    **_presentation_body(input_data),
+                    "network_id": input_data.network_id.strip(),
                 },
             )
             yield "spend_request_id", result["id"]
@@ -603,7 +603,7 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             result = await self._link_api_request(
                 credentials,
                 "GET",
-                f"/spend_requests/{input_data.spend_request_id}",
+                f"/spend_requests/{quote(input_data.spend_request_id, safe='')}",
             )
 
             status = result["status"]
@@ -740,12 +740,12 @@ class StripeLinkRetrieveCardBlock(Block):
             result = await self._link_api_request(
                 credentials,
                 "GET",
-                f"/spend_requests/{input_data.spend_request_id}?include=card",
+                f"/spend_requests/{quote(input_data.spend_request_id, safe='')}?include=card",
             )
 
             yield "status", result["status"]
 
-            card = _nested_dict(result, CREDENTIAL_TYPE_CARD)
+            card = _nested_dict(result, CARD_RESPONSE_KEY)
             if card:
                 yield "card_number", card.get("number", "")
                 yield "card_cvc", card.get("cvc", "")

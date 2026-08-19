@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel
 
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
+from backend.integrations.providers import provider_key
 
 from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
@@ -32,9 +33,7 @@ _ORIGINAL_HANDLERS = [
 _handlers_dict = {
     # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
     # registry key matches either form.
-    (
-        getattr(handler.PROVIDER_NAME, "value", None) or str(handler.PROVIDER_NAME)
-    ): handler
+    provider_key(handler.PROVIDER_NAME): handler
     for handler in _ORIGINAL_HANDLERS
 }
 
@@ -239,9 +238,7 @@ _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
 _device_handlers_dict: dict[str, type[BaseDeviceAuthHandler]] = {
     # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
     # registry key matches either form.
-    (
-        getattr(handler.PROVIDER_NAME, "value", None) or str(handler.PROVIDER_NAME)
-    ): handler
+    provider_key(handler.PROVIDER_NAME): handler
     for handler in _ORIGINAL_DEVICE_HANDLERS
 }
 
@@ -272,21 +269,7 @@ class DeviceHandlersDict(dict):
 
 DEVICE_HANDLERS_BY_NAME: dict[str, type[BaseDeviceAuthHandler]] = DeviceHandlersDict()
 
-# Unified lookup: any handler type for a given provider
-AnyAuthHandler = Union[type["BaseOAuthHandler"], type[BaseDeviceAuthHandler]]
-
-
-def get_any_handler(provider_key: str) -> AnyAuthHandler | None:
-    """Resolve an auth handler (auth-code or device-code) for a provider."""
-    if provider_key in HANDLERS_BY_NAME:
-        return HANDLERS_BY_NAME[provider_key]
-    if provider_key in DEVICE_HANDLERS_BY_NAME:
-        return DEVICE_HANDLERS_BY_NAME[provider_key]
-    return None
-
-
 __all__ = [
     "HANDLERS_BY_NAME",
     "DEVICE_HANDLERS_BY_NAME",
-    "get_any_handler",
 ]

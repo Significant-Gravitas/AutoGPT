@@ -3,6 +3,7 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
 import type { ApiKeyConnectFormValues } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import { UnsupportedNotice } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/UnsupportedNotice";
@@ -29,6 +30,8 @@ interface Props {
   onSelectMethod: (method: AuthMethod) => void;
   apiKeyForm: UseFormReturn<ApiKeyConnectFormValues>;
   onApiKeySubmit: (values: ApiKeyConnectFormValues) => void;
+  /** Called once a device-code grant completes, same contract as an API-key submit. */
+  onDeviceAuthSuccess?: () => void;
 }
 
 // Every method a provider can advertise has to appear here — the list below
@@ -88,6 +91,7 @@ export function ConnectMethodView({
   onSelectMethod,
   apiKeyForm,
   onApiKeySubmit,
+  onDeviceAuthSuccess,
 }: Props) {
   const methods = METHOD_ORDER.filter((method) =>
     provider.supportedAuthTypes.includes(method),
@@ -189,6 +193,12 @@ export function ConnectMethodView({
                           form={apiKeyForm}
                           providerName={provider.name}
                           onSubmit={onApiKeySubmit}
+                        />
+                      ) : method === AuthType.device_code ? (
+                        <DeviceAuthConnectButton
+                          provider={provider.id}
+                          providerName={provider.name}
+                          onSuccess={() => onDeviceAuthSuccess?.()}
                         />
                       ) : (
                         <UnsupportedNotice providerName={provider.name} />
