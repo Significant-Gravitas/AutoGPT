@@ -204,9 +204,21 @@ def initialize_launchdarkly() -> None:
 
 def shutdown_launchdarkly() -> None:
     """Shutdown the LaunchDarkly client."""
+    global _is_initialized
+    if not _is_initialized:
+        # `initialize_launchdarkly` returns early when no SDK key is configured,
+        # so `ldclient.set_config` was never called and `ldclient.get()` would
+        # raise "set_config was not called". Callers pair init/shutdown on
+        # app_env alone (see `rest_api.launch_darkly_context` and
+        # `scheduler._shutdown_launchdarkly_for_scheduler`), so an unconfigured
+        # non-LOCAL deployment would otherwise raise out of service teardown and
+        # leave the process alive instead of exiting.
+        return
+
     if ldclient.get().is_initialized():
         ldclient.get().close()
         logger.info("LaunchDarkly client closed successfully")
+    _is_initialized = False
 
 
 async def _fetch_user_context_data(user_id: str) -> Context:
