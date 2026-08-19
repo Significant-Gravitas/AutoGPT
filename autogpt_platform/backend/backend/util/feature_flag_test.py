@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from ldclient import LDClient
 
+import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
@@ -417,34 +418,28 @@ class TestUserContextCacheDegradation:
 class TestShutdown:
     @pytest.fixture(autouse=True)
     def reset_initialized_flag(self):
-        import backend.util.feature_flag as module
-
-        original = module._is_initialized
+        original = feature_flag_module._is_initialized
         yield
-        module._is_initialized = original
+        feature_flag_module._is_initialized = original
 
     def test_shutdown_is_a_noop_when_never_initialized(self, mocker):
-        import backend.util.feature_flag as module
-
         # `initialize_launchdarkly` returns early when no SDK key is set, so
         # `ldclient.set_config` was never called and `ldclient.get()` raises
         # "set_config was not called". Callers pair init/shutdown on app_env
         # alone, so this ran on every unconfigured non-LOCAL deployment and
         # took the exception out through service teardown, leaving the process
         # alive until it was killed.
-        module._is_initialized = False
-        get_client = mocker.patch("ldclient.get")
+        feature_flag_module._is_initialized = False
+        get_client = mocker.patch("backend.util.feature_flag.ldclient.get")
 
         shutdown_launchdarkly()
 
         get_client.assert_not_called()
 
     def test_shutdown_closes_an_initialized_client(self, mocker, ld_client):
-        import backend.util.feature_flag as module
-
-        module._is_initialized = True
+        feature_flag_module._is_initialized = True
 
         shutdown_launchdarkly()
 
         ld_client.close.assert_called_once()
-        assert module._is_initialized is False
+        assert feature_flag_module._is_initialized is False
