@@ -18,10 +18,56 @@ from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_AUTH_SCHEMES = {
+    "basic": "Basic",
+    "bearer": "Bearer",
+}
+
+
+def normalize_mcp_authorization(value: str) -> str:
+    """Return a canonical Basic/Bearer Authorization header value.
+
+    Bare credentials remain backward-compatible and default to Bearer. Values may
+    also include an explicit ``Basic``/``Bearer`` prefix or the complete
+    ``Authorization: ...`` header copied from provider documentation.
+    """
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError("Authentication credential must be a single line.")
+
+    candidate = value.strip()
+    if not candidate:
+        raise ValueError("Authentication credential must not be blank.")
+
+    included_header_name = candidate.lower().startswith("authorization:")
+    if included_header_name:
+        candidate = candidate.split(":", 1)[1].strip()
+        if not candidate:
+            raise ValueError("Authorization header must include a credential.")
+
+    parts = candidate.split(None, 1)
+    if len(parts) == 2 and parts[0].lower() in _SUPPORTED_AUTH_SCHEMES:
+        scheme = _SUPPORTED_AUTH_SCHEMES[parts[0].lower()]
+        credential = parts[1].strip()
+    elif len(parts) == 1 and parts[0].lower() in _SUPPORTED_AUTH_SCHEMES:
+        scheme_name = _SUPPORTED_AUTH_SCHEMES[parts[0].lower()]
+        raise ValueError(f"{scheme_name} authentication requires a credential.")
+    elif included_header_name:
+        raise ValueError(
+            "Authorization header must use Basic or Bearer authentication."
+        )
+    else:
+        scheme = "Bearer"
+        credential = candidate
+
+    if not credential:
+        raise ValueError("Authentication credential must not be blank.")
+
+    return f"{scheme} {credential}"
+
 
 @dataclass
 class MCPTool:
-    """Represents an MCP tool discovered from a server."""
+    """Represents a single MCP tool returned by discovery."""
 
     name: str
     description: str
@@ -47,7 +93,9 @@ class MCPClient:
     Async HTTP client for the MCP Streamable HTTP transport.
 
     Communicates with MCP servers using JSON-RPC 2.0 over HTTP POST.
-    Supports optional Bearer token authentication.
+    Supports optional Bearer or Basic authentication. Bare ``auth_token`` values
+    keep their historical Bearer behavior, while explicitly prefixed values are
+    sent using the requested scheme.
     """
 
     def __init__(
@@ -58,7 +106,12 @@ class MCPClient:
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
+        # Keep the public attribute for compatibility with callers/tests that may
+        # inspect it, while normalizing the actual request header separately.
         self.auth_token = auth_token
+        self.authorization = (
+            normalize_mcp_authorization(auth_token) if auth_token else None
+        )
         self._request_id = 0
         self._session_id: str | None = None
 
@@ -71,8 +124,8 @@ class MCPClient:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
-        if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
+        if self.authorization:
+            headers["Authorization"] = self.authorization
         if self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         return headers
