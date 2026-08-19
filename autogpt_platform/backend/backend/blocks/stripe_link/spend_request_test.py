@@ -8,6 +8,7 @@ the Shared Payment Token flow needs stay available everywhere.
 """
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.stripe_link import spend_request as sr
 from backend.blocks.stripe_link._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
@@ -155,3 +156,42 @@ async def test_listed_payment_methods_are_projected_to_known_fields():
     }
     assert "number" not in pm["card_details"]
     assert "some_future_field" not in pm
+
+
+@pytest.mark.asyncio
+async def test_a_denied_request_emits_no_card_and_says_so():
+    """Inverting the status guard left the suite green: nothing asserted the
+    negative. A refused spend must not put a PAN in the execution record, and
+    must not stall the graph silently either."""
+    block = sr.StripeLinkRetrieveCardBlock()
+
+    async def _fake(credentials, method, path, body=None):
+        return {
+            "status": "denied",
+            "card": {"number": "4242424242424242", "cvc": "123"},
+        }
+
+    object.__setattr__(block, "_link_api_request", _fake)
+    inp = block.Input.model_validate(
+        {"credentials": TEST_CREDENTIALS_INPUT, "spend_request_id": "lsrq_test"}
+    )
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+
+    assert outputs["status"] == "denied"
+    assert "card_number" not in outputs
+    assert "card_cvc" not in outputs
+    # Downstream nodes need something to fire on, or the agent stops
+    # mid-checkout with no message.
+    assert "error" in outputs
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_spend_request_id_is_rejected():
+    """The status block is the one spend-request read reachable on Cloud, and
+    `lsrq_x?include=card` would make it ask Link for card material."""
+    block = sr.StripeLinkGetSpendRequestStatusBlock()
+    for bad in ("lsrq_x?include=card", "../../other", "lsrq_a/b", "nope"):
+        with pytest.raises(ValidationError):
+            block.Input.model_validate(
+                {"credentials": TEST_CREDENTIALS_INPUT, "spend_request_id": bad}
+            )

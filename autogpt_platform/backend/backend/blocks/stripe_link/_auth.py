@@ -13,14 +13,17 @@ import httpx
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
+
+# Owned by the integrations layer; re-exported so blocks import from their own
+# package. Every other arrow in this codebase runs blocks -> integrations, and
+# the oauth package builds its registries at import, so importing integrations
+# from here would drag every block in eagerly.
+from backend.integrations.oauth.stripe_link import (  # noqa: E402
+    LINK_API_BASE_URL,
+    LINK_HTTP_TIMEOUT,
+)
 from backend.integrations.providers import ProviderName
 
-LINK_API_BASE_URL = "https://api.link.com"
-
-# Every Link call is awaited inline by a block or an API handler, so an
-# upstream that accepts the connection and then stalls would hold a worker for
-# as long as it likes. Bound them all.
-LINK_HTTP_TIMEOUT = 15.0
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
 
 StripeLinkCredentials = OAuth2Credentials
