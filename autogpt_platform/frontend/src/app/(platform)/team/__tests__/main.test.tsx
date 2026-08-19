@@ -351,16 +351,16 @@ describe("TeamPage", () => {
   test("shows weekly spend as a progress bar on the expert card", async () => {
     const budgetMaria: Expert = {
       ...hiredMaria,
-      weekly_budget: 50,
-      weekly_spend: 12,
+      weekly_budget: 5000,
+      weekly_spend: 1200,
     };
     server.use(getListExpertsMockHandler([budgetMaria]));
 
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText("Credits this week")).toBeDefined();
-    expect(screen.getByText("12 / 50")).toBeDefined();
+    expect(screen.getByText("Spend this week")).toBeDefined();
+    expect(screen.getByText("$12 / $50")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {
