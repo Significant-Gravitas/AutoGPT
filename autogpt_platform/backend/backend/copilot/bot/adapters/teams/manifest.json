@@ -6,8 +6,8 @@
   "developer": {
     "name": "AutoGPT",
     "websiteUrl": "https://agpt.co",
-    "privacyUrl": "https://agpt.co/privacy",
-    "termsOfUseUrl": "https://agpt.co/terms"
+    "privacyUrl": "https://agpt.co/legal/platform-privacy-policy",
+    "termsOfUseUrl": "https://agpt.co/legal/platform-terms-of-use"
   },
   "icons": {
     "color": "color.png",
