@@ -275,14 +275,17 @@ async def forget_my_expert_memory_fact(
 async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryResponse:
     group_id, resolved_expert_id = await _resolve_scope(user_id, expert_id)
     driver = _open_driver(group_id)
+    deleted = 0
     try:
         deleted = await _count(driver, "MATCH (n) RETURN count(n) AS c")
         if deleted:
             await driver.execute_query("MATCH (n) DETACH DELETE n")
     except ResponseError as exc:
+        # A missing-graph error here means the graph vanished between the
+        # count and the delete — the scope is gone either way, so keep the
+        # counted value instead of misreporting 0.
         if not _is_missing_graph_error(exc):
             raise
-        deleted = 0
     finally:
         await driver.close()
 

@@ -80,7 +80,7 @@ export function ScopeSelect({ scopeExpertID, experts, onSelect }: Props) {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-[300px] rounded-[12px] p-1.5"
+        className="max-h-96 w-[300px] overflow-y-auto rounded-[12px] p-1.5"
       >
         <DropdownMenuItem
           className="flex items-start gap-2.5 rounded-[8px] px-2.5 py-2"

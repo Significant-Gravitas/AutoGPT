@@ -14,22 +14,30 @@ import {
 } from "@/app/api/__generated__/endpoints/memory/memory";
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getActiveExperts, getScopeName, RECENT_FACTS_LIMIT } from "./helpers";
 
 export function useMemoryPage() {
   const [scopeExpertID, setScopeExpertID] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
-  const expertsQuery = useListExperts({
-    query: { enabled: isExpertsEnabled === true },
-  });
+  // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
+  // manageable here even if the hiring UI is dark.
+  const expertsQuery = useListExperts();
+  const expertsSettled = expertsQuery.data?.status === 200;
   const experts = getActiveExperts(
     expertsQuery.data?.status === 200 ? expertsQuery.data.data : undefined,
   );
+
+  // A selected expert can disappear (fired in another tab, roster changed) —
+  // fall back to AutoPilot instead of driving queries with a dead scope id.
+  useEffect(() => {
+    if (!scopeExpertID || !expertsSettled) return;
+    if (!experts.some((expert) => expert.id === scopeExpertID)) {
+      setScopeExpertID(null);
+    }
+  }, [scopeExpertID, expertsSettled, experts]);
 
   const accountFacts = useListMyMemoryFacts(
     { limit: RECENT_FACTS_LIMIT },
@@ -94,14 +102,19 @@ export function useMemoryPage() {
   });
 
   async function forgetFact(uuid: string) {
-    if (scopeExpertID === null) {
-      await forgetAccountFact.mutateAsync({ factUuid: uuid });
-      return;
+    try {
+      if (scopeExpertID === null) {
+        await forgetAccountFact.mutateAsync({ factUuid: uuid });
+      } else {
+        await forgetExpertFact.mutateAsync({
+          expertId: scopeExpertID,
+          factUuid: uuid,
+        });
+      }
+    } catch {
+      // onError already surfaced the toast; keep the rejection out of the
+      // click handler.
     }
-    await forgetExpertFact.mutateAsync({
-      expertId: scopeExpertID,
-      factUuid: uuid,
-    });
   }
 
   const forgettingUuid = forgetAccountFact.isPending
@@ -131,11 +144,17 @@ export function useMemoryPage() {
   });
 
   async function eraseScope() {
-    if (scopeExpertID === null) {
-      await eraseAccount.mutateAsync();
-      return;
+    try {
+      if (scopeExpertID === null) {
+        await eraseAccount.mutateAsync();
+      } else {
+        await eraseExpert.mutateAsync({ expertId: scopeExpertID });
+      }
+      return true;
+    } catch {
+      // onError already surfaced the toast; the caller keeps its dialog open.
+      return false;
     }
-    await eraseExpert.mutateAsync({ expertId: scopeExpertID });
   }
 
   function selectScope(value: string | null) {

@@ -10,7 +10,7 @@ interface Props {
   scopeName: string;
   memoryCount: number | null;
   isErasing: boolean;
-  onErase: () => Promise<void>;
+  onErase: () => Promise<boolean>;
 }
 
 export function EraseMemoryCard({
@@ -25,8 +25,8 @@ export function EraseMemoryCard({
 
   async function handleErase() {
     if (!isConfirmed) return;
-    await onErase();
-    setIsOpen(false);
+    const erased = await onErase();
+    if (erased) setIsOpen(false);
   }
 
   return (

@@ -82,11 +82,15 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     sendMessage({ text: prompt });
   }, [sessionId, sendMessage]);
 
-  // Switching scope invalidates the open conversation — reset everything.
+  // Switching scope invalidates the open conversation — reset everything and
+  // bump the generation so an in-flight session create for the old scope is
+  // discarded instead of binding its session under the new scope's name.
   const scopeRef = useRef(scopeExpertID);
+  const scopeGenRef = useRef(0);
   useEffect(() => {
     if (scopeRef.current === scopeExpertID) return;
     scopeRef.current = scopeExpertID;
+    scopeGenRef.current += 1;
     setIsOpen(false);
     setSessionId(null);
     setMessages([]);
@@ -94,11 +98,14 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   }, [scopeExpertID, setMessages]);
 
   async function openWithSeed(seed: MemoryChatSeed) {
+    // Latest requested seed wins: a second click during the create-session
+    // window updates what gets auto-sent (and what retry re-sends).
     lastSeedRef.current = seed;
     setIsOpen(true);
     setStartError(false);
     if (openingRef.current) return;
     openingRef.current = true;
+    const generation = scopeGenRef.current;
     setSessionId(null);
     setMessages([]);
     try {
@@ -108,11 +115,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       if (response.status !== 200 || !response.data?.id) {
         throw new Error("Failed to create memory chat session");
       }
-      pendingPromptRef.current = MEMORY_CHAT_PROMPTS[seed];
+      if (generation !== scopeGenRef.current) return;
+      pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
       setSessionId(response.data.id);
     } catch (err) {
       Sentry.captureException(err);
-      setStartError(true);
+      if (generation === scopeGenRef.current) setStartError(true);
     } finally {
       openingRef.current = false;
     }
@@ -131,10 +139,18 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     if (!trimmed || !sessionId) return;
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
-      queueMessage(trimmed);
       try {
         await queueFollowUpMessage(sessionId, trimmed);
+        queueMessage(trimmed);
       } catch (err) {
+        // The turn finished while we were queueing — send normally instead.
+        if (
+          err instanceof Error &&
+          err.name === "QueueFollowUpNotActiveError"
+        ) {
+          sendMessage({ text: trimmed });
+          return;
+        }
         Sentry.captureException(err);
         toast({
           variant: "destructive",
