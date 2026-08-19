@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
 import { useCredentialAvailability } from "./useCredentialAvailability";
+import { credentialNotApplicable } from "./helpers";
 
 export const CredentialsField = (props: FieldProps) => {
   const { formData, onChange, schema, registry, fieldPathId, required } = props;
@@ -78,6 +79,14 @@ export const CredentialsField = (props: FieldProps) => {
     ? !credentialsOptional && required
     : required;
 
+  // Nothing to ask for: the selected discriminator value maps to no provider
+  // (AutoPilot's `platform` transport), so the row is not merely unavailable —
+  // it does not apply at all.
+  const notApplicable = credentialNotApplicable(
+    hardcodedValues,
+    schema as BlockIOCredentialsSubSchema,
+  );
+
   const availability = useCredentialAvailability(
     schema as BlockIOCredentialsSubSchema,
     hardcodedValues,
@@ -92,6 +101,10 @@ export const CredentialsField = (props: FieldProps) => {
   // node-level toggle also feeds that value, so turning "Optional" on for a
   // required gated field would hide the row and the toggle along with it,
   // leaving no way to turn it back off.
+  if (notApplicable) {
+    return null;
+  }
+
   if (isUnavailable && !required) {
     return null;
   }

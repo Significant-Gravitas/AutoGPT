@@ -187,3 +187,24 @@ export const getCredentialProviderFromSchema = (
 
   return providers[0];
 };
+
+/**
+ * True when the current discriminator selection needs no credential at all.
+ *
+ * `getCredentialProviderFromSchema` returns null both for "still loading" and
+ * for "this choice needs nothing", which is indistinguishable to callers — so
+ * the row lingered for a selection like AutoPilot's `platform`. This answers
+ * the second question directly.
+ */
+export const credentialNotApplicable = (
+  formData: Record<string, any>,
+  schema: BlockIOCredentialsSubSchema,
+): boolean => {
+  const mapping = schema.discriminator_mapping;
+  if (!schema.discriminator || !mapping) return false;
+
+  const value = getDiscriminatorValue(formData, schema);
+  if (value === undefined || value === null) return false;
+
+  return !(String(value) in mapping);
+};

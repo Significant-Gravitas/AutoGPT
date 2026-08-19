@@ -2596,3 +2596,42 @@ def test_graph_credential_slots_agree_with_executor_defaults():
         "blocks failed to construct, so they were not covered by this guard: "
         + "; ".join(construction_failures)
     )
+
+
+def test_unmapped_discriminator_value_contributes_no_credential():
+    """AutoPilot's `platform` transport is deliberately absent from
+    `discriminator_mapping` because it needs no credential. Discriminating on
+    it raises ("is not supported. It may have been deprecated"), and this runs
+    inside the `credentials_input_schema` computed_field — so an unguarded
+    call crashed schema generation for any graph containing a node saved with
+    the default transport."""
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "platform"},
+            )
+        ]
+    )
+
+    slots = _slots(graph)
+
+    # The node asks for nothing, so it adds no credential slot at all.
+    assert slots == {}
+
+
+def test_mapped_discriminator_value_still_yields_its_slot():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            )
+        ]
+    )
+
+    providers = {p for providers, _, _ in _slots(graph).values() for p in providers}
+
+    assert providers == {"codex"}

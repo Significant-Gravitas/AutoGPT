@@ -1,79 +1,84 @@
 """Backfill `transport` on AutoPilot nodes saved before the field existed.
 
 Those nodes encode "use my ChatGPT subscription" as the mere presence of a
-codex credential. Once `transport` exists, pydantic fills its `platform`
-default for them, so the builder would show a transport the node does not
-actually use. The block honours the credential regardless (see
-`AutoPilotBlock.run`), so this migration corrects what is displayed and
-removes the divergence — it does not change which account pays.
+codex credential, and carry no transport at all. The block reads that absence
+correctly (see `AutoPilotBlock.run`), so this migration changes what the
+builder *displays*, not which account pays.
 
-Runs automatically at API startup (see `api/rest_api.py`), and is idempotent —
-nodes already carrying the right transport are skipped, so repeated boots are
-a no-op. Also runnable by hand; dry-run by default, pass --apply to write.
+Runs automatically at API startup (see `api/rest_api.py`) and is idempotent:
+the statement only matches rows that still need it, so repeated boots are a
+no-op. Also runnable by hand; dry-run by default, pass --apply to write.
 """
 
 import argparse
 import asyncio
 import logging
-from typing import Any, cast
 
-from prisma.models import AgentNode
-
-from backend.blocks.autopilot import AutoPilotBlock, AutoPilotTransport
-from backend.data.db import connect, disconnect
-from backend.util.json import SafeJson
+from backend.blocks.autopilot import AutoPilotTransport
+from backend.data.db import (
+    connect,
+    disconnect,
+    execute_raw_with_schema,
+    query_raw_with_schema,
+)
 
 logger = logging.getLogger(__name__)
 
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
 
+# A single atomic statement rather than read-modify-write. Sibling startup
+# migrations either lock (org_migration) or use jsonb_set (migrate_llm_models);
+# reading every node and writing the whole blob back would let two booting pods
+# clobber each other, and any concurrent user edit in between.
+#
+# The predicate is the idempotency guarantee: it matches only nodes with a real
+# connection (an id-less meta means nothing was selected) and no transport yet,
+# so re-running selects nothing.
+_MATCH = """
+    "agentBlockId" = $2
+    AND "constantInput"->'codex_credentials'->>'id' IS NOT NULL
+    AND NOT ("constantInput" ? 'transport')
+"""
+
+_COUNT_QUERY = f"""
+    SELECT COUNT(*)::int AS count
+    FROM {{schema_prefix}}"AgentNode"
+    WHERE {_MATCH.replace("$2", "$1")}
+"""
+
+_UPDATE_QUERY = f"""
+    UPDATE {{schema_prefix}}"AgentNode"
+    SET "constantInput" = jsonb_set("constantInput", '{{transport}}', to_jsonb($1::text), true)
+    WHERE {_MATCH}
+"""
+
 
 async def migrate_autopilot_transport(*, apply: bool) -> int:
-    """Set transport=codex_app_server on nodes carrying a codex credential.
+    """Set transport=codex_app_server on nodes carrying a codex connection.
 
     Returns the number of nodes that needed the backfill.
     """
-    nodes = await AgentNode.prisma().find_many(
-        where={"agentBlockId": AUTOPILOT_BLOCK_ID}
-    )
+    rows = await query_raw_with_schema(_COUNT_QUERY, AUTOPILOT_BLOCK_ID)
+    pending = int(rows[0]["count"]) if rows else 0
 
-    stale = []
-    for node in nodes:
-        constants = dict(node.constantInput or {})
-        credential = constants.get("codex_credentials")
-        # Only a real selection counts; an id-less meta means nothing was set.
-        if not isinstance(credential, dict):
-            continue
-        if not cast(dict[str, Any], credential).get("id"):
-            continue
-        if constants.get("transport") == AutoPilotTransport.CODEX_APP_SERVER.value:
-            continue
-        stale.append((node, constants))
+    # Silent when there is nothing to do: this runs on every boot, and a steady
+    # "0 nodes" line would be pure noise.
+    if not pending:
+        return 0
 
-    for node, constants in stale:
-        constants["transport"] = AutoPilotTransport.CODEX_APP_SERVER.value
-        logger.info(
-            "%s node #%s -> transport=codex_app_server",
-            "migrating" if apply else "would migrate",
-            node.id,
+    if apply:
+        await execute_raw_with_schema(
+            _UPDATE_QUERY,
+            AutoPilotTransport.CODEX_APP_SERVER.value,
+            AUTOPILOT_BLOCK_ID,
         )
-        if apply:
-            # SafeJson, not the raw dict: prisma rejects a plain dict for a
-            # Json column ("should be of any of the following types:
-            # JsonNullValueInput, Json").
-            await AgentNode.prisma().update(
-                where={"id": node.id}, data={"constantInput": SafeJson(constants)}
-            )
-
-    # Silent when there is nothing to do: this runs on every boot, and a
-    # steady "0 nodes" line would be pure noise.
-    if stale:
+        logger.info("%d AutoPilot node(s) given transport=codex_app_server", pending)
+    else:
         logger.info(
-            "%d AutoPilot node(s) %s backfill",
-            len(stale),
-            "given" if apply else "need (dry run — pass --apply to write)",
+            "%d AutoPilot node(s) need backfill (dry run — pass --apply to write)",
+            pending,
         )
-    return len(stale)
+    return pending
 
 
 async def _main() -> None:
@@ -82,8 +87,6 @@ async def _main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    # Import for its side effect of registering the block id used above.
-    assert AutoPilotBlock().id == AUTOPILOT_BLOCK_ID
 
     await connect()
     try:
