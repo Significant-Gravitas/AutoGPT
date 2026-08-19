@@ -57,6 +57,36 @@ interface MCPToolDialogProps {
 
 type DialogStep = "url" | "tool";
 
+type MCPApiError = {
+  status?: unknown;
+  message?: unknown;
+  detail?: unknown;
+};
+
+/** Extract an HTTP status from an unknown generated-client error payload. */
+function getErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const status = (error as MCPApiError).status;
+  return typeof status === "number" ? status : null;
+}
+
+/** Extract a readable message from an unknown generated-client error payload. */
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error !== "object" || error === null) return fallback;
+
+  const { message, detail } = error as MCPApiError;
+  const value =
+    message !== undefined && message !== null && message !== ""
+      ? message
+      : detail;
+  if (typeof value === "string") return value;
+  if (value !== undefined && value !== null) {
+    return JSON.stringify(value) || fallback;
+  }
+  return fallback;
+}
+
 export function MCPToolDialog({
   open,
   onClose,
@@ -145,8 +175,9 @@ export function MCPToolDialog({
           throw { status: response.status, detail: response.data };
         }
         applyDiscoveredTools(response);
-      } catch (e: any) {
-        if (e?.status === 401 || e?.status === 403) {
+      } catch (error: unknown) {
+        const status = getErrorStatus(error);
+        if (status === 401 || status === 403) {
           setAuthRequired(true);
           setError(null);
           // Automatically start OAuth sign-in instead of requiring a second click
@@ -154,11 +185,7 @@ export function MCPToolDialog({
           startOAuthRef.current = true;
           return;
         }
-        const message =
-          e?.message || e?.detail || "Failed to connect to MCP server";
-        setError(
-          typeof message === "string" ? message : JSON.stringify(message),
-        );
+        setError(getErrorMessage(error, "Failed to connect to MCP server"));
       } finally {
         setLoading(false);
       }
@@ -196,10 +223,10 @@ export function MCPToolDialog({
       });
       if (toolsResponse.status !== 200) throw toolsResponse.data;
       applyDiscoveredTools(toolsResponse);
-    } catch (e: any) {
-      const message =
-        e?.message || e?.detail || "Failed to connect with this credential";
-      setError(typeof message === "string" ? message : JSON.stringify(message));
+    } catch (error: unknown) {
+      setError(
+        getErrorMessage(error, "Failed to connect with this credential"),
+      );
     } finally {
       setLoading(false);
     }
@@ -272,28 +299,24 @@ export function MCPToolDialog({
       });
       if (toolsResponse.status !== 200) throw toolsResponse.data;
       applyDiscoveredTools(toolsResponse);
-    } catch (e: any) {
+    } catch (error: unknown) {
+      const status = getErrorStatus(error);
+      const message = getErrorMessage(error, "Failed to complete sign-in");
       // If server doesn't support OAuth → show manual token entry
-      if (e?.status === 400) {
+      if (status === 400) {
         setShowManualToken(true);
         setError(
           "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
         );
-      } else if (e?.message === "OAuth flow timed out") {
+      } else if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");
-      } else {
-        const status = e?.status;
-        let message: string;
-        if (status === 401 || status === 403) {
-          message =
-            "Authentication succeeded but the server still rejected the request. " +
-            "The token audience may not match. Please try again.";
-        } else {
-          message = e?.message || e?.detail || "Failed to complete sign-in";
-        }
+      } else if (status === 401 || status === 403) {
         setError(
-          typeof message === "string" ? message : JSON.stringify(message),
+          "Authentication succeeded but the server still rejected the request. " +
+            "The token audience may not match. Please try again.",
         );
+      } else {
+        setError(message);
       }
     } finally {
       setOauthLoading(false);
