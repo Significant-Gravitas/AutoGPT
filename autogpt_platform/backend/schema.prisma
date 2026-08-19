@@ -129,6 +129,14 @@ model User {
 
   timezone String @default("not-set")
 
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
+
   subscriptionTier SubscriptionTier @default(NO_TIER)
 
   // Relations
