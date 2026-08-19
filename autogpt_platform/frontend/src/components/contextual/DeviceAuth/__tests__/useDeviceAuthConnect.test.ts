@@ -228,4 +228,105 @@ describe("useDeviceAuthConnect", () => {
     expect(second.result.current.userCode).toBe("glow-relish-chaste-soft");
     expect(second.result.current.phase).toBe("polling");
   });
+
+  it("does not resume polling when cancelled mid-request", async () => {
+    initiate.mockResolvedValue(initiated());
+    let releasePoll: (v: unknown) => void = () => {};
+    poll.mockReturnValue(
+      new Promise((resolve) => {
+        releasePoll = resolve;
+      }) as never,
+    );
+
+    const { result } = render();
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    // Cancel while the request is in flight, then let it resolve. Clearing the
+    // timeout cannot retire a request already sent, so without a run-id guard
+    // the resolved poll re-arms the loop after the user walked away.
+    act(() => result.current.cancel());
+    const callsAtCancel = poll.mock.calls.length;
+    await act(async () => {
+      releasePoll({ status: 200, data: { status: "pending" } });
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(poll.mock.calls.length).toBe(callsAtCancel);
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("does not fire success for a flow the user already cancelled", async () => {
+    initiate.mockResolvedValue(initiated());
+    let releasePoll: (v: unknown) => void = () => {};
+    poll.mockReturnValue(
+      new Promise((resolve) => {
+        releasePoll = resolve;
+      }) as never,
+    );
+
+    const onSuccess = vi.fn();
+    const { result } = render(onSuccess);
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    act(() => result.current.cancel());
+    await act(async () => {
+      // The user had in fact approved on their phone by now.
+      releasePoll({
+        status: 200,
+        data: { status: "approved", credentials: { id: "cred-1" } },
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("rides out a transient poll failure instead of ending the flow", async () => {
+    initiate.mockResolvedValue(initiated());
+    poll
+      .mockRejectedValueOnce(new Error("network blip"))
+      .mockResolvedValue({ status: 200, data: { status: "pending" } } as never);
+
+    const { result } = render();
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    // The device code is still valid upstream; one blip in a ten-minute
+    // window must not force the user to start over.
+    expect(result.current.phase).toBe("polling");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(result.current.phase).toBe("polling");
+  });
+
+  it("gives up after repeated consecutive failures", async () => {
+    initiate.mockResolvedValue(initiated());
+    poll.mockRejectedValue(new Error("still down"));
+
+    const { result } = render();
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe("error"));
+  });
 });

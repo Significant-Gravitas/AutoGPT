@@ -903,6 +903,14 @@ class TestDeviceAuthEndpoints:
                 return_value=handler,
             ),
             patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            # Off by default. Every test in this class drives the same user and
+            # provider within the same second, so with a live Redis the
+            # throttle would answer for whichever endpoint ran second. It has
+            # its own tests below.
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
         )
 
     def test_initiate_does_not_return_the_device_code(self):
@@ -920,8 +928,8 @@ class TestDeviceAuthEndpoints:
             return_value=("state-token", "verifier")
         )
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/initiate?scopes=userinfo:read"
             )
@@ -948,8 +956,8 @@ class TestDeviceAuthEndpoints:
             return_value=("state-token", "verifier")
         )
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             client.post(f"/{self.PROVIDER}/device-auth/initiate")
 
         kwargs = mock_mgr.store.store_state_token.await_args.kwargs
@@ -963,8 +971,8 @@ class TestDeviceAuthEndpoints:
             side_effect=RuntimeError("401 {'secret_hint': 'client_id lwlpk_xyz'}")
         )
 
-        p1, p2, p3 = self._patched(handler, MagicMock())
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, MagicMock())
+        with p1, p2, p3, p4:
             response = client.post(f"/{self.PROVIDER}/device-auth/initiate")
 
         assert response.status_code == 502
@@ -975,8 +983,8 @@ class TestDeviceAuthEndpoints:
         mock_mgr = MagicMock()
         mock_mgr.store.peek_state_token = AsyncMock(return_value=None)
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
                 json={"state_token": "not-a-real-token"},
@@ -990,8 +998,8 @@ class TestDeviceAuthEndpoints:
         mock_mgr = MagicMock()
         mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state({}))
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
                 json={"state_token": "state-token"},
@@ -1012,8 +1020,8 @@ class TestDeviceAuthEndpoints:
         mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
         mock_mgr.store.consume_state_token = AsyncMock()
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             for _ in range(3):
                 response = client.post(
                     f"/{self.PROVIDER}/device-auth/poll",
@@ -1061,6 +1069,10 @@ class TestDeviceAuthEndpoints:
             ),
             patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
             patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
                 "backend.api.features.integrations.router._merge_or_create_credential",
                 new=AsyncMock(),
             ) as mock_merge,
@@ -1088,8 +1100,8 @@ class TestDeviceAuthEndpoints:
         mock_mgr = MagicMock()
         mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
                 json={"state_token": "state-token"},
@@ -1136,6 +1148,10 @@ class TestDeviceAuthEndpoints:
             ),
             patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
             patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
                 "backend.api.features.integrations.router._merge_or_create_credential",
                 new=AsyncMock(side_effect=lambda *a, **kw: a[2]),
             ) as mock_merge,
@@ -1168,8 +1184,8 @@ class TestDeviceAuthEndpoints:
             )
         )
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
                 json={"state_token": "state-token"},
@@ -1198,8 +1214,8 @@ class TestDeviceAuthEndpoints:
         mock_mgr.store.store_state_token = AsyncMock(return_value=("tok", "v"))
         mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             client.post(f"/{self.PROVIDER}/device-auth/initiate")
             client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
@@ -1219,8 +1235,8 @@ class TestDeviceAuthEndpoints:
         # What the store returns for a token that is not this user's.
         mock_mgr.store.peek_state_token = AsyncMock(return_value=None)
 
-        p1, p2, p3 = self._patched(handler, mock_mgr)
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with p1, p2, p3, p4:
             response = client.post(
                 f"/{self.PROVIDER}/device-auth/poll",
                 json={"state_token": "another-users-token"},
@@ -1230,3 +1246,57 @@ class TestDeviceAuthEndpoints:
         assert mock_mgr.store.peek_state_token.await_args.args[0] == JWT_USER_ID
         # And the provider is never contacted for a token we could not place.
         handler.poll_for_tokens.assert_not_called()
+
+    def test_the_throttle_holds_callers_to_the_provider_interval(self):
+        """Every call drives the provider under one public client id shared by
+        the whole platform, so a single looping account can get Stripe Link
+        connect throttled for everyone. Covered here rather than in the other
+        tests, which switch it off so they can drive the same user twice."""
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="pending")
+        )
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            poll = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+            initiate = client.post(f"/{self.PROVIDER}/device-auth/initiate")
+
+        # RFC 8628's own vocabulary, and the provider is never contacted.
+        assert poll.status_code == 200
+        assert poll.json()["status"] == "slow_down"
+        handler.poll_for_tokens.assert_not_called()
+
+        assert initiate.status_code == 429
+
+    async def test_the_throttle_fails_open_when_redis_is_unreachable(self):
+        """It protects an upstream client id; it must never be the reason a
+        request fails or hangs."""
+        import backend.api.features.integrations.router as router_module
+
+        with patch(
+            "backend.data.redis_client.get_redis_async",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ):
+            throttled = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5
+            )
+
+        assert throttled is False
