@@ -101,11 +101,14 @@ export function useCredentialsInput({
   }, [credentials, onLoaded]);
 
   // Unselect credential if not available in the loaded credential list.
-  // Skip when no credentials have been loaded yet (empty list could mean
-  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
+    // Gate on the load state, not on the list being empty. An empty list was
+    // previously taken to mean "not loaded yet", which skipped the check in
+    // exactly the case it exists for: deleting your only connection left a
+    // stale selection with nothing said about it.
+    if (credentials.isLoading) return;
     const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
@@ -115,7 +118,6 @@ export function useCredentialsInput({
       hasAttemptedAutoSelect.current = false;
       return;
     }
-    if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)

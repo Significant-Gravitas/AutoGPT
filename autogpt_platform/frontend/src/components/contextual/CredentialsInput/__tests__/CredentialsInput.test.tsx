@@ -589,13 +589,28 @@ describe("CredentialsInput – a removed connection", () => {
   });
 
   it("asks the user to choose when nothing is left to heal with", async () => {
+    // Deleting your only connection: nothing to adopt, so say what happened
+    // and ask. Previously an empty list was read as "still loading", so this
+    // case was skipped entirely — a stale selection with no warning.
     mockProvider([]);
 
     render(<StatefulCredentialsInput initial={deleted} />);
 
-    // An empty saved list is also how "still loading" looks, so the component
-    // leaves the selection alone and says nothing rather than guessing.
-    await waitFor(() => expect(screen.queryByText(/now using/i)).toBeNull());
+    expect(
+      await screen.findByText(
+        /Old ChatGPT connection was removed\. Choose a connection/i,
+      ),
+    ).toBeDefined();
+  });
+
+  it("stays quiet while the provider list is still loading", async () => {
+    // The guard that replaced the empty-list check: an unloaded provider must
+    // not be mistaken for one that has nothing in it.
+    mockUseCredentials.mockReturnValue({ isLoading: true } as any);
+
+    render(<StatefulCredentialsInput initial={deleted} />);
+
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
   it("says nothing when the configured connection still resolves", async () => {
