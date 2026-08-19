@@ -63,6 +63,7 @@ function makeCredentialsReturn(overrides: Partial<CredentialsReturn> = {}) {
     provider: "google",
     providerName: "Google",
     savedCredentials: [],
+    providerCredentials: [],
     upgradeableCredentials: [],
     supportsApiKey: false,
     supportsOAuth2: true,
@@ -562,12 +563,13 @@ describe("CredentialsInput – a removed connection", () => {
     title: "Old ChatGPT connection",
   };
 
-  function mockProvider(savedCredentials: any[]) {
+  function mockProvider(savedCredentials: any[], providerCredentials?: any[]) {
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
         provider: "codex",
         providerName: "Codex",
         savedCredentials,
+        providerCredentials: providerCredentials ?? savedCredentials,
       }),
     );
   }
@@ -623,6 +625,40 @@ describe("CredentialsInput – a removed connection", () => {
     );
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+
+  it("does not treat a filtered-out credential as deleted", async () => {
+    // `savedCredentials` is narrowed by supported type and discriminator, so a
+    // credential missing from it can just mean "not usable for this selection".
+    // Clearing on that would drop a valid connection and cry wolf.
+    mockProvider([], [{ ...codexCredential }]);
+
+    render(
+      <StatefulCredentialsInput
+        initial={{ ...codexCredential, type: "oauth2" }}
+      />,
+    );
+
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+
+  it("heals again after an auto-selected connection is itself deleted", async () => {
+    // The auto-select flag latches after the first run, so without resetting it
+    // the field stayed empty instead of adopting whatever remained.
+    const second = {
+      ...codexCredential,
+      id: "codex-2",
+      title: "Second ChatGPT",
+    };
+    mockProvider([second], [second]);
+
+    render(
+      <StatefulCredentialsInput
+        initial={{ ...codexCredential, type: "oauth2" }}
+      />,
+    );
+
+    expect(await screen.findByText(/now using Second ChatGPT/i)).toBeDefined();
   });
 
   it("still auto-selects a lone connection when nothing was configured before", async () => {

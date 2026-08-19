@@ -118,9 +118,17 @@ export function useCredentialsInput({
       hasAttemptedAutoSelect.current = false;
       return;
     }
+    // Judge removal against the provider's unfiltered list. `savedCredentials`
+    // is narrowed by supported type and discriminator, so a credential missing
+    // from it can simply be "not usable for this selection" rather than
+    // deleted — clearing on that would drop a perfectly valid connection.
+    const providerCreds =
+      "providerCredentials" in credentials
+        ? (credentials.providerCredentials as { id: string }[])
+        : availableCreds;
     if (
       selectedCredential &&
-      !availableCreds.some((c) => c.id === selectedCredential.id)
+      !providerCreds.some((c) => c.id === selectedCredential.id)
     ) {
       // Remember what was configured before dropping it. Disconnecting an
       // integration mints a new credential on reconnect, so the old id stops
@@ -131,6 +139,10 @@ export function useCredentialsInput({
         selectedCredential.title || credentials.providerName,
       );
       onSelectCredential(undefined);
+      // Let the heal below run again. The flag latches after the first
+      // auto-selection, so without this, deleting an auto-selected credential
+      // left the field empty instead of adopting whatever remained.
+      hasAttemptedAutoSelect.current = false;
     }
   }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
