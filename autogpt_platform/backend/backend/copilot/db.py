@@ -33,6 +33,7 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
 
@@ -1334,6 +1335,28 @@ async def update_chat_session_status(
     return updated > 0
 
 
+async def _default_route_metadata(
+    user_id: str, *, origin: str | None = None
+) -> ChatSessionMetadata:
+    """Session metadata carrying the user's default connection.
+
+    These sessions exist to hold an outbound message, but the user replies in
+    them — so they start on the same connection a chat the user opened
+    themselves would, instead of silently falling back to the platform route.
+
+    ``origin`` is passed through for the sessions a user is meant to type into,
+    which have to declare themselves interactive.
+    """
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    fields: dict[str, object] = {
+        "llm_auth_provider": llm_auth_provider,
+        "llm_credential_id": llm_credential_id,
+    }
+    if origin is not None:
+        fields["origin"] = origin
+    return ChatSessionMetadata(**fields)
+
+
 async def append_expert_run_message(
     user_id: str,
     expert_id: str,
@@ -1362,7 +1385,10 @@ async def append_expert_run_message(
         session_id = session.id
     else:
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            expert_id=expert_id,
+            metadata=await _default_route_metadata(user_id),
         )
         session_id = created.session_id
 
@@ -1437,7 +1463,9 @@ async def append_plain_session_message(
         created = await create_chat_session(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            metadata=ChatSessionMetadata(origin="interactive"),
+            metadata=await _default_route_metadata(
+                user_id, origin="interactive"
+            ),
         )
         session_id = created.session_id
 

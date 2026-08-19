@@ -4554,6 +4554,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Chat Transports",
+        "description": "Every transport the user can chat over.\n\nExactly one carries ``default: true`` — the connection this user chose in\nSettings, or the server's own pick when they haven't chosen one.",
         "operationId": "getV2ListChatTransports",
         "responses": {
           "200": {
@@ -4568,6 +4569,48 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/transports/default": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Set Default Chat Transport",
+        "description": "Save the connection every new chat starts on.\n\nApplies to chats nobody routed explicitly — a fresh session in the web\napp, and every conversation that arrives without a request to read a route\nfrom: bot links, schedules, briefings, dream passes. It does not touch a\nconversation that already exists; sessions keep the route they were\ncreated with.",
+        "operationId": "putV2SetDefaultChatTransport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultTransportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -25395,6 +25438,28 @@
         "type": "object",
         "title": "SetActiveGraphVersionResponse",
         "description": "Response for activating an existing graph version.\n\nCarries any webhook presets that were left pinned to their old version\nbecause the newly activated version's trigger block is incompatible and\nneeds to be reconfigured."
+      },
+      "SetDefaultTransportRequest": {
+        "properties": {
+          "auth_provider": {
+            "anyOf": [
+              { "type": "string", "enum": ["platform", "codex"] },
+              { "type": "null" }
+            ],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Credential Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SetDefaultTransportRequest",
+        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. Sending ``codex`` requires naming the credential, so the\ndefault keeps pointing at one account rather than \"whichever ChatGPT\"."
       },
       "SetGraphActiveVersion": {
         "properties": {

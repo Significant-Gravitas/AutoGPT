@@ -436,11 +436,8 @@ describe("useCopilotUIStore", () => {
   });
 
   describe("copilotLlmAuth", () => {
-    it("defaults to the platform route", () => {
-      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
-        authProvider: "platform",
-        credentialId: null,
-      });
+    it("starts unset so the saved default can decide", () => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
     });
 
     it("stores a Codex credential without changing the selected mode or model", () => {
@@ -481,10 +478,7 @@ describe("useCopilotUIStore", () => {
       expect(state.isSearchOpen).toBe(false);
       expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
-      expect(state.copilotLlmAuth).toEqual({
-        authProvider: "platform",
-        credentialId: null,
-      });
+      expect(state.copilotLlmAuth).toBeNull();
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);
