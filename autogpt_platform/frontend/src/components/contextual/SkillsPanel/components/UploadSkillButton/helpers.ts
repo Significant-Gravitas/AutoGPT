@@ -28,9 +28,15 @@ export function getSkillUploadError(content: string): string | null {
     return "File is not a valid SKILL.md — frontmatter must include a non-empty name and description.";
   }
 
-  if (description && description.length > MAX_SKILL_DESCRIPTION_CHARS) {
-    const over = description.length - MAX_SKILL_DESCRIPTION_CHARS;
-    return `Description is ${description.length}/${MAX_SKILL_DESCRIPTION_CHARS} characters — trim at least ${over}. It appears in the copilot's per-turn skills index, so it's kept short.`;
+  const descriptionLength = description
+    ? Array.from(description).length
+    : undefined;
+  if (
+    descriptionLength !== undefined &&
+    descriptionLength > MAX_SKILL_DESCRIPTION_CHARS
+  ) {
+    const over = descriptionLength - MAX_SKILL_DESCRIPTION_CHARS;
+    return `Description is ${descriptionLength}/${MAX_SKILL_DESCRIPTION_CHARS} characters — trim at least ${over}. It appears in the copilot's per-turn skills index, so it's kept short.`;
   }
 
   return null;

@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # turn budget.  A typical user skill line lands around 150-200 chars
 # (~50 tok), so 50 entries ≈ 2.5k tokens.  The hard worst case — every
 # description and every trigger filled to the per-field caps below — is
-# ~12k tokens, used as the upper bound when sizing the prefix cache.
+# ~22k tokens, used as the upper bound when sizing the prefix cache.
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
