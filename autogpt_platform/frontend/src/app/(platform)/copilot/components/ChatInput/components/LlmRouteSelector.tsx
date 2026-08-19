@@ -58,29 +58,33 @@ export function LLMRouteSelector() {
     transports,
     copilotLLMAuth,
   );
+  // Before anything is chosen the trigger still names the connection the chat
+  // will actually start on, rather than flashing "Choose connection" for the
+  // one render before the effect below adopts the default.
   const selectedTransport = findSelectedLLMTransport(
     availableTransports,
-    copilotLLMAuth,
+    copilotLLMAuth ?? resolvedSelection,
   );
   const selectedConnectionMissing =
     transports !== undefined &&
     availableTransports.length > 0 &&
+    copilotLLMAuth !== null &&
     copilotLLMAuth.authProvider !== "platform" &&
     !selectedTransport;
 
   useEffect(() => {
     if (!resolvedSelection) return;
     if (
-      resolvedSelection.authProvider === copilotLLMAuth.authProvider &&
-      resolvedSelection.credentialId === copilotLLMAuth.credentialId
+      resolvedSelection.authProvider === copilotLLMAuth?.authProvider &&
+      resolvedSelection.credentialId === copilotLLMAuth?.credentialId
     ) {
       return;
     }
 
     setCopilotLLMAuth(resolvedSelection);
   }, [
-    copilotLLMAuth.authProvider,
-    copilotLLMAuth.credentialId,
+    copilotLLMAuth?.authProvider,
+    copilotLLMAuth?.credentialId,
     resolvedSelection?.authProvider,
     resolvedSelection?.credentialId,
     setCopilotLLMAuth,
