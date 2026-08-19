@@ -412,7 +412,7 @@ class DeviceAuthPollResponse(BaseModel):
 
 
 async def _throttle_upstream(
-    user_id: str, provider: ProviderName, seconds: int
+    user_id: str, provider: ProviderName, seconds: int, scope: str
 ) -> bool:
     """Rate-limit outbound device-auth calls per user and provider.
 
@@ -431,7 +431,12 @@ async def _throttle_upstream(
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        key = f"device-auth-throttle:{user_id}:{provider_key(provider)}"
+        # Namespaced per endpoint. Sharing one key deadlocked the pair: a live
+        # poll loop re-claims its key every `interval` seconds with the same
+        # TTL, so the key never expires and `initiate` can never claim it —
+        # leaving a dialog open while approving on a phone, which is the
+        # intended behaviour, blocked every other surface from starting a flow.
+        key = f"device-auth-throttle:{scope}:{user_id}:{provider_key(provider)}"
         # SET NX EX: the first caller in the window claims the key.
         claimed = await redis.set(key, "1", ex=max(seconds, 1), nx=True)
         return not claimed
@@ -443,21 +448,29 @@ async def _throttle_upstream(
         return False
 
 
-async def _latest_credential_for(user_id: str, provider: ProviderName) -> Any | None:
-    """The newest stored credential for a provider, or None.
+async def _credential_for_grant(
+    user_id: str, provider: ProviderName, credential_id: str | None
+) -> Any | None:
+    """The credential this grant produced, or None if it is not stored yet.
 
-    Used by the poll that loses the consume race: the winner has stored the
-    credential for this grant, and reporting it is more useful than reporting
-    an approval with nothing attached.
+    Used by the poll that loses the consume race. It must be *this* grant's
+    credential, not merely the provider's newest: `get_creds_by_provider`
+    filters by provider with no ordering contract, and a merged re-auth keeps
+    its original position — so a user with two Link wallets could have the
+    losing poll report the wrong one, which the connect modal then auto-wires
+    into the node. An agent authorized against an account the user did not
+    pick is a worse outcome than reporting nothing.
+
+    Only a re-auth carries a credential id. A first-time grant has none, so
+    there is nothing to match on and the caller is told to keep polling.
     """
-    try:
-        creds = await creds_manager.store.get_creds_by_provider(
-            user_id, provider_key(provider)
-        )
-    except Exception as e:
-        logger.warning(f"Could not read stored credentials for {provider}: {e}")
+    if not credential_id:
         return None
-    return creds[-1] if creds else None
+    try:
+        return await creds_manager.store.get_creds_by_id(user_id, credential_id)
+    except Exception as e:
+        logger.warning(f"Could not read stored credential for {provider}: {e}")
+        return None
 
 
 def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
@@ -489,7 +502,9 @@ async def device_auth_initiate(
 
     # Cheapest endpoint to abuse: it takes no state token, and each call mints
     # a device code upstream.
-    if await _throttle_upstream(user_id, provider, _INITIATE_COOLDOWN_SECONDS):
+    if await _throttle_upstream(
+        user_id, provider, _INITIATE_COOLDOWN_SECONDS, scope="initiate"
+    ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="A device authorization was just started. Please wait a moment.",
@@ -583,7 +598,7 @@ async def device_auth_poll(
         )
 
     interval = int(valid_state.state_metadata.get("interval") or 5)
-    if await _throttle_upstream(user_id, provider, interval):
+    if await _throttle_upstream(user_id, provider, interval, scope="poll"):
         # Polling faster than the provider asked for. Say so in its own
         # vocabulary rather than spending an upstream call to be told.
         return DeviceAuthPollResponse(status="slow_down")
@@ -630,11 +645,17 @@ async def device_auth_poll(
         # than "approved" with nothing attached. A client branching on the
         # status alone would otherwise show success, wire up nothing, and be
         # unable to retry — the state token is gone by now.
-        stored = await _latest_credential_for(user_id, provider)
+        stored = await _credential_for_grant(
+            user_id, provider, valid_state.credential_id
+        )
         if stored is None:
-            # The winner has consumed but not finished storing. Keep the client
-            # polling rather than handing it a success it cannot act on.
-            return DeviceAuthPollResponse(status="pending")
+            # Either the winner has not finished storing, or this is a
+            # first-time grant with no id to match on. Report the approval
+            # without a credential and let the client pick it up from the
+            # refreshed credential list — `pending` would send it back to a
+            # state token the winner has already consumed, and the next poll
+            # would 400.
+            return DeviceAuthPollResponse(status="approved")
         return DeviceAuthPollResponse(
             status="approved", credentials=to_meta_response(stored)
         )
@@ -650,11 +671,27 @@ async def device_auth_poll(
                 user_id, provider, credentials, valid_state.credential_id
             )
         except Exception:
-            # The token is already consumed at this point, so a failure here
-            # would strand a live authorization at the provider with no local
-            # credential to revoke it with, and nothing to tell the user it
-            # exists. Put the state back so the next poll can retry the store.
-            await creds_manager.store.restore_state_token(user_id, consumed)
+            # The grant is live at the provider and we could not store it, so
+            # there is no local credential to revoke it with and nothing to
+            # tell the user it exists. Restoring the state token does not help:
+            # RFC 8628 device codes are single-use, so the next poll would only
+            # ever get `expired_token`. Hand the authorization back instead.
+            try:
+                await handler.revoke_tokens(result.credentials)
+                logger.warning(
+                    "Revoked an unstorable device-auth grant for user %s and "
+                    "provider %s rather than leaving it live at the provider",
+                    user_id,
+                    provider,
+                )
+            except Exception as revoke_error:
+                logger.error(
+                    "Could not revoke an unstorable device-auth grant for user "
+                    "%s and provider %s; it remains live upstream: %s",
+                    user_id,
+                    provider,
+                    revoke_error,
+                )
             raise
 
         logger.debug(

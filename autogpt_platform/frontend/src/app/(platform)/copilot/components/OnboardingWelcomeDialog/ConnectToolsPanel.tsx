@@ -101,6 +101,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                 onSelectMethod={setSelectedMethod}
                 apiKeyForm={apiKeyForm}
                 onApiKeySubmit={handleApiKeySubmit}
+                // Without this, approving on the phone drops the user back on
+                // the initial "Connect <provider>" screen, which reads as a
+                // failure. OAuth and API key both return to the list.
+                onDeviceAuthSuccess={handleBackToList}
               />
             </motion.div>
           ) : (

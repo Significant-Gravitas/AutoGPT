@@ -13,7 +13,6 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import SecretStr
 
-from backend.blocks.stripe_link._auth import LINK_API_BASE_URL, LINK_HTTP_TIMEOUT
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.device_base import (
     BaseDeviceAuthHandler,
@@ -27,6 +26,12 @@ logger = logging.getLogger(__name__)
 app_config = Config()
 
 LINK_AUTH_BASE_URL = "https://login.link.com"
+LINK_API_BASE_URL = "https://api.link.com"
+
+# Every Link call is awaited inline by a block or an API handler, so an
+# upstream that accepts the connection and then stalls would hold a worker for
+# as long as it likes. Bound them all.
+LINK_HTTP_TIMEOUT = 15.0
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 LINK_CLIENT_NAME = "AutoGPT"
 
