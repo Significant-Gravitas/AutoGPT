@@ -12,10 +12,10 @@ from autogpt.app.utils import (
     get_latest_bulletin,
     set_env_config_value,
 )
-from git import InvalidGitRepositoryError
-from tests.utils import skip_in_ci
-
 from forge.json.parsing import extract_dict_from_json
+from git import InvalidGitRepositoryError
+
+from tests.utils import skip_in_ci
 
 
 @pytest.fixture
@@ -23,65 +23,77 @@ def valid_json_response() -> dict:
     return {
         "thoughts": {
             "observations": "Retrieved Tesla's revenue data successfully.",
-            "reasoning": "I will use the 'task_complete' command because it allows me "
-            "to shut down and signal that my task is complete.",
-            "plan": ["Use task_complete to shut down"],
-            "self_criticism": "I need to ensure that I have completed all "
-            "necessary tasks before shutting down.",
+            "thought": "I will search for Tesla's revenue data from 2022.",
+            "plan": "- Search for Tesla revenue 2022\n- Extract the revenue figures\n- Format the results",
+            "reasoning": "Finding the revenue data is necessary to answer the user's request.",
+            "criticism": "I need to ensure the source is reliable.",
         },
         "command": {
-            "name": "task_complete",
-            "args": {"reason": "Task complete: retrieved Tesla's revenue in 2022."},
+            "name": "google",
+            "args": {"query": "Tesla revenue 2022"},
         },
     }
 
 
-@pytest.fixture
-def invalid_json_response() -> dict:
-    return {
-        "thoughts": {
-            "observations": "Retrieved Tesla's revenue data.",
-            "reasoning": "I will use the 'task_complete' command because it allows me "
-            "to shut down and signal that my task is complete.",
-            "plan": ["Use task_complete to shut down"],
-            "self_criticism": "I need to ensure that I have completed all "
-            "necessary tasks before shutting down.",
-        },
-        "command": {"name": "", "args": {}},
-    }
+def test_get_bulletin_from_web_success():
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.text = "Test Bulletin"
+        bulletin = get_bulletin_from_web()
+        assert bulletin == "Test Bulletin"
 
 
-@patch("requests.get")
-def test_get_bulletin_from_web_success(mock_get):
-    expected_content = "Test bulletin from web"
-
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.text = expected_content
-    bulletin = get_bulletin_from_web()
-
-    assert expected_content in bulletin
-    mock_get.assert_called_with(
-        "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/classic/original_autogpt/BULLETIN.md"  # noqa: E501
-    )
+def test_get_bulletin_from_web_failure():
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 404
+        bulletin = get_bulletin_from_web()
+        assert bulletin == ""
 
 
-@patch("requests.get")
-def test_get_bulletin_from_web_failure(mock_get):
-    mock_get.return_value.status_code = 404
-    bulletin = get_bulletin_from_web()
-
-    assert bulletin == ""
-
-
-@patch("requests.get")
-def test_get_bulletin_from_web_exception(mock_get):
-    mock_get.side_effect = requests.exceptions.RequestException()
-    bulletin = get_bulletin_from_web()
-
-    assert bulletin == ""
+def test_get_bulletin_from_web_exception():
+    with patch("requests.get", side_effect=requests.exceptions.RequestException):
+        bulletin = get_bulletin_from_web()
+        assert bulletin == ""
 
 
 def test_get_latest_bulletin_no_file(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    expected_content = "::START_NEWS::\nTest news\n::END_NEWS::"
+
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.text = expected_content
+
+        bulletin, is_new = get_latest_bulletin()
+
+    assert expected_content in bulletin
+    mock_get.assert_called_with(
+        "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/classic/original_autogpt/BULLETIN.md"
+    )
+    assert is_new
+    assert (data_dir / "CURRENT_BULLETIN.md").exists()
+    assert (data_dir / "CURRENT_BULLETIN.md").read_text(
+        encoding="utf-8"
+    ) == expected_content
+
+
+def test_get_latest_bulletin_no_file_and_get_fails(tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    with patch("requests.get", side_effect=requests.exceptions.RequestException):
+        bulletin, is_new = get_latest_bulletin()
+
+    assert bulletin == ""
+    assert not is_new
+    assert not (data_dir / "CURRENT_BULLETIN.md").exists()
+
+
+def test_get_latest_bulletin_no_file_new_bulletin(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     bulletin_path = data_dir / "CURRENT_BULLETIN.md"
@@ -94,7 +106,7 @@ def test_get_latest_bulletin_no_file(tmp_path, monkeypatch):
     with patch(
         "autogpt.app.utils.get_bulletin_from_web", return_value="New bulletin content"
     ):
-        bulletin, is_new = get_latest_bulletin()
+        _, is_new = get_latest_bulletin()
         assert is_new
 
 
