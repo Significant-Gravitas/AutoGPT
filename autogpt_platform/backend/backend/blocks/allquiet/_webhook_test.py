@@ -6,7 +6,7 @@ import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 from fastapi import HTTPException
@@ -262,17 +262,25 @@ class TestTimestampFormats:
     """All Quiet's two header pairs don't share a timestamp format."""
 
     @pytest.mark.parametrize(
-        "stamp",
+        "format_stamp",
         [
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            datetime.now(timezone.utc).isoformat(),
-            str(int(datetime.now(timezone.utc).timestamp())),
-            str(int(datetime.now(timezone.utc).timestamp() * 1000)),
+            lambda now: now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            lambda now: now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            lambda now: now.isoformat(),
+            lambda now: str(int(now.timestamp())),
+            lambda now: str(int(now.timestamp() * 1000)),
         ],
         ids=["aq-millis", "aws-iso", "iso-offset", "epoch-seconds", "epoch-millis"],
     )
-    async def test_accepts_each_format_all_quiet_may_send(self, stamp: str):
+    async def test_accepts_each_format_all_quiet_may_send(
+        self, format_stamp: Callable[[datetime], str]
+    ):
+        # Stamped here rather than in the parametrize list. Decorator arguments
+        # are evaluated at import time, so on any suite that takes longer than
+        # MAX_TIMESTAMP_SKEW to reach this test the stamp is already stale and
+        # the replay check rejects it -- a failure that depends on how long the
+        # rest of the suite took, not on this code.
+        stamp = format_stamp(datetime.now(timezone.utc))
         request = _request(
             {"x-aq-signature": _sign(BODY, stamp), "x-aq-timestamp": stamp}
         )
