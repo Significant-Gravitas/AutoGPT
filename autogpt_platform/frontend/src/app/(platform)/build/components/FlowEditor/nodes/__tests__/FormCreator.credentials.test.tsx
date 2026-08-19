@@ -61,12 +61,20 @@ function makeNode(schema: RJSFSchema): CustomNode {
 }
 
 function makeProviders(...names: string[]): CredentialsProvidersContextType {
-  const entries = names.map((name) => [
+  return makeProvidersWithCredentials(
+    Object.fromEntries(names.map((name) => [name, []])),
+  );
+}
+
+function makeProvidersWithCredentials(
+  byProvider: Record<string, unknown[]>,
+): CredentialsProvidersContextType {
+  const entries = Object.entries(byProvider).map(([name, savedCredentials]) => [
     name,
     {
       provider: name,
       providerName: name,
-      savedCredentials: [],
+      savedCredentials,
       isSystemProvider: false,
     },
   ]);
@@ -150,7 +158,18 @@ describe("FormCreator credential emission", () => {
     useHistoryStore.setState({ past: [], future: [] });
 
     render(
-      <CredentialsProvidersContext.Provider value={makeProviders("codex")}>
+      <CredentialsProvidersContext.Provider
+        value={makeProvidersWithCredentials({
+          codex: [
+            {
+              id: "codex-oauth-1",
+              provider: "codex",
+              type: "oauth2",
+              title: "ChatGPT for Codex",
+            },
+          ],
+        })}
+      >
         <FormCreator
           jsonSchema={autopilotSchema}
           nodeId="autopilot-node"

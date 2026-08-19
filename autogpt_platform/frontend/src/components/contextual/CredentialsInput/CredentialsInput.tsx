@@ -200,8 +200,9 @@ export function CredentialsInput({
 
           {removedCredentialTitle && (
             <Text variant="body" className="mt-2 text-amber-600">
-              {removedCredentialTitle} was removed. Choose a connection to keep
-              this step running.
+              {selectedCredential?.title
+                ? `${removedCredentialTitle} was removed — now using ${selectedCredential.title}.`
+                : `${removedCredentialTitle} was removed. Choose a connection to keep this step running.`}
             </Text>
           )}
 

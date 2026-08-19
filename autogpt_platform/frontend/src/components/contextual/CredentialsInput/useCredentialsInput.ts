@@ -100,11 +100,14 @@ export function useCredentialsInput({
   }, [credentials, onLoaded]);
 
   // Unselect credential if not available in the loaded credential list.
-  // Skip when no credentials have been loaded yet (empty list could mean
-  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
+    // Gate on the load state, not on the list being empty. An empty list was
+    // previously taken to mean "not loaded yet", which skipped the check in
+    // exactly the case it exists for: deleting your only connection left a
+    // stale selection with nothing said about it.
+    if (credentials.isLoading) return;
     const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
@@ -114,33 +117,21 @@ export function useCredentialsInput({
       hasAttemptedAutoSelect.current = false;
       return;
     }
-    if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)
     ) {
       // Remember what was configured before dropping it. Disconnecting an
       // integration mints a new credential on reconnect, so the old id stops
-      // resolving; without this the field just goes blank (or silently adopts
-      // whatever else is lying around) and the user is never told the
-      // connection their agent was using is gone.
+      // resolving. Auto-selection below then heals the node, which is the
+      // behaviour we want — this only records what was replaced so the swap
+      // can be reported instead of happening in silence.
       setRemovedCredentialTitle(
         selectedCredential.title || credentials.providerName,
       );
       onSelectCredential(undefined);
     }
   }, [credentials, selectedCredential, onSelectCredential, readOnly]);
-
-  // Clear the removal notice once a real credential is selected. Without
-  // this the warning outlived the problem it described: the user picked a new
-  // connection and was still told the old one was removed.
-  useEffect(() => {
-    if (!credentials || !("savedCredentials" in credentials)) return;
-    const id = selectedCredential?.id;
-    if (id && credentials.savedCredentials.some((c) => c.id === id)) {
-      setRemovedCredentialTitle(null);
-    }
-  }, [credentials, selectedCredential]);
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
@@ -152,11 +143,6 @@ export function useCredentialsInput({
 
       const savedCreds = credentials.savedCredentials;
       if (savedCreds.length === 0) return;
-
-      // A removed connection is not the same as never having configured one.
-      // Substituting silently could route the agent through a different
-      // account, so make the choice explicit.
-      if (removedCredentialTitle) return;
 
       if (hasAttemptedAutoSelect.current) return;
       hasAttemptedAutoSelect.current = true;
@@ -179,7 +165,6 @@ export function useCredentialsInput({
       readOnly,
       isOptional,
       onSelectCredential,
-      removedCredentialTitle,
     ],
   );
 
@@ -426,6 +411,10 @@ export function useCredentialsInput({
   function handleCredentialSelect(credentialId: string) {
     const selectedCreds = savedCredentials.find((c) => c.id === credentialId);
     if (selectedCreds) {
+      // Dismiss on an explicit choice only. Clearing it whenever any valid
+      // credential became selected also fired on the automatic heal below,
+      // so the swap was reported to nobody.
+      setRemovedCredentialTitle(null);
       onSelectCredential({
         id: selectedCreds.id,
         type: selectedCreds.type,
