@@ -70,7 +70,10 @@ function readScalarField(frontmatter: string, key: string): string | undefined {
     try {
       return JSON.parse(raw);
     } catch {
-      return raw.slice(1, -1);
+      // YAML supports escape sequences that JSON does not (for example,
+      // `\U0001F600`). If we cannot decode the scalar confidently, defer its
+      // validation to the backend instead of measuring the encoded text.
+      return undefined;
     }
   }
   // Single-quoted YAML escapes a quote by doubling it (`''`).

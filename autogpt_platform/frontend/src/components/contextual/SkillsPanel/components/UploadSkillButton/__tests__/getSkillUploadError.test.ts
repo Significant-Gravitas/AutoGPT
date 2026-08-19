@@ -70,6 +70,15 @@ describe("getSkillUploadError", () => {
     expect(getSkillUploadError(md(`name: ok_skill\n${line}`))).toBeNull();
   });
 
+  test("does not false-reject YAML-only escapes it cannot decode", () => {
+    const escapedEmoji = "\\U0001F600".repeat(103);
+
+    expect(escapedEmoji.length).toBe(1030);
+    expect(
+      getSkillUploadError(md(`name: ok_skill\ndescription: "${escapedEmoji}"`)),
+    ).toBeNull();
+  });
+
   test("does not false-reject a block-scalar description it cannot measure", () => {
     const block = `name: ok_skill\ndescription: |\n  ${"x".repeat(300)}`;
     // Block scalar is unmeasurable from one line — defer to the backend.
