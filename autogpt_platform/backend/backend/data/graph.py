@@ -406,7 +406,12 @@ def _mappable_discriminator_default(
     if not discriminator or not mapping:
         return None
 
-    field_schema = input_schema.jsonschema()["properties"].get(discriminator, {})
+    # `.get`, not indexing: a schema with no properties at all would raise
+    # here, and this runs inside a computed_field where that breaks schema
+    # generation for the whole graph — the failure mode this helper's
+    # None-returning contract exists to avoid.
+    properties = input_schema.jsonschema().get("properties", {})
+    field_schema = properties.get(discriminator, {})
     default = field_schema.get("default")
     return default if default in mapping else None
 
