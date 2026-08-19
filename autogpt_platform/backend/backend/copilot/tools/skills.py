@@ -51,9 +51,9 @@ logger = logging.getLogger(__name__)
 # Limits — keep the per-turn <available_skills> index small enough that it
 # does not strain Anthropic prompt caches and does not crowd out the user's
 # turn budget.  A typical user skill line lands around 150-200 chars
-# (~50 tok), so 50 entries ≈ 2.5k tokens.  The hard worst case — every
-# description and every trigger filled to the per-field caps below — is
-# ~22k tokens, used as the upper bound when sizing the prefix cache.
+# (~50 tok), so 50 entries ≈ 2.5k tokens.  Filling every description and
+# trigger to the per-field caps below is roughly 22k tokens under the same
+# estimate; actual token cost varies by content and tokenizer.
 # Built-in seeded skills are tiny so first-touch users see well under
 # 200 tokens of overhead.
 # ---------------------------------------------------------------------------
