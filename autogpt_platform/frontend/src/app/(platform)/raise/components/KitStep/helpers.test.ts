@@ -36,6 +36,14 @@ describe("kit helpers", () => {
     expect(parseBudget("10001")).toBeNull();
   });
 
+  test("rejects malformed thousands separators instead of stripping them", () => {
+    expect(parseBudget("1,2")).toBeNull();
+    expect(parseBudget("12,34")).toBeNull();
+    expect(parseBudget("1,0000")).toBeNull();
+    expect(parseBudget(",500")).toBeNull();
+    expect(parseBudget("$1,234.56")).toBe(123_456);
+  });
+
   test("combines marketplace and library workflows in marketplace scope", () => {
     const hits = combineSearchHits({
       query: "seo",

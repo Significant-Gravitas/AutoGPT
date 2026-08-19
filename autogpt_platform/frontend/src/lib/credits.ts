@@ -14,17 +14,21 @@ export function usdToCredits(dollars: number): number {
   return Math.round(dollars * CREDITS_PER_USD);
 }
 
-// Accepts what a person would type into a dollar field — "5", "$5", "5.25" —
-// and rejects anything finer than cents. Returns credits so callers never
-// have to remember the conversion.
+// Accepts what a person would type into a dollar field — "5", "$5", "5.25",
+// "1,000" — and rejects anything finer than cents. Thousands separators are
+// validated in place rather than stripped first, so "1,2" stays invalid
+// instead of silently becoming $12. Returns credits so callers never have to
+// remember the conversion.
+const USD_INPUT = /^\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$/;
+
 export function parseUsdToCredits(
   value: string,
   maxCredits: number,
 ): number | null {
-  const trimmed = value.trim().replace(/^\$/, "").replace(/,/g, "");
+  const trimmed = value.trim();
   if (!trimmed) return null;
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
-  const credits = usdToCredits(Number(trimmed));
+  if (!USD_INPUT.test(trimmed)) return null;
+  const credits = usdToCredits(Number(trimmed.replace(/[$,]/g, "")));
   if (credits < 0 || credits > maxCredits) return null;
   return credits;
 }
