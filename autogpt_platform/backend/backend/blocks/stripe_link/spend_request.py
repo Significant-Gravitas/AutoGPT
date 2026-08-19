@@ -7,6 +7,7 @@ card or shared payment token from the user's Link wallet.
 """
 
 import logging
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -57,6 +58,23 @@ def card_flow_disabled() -> bool:
 
 
 CARD_FLOW_DISABLED = card_flow_disabled()
+
+# Link's own id shape. Validated rather than only escaped: the status block is
+# the one spend-request read reachable on Cloud, and an id like
+# `lsrq_x?include=card` would make it ask Link for card material — the
+# guarantee that it cannot pull card data otherwise holds only for well-formed
+# input.
+_SPEND_REQUEST_ID = re.compile(r"^lsrq_[A-Za-z0-9_-]+$")
+
+
+def _validate_spend_request_id(value: str) -> str:
+    if not _SPEND_REQUEST_ID.match(value):
+        raise ValueError(
+            "spend_request_id must look like 'lsrq_...' — anything else could "
+            "steer the authenticated call at a different Link endpoint"
+        )
+    return value
+
 
 # What a payment method may contribute to a block output. Listing payment
 # methods is not behind CARD_FLOW_DISABLED, so it runs on Cloud — projecting
@@ -599,6 +617,8 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             description="ID of the spend request to check (e.g., lsrq_...)"
         )
 
+        _check_id = field_validator("spend_request_id")(_validate_spend_request_id)
+
     class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description=(
@@ -723,6 +743,8 @@ class StripeLinkRetrieveCardBlock(Block):
             description="ID of an approved spend request (e.g., lsrq_...)"
         )
 
+        _check_id = field_validator("spend_request_id")(_validate_spend_request_id)
+
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Current status of the spend request")
         card_number: str = SchemaField(
@@ -827,9 +849,17 @@ class StripeLinkRetrieveCardBlock(Block):
             # expired request ever came back with card material attached,
             # emitting it would put a PAN and CVC in the execution record for
             # a charge that was refused.
-            card = (
-                _nested_dict(result, CARD_RESPONSE_KEY) if status == "approved" else {}
-            )
+            if status != "approved":
+                # Terminal and unusable. Without this the graph stalls: nothing
+                # fires downstream and the agent stops mid-checkout with no
+                # message about why.
+                yield "error", (
+                    f"Spend request is {status}, so no card was issued. "
+                    "Create a new spend request if the user still wants to pay."
+                )
+                return
+
+            card = _nested_dict(result, CARD_RESPONSE_KEY)
             if card:
                 yield "card_number", card.get("number", "")
                 yield "card_cvc", card.get("cvc", "")
