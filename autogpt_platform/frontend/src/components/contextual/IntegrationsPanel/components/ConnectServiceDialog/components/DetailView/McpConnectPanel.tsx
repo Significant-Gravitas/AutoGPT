@@ -13,6 +13,11 @@ import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOA
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  detectMCPAuthScheme,
+  prepareMCPAuthCredential,
+  type MCPAuthScheme,
+} from "@/lib/mcp-auth";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 
 interface Props {
@@ -25,6 +30,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
   const queryClient = useQueryClient();
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
+  const [authScheme, setAuthScheme] = useState<MCPAuthScheme>("bearer");
   const [phase, setPhase] = useState<Phase>("form");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +72,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
         if (getErrorStatus(e) === 400) {
           setPhase("manual-token");
           setError(
-            "This server doesn't support OAuth sign-in. Paste a bearer token instead.",
+            "This server doesn't support OAuth sign-in. Choose how its API credential should be sent.",
           );
           return;
         }
@@ -111,7 +117,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     try {
       await postV2StoreABearerTokenForAnMcpServer({
         server_url: trimmedUrl,
-        token: trimmedToken,
+        token: prepareMCPAuthCredential(trimmedToken, authScheme),
       });
 
       await invalidateCredentials();
@@ -126,6 +132,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
   function handleSwitchToOAuth() {
     setPhase("form");
     setToken("");
+    setAuthScheme("bearer");
     setError(null);
   }
 
@@ -133,7 +140,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-zinc-600">
         Enter the URL of your MCP server. We&apos;ll try OAuth first and fall
-        back to a bearer token if the server doesn&apos;t support OAuth.
+        back to a manual API credential if the server doesn&apos;t support OAuth.
       </Text>
 
       <Input
@@ -148,16 +155,46 @@ export function McpConnectPanel({ onSuccess }: Props) {
       />
 
       {phase === "manual-token" ? (
-        <Input
-          id="mcp-bearer-token"
-          label="Bearer token"
-          type="password"
-          placeholder="Paste API token"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          disabled={isSubmitting}
-          hint="Used as a Bearer Authorization header when calling tools."
-        />
+        <>
+          <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700">
+            Authentication type
+            <select
+              aria-label="Authentication type"
+              value={authScheme}
+              onChange={(e) =>
+                setAuthScheme(e.target.value as MCPAuthScheme)
+              }
+              disabled={isSubmitting}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-normal text-zinc-900"
+            >
+              <option value="bearer">API token (Bearer)</option>
+              <option value="basic">Basic authentication</option>
+            </select>
+          </label>
+          <Input
+            id="mcp-auth-token"
+            label={
+              authScheme === "basic"
+                ? "Basic authentication token"
+                : "API token"
+            }
+            type="password"
+            placeholder="Paste API token"
+            value={token}
+            onChange={(e) => {
+              const nextToken = e.target.value;
+              setToken(nextToken);
+              const detected = detectMCPAuthScheme(nextToken);
+              if (detected) setAuthScheme(detected);
+            }}
+            disabled={isSubmitting}
+            hint={
+              authScheme === "basic"
+                ? 'Paste the value after "Basic", or paste the complete Authorization header.'
+                : "Paste the token itself. AutoGPT sends it using Bearer authentication."
+            }
+          />
+        </>
       ) : null}
 
       {error ? (
