@@ -1,0 +1,101 @@
+name: MCP Auth Review Helper
+
+on:
+  push:
+    branches:
+      - feat/mcp-auth-schemes
+    paths:
+      - ".github/workflows/mcp-auth-review-helper.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+  patch-format-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v6
+        with:
+          ref: feat/mcp-auth-schemes
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply review fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              if source.count(old) != 1:
+                  raise SystemExit(f"Expected one {label} match, found {source.count(old)}")
+              return source.replace(old, new, 1)
+
+          path = Path("src/app/(platform)/build/components/MCPToolDialog.tsx")
+          source = path.read_text()
+
+          type_anchor = 'type DialogStep = "url" | "tool";\n'
+          helpers = '''type DialogStep = "url" | "tool";\n\ntype MCPApiError = {\n  status?: unknown;\n  message?: unknown;\n  detail?: unknown;\n};\n\n/** Extract an HTTP status from an unknown generated-client error payload. */\nfunction getErrorStatus(error: unknown): number | null {\n  if (typeof error !== "object" || error === null) return null;\n  const status = (error as MCPApiError).status;\n  return typeof status === "number" ? status : null;\n}\n\n/** Extract a readable message from an unknown generated-client error payload. */\nfunction getErrorMessage(error: unknown, fallback: string): string {\n  if (error instanceof Error && error.message) return error.message;\n  if (typeof error !== "object" || error === null) return fallback;\n\n  const { message, detail } = error as MCPApiError;\n  const value =\n    message !== undefined && message !== null && message !== ""\n      ? message\n      : detail;\n  if (typeof value === "string") return value;\n  if (value !== undefined && value !== null) {\n    return JSON.stringify(value) || fallback;\n  }\n  return fallback;\n}\n'''
+          source = replace_once(source, type_anchor, helpers, "error helper anchor")
+
+          source = replace_once(
+              source,
+              '''      } catch (e: any) {\n        if (e?.status === 401 || e?.status === 403) {''',
+              '''      } catch (error: unknown) {\n        const status = getErrorStatus(error);\n        if (status === 401 || status === 403) {''',
+              "discovery catch",
+          )
+          source = replace_once(
+              source,
+              '''        const message =\n          e?.message || e?.detail || "Failed to connect to MCP server";\n        setError(\n          typeof message === "string" ? message : JSON.stringify(message),\n        );''',
+              '''        setError(getErrorMessage(error, "Failed to connect to MCP server"));''',
+              "discovery message",
+          )
+          source = replace_once(
+              source,
+              '''    } catch (e: any) {\n      const message =\n        e?.message || e?.detail || "Failed to connect with this credential";\n      setError(typeof message === "string" ? message : JSON.stringify(message));''',
+              '''    } catch (error: unknown) {\n      setError(\n        getErrorMessage(error, "Failed to connect with this credential"),\n      );''',
+              "manual credential catch",
+          )
+          source = replace_once(
+              source,
+              '''    } catch (e: any) {\n      // If server doesn't support OAuth → show manual token entry\n      if (e?.status === 400) {''',
+              '''    } catch (error: unknown) {\n      const status = getErrorStatus(error);\n      const message = getErrorMessage(error, "Failed to complete sign-in");\n      // If server doesn't support OAuth → show manual token entry\n      if (status === 400) {''',
+              "OAuth catch",
+          )
+          source = replace_once(
+              source,
+              '''      } else if (e?.message === "OAuth flow timed out") {\n        setError("OAuth sign-in timed out. Please try again.");\n      } else {\n        const status = e?.status;\n        let message: string;\n        if (status === 401 || status === 403) {\n          message =\n            "Authentication succeeded but the server still rejected the request. " +\n            "The token audience may not match. Please try again.";\n        } else {\n          message = e?.message || e?.detail || "Failed to complete sign-in";\n        }\n        setError(\n          typeof message === "string" ? message : JSON.stringify(message),\n        );\n      }''',
+              '''      } else if (message === "OAuth flow timed out") {\n        setError("OAuth sign-in timed out. Please try again.");\n      } else if (status === 401 || status === 403) {\n        setError(\n          "Authentication succeeded but the server still rejected the request. " +\n            "The token audience may not match. Please try again.",\n        );\n      } else {\n        setError(message);\n      }''',
+              "OAuth error handling",
+          )
+
+          path.write_text(source)
+          PY
+
+          pnpm prettier --write 'src/app/(platform)/build/components/MCPToolDialog.tsx'
+
+      - name: Commit review fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 'src/app/(platform)/build/components/MCPToolDialog.tsx'
+          git commit -m "fix(platform): narrow MCP dialog API errors"
+          git push origin HEAD:feat/mcp-auth-schemes
