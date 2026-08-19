@@ -11,6 +11,7 @@ Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transp
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,9 +39,12 @@ def normalize_mcp_authorization(value: str) -> str:
     if not candidate:
         raise ValueError("Authentication credential must not be blank.")
 
-    included_header_name = candidate.lower().startswith("authorization:")
-    if included_header_name:
-        candidate = candidate.split(":", 1)[1].strip()
+    authorization_header = re.match(
+        r"^authorization\s*:\s*(.*)$", candidate, flags=re.IGNORECASE
+    )
+    included_header_name = authorization_header is not None
+    if authorization_header:
+        candidate = authorization_header.group(1).strip()
         if not candidate:
             raise ValueError("Authorization header must include a credential.")
 

@@ -23,6 +23,10 @@ from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
             "Authorization: Basic cGstbGYtYWJjZA==",
             "Basic cGstbGYtYWJjZA==",
         ),
+        (
+            "Authorization : Basic cGstbGYtYWJjZA==",
+            "Basic cGstbGYtYWJjZA==",
+        ),
     ],
 )
 def test_normalize_mcp_authorization(value: str, expected: str) -> None:

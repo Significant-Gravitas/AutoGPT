@@ -47,10 +47,7 @@ class DiscoverToolsRequest(BaseModel):
     server_url: str = Field(description="URL of the MCP server")
     auth_token: str | None = Field(
         default=None,
-        description=(
-            "Optional authentication credential. Bare values use Bearer; "
-            "Basic/Bearer prefixes and complete Authorization headers are accepted."
-        ),
+        description="Optional Bearer token for authenticated MCP servers",
     )
 
 
@@ -407,17 +404,13 @@ async def mcp_oauth_callback(
 
 
 class MCPStoreTokenRequest(BaseModel):
-    """Request to store a manual MCP authentication credential."""
+    """Request to store a bearer token for an MCP server that doesn't support OAuth."""
 
     server_url: str = Field(
-        description="MCP server URL the credential authenticates against"
+        description="MCP server URL the token authenticates against"
     )
     token: SecretStr = Field(
-        min_length=1,
-        description=(
-            "API credential. Bare values use Bearer; Basic/Bearer prefixes and "
-            "complete Authorization headers are accepted."
-        ),
+        min_length=1, description="Bearer token / API key for the MCP server"
     )
 
 
@@ -430,12 +423,13 @@ async def mcp_store_token(
     request: MCPStoreTokenRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
-    """Store a manually provided Bearer or Basic MCP credential.
+    """
+    Store a manually provided bearer token as an MCP credential.
 
-    Bare values retain the historical Bearer behavior. Explicit ``Basic`` or
-    ``Bearer`` prefixes — including a complete copied ``Authorization`` header —
-    are normalized and stored so every MCP execution surface sends the same
-    authentication scheme.
+    Used by the Copilot MCPSetupCard when the server doesn't support the MCP
+    OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
+    ``run_mcp_tool`` calls will automatically pick up the token via
+    ``_auto_lookup_credential``.
     """
     try:
         authorization = normalize_mcp_authorization(
