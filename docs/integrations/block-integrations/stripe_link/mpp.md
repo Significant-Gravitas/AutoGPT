@@ -26,7 +26,8 @@ _Add technical explanation here._
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message on failure | str |
-| supports_mpp | True when the merchant answered 402 with a Stripe payment challenge. False means it is not an MPP merchant and you should use the virtual-card flow instead. | bool |
+| supports_mpp | True when the merchant answered 402 with a Stripe payment challenge, so a Shared Payment Token can pay it. False means it cannot be paid this way — check `payment_required` to see whether that is because nothing is owed or because the merchant only accepts a method this block cannot provide. A probe that got no answer at all raises instead, so it is never reported as False. | bool |
+| payment_required | True when the merchant demanded payment (HTTP 402) but not via Stripe — an onchain-only merchant, say. With `supports_mpp` false this distinguishes 'pays another way, unreachable from here' from 'served without charging', where the virtual-card flow is the sensible fallback. | bool |
 | network_id | Merchant network ID — pass this to Create Spend Request as `network_id` | str |
 | amount | Amount the merchant wants, in the smallest currency unit | int |
 | currency | Three-letter currency code | str |
@@ -42,7 +43,7 @@ _Add practical use case examples here._
 ## Stripe Link MPP Pay
 
 ### What it is
-MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoint. Follows Get Payment Challenge (step 1) and Create Spend Request (step 2). No card number and no checkout form. The token is single-use, so a failed payment needs a fresh spend request.
+MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoint. Follows Get Payment Challenge (step 1) and Create Token Spend Request (step 2). No card number and no checkout form. The token is single-use, so a failed payment needs a fresh spend request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

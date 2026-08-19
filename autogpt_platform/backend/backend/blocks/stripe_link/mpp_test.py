@@ -175,6 +175,12 @@ class _FakeResponse:
         self.headers = headers or {}
         self._text = text
 
+    @property
+    def content(self) -> bytes:
+        if self._payload is not None:
+            return json.dumps(self._payload).encode()
+        return self._text.encode()
+
     def json(self):
         if self._payload is None:
             raise ValueError("no json")
@@ -413,17 +419,6 @@ async def test_a_lowercase_caller_authorization_cannot_duplicate_the_header(
     assert "caller-token" not in str(retry_headers)
 
 
-def test_an_oversized_merchant_response_is_truncated_not_persisted_whole():
-    """`response` is persisted with the execution, so it needs a ceiling."""
-    from backend.blocks.stripe_link.mpp import _json_or_text
-
-    huge = _FakeResponse(200, payload={"blob": "x" * (32 * 1024)})
-    out = _json_or_text(huge)
-
-    assert out["truncated"] is True
-    assert len(out["body"]) <= 1000
-
-
 def test_a_list_merchant_response_is_wrapped_into_a_dict():
     from backend.blocks.stripe_link.mpp import _json_or_text
 
@@ -519,3 +514,103 @@ async def test_the_pay_path_does_not_send_an_include_for_the_token():
     assert "include" not in seen["path"]
     assert captured["spt"] == "spt_live_abc"
     assert outputs["paid"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_challenge_is_not_reported_as_a_blocked_url():
+    """Redaction has to name the actual cause.
+
+    `Requests` signals an SSRF refusal with a bare `ValueError`, and so does
+    every parse failure here — so a catch-all reported a merchant's malformed
+    challenge blob as "Request blocked: the URL is not allowed", which is both
+    wrong and unactionable.
+    """
+
+    async def _probe(url, method, body):
+        return (
+            402,
+            'Payment id="c", realm="m", method="stripe", request="!!!not-base64!!!"',
+        )
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    block._probe = _probe  # type: ignore[method-assign]
+
+    inp = block.Input.model_validate({"url": "https://shop.example/buy"})
+    outputs = {n: v async for n, v in block.run(inp)}
+
+    assert "not allowed" not in outputs.get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_url_is_redacted(monkeypatch):
+    """`Requests` names the host or resolved IP it refused. Useful in logs,
+    but the `error` output is agent-visible and must not become a readout of
+    what resolves on the internal network."""
+    from backend.blocks.stripe_link import mpp
+
+    class _Refusing:
+        async def request(self, *a, **kw):
+            raise ValueError(
+                "Access to private IP 169.254.169.254 (metadata.internal) is blocked"
+            )
+
+    monkeypatch.setattr(mpp, "Requests", lambda *a, **kw: _Refusing())
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    inp = block.Input.model_validate({"url": "https://metadata.internal/latest"})
+    outputs = {n: v async for n, v in block.run(inp)}
+
+    assert "169.254.169.254" not in outputs["error"]
+    assert "metadata.internal" not in outputs["error"]
+    assert "not allowed" in outputs["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_402_without_any_challenge_header_is_payment_required():
+    async def _probe(url, method, body):
+        return 402, ""
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    block._probe = _probe  # type: ignore[method-assign]
+
+    inp = block.Input.model_validate({"url": "https://shop.example/buy"})
+    outputs = {n: v async for n, v in block.run(inp)}
+
+    assert outputs["supports_mpp"] is False
+    # Wants payment, just not one we can make — the card flow is no fallback.
+    assert outputs["payment_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_an_onchain_only_merchant_is_distinguished_from_a_free_one():
+    """Both yield supports_mpp=false; only one is a candidate for the card flow."""
+
+    async def _onchain(url, method, body):
+        return 402, 'Payment id="c", realm="m", method="tempo", request="eyJhIjoxfQ"'
+
+    async def _free(url, method, body):
+        return 200, ""
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    inp = block.Input.model_validate({"url": "https://shop.example/buy"})
+
+    block._probe = _onchain  # type: ignore[method-assign]
+    onchain = {n: v async for n, v in block.run(inp)}
+    block._probe = _free  # type: ignore[method-assign]
+    free = {n: v async for n, v in block.run(inp)}
+
+    assert onchain["supports_mpp"] is False and onchain["payment_required"] is True
+    assert (
+        free["supports_mpp"] is False and free.get("payment_required", False) is False
+    )
+
+
+def test_an_oversized_body_is_not_parsed():
+    """The cap has to apply before deserialization, not after."""
+    from backend.blocks.stripe_link.mpp import MAX_RESPONSE_BYTES, _json_or_text
+
+    huge = _FakeResponse(200, payload={"blob": "x" * (MAX_RESPONSE_BYTES + 1024)})
+    out = _json_or_text(huge)
+
+    assert out["truncated"] is True
+    assert len(out["body"]) <= 1000
