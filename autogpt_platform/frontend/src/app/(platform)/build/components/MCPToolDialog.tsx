@@ -141,7 +141,9 @@ export function MCPToolDialog({
           server_url: url,
           auth_token: null,
         });
-        if (response.status !== 200) throw response.data;
+        if (response.status !== 200) {
+          throw { status: response.status, detail: response.data };
+        }
         applyDiscoveredTools(response);
       } catch (e: any) {
         if (e?.status === 401 || e?.status === 403) {
@@ -172,15 +174,11 @@ export function MCPToolDialog({
     setLoading(true);
     setError(null);
     try {
-      const authValue = prepareMCPAuthCredential(
-        credential,
-        manualAuthScheme,
-      );
-      const credentialResponse =
-        await postV2StoreABearerTokenForAnMcpServer({
-          server_url: url,
-          token: authValue,
-        });
+      const authValue = prepareMCPAuthCredential(credential, manualAuthScheme);
+      const credentialResponse = await postV2StoreABearerTokenForAnMcpServer({
+        server_url: url,
+        token: authValue,
+      });
       if (credentialResponse.status !== 200) throw credentialResponse.data;
 
       setCredentials({
@@ -201,18 +199,11 @@ export function MCPToolDialog({
     } catch (e: any) {
       const message =
         e?.message || e?.detail || "Failed to connect with this credential";
-      setError(
-        typeof message === "string" ? message : JSON.stringify(message),
-      );
+      setError(typeof message === "string" ? message : JSON.stringify(message));
     } finally {
       setLoading(false);
     }
-  }, [
-    applyDiscoveredTools,
-    manualAuthScheme,
-    manualToken,
-    serverUrl,
-  ]);
+  }, [applyDiscoveredTools, manualAuthScheme, manualToken, serverUrl]);
 
   const handleDiscoverTools = useCallback(() => {
     if (!serverUrl.trim()) return;
@@ -221,12 +212,7 @@ export function MCPToolDialog({
       return;
     }
     void discoverTools(serverUrl.trim());
-  }, [
-    connectWithManualCredential,
-    discoverTools,
-    serverUrl,
-    showManualToken,
-  ]);
+  }, [connectWithManualCredential, discoverTools, serverUrl, showManualToken]);
 
   const handleOAuthSignIn = useCallback(async () => {
     if (!serverUrl.trim()) return;

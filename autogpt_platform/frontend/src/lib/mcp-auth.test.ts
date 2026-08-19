@@ -9,9 +9,9 @@ describe("MCP manual authentication helpers", () => {
 
   it("detects explicit schemes, including a complete Authorization header", () => {
     expect(detectMCPAuthScheme("Basic cGstbGYtYWJjZA==")).toBe("basic");
-    expect(
-      detectMCPAuthScheme("Authorization: Bearer secret-token"),
-    ).toBe("bearer");
+    expect(detectMCPAuthScheme("Authorization: Bearer secret-token")).toBe(
+      "bearer",
+    );
   });
 
   it("keeps bare Bearer tokens backward-compatible", () => {

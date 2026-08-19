@@ -140,7 +140,8 @@ export function McpConnectPanel({ onSuccess }: Props) {
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-zinc-600">
         Enter the URL of your MCP server. We&apos;ll try OAuth first and fall
-        back to a manual API credential if the server doesn&apos;t support OAuth.
+        back to a manual API credential if the server doesn&apos;t support
+        OAuth.
       </Text>
 
       <Input
