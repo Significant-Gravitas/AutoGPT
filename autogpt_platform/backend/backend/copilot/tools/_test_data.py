@@ -17,7 +17,7 @@ from backend.blocks.llm import AITextGeneratorBlock
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.data import db as db_module
 from backend.data.db import prisma
-from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.graph import Graph, GraphModel, Link, Node, create_graph
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
@@ -106,33 +106,7 @@ async def setup_test_data(server):
     await _ensure_db_connected()
 
     # 1. Create a test user
-    user_data = {
-        "sub": f"test-user-{uuid.uuid4()}",
-        "email": f"test-{uuid.uuid4()}@example.com",
-    }
-    user = await get_or_create_user(user_data)
-
-    # 1b. Create a profile with username for the user (required for store agent lookup)
-    username = user.email.split("@")[0]
-    await prisma.profile.upsert(
-        where={"userId": user.id},
-        data={
-            # get_or_create_user auto-creates a default profile; tests need
-            # this specific username for store agent lookups.
-            "create": ProfileCreateInput(
-                userId=user.id,
-                username=username,
-                name=f"Test User {username}",
-                description="Test user profile",
-                links=[],
-            ),
-            "update": {
-                "username": username,
-                "name": f"Test User {username}",
-                "description": "Test user profile",
-            },
-        },
-    )
+    user = await _create_user_with_profile("Test user profile")
 
     # 2. Create a test graph with agent input -> agent output
     graph_id = str(uuid.uuid4())
@@ -192,29 +166,15 @@ async def setup_test_data(server):
 
     created_graph = await create_graph(graph, user.id)
 
-    # 3. Create a store listing and store listing version for the agent
-    # Use unique slug to avoid constraint violations
-    unique_slug = f"test-agent-{str(uuid.uuid4())[:8]}"
-    store_submission = await store_db.create_store_submission(
-        user_id=user.id,
-        graph_id=created_graph.id,
-        graph_version=created_graph.version,
-        slug=unique_slug,
+    # 3. Create and approve a store listing
+    store_submission = await _publish_to_store(
+        user.id,
+        created_graph,
+        slug_prefix="test-agent",
         name="Test Agent",
         description="A simple test agent",
         sub_heading="Test agent for unit tests",
         categories=["testing"],
-        image_urls=["https://example.com/image.jpg"],
-    )
-
-    assert store_submission.listing_version_id is not None
-    # 4. Approve the store listing version
-    await store_db.review_store_submission(
-        store_listing_version_id=store_submission.listing_version_id,
-        is_approved=True,
-        external_comments="Approved for testing",
-        internal_comments="Test approval",
-        reviewer_id=user.id,
     )
 
     return {
@@ -242,33 +202,7 @@ async def setup_llm_test_data(server):
         return pytest.skip("OPENAI_API_KEY is not set")
 
     # 1. Create a test user
-    user_data = {
-        "sub": f"test-user-{uuid.uuid4()}",
-        "email": f"test-{uuid.uuid4()}@example.com",
-    }
-    user = await get_or_create_user(user_data)
-
-    # 1b. Create a profile with username for the user (required for store agent lookup)
-    username = user.email.split("@")[0]
-    await prisma.profile.upsert(
-        where={"userId": user.id},
-        data={
-            # get_or_create_user auto-creates a default profile; tests need
-            # this specific username for store agent lookups.
-            "create": ProfileCreateInput(
-                userId=user.id,
-                username=username,
-                name=f"Test User {username}",
-                description="Test user profile for LLM tests",
-                links=[],
-            ),
-            "update": {
-                "username": username,
-                "name": f"Test User {username}",
-                "description": "Test user profile for LLM tests",
-            },
-        },
-    )
+    user = await _create_user_with_profile("Test user profile for LLM tests")
 
     # 2. Create test OpenAI credentials for the user
     credentials = APIKeyCredentials(
@@ -373,25 +307,14 @@ async def setup_llm_test_data(server):
     created_graph = await create_graph(graph, user.id)
 
     # 4. Create and approve a store listing
-    unique_slug = f"llm-test-agent-{str(uuid.uuid4())[:8]}"
-    store_submission = await store_db.create_store_submission(
-        user_id=user.id,
-        graph_id=created_graph.id,
-        graph_version=created_graph.version,
-        slug=unique_slug,
+    store_submission = await _publish_to_store(
+        user.id,
+        created_graph,
+        slug_prefix="llm-test-agent",
         name="LLM Test Agent",
         description="An agent with LLM capabilities",
         sub_heading="Test agent with OpenAI integration",
         categories=["testing", "ai"],
-        image_urls=["https://example.com/image.jpg"],
-    )
-    assert store_submission.listing_version_id is not None
-    await store_db.review_store_submission(
-        store_listing_version_id=store_submission.listing_version_id,
-        is_approved=True,
-        external_comments="Approved for testing",
-        internal_comments="Test approval for LLM agent",
-        reviewer_id=user.id,
     )
 
     return {
@@ -415,33 +338,7 @@ async def setup_firecrawl_test_data(server):
     await _ensure_db_connected()
 
     # 1. Create a test user
-    user_data = {
-        "sub": f"test-user-{uuid.uuid4()}",
-        "email": f"test-{uuid.uuid4()}@example.com",
-    }
-    user = await get_or_create_user(user_data)
-
-    # 1b. Create a profile with username for the user (required for store agent lookup)
-    username = user.email.split("@")[0]
-    await prisma.profile.upsert(
-        where={"userId": user.id},
-        data={
-            # get_or_create_user auto-creates a default profile; tests need
-            # this specific username for store agent lookups.
-            "create": ProfileCreateInput(
-                userId=user.id,
-                username=username,
-                name=f"Test User {username}",
-                description="Test user profile for Firecrawl tests",
-                links=[],
-            ),
-            "update": {
-                "username": username,
-                "name": f"Test User {username}",
-                "description": "Test user profile for Firecrawl tests",
-            },
-        },
-    )
+    user = await _create_user_with_profile("Test user profile for Firecrawl tests")
 
     # NOTE: We deliberately do NOT create Firecrawl credentials for this user
     # This tests the scenario where required credentials are missing
@@ -456,25 +353,14 @@ async def setup_firecrawl_test_data(server):
     )
 
     # 3. Create and approve a store listing
-    unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
-    store_submission = await store_db.create_store_submission(
-        user_id=user.id,
-        graph_id=created_graph.id,
-        graph_version=created_graph.version,
-        slug=unique_slug,
+    store_submission = await _publish_to_store(
+        user.id,
+        created_graph,
+        slug_prefix="firecrawl-test-agent",
         name="Firecrawl Test Agent",
         description="An agent with Firecrawl integration (no credentials)",
         sub_heading="Test agent requiring Firecrawl credentials",
         categories=["testing", "scraping"],
-        image_urls=["https://example.com/image.jpg"],
-    )
-    assert store_submission.listing_version_id is not None
-    await store_db.review_store_submission(
-        store_listing_version_id=store_submission.listing_version_id,
-        is_approved=True,
-        external_comments="Approved for testing",
-        internal_comments="Test approval for Firecrawl agent",
-        reviewer_id=user.id,
     )
 
     return {
@@ -497,30 +383,7 @@ async def setup_subagent_test_data(server):
     await _ensure_db_connected()
 
     # 1. Create a test user (deliberately without Firecrawl credentials)
-    user_data = {
-        "sub": f"test-user-{uuid.uuid4()}",
-        "email": f"test-{uuid.uuid4()}@example.com",
-    }
-    user = await get_or_create_user(user_data)
-
-    username = user.email.split("@")[0]
-    await prisma.profile.upsert(
-        where={"userId": user.id},
-        data={
-            "create": ProfileCreateInput(
-                userId=user.id,
-                username=username,
-                name=f"Test User {username}",
-                description="Test user profile for sub-agent tests",
-                links=[],
-            ),
-            "update": {
-                "username": username,
-                "name": f"Test User {username}",
-                "description": "Test user profile for sub-agent tests",
-            },
-        },
-    )
+    user = await _create_user_with_profile("Test user profile for sub-agent tests")
 
     # 2. Create the Firecrawl sub-graph
     sub_graph = await create_graph(
@@ -614,24 +477,14 @@ async def setup_subagent_test_data(server):
     assert len(library_agents) == 1
 
     # 4b. Create and approve a store listing (the marketplace slug run path)
-    store_submission = await store_db.create_store_submission(
-        user_id=user.id,
-        graph_id=parent_graph.id,
-        graph_version=parent_graph.version,
-        slug=f"subagent-test-agent-{str(uuid.uuid4())[:8]}",
+    store_submission = await _publish_to_store(
+        user.id,
+        parent_graph,
+        slug_prefix="subagent-test-agent",
         name="Sub-Agent Orchestrator",
         description="An agent whose only credentials live in its sub-agent",
         sub_heading="Test agent requiring sub-agent credentials",
         categories=["testing"],
-        image_urls=["https://example.com/image.jpg"],
-    )
-    assert store_submission.listing_version_id is not None
-    await store_db.review_store_submission(
-        store_listing_version_id=store_submission.listing_version_id,
-        is_approved=True,
-        external_comments="Approved for testing",
-        internal_comments="Test approval for sub-agent orchestrator",
-        reviewer_id=user.id,
     )
 
     return {
@@ -641,6 +494,71 @@ async def setup_subagent_test_data(server):
         "library_agent": library_agents[0],
         "store_submission": store_submission,
     }
+
+
+async def _create_user_with_profile(profile_description: str):
+    """Create a test user + profile. The username is required for store lookups."""
+    user = await get_or_create_user(
+        {
+            "sub": f"test-user-{uuid.uuid4()}",
+            "email": f"test-{uuid.uuid4()}@example.com",
+        }
+    )
+    username = user.email.split("@")[0]
+    await prisma.profile.upsert(
+        where={"userId": user.id},
+        data={
+            # get_or_create_user auto-creates a default profile; tests need
+            # this specific username for store agent lookups.
+            "create": ProfileCreateInput(
+                userId=user.id,
+                username=username,
+                name=f"Test User {username}",
+                description=profile_description,
+                links=[],
+            ),
+            "update": {
+                "username": username,
+                "name": f"Test User {username}",
+                "description": profile_description,
+            },
+        },
+    )
+    return user
+
+
+async def _publish_to_store(
+    user_id: str,
+    graph: GraphModel,
+    *,
+    slug_prefix: str,
+    name: str,
+    description: str,
+    sub_heading: str,
+    categories: list[str],
+):
+    """Submit `graph` to the store and approve it. The slug gets a random
+    suffix to avoid constraint violations across runs."""
+    submission = await store_db.create_store_submission(
+        user_id=user_id,
+        graph_id=graph.id,
+        graph_version=graph.version,
+        slug=f"{slug_prefix}-{str(uuid.uuid4())[:8]}",
+        name=name,
+        description=description,
+        sub_heading=sub_heading,
+        categories=categories,
+        image_urls=["https://example.com/image.jpg"],
+    )
+    assert submission.listing_version_id is not None
+    await store_db.review_store_submission(
+        store_listing_version_id=submission.listing_version_id,
+        is_approved=True,
+        external_comments="Approved for testing",
+        internal_comments=f"Test approval for {name}",
+        reviewer_id=user_id,
+    )
+    return submission
 
 
 def _build_firecrawl_graph(name: str, description: str) -> Graph:
