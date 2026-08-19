@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  detectMCPAuthScheme,
-  prepareMCPAuthCredential,
-} from "./mcp-auth";
+import { detectMCPAuthScheme, prepareMCPAuthCredential } from "./mcp-auth";
 
 describe("MCP manual authentication helpers", () => {
   it("does not guess a scheme for a bare credential", () => {
