@@ -16,6 +16,7 @@ from ._test_data import (
     make_session,
     setup_firecrawl_test_data,
     setup_llm_test_data,
+    setup_subagent_test_data,
     setup_test_data,
 )
 from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
@@ -25,6 +26,7 @@ from .run_agent import RunAgentInput, RunAgentTool
 setup_llm_test_data = setup_llm_test_data
 setup_test_data = setup_test_data
 setup_firecrawl_test_data = setup_firecrawl_test_data
+setup_subagent_test_data = setup_subagent_test_data
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -299,6 +301,72 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     assert "user_readiness" in setup_info
     assert setup_info["user_readiness"]["has_all_credentials"] is False
     assert len(setup_info["user_readiness"]["missing_credentials"]) > 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_agent_missing_sub_agent_credentials(setup_subagent_test_data):
+    """An orchestrator agent must surface the credentials its SUB-agents need,
+    instead of starting a run in which every sub-agent fails."""
+    user = setup_subagent_test_data["user"]
+    library_agent = setup_subagent_test_data["library_agent"]
+
+    tool = RunAgentTool()
+    session = make_session(user_id=user.id)
+
+    response = await tool.execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        library_agent_id=library_agent.id,
+        inputs={"url": "https://example.com"},
+        dry_run=False,
+        session=session,
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    assert result_data.get("type") == "setup_requirements", (
+        "Expected the inline setup card for the sub-agent's Firecrawl "
+        f"credentials, got: {result_data.get('type')}"
+    )
+    missing = result_data["setup_info"]["user_readiness"]["missing_credentials"]
+    assert [c["provider"] for c in missing.values()] == ["firecrawl"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_marketplace_agent_missing_sub_agent_credentials(
+    setup_subagent_test_data,
+):
+    """Same as above via the marketplace slug path, which resolves the graph
+    through the store."""
+    user = setup_subagent_test_data["user"]
+    store_submission = setup_subagent_test_data["store_submission"]
+
+    tool = RunAgentTool()
+    session = make_session(user_id=user.id)
+
+    response = await tool.execute(
+        user_id=user.id,
+        session_id=str(uuid.uuid4()),
+        tool_call_id=str(uuid.uuid4()),
+        username_agent_slug=f"{user.email.split('@')[0]}/{store_submission.slug}",
+        inputs={"url": "https://example.com"},
+        dry_run=False,
+        session=session,
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+
+    assert result_data.get("type") == "setup_requirements", (
+        "Expected the inline setup card for the sub-agent's Firecrawl "
+        f"credentials, got: {result_data.get('type')}"
+    )
+    missing = result_data["setup_info"]["user_readiness"]["missing_credentials"]
+    assert [c["provider"] for c in missing.values()] == ["firecrawl"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

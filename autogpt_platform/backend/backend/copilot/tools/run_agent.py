@@ -320,11 +320,13 @@ class RunAgentTool(BaseTool):
                         message=f"Library agent '{params.library_agent_id}' not found",
                         session_id=session_id,
                     )
-                # Get the graph from the library agent
+                # Sub-graphs are needed to aggregate the full set of required
+                # credentials; an orchestrator agent has none of its own.
                 graph = await graph_db().get_graph(
                     library_agent.graph_id,
                     library_agent.graph_version,
                     user_id=user_id,
+                    include_subgraphs=True,
                 )
             else:
                 # Fetch from marketplace slug
@@ -767,7 +769,10 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
         graph = await graph_db().get_graph(
-            preset.graph_id, preset.graph_version, user_id=user_id
+            preset.graph_id,
+            preset.graph_version,
+            user_id=user_id,
+            include_subgraphs=True,  # needed for full credentials aggregation
         )
         if not graph:
             return ErrorResponse(

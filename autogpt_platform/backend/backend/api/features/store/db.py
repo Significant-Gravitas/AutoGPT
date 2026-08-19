@@ -347,20 +347,27 @@ async def get_store_agent_details(
 
 @overload
 async def get_available_graph(
-    store_listing_version_id: str, hide_nodes: Literal[False]
+    store_listing_version_id: str,
+    hide_nodes: Literal[False],
+    include_subgraphs: bool = False,
 ) -> GraphModel: ...
 
 
 @overload
 async def get_available_graph(
-    store_listing_version_id: str, hide_nodes: Literal[True] = True
+    store_listing_version_id: str,
+    hide_nodes: Literal[True] = True,
+    include_subgraphs: bool = False,
 ) -> GraphModelWithoutNodes: ...
 
 
 async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: bool = True,
+    include_subgraphs: bool = False,
 ) -> GraphModelWithoutNodes | GraphModel:
+    """``include_subgraphs`` is required for a complete
+    `credentials_input_schema`, which aggregates sub-graph credentials too."""
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -380,7 +387,12 @@ async def get_available_graph(
             )
 
         return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
-            store_listing_version.AgentGraph
+            store_listing_version.AgentGraph,
+            sub_graphs=(
+                await get_sub_graphs(store_listing_version.AgentGraph)
+                if include_subgraphs
+                else None
+            ),
         )
 
     except Exception as e:

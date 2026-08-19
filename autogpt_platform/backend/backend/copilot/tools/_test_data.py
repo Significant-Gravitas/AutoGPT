@@ -8,7 +8,9 @@ import pytest_asyncio
 from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
+from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
@@ -445,94 +447,13 @@ async def setup_firecrawl_test_data(server):
     # This tests the scenario where required credentials are missing
 
     # 2. Create a test graph with input -> Firecrawl block -> output
-    graph_id = str(uuid.uuid4())
-
-    # Create input node for the URL
-    input_node_id = str(uuid.uuid4())
-    input_block = AgentInputBlock()
-    input_node = Node(
-        id=input_node_id,
-        block_id=input_block.id,
-        input_default={
-            "name": "url",
-            "title": "URL to Scrape",
-            "value": "",
-            "advanced": False,
-            "description": "URL for Firecrawl to scrape",
-        },
-        metadata={"position": {"x": 0, "y": 0}},
+    created_graph = await create_graph(
+        _build_firecrawl_graph(
+            name="Firecrawl Test Agent",
+            description="An agent that uses Firecrawl to scrape websites",
+        ),
+        user.id,
     )
-
-    # Create Firecrawl block node
-    firecrawl_node_id = str(uuid.uuid4())
-    firecrawl_block = FirecrawlScrapeBlock()
-    firecrawl_node = Node(
-        id=firecrawl_node_id,
-        block_id=firecrawl_block.id,
-        input_default={
-            "limit": 10,
-            "only_main_content": True,
-            "max_age": 3600000,
-            "wait_for": 200,
-            "formats": ["markdown"],
-            "credentials": {
-                "provider": "firecrawl",
-                "id": "test-firecrawl-id",
-                "type": "api_key",
-                "title": "Firecrawl API Key",
-            },
-        },
-        metadata={"position": {"x": 300, "y": 0}},
-    )
-
-    # Create output node
-    output_node_id = str(uuid.uuid4())
-    output_block = AgentOutputBlock()
-    output_node = Node(
-        id=output_node_id,
-        block_id=output_block.id,
-        input_default={
-            "name": "scraped_data",
-            "title": "Scraped Data",
-            "value": "",
-            "format": "",
-            "advanced": False,
-            "description": "Data scraped by Firecrawl",
-        },
-        metadata={"position": {"x": 600, "y": 0}},
-    )
-
-    # Create links
-    # Link input.result -> firecrawl.url
-    link1 = Link(
-        source_id=input_node_id,
-        sink_id=firecrawl_node_id,
-        source_name="result",
-        sink_name="url",
-        is_static=True,
-    )
-
-    # Link firecrawl.markdown -> output.value
-    link2 = Link(
-        source_id=firecrawl_node_id,
-        sink_id=output_node_id,
-        source_name="markdown",
-        sink_name="value",
-        is_static=False,
-    )
-
-    # Create the graph
-    graph = Graph(
-        id=graph_id,
-        version=1,
-        is_active=True,
-        name="Firecrawl Test Agent",
-        description="An agent that uses Firecrawl to scrape websites",
-        nodes=[input_node, firecrawl_node, output_node],
-        links=[link1, link2],
-    )
-
-    created_graph = await create_graph(graph, user.id)
 
     # 3. Create and approve a store listing
     unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
@@ -561,3 +482,239 @@ async def setup_firecrawl_test_data(server):
         "graph": created_graph,
         "store_submission": store_submission,
     }
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def setup_subagent_test_data(server):
+    """
+    Orchestrator agent (input -> AgentExecutorBlock -> output) wrapping a
+    Firecrawl sub-graph, for a user without Firecrawl credentials. The parent
+    has NO credential fields of its own; all of them live in the sub-graph.
+
+    Registered both in the library and the store, to cover both run paths.
+    Depends on ``server`` to ensure Prisma is connected.
+    """
+    await _ensure_db_connected()
+
+    # 1. Create a test user (deliberately without Firecrawl credentials)
+    user_data = {
+        "sub": f"test-user-{uuid.uuid4()}",
+        "email": f"test-{uuid.uuid4()}@example.com",
+    }
+    user = await get_or_create_user(user_data)
+
+    username = user.email.split("@")[0]
+    await prisma.profile.upsert(
+        where={"userId": user.id},
+        data={
+            "create": ProfileCreateInput(
+                userId=user.id,
+                username=username,
+                name=f"Test User {username}",
+                description="Test user profile for sub-agent tests",
+                links=[],
+            ),
+            "update": {
+                "username": username,
+                "name": f"Test User {username}",
+                "description": "Test user profile for sub-agent tests",
+            },
+        },
+    )
+
+    # 2. Create the Firecrawl sub-graph
+    sub_graph = await create_graph(
+        _build_firecrawl_graph(
+            name="Firecrawl Sub-Agent",
+            description="Sub-agent that scrapes a website with Firecrawl",
+        ),
+        user.id,
+    )
+
+    # 3. Create the parent graph: input -> sub-agent -> output
+    input_node_id = str(uuid.uuid4())
+    input_node = Node(
+        id=input_node_id,
+        block_id=AgentInputBlock().id,
+        input_default={
+            "name": "url",
+            "title": "URL to Scrape",
+            "value": "",
+            "advanced": False,
+            "description": "URL to hand to the sub-agent",
+        },
+        metadata={"position": {"x": 0, "y": 0}},
+    )
+
+    sub_agent_node_id = str(uuid.uuid4())
+    sub_agent_node = Node(
+        id=sub_agent_node_id,
+        block_id=AgentExecutorBlock().id,
+        input_default={
+            # Placeholders filled at execution time, as the builder persists them
+            "user_id": "",
+            "inputs": {},
+            "graph_id": sub_graph.id,
+            "graph_version": sub_graph.version,
+            "input_schema": sub_graph.input_schema,
+            "output_schema": sub_graph.output_schema,
+        },
+        metadata={"position": {"x": 300, "y": 0}},
+    )
+
+    output_node_id = str(uuid.uuid4())
+    output_node = Node(
+        id=output_node_id,
+        block_id=AgentOutputBlock().id,
+        input_default={
+            "name": "scraped_data",
+            "title": "Scraped Data",
+            "value": "",
+            "format": "",
+            "advanced": False,
+            "description": "Data scraped by the sub-agent",
+        },
+        metadata={"position": {"x": 600, "y": 0}},
+    )
+
+    parent_graph = await create_graph(
+        Graph(
+            id=str(uuid.uuid4()),
+            version=1,
+            is_active=True,
+            name="Sub-Agent Orchestrator",
+            description="An agent whose only credentials live in its sub-agent",
+            nodes=[input_node, sub_agent_node, output_node],
+            links=[
+                Link(
+                    source_id=input_node_id,
+                    sink_id=sub_agent_node_id,
+                    source_name="result",
+                    sink_name="url",
+                    is_static=True,
+                ),
+                Link(
+                    source_id=sub_agent_node_id,
+                    sink_id=output_node_id,
+                    source_name="scraped_data",
+                    sink_name="value",
+                    is_static=False,
+                ),
+            ],
+        ),
+        user.id,
+    )
+
+    # 4a. Add the parent to the user's library (the library_agent_id run path)
+    library_agents = await library_db.create_library_agent(
+        graph=parent_graph,
+        user_id=user.id,
+        create_library_agents_for_sub_graphs=False,
+    )
+    assert len(library_agents) == 1
+
+    # 4b. Create and approve a store listing (the marketplace slug run path)
+    store_submission = await store_db.create_store_submission(
+        user_id=user.id,
+        graph_id=parent_graph.id,
+        graph_version=parent_graph.version,
+        slug=f"subagent-test-agent-{str(uuid.uuid4())[:8]}",
+        name="Sub-Agent Orchestrator",
+        description="An agent whose only credentials live in its sub-agent",
+        sub_heading="Test agent requiring sub-agent credentials",
+        categories=["testing"],
+        image_urls=["https://example.com/image.jpg"],
+    )
+    assert store_submission.listing_version_id is not None
+    await store_db.review_store_submission(
+        store_listing_version_id=store_submission.listing_version_id,
+        is_approved=True,
+        external_comments="Approved for testing",
+        internal_comments="Test approval for sub-agent orchestrator",
+        reviewer_id=user.id,
+    )
+
+    return {
+        "user": user,
+        "graph": parent_graph,
+        "sub_graph": sub_graph,
+        "library_agent": library_agents[0],
+        "store_submission": store_submission,
+    }
+
+
+def _build_firecrawl_graph(name: str, description: str) -> Graph:
+    """input -> FirecrawlScrapeBlock -> output; needs a Firecrawl API key."""
+    input_node_id = str(uuid.uuid4())
+    input_node = Node(
+        id=input_node_id,
+        block_id=AgentInputBlock().id,
+        input_default={
+            "name": "url",
+            "title": "URL to Scrape",
+            "value": "",
+            "advanced": False,
+            "description": "URL for Firecrawl to scrape",
+        },
+        metadata={"position": {"x": 0, "y": 0}},
+    )
+
+    firecrawl_node_id = str(uuid.uuid4())
+    firecrawl_node = Node(
+        id=firecrawl_node_id,
+        block_id=FirecrawlScrapeBlock().id,
+        input_default={
+            "limit": 10,
+            "only_main_content": True,
+            "max_age": 3600000,
+            "wait_for": 200,
+            "formats": ["markdown"],
+            "credentials": {
+                "provider": "firecrawl",
+                "id": "test-firecrawl-id",
+                "type": "api_key",
+                "title": "Firecrawl API Key",
+            },
+        },
+        metadata={"position": {"x": 300, "y": 0}},
+    )
+
+    output_node_id = str(uuid.uuid4())
+    output_node = Node(
+        id=output_node_id,
+        block_id=AgentOutputBlock().id,
+        input_default={
+            "name": "scraped_data",
+            "title": "Scraped Data",
+            "value": "",
+            "format": "",
+            "advanced": False,
+            "description": "Data scraped by Firecrawl",
+        },
+        metadata={"position": {"x": 600, "y": 0}},
+    )
+
+    return Graph(
+        id=str(uuid.uuid4()),
+        version=1,
+        is_active=True,
+        name=name,
+        description=description,
+        nodes=[input_node, firecrawl_node, output_node],
+        links=[
+            Link(
+                source_id=input_node_id,
+                sink_id=firecrawl_node_id,
+                source_name="result",
+                sink_name="url",
+                is_static=True,
+            ),
+            Link(
+                source_id=firecrawl_node_id,
+                sink_id=output_node_id,
+                source_name="markdown",
+                sink_name="value",
+                is_static=False,
+            ),
+        ],
+    )
