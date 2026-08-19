@@ -69,6 +69,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
     ModerationError,
     NotFoundError,
+    UserPaywalledError,
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
@@ -154,6 +155,17 @@ def _record_execution_failure(
     if failure_reason := get_execution_failure_reason(error):
         execution_stats.failure_reason = failure_reason
     execution_stats.error = str(error) or type(error).__name__
+
+
+# Terminal conditions the platform already understands. Anything outside this
+# set is treated as an unexpected failure and pages via Discord, so a known
+# business outcome left out of it produces a spurious "Unknown Graph Execution
+# Error" alert with a stack trace.
+KNOWN_GRAPH_EXECUTION_ERRORS = (
+    InsufficientBalanceError,
+    ModerationError,
+    UserPaywalledError,
+)
 
 
 def _propagate_node_failure(
@@ -1356,8 +1368,7 @@ class ExecutionProcessor:
             )
             _record_execution_failure(execution_stats, error)
 
-            known_errors = (InsufficientBalanceError, ModerationError)
-            if isinstance(error, known_errors):
+            if isinstance(error, KNOWN_GRAPH_EXECUTION_ERRORS):
                 return ExecutionStatus.FAILED
 
             execution_status = ExecutionStatus.FAILED
