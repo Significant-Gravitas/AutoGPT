@@ -45,19 +45,16 @@ def _connection_label(platform_host: str) -> str:
     if len(label) <= CONNECTION_LABEL_MAX_LEN:
         return label
 
-    # Try the registrable domain before giving up on the host entirely.
-    # Dropping it means every long-domain self-hosted install advertises the
-    # same label as AutoGPT Cloud, so the user cannot tell which deployment is
-    # asking to spend their money — the one thing the host was there to say.
-    parts = platform_host.split(":")[0].split(".")
-    if len(parts) > 2:
-        registrable = ".".join(parts[-2:])
-        shorter = f"{LINK_CLIENT_NAME} on {registrable}"
-        if len(shorter) <= CONNECTION_LABEL_MAX_LEN:
-            return shorter
-
     # A truncated host is worse than none: better a clean "AutoGPT" than
     # "AutoGPT on prompt-neat-flea.ngro".
+    #
+    # Falling back to the last two labels was tried and reverted. It reads well
+    # for a corporate host (agpt.internal.mycompany.example -> mycompany.example)
+    # but not for shared hosting: prompt-neat-flea.ngrok-free.app becomes
+    # "AutoGPT on ngrok-free.app", which every ngrok user would also see. On the
+    # sheet where someone decides whether to hand over money, a label that
+    # implies an identity it does not carry is worse than a generic one, and
+    # telling the two cases apart needs a public suffix list.
     return LINK_CLIENT_NAME
 
 
