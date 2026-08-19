@@ -17499,7 +17499,11 @@
       },
       "DeviceAuthPollResponse": {
         "properties": {
-          "status": { "type": "string", "title": "Status" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "slow_down", "approved", "denied", "expired"],
+            "title": "Status"
+          },
           "credentials": {
             "anyOf": [
               { "$ref": "#/components/schemas/CredentialsMetaResponse" },

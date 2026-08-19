@@ -19,10 +19,10 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | payment_method_id | ID of the payment method to use (from list payment methods) | str | Yes |
 | context | Description of the purchase context (min 100 characters). Shown to the user when they approve the request. | str | Yes |
-| amount | Amount in cents (max 50000) | int | Yes |
+| amount | Amount in the currency's smallest unit — cents for USD, but whole units for zero-decimal currencies like JPY (max 50000) | int | Yes |
 | currency | 3-letter ISO currency code | str | No |
 | request_approval | If true, immediately sends a push notification to the user for approval. Otherwise, call request-approval separately. | bool | No |
-| test_mode | Use test mode (fake card 4242424242424242) | bool | No |
+| test_mode | Use Stripe test mode — no real money moves. A card request yields the 4242… test card; a token request yields a test token. | bool | No |
 | line_items | Itemised breakdown shown to the user on the approval sheet. Each item takes `name` (required) plus optional `quantity`, `unit_amount`, `description`, `sku`, `url`, `image_url` and `product_url`. | List[Dict[str, Any]] | No |
 | totals | Total lines shown on the approval sheet. Each takes `type`, `display_text` and `amount`. `type` is one of: subtotal, tax, total, items_base_amount, items_discount, discount, fulfillment, shipping, fee, gift_wrap, tip, store_credit. | List[Dict[str, Any]] | No |
 | metadata | Arbitrary key/value data stored on the spend request. Max 50 keys; keys <= 40 chars, values <= 500 chars. | Dict[str, str] | No |
@@ -61,10 +61,10 @@ _Add technical explanation here._
 |-------|-------------|------|----------|
 | payment_method_id | ID of the payment method to use (from list payment methods) | str | Yes |
 | context | Description of the purchase context (min 100 characters). Shown to the user when they approve the request. | str | Yes |
-| amount | Amount in cents (max 50000) | int | Yes |
+| amount | Amount in the currency's smallest unit — cents for USD, but whole units for zero-decimal currencies like JPY (max 50000) | int | Yes |
 | currency | 3-letter ISO currency code | str | No |
 | request_approval | If true, immediately sends a push notification to the user for approval. Otherwise, call request-approval separately. | bool | No |
-| test_mode | Use test mode (fake card 4242424242424242) | bool | No |
+| test_mode | Use Stripe test mode — no real money moves. A card request yields the 4242… test card; a token request yields a test token. | bool | No |
 | line_items | Itemised breakdown shown to the user on the approval sheet. Each item takes `name` (required) plus optional `quantity`, `unit_amount`, `description`, `sku`, `url`, `image_url` and `product_url`. | List[Dict[str, Any]] | No |
 | totals | Total lines shown on the approval sheet. Each takes `type`, `display_text` and `amount`. `type` is one of: subtotal, tax, total, items_base_amount, items_discount, discount, fulfillment, shipping, fee, gift_wrap, tip, store_credit. | List[Dict[str, Any]] | No |
 | metadata | Arbitrary key/value data stored on the spend request. Max 50 keys; keys <= 40 chars, values <= 500 chars. | Dict[str, str] | No |

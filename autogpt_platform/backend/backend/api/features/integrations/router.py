@@ -73,7 +73,7 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
-from backend.integrations.providers import ProviderName
+from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -398,18 +398,20 @@ class DeviceAuthPollRequest(BaseModel):
 
 
 class DeviceAuthPollResponse(BaseModel):
-    status: str
+    # Literal, not `str`: this is what reaches the generated OpenAPI schema and
+    # the frontend types, and the poll loop branches on exactly these values.
+    status: Literal["pending", "slow_down", "approved", "denied", "expired"]
     credentials: CredentialsMetaResponse | None = None
 
 
 def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
-    provider_key = provider.value if hasattr(provider, "value") else str(provider)
-    if provider_key not in DEVICE_HANDLERS_BY_NAME:
+    key = provider_key(provider)
+    if key not in DEVICE_HANDLERS_BY_NAME:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No device-auth handler for provider '{provider_key}'",
+            detail=f"No device-auth handler for provider '{key}'",
         )
-    handler_class = DEVICE_HANDLERS_BY_NAME[provider_key]
+    handler_class = DEVICE_HANDLERS_BY_NAME[key]
     return handler_class()
 
 
@@ -449,7 +451,7 @@ async def device_auth_initiate(
     try:
         state_token, _ = await creds_manager.store.store_state_token(
             user_id=user_id,
-            provider=getattr(provider, "value", None) or str(provider),
+            provider=provider_key(provider),
             scopes=requested_scopes,
             expires_in_seconds=initiation.expires_in + 60,
             state_metadata={
@@ -495,9 +497,20 @@ async def device_auth_poll(
     handler = _get_device_auth_handler(provider)
 
     # Non-consuming read — state survives across many polls
-    valid_state = await creds_manager.store.peek_state_token(
-        user_id, body.state_token, provider
-    )
+    try:
+        valid_state = await creds_manager.store.peek_state_token(
+            user_id, body.state_token, provider
+        )
+    except Exception as e:
+        # A caller with no backend User row raises a Prisma RecordNotFound
+        # here. That is the same "invalid token" outcome as far as the poll
+        # loop is concerned, and returning it as a 400 keeps the raw DB text
+        # out of the response — matching what `initiate` already does.
+        logger.error(f"Device auth poll state lookup failed for {provider}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state token",
+        )
     if not valid_state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -553,7 +566,7 @@ async def device_auth_poll(
         )
 
         logger.debug(
-            f"Device auth approved for user {user_id} " f"and provider {provider.value}"
+            f"Device auth approved for user {user_id} and provider {provider.value}"
         )
         return DeviceAuthPollResponse(
             status="approved",
@@ -863,6 +876,15 @@ async def delete_credentials(
         if provider_matches(provider.value, ProviderName.MCP.value):
             # MCP uses dynamic per-server OAuth — create handler from metadata
             handler = create_mcp_oauth_handler(creds)
+        elif (
+            device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
+        ) is not None:
+            # A device-code grant stores an OAuth2Credentials, so it reaches
+            # this branch too — but its handler lives in the other registry.
+            # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
+            # *after* the local delete had already run, leaving a live token
+            # at the provider with nothing left to revoke it with.
+            handler = device_handler()
         else:
             handler = _get_provider_oauth_handler(request, provider)
         tokens_revoked = await handler.revoke_tokens(creds)
@@ -1516,18 +1538,16 @@ def _get_provider_oauth_handler(
         logger.warning(f"Failed to load blocks: {e}")
 
     # Convert provider_name to string for lookup
-    provider_key = (
-        provider_name.value if hasattr(provider_name, "value") else str(provider_name)
-    )
+    key = provider_key(provider_name)
 
-    if provider_key not in HANDLERS_BY_NAME:
+    if key not in HANDLERS_BY_NAME:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider '{provider_key}' does not support OAuth",
+            detail=f"Provider '{key}' does not support OAuth",
         )
 
     # Check if this provider has custom OAuth credentials
-    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_key)
+    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(key)
 
     if oauth_credentials and not oauth_credentials.use_secrets:
         # SDK provider with custom env vars
@@ -1562,7 +1582,7 @@ def _get_provider_oauth_handler(
             },
         )
 
-    handler_class = HANDLERS_BY_NAME[provider_key]
+    handler_class = HANDLERS_BY_NAME[key]
     frontend_base_url = settings.config.frontend_base_url
 
     if not frontend_base_url:

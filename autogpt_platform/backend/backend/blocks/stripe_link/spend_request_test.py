@@ -13,6 +13,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from backend.blocks.stripe_link import _auth
 from backend.blocks.stripe_link import spend_request as sr
 from backend.blocks.stripe_link._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 
@@ -184,6 +185,8 @@ async def test_the_card_block_asks_for_the_card_without_an_opt_in():
     assert "include=card" in seen["path"]
     assert outputs["card_number"] == "4242424242424242"
     assert outputs["card_cvc"] == "123"
+    assert outputs["card_exp_month"] == 12
+    assert outputs["card_exp_year"] == 2030
 
 
 @pytest.mark.asyncio
@@ -286,6 +289,7 @@ async def test_three_d_secure_is_reported_as_resumable():
     )
 
     assert outputs["next_action_type"] == "three_d_secure"
+    assert outputs["next_action_message"] == "Confirm this payment with your bank"
     assert outputs["next_action_url"] == "https://app.link.com/3ds/abc"
     assert outputs["auto_resumes"] is True
 
@@ -384,3 +388,56 @@ async def test_link_error_falls_back_when_the_body_is_not_json(monkeypatch):
 
     with pytest.raises(Exception, match="400"):
         await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
+
+
+@pytest.mark.asyncio
+async def test_metadata_reaches_the_request_body():
+    """Only ever asserted for omission, so a wrong key name would pass."""
+    meta = {"order_ref": "AG-123", "graph": "checkout"}
+
+    for body in (
+        await run_create_card(metadata=meta),
+        await run_create_token(metadata=meta),
+    ):
+        assert body["metadata"] == meta
+
+
+@pytest.mark.asyncio
+async def test_a_whitespace_only_network_id_is_rejected():
+    """`min_length=1` accepts "   ".
+
+    Link then gets a request with no merchant identity and fails obscurely.
+    A trim guard existed before the block split removed the cross-field
+    validator it lived on.
+    """
+    with pytest.raises(ValidationError, match="network_id"):
+        await run_create_token(network_id="   ")
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_shaped_error_body_falls_back_without_raising(monkeypatch):
+    """The `except (ValueError, AttributeError, TypeError)` exists for bodies
+    like {"error": "string"} / {"error": null}; only the non-JSON and
+    well-formed shapes were covered."""
+
+    for payload in ({"error": "just a string"}, {"error": None}, {"nope": 1}):
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def request(self, **kwargs):
+                return _Resp(payload, text="raw upstream body")
+
+        monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+
+        with pytest.raises(RuntimeError) as exc:
+            await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
+
+        # Falls back to the status code, and does not carry the raw body into
+        # a string that becomes a persisted block output.
+        assert "400" in str(exc.value)
+        assert "raw upstream body" not in str(exc.value)

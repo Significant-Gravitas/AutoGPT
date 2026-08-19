@@ -7,8 +7,10 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 ``backend/integrations/oauth/stripe_link.py``.
 """
 
-from typing import Literal
+import logging
+from typing import Any, Literal
 
+import httpx
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
@@ -21,6 +23,8 @@ LINK_API_BASE_URL = "https://api.link.com"
 # as long as it likes. Bound them all.
 LINK_HTTP_TIMEOUT = 15.0
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
+
+logger = logging.getLogger(__name__)
 
 StripeLinkCredentials = OAuth2Credentials
 
@@ -73,3 +77,64 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
+
+
+async def link_api_request(
+    credentials: StripeLinkCredentials,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Make an authenticated request to the Link API.
+
+    Uses the access_token from OAuth2Credentials as a Bearer token.
+
+    Refresh is deliberately not handled here: `IntegrationCredentialsManager`
+    already refreshes on acquire (`_refresh_locked`), under a per-credential
+    lock, and persists the rotated tokens. Refreshing inside the block would
+    bypass both and let concurrent nodes stampede the token endpoint.
+    """
+    headers = {
+        "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        response = await client.request(
+            method=method,
+            url=f"{LINK_API_BASE_URL}{path}",
+            headers=headers,
+            json=body,
+        )
+        if response.is_error:
+            # Link explains itself in a structured `error.message`; surface
+            # that rather than a bare "400 Bad Request" with the explanation
+            # discarded. That is how the SPT merchant-field constraint stayed
+            # hidden during development.
+            try:
+                detail = response.json().get("error", {}).get("message")
+            # ValueError: not JSON. AttributeError/TypeError: JSON, but not
+            # the object shape we index into. Anything else is our bug, and
+            # masking it as "API text" would hide it.
+            except (ValueError, AttributeError, TypeError):
+                detail = None
+
+            if detail:
+                raise RuntimeError(f"Link API error ({response.status_code}): {detail}")
+
+            # No usable message. The raw body goes to the logs rather than
+            # into the exception, because that string becomes a block `error`
+            # output — persisted with the execution and surfaced in agent
+            # transcripts — and an arbitrary upstream body has no business
+            # there.
+            logger.error(
+                "Link API %s %s failed: %s %s",
+                method,
+                path,
+                response.status_code,
+                response.text[:500],
+            )
+            raise RuntimeError(f"Link API error ({response.status_code})")
+
+        return response.json()
