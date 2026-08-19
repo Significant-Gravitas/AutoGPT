@@ -40,27 +40,28 @@ export function gateDiscriminatorOptions(
 
   for (const [fieldName, blocked] of blockedByField) {
     const fieldSchema = properties[fieldName];
-    if (!isRecord(fieldSchema) || !Array.isArray(fieldSchema.enum)) continue;
+    if (!isRecord(fieldSchema)) continue;
 
-    const saved = currentValues[fieldName];
-    const fallback = fieldSchema.default;
-    const kept = fieldSchema.enum.filter(
-      (option) =>
+    const keep = (option: unknown) => {
+      // Never drop the value a graph is already saved with; hiding it would
+      // silently rewrite the node on the next change. Nor the schema's own
+      // default, which RJSF falls back to when the node has no saved value —
+      // filtering it out leaves a select whose selection is not in its
+      // options. Compared as strings to match `blocked`, so a numeric enum
+      // and a string-typed saved value still line up.
+      const saved = currentValues[fieldName];
+      const fallback = fieldSchema.default;
+      return (
         !blocked.has(String(option)) ||
-        // Never drop the value a graph is already saved with; hiding it would
-        // silently rewrite the node on the next change. Nor the schema's own
-        // default, which RJSF falls back to when the node has no saved value —
-        // filtering it out leaves a select whose selection is not in its
-        // options. Compared as strings to match `blocked`, so a numeric enum
-        // and a string-typed saved value still line up.
         (saved !== undefined && String(option) === String(saved)) ||
-        (fallback !== undefined && String(option) === String(fallback)),
-    );
-    if (kept.length === fieldSchema.enum.length) continue;
-    // An empty dropdown is worse than an unusable option.
-    if (kept.length === 0) continue;
+        (fallback !== undefined && String(option) === String(fallback))
+      );
+    };
 
-    gatedProperties[fieldName] = { ...fieldSchema, enum: kept };
+    const gated = gateEnumNode(fieldSchema, keep);
+    if (!gated) continue;
+
+    gatedProperties[fieldName] = gated;
     changed = true;
   }
 
@@ -90,6 +91,40 @@ function collectBlockedValues(
   }
 
   return blockedByField;
+}
+
+/**
+ * Filter a field's enum, returning null when nothing changed.
+ *
+ * An optional enum serialises as `anyOf: [{enum: [...]}, {type: "null"}]` with
+ * no top-level `enum` — making a field optional would otherwise silently switch
+ * the gate off, leaving a gated option on offer.
+ */
+function gateEnumNode(
+  fieldSchema: Record<string, unknown>,
+  keep: (option: unknown) => boolean,
+): Record<string, unknown> | null {
+  if (Array.isArray(fieldSchema.enum)) {
+    const kept = fieldSchema.enum.filter(keep);
+    if (kept.length === fieldSchema.enum.length) return null;
+    // An empty dropdown is worse than an unusable option.
+    if (kept.length === 0) return null;
+    return { ...fieldSchema, enum: kept };
+  }
+
+  if (Array.isArray(fieldSchema.anyOf)) {
+    let branchChanged = false;
+    const branches = fieldSchema.anyOf.map((branch) => {
+      if (!isRecord(branch)) return branch;
+      const gated = gateEnumNode(branch, keep);
+      if (!gated) return branch;
+      branchChanged = true;
+      return gated;
+    });
+    return branchChanged ? { ...fieldSchema, anyOf: branches } : null;
+  }
+
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

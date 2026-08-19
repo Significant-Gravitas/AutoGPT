@@ -376,6 +376,76 @@ describe("Transport options gated by provider entitlement", () => {
   });
 });
 
+describe("An optional discriminator is still gated", () => {
+  // `AutoPilotTransport | None` serialises as anyOf[{enum}, {type:null}] with no
+  // top-level enum. The filter used to require a top-level enum, so making a
+  // field optional silently switched the gate off and left the gated option on
+  // offer to accounts that cannot use it.
+  const optionalTransportSchema = {
+    type: "object",
+    properties: {
+      prompt: { advanced: false, title: "Prompt", type: "string" },
+      transport: {
+        advanced: false,
+        default: null,
+        title: "Transport",
+        anyOf: [
+          { enum: ["platform", "codex_app_server"], type: "string" },
+          { type: "null" },
+        ],
+      },
+      codex_credentials: {
+        credentials_provider: ["codex"],
+        credentials_types: ["oauth2"],
+        discriminator: "transport",
+        discriminator_mapping: { codex_app_server: "codex" },
+        properties: {
+          id: { type: "string" },
+          provider: { enum: ["codex"], type: "string" },
+          type: { enum: ["oauth2"], type: "string" },
+        },
+        required: ["id", "provider", "type"],
+        title: "Credentials",
+        type: "object",
+      },
+    },
+    required: ["prompt"],
+  } as unknown as RJSFSchema;
+
+  it("removes the gated option from inside anyOf", () => {
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...createCodeGenerationNode(),
+          data: {
+            ...createCodeGenerationNode().data,
+            hardcodedValues: { prompt: "hi" },
+            inputSchema: optionalTransportSchema,
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider value={{}}>
+        <FormCreator
+          jsonSchema={optionalTransportSchema}
+          nodeId="code-generation-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    const select = screen.getByLabelText("agpt_%_transport");
+    const labels = Array.from(select.querySelectorAll("option")).map(
+      (o) => o.textContent,
+    );
+    expect(labels).not.toContain("codex_app_server");
+  });
+});
+
 describe("LLM blocks keep every model option", () => {
   const llmSchema = {
     type: "object",

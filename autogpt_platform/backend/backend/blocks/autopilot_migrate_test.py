@@ -69,3 +69,14 @@ async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
     assert block_id == AUTOPILOT_BLOCK_ID
     assert "NOT (\"constantInput\" ? 'transport')" in sql
     assert "'codex_credentials'->>'id' IS NOT NULL" in sql
+
+
+def test_query_templates_survive_schema_formatting():
+    """These templates are run through str.format() to inject the schema
+    prefix, so any literal brace becomes a format field. A '{transport}'
+    jsonb_set path raised KeyError at apply time — the second way this
+    migration crashed only when actually run."""
+    from backend.blocks.autopilot_migrate import _COUNT_QUERY, _UPDATE_QUERY
+
+    for template in (_COUNT_QUERY, _UPDATE_QUERY):
+        template.format(schema_prefix="platform.", schema="platform")
