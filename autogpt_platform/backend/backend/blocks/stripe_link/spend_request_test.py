@@ -339,9 +339,10 @@ async def test_an_approved_request_emits_no_action_fields():
 # Error surfacing
 # ---------------------------------------------------------------------------
 class _Resp:
-    def __init__(self, payload: Any, text: str = ""):
-        self.is_error = True
-        self.status_code = 400
+    def __init__(self, payload: Any, text: str = "", status_code: int = 400):
+        self.status_code = status_code
+        self.is_error = status_code >= 400
+        self.is_success = 200 <= status_code < 300
         self._payload = payload
         self.text = text
 
@@ -441,3 +442,171 @@ async def test_a_wrong_shaped_error_body_falls_back_without_raising(monkeypatch)
         # a string that becomes a persisted block output.
         assert "400" in str(exc.value)
         assert "raw upstream body" not in str(exc.value)
+
+
+def test_the_card_gate_predicate_itself_tracks_behave_as(monkeypatch):
+    """The other gate tests patch CARD_FLOW_DISABLED, so none of them pin the
+    predicate. Invert it — or point it at a setting Cloud does not set — and
+    they would all still pass while the card blocks went live on Cloud."""
+    from backend.util.settings import BehaveAs
+
+    monkeypatch.setattr(sr.settings.config, "behave_as", BehaveAs.CLOUD)
+    assert sr.card_flow_disabled() is True
+
+    monkeypatch.setattr(sr.settings.config, "behave_as", BehaveAs.LOCAL)
+    assert sr.card_flow_disabled() is False
+
+    # And the constant the blocks are wired to comes from that predicate.
+    assert sr.CARD_FLOW_DISABLED == sr.card_flow_disabled()
+
+
+@pytest.mark.asyncio
+async def test_listed_payment_methods_are_projected_to_known_fields():
+    """This block runs on Cloud, so what it emits cannot depend on Link's
+    response shape — a field added upstream would otherwise land in a
+    persisted execution record without anyone touching this repo."""
+    block = sr.StripeLinkListPaymentMethodsBlock()
+
+    async def _fake(credentials, method, path, body=None):
+        return {
+            "payment_details": [
+                {
+                    "id": "csmrpd_1",
+                    "type": "CARD",
+                    "name": "Debit",
+                    "is_default": True,
+                    "card_details": {
+                        "brand": "visa",
+                        "last4": "4242",
+                        "number": "4242424242424242",
+                        "cvc": "123",
+                    },
+                    "some_future_field": "should not be emitted",
+                }
+            ]
+        }
+
+    object.__setattr__(block, "_link_api_request", _fake)
+    inp = block.Input.model_validate({"credentials": TEST_CREDENTIALS_INPUT})
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+
+    [pm] = outputs["payment_methods"]
+    assert pm == {
+        "id": "csmrpd_1",
+        "type": "CARD",
+        "name": "Debit",
+        "is_default": True,
+        "card_details": {"brand": "visa", "last4": "4242"},
+    }
+    assert "number" not in pm["card_details"]
+    assert "some_future_field" not in pm
+
+
+@pytest.mark.asyncio
+async def test_a_redirect_is_an_error_not_an_empty_result(monkeypatch):
+    """`is_error` is 4xx/5xx only, and redirects are not followed.
+
+    Treating a 3xx as success let it fall through to `.json()`: a moved
+    endpoint would read as an empty wallet from list-payment-methods, or raise
+    a bare KeyError from create, with the redirect invisible either way.
+    """
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, **kwargs):
+            return _Resp(None, text="moved", status_code=308)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+
+    with pytest.raises(RuntimeError, match="308"):
+        await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/payment-details")
+
+
+@pytest.mark.asyncio
+async def test_an_unbounded_upstream_message_is_truncated(monkeypatch):
+    """`error.message` becomes a persisted block output, same as the raw body
+    the adjacent path already caps."""
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, **kwargs):
+            return _Resp({"error": {"message": "x" * 20_000}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+
+    with pytest.raises(RuntimeError) as exc:
+        await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
+
+    assert len(str(exc.value)) < 1000
+
+
+@pytest.mark.asyncio
+async def test_a_total_that_misstates_the_amount_is_rejected():
+    """The approval sheet is the only aggregate control, and it is
+    agent-supplied — so the headline must be the amount authorized."""
+    with pytest.raises(ValidationError, match="approval sheet"):
+        await run_create_card(
+            amount=50000,
+            totals=[{"type": "total", "display_text": "Total", "amount": 499}],
+        )
+
+    # A matching total, and non-total lines, are untouched.
+    body = await run_create_card(
+        amount=1000,
+        totals=[
+            {"type": "subtotal", "display_text": "Sub", "amount": 900},
+            {"type": "total", "display_text": "Total", "amount": 1000},
+        ],
+    )
+    assert len(body["totals"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_null_action_fields_do_not_hard_fail_the_node():
+    """A None yielded into a str-typed output fails the output jsonschema
+    check outside the block's try, killing the node after `status`."""
+    outputs, _ = await run_status(
+        {
+            "status": "requires_action",
+            "status_details": {
+                "requires_action": {
+                    "next_action": {
+                        "type": None,
+                        "display_message": None,
+                        "action_url": None,
+                    }
+                }
+            },
+        }
+    )
+
+    assert outputs["next_action_type"] == ""
+    assert outputs["next_action_url"] == ""
+    assert "error" not in outputs
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_resolution_keeps_the_caller_polling():
+    """Failing to `auto_resumes=False` is the unsafe direction: the agent
+    creates a second spend request, the first auto-resumes, and the user can
+    approve two credentials for one purchase."""
+    outputs, _ = await run_status(
+        {
+            "status": "requires_action",
+            "status_details": {
+                "requires_action": {"next_action": {"resolution": "something_new"}}
+            },
+        }
+    )
+
+    assert outputs["auto_resumes"] is True

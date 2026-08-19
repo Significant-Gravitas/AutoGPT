@@ -105,6 +105,13 @@ if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
 
 logger = logging.getLogger(__name__)
+
+# Long enough to stop a loop, short enough that a user who cancels and retries
+# is not left waiting.
+_INITIATE_COOLDOWN_SECONDS = 3
+# The throttle protects an upstream client id; it must never be the reason a
+# request hangs.
+_THROTTLE_TIMEOUT_SECONDS = 1.0
 settings = Settings()
 router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
@@ -404,6 +411,55 @@ class DeviceAuthPollResponse(BaseModel):
     credentials: CredentialsMetaResponse | None = None
 
 
+async def _throttle_upstream(
+    user_id: str, provider: ProviderName, seconds: int
+) -> bool:
+    """Rate-limit outbound device-auth calls per user and provider.
+
+    Every initiate/poll drives a request to the provider under one hardcoded
+    public client ID shared by the whole platform, so a single account looping
+    an endpoint can get that client throttled for everyone. RFC 8628 already
+    defines the minimum gap between polls; this holds callers to it
+    server-side instead of trusting the client to.
+
+    Returns True when the caller is going too fast. Fails open, and fails open
+    *fast*: an unreachable Redis must not turn a throttle check into a hung
+    request, so the whole check is bounded.
+    """
+
+    async def _claim() -> bool:
+        from backend.data.redis_client import get_redis_async
+
+        redis = await get_redis_async()
+        key = f"device-auth-throttle:{user_id}:{provider_key(provider)}"
+        # SET NX EX: the first caller in the window claims the key.
+        claimed = await redis.set(key, "1", ex=max(seconds, 1), nx=True)
+        return not claimed
+
+    try:
+        return await asyncio.wait_for(_claim(), timeout=_THROTTLE_TIMEOUT_SECONDS)
+    except Exception as e:
+        logger.warning(f"Device auth throttle unavailable, allowing through: {e}")
+        return False
+
+
+async def _latest_credential_for(user_id: str, provider: ProviderName) -> Any | None:
+    """The newest stored credential for a provider, or None.
+
+    Used by the poll that loses the consume race: the winner has stored the
+    credential for this grant, and reporting it is more useful than reporting
+    an approval with nothing attached.
+    """
+    try:
+        creds = await creds_manager.store.get_creds_by_provider(
+            user_id, provider_key(provider)
+        )
+    except Exception as e:
+        logger.warning(f"Could not read stored credentials for {provider}: {e}")
+        return None
+    return creds[-1] if creds else None
+
+
 def _get_device_auth_handler(provider: ProviderName) -> BaseDeviceAuthHandler:
     key = provider_key(provider)
     if key not in DEVICE_HANDLERS_BY_NAME:
@@ -430,6 +486,15 @@ async def device_auth_initiate(
     ] = "",
 ) -> DeviceAuthInitiateResponse:
     handler = _get_device_auth_handler(provider)
+
+    # Cheapest endpoint to abuse: it takes no state token, and each call mints
+    # a device code upstream.
+    if await _throttle_upstream(user_id, provider, _INITIATE_COOLDOWN_SECONDS):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="A device authorization was just started. Please wait a moment.",
+        )
+
     requested_scopes = scopes.split(",") if scopes else []
     requested_scopes = handler.handle_default_scopes(requested_scopes)
 
@@ -517,6 +582,12 @@ async def device_auth_poll(
             detail="Invalid or expired state token",
         )
 
+    interval = int(valid_state.state_metadata.get("interval") or 5)
+    if await _throttle_upstream(user_id, provider, interval):
+        # Polling faster than the provider asked for. Say so in its own
+        # vocabulary rather than spending an upstream call to be told.
+        return DeviceAuthPollResponse(status="slow_down")
+
     device_code = valid_state.state_metadata.get("device_code")
     if not device_code:
         raise HTTPException(
@@ -552,18 +623,39 @@ async def device_auth_poll(
             "token; another poll already handled this terminal state",
             user_id,
         )
-        return DeviceAuthPollResponse(status=result.status)
+        if result.status != "approved":
+            return DeviceAuthPollResponse(status=result.status)
+
+        # The winner stored a credential for this grant; report *that* rather
+        # than "approved" with nothing attached. A client branching on the
+        # status alone would otherwise show success, wire up nothing, and be
+        # unable to retry — the state token is gone by now.
+        stored = await _latest_credential_for(user_id, provider)
+        if stored is None:
+            # The winner has consumed but not finished storing. Keep the client
+            # polling rather than handing it a success it cannot act on.
+            return DeviceAuthPollResponse(status="pending")
+        return DeviceAuthPollResponse(
+            status="approved", credentials=to_meta_response(stored)
+        )
 
     if result.status == "approved" and result.credentials:
         credentials = result.credentials
-        credentials.scopes = handler.handle_default_scopes(credentials.scopes)
 
         if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
             credentials.scopes = credentials.scopes[0].split(" ")
 
-        credentials = await _merge_or_create_credential(
-            user_id, provider, credentials, valid_state.credential_id
-        )
+        try:
+            credentials = await _merge_or_create_credential(
+                user_id, provider, credentials, valid_state.credential_id
+            )
+        except Exception:
+            # The token is already consumed at this point, so a failure here
+            # would strand a live authorization at the provider with no local
+            # credential to revoke it with, and nothing to tell the user it
+            # exists. Put the state back so the next poll can retry the store.
+            await creds_manager.store.restore_state_token(user_id, consumed)
+            raise
 
         logger.debug(
             f"Device auth approved for user {user_id} and provider {provider.value}"

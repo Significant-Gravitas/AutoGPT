@@ -41,6 +41,14 @@ class DeviceAuthPollResult(BaseModel):
 
 
 class BaseDeviceAuthHandler(ABC):
+    """Base for RFC 8628 device-code handlers.
+
+    ``ROTATES_REFRESH_TOKEN`` tells the credentials manager it must serialize
+    refreshes for this provider: replaying a rotated refresh token can be
+    treated as compromise and revoke the whole grant.
+    """
+
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = False
     """
     Abstract handler for OAuth 2.0 Device Code Grant flows.
 

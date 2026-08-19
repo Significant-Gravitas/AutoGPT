@@ -26,6 +26,9 @@ LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
 
 logger = logging.getLogger(__name__)
 
+# Upstream error text reaches a block `error` output, which is persisted.
+MAX_ERROR_DETAIL_CHARS = 500
+
 StripeLinkCredentials = OAuth2Credentials
 
 # `credentials_types` carries two different things at once: the *shape* of the
@@ -107,7 +110,11 @@ async def link_api_request(
             headers=headers,
             json=body,
         )
-        if response.is_error:
+        # `is_success`, not `not is_error`: the latter is 4xx/5xx only, so a
+        # 3xx would fall straight through to `.json()` — and redirects are not
+        # followed. A moved endpoint would read as an empty wallet, or raise a
+        # bare KeyError with the redirect invisible.
+        if not response.is_success:
             # Link explains itself in a structured `error.message`; surface
             # that rather than a bare "400 Bad Request" with the explanation
             # discarded. That is how the SPT merchant-field constraint stayed
@@ -121,7 +128,13 @@ async def link_api_request(
                 detail = None
 
             if detail:
-                raise RuntimeError(f"Link API error ({response.status_code}): {detail}")
+                # Bounded like the raw-body log below: this string becomes a
+                # persisted block output, and a multi-KB message from Link or
+                # an intercepting gateway has no business there either.
+                raise RuntimeError(
+                    f"Link API error ({response.status_code}): "
+                    f"{str(detail)[:MAX_ERROR_DETAIL_CHARS]}"
+                )
 
             # No usable message. The raw body goes to the logs rather than
             # into the exception, because that string becomes a block `error`
