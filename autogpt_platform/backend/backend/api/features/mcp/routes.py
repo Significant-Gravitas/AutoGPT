@@ -14,7 +14,11 @@ from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.features.integrations.router import CredentialsMetaResponse
-from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.client import (
+    MCPClient,
+    MCPClientError,
+    normalize_mcp_authorization,
+)
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     normalize_mcp_url,
@@ -43,7 +47,10 @@ class DiscoverToolsRequest(BaseModel):
     server_url: str = Field(description="URL of the MCP server")
     auth_token: str | None = Field(
         default=None,
-        description="Optional Bearer token for authenticated MCP servers",
+        description=(
+            "Optional authentication credential. Bare values use Bearer; "
+            "Basic/Bearer prefixes and complete Authorization headers are accepted."
+        ),
     )
 
 
@@ -94,7 +101,10 @@ async def discover_tools(
         if best_cred:
             auth_token = best_cred.access_token.get_secret_value()
 
-    client = MCPClient(request.server_url, auth_token=auth_token)
+    try:
+        client = MCPClient(request.server_url, auth_token=auth_token)
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
 
     try:
         init_result = await client.initialize()
@@ -104,7 +114,7 @@ async def discover_tools(
             raise fastapi.HTTPException(
                 status_code=401,
                 detail="This MCP server requires authentication. "
-                "Please provide a valid auth token.",
+                "Please provide a valid auth credential.",
             )
         raise fastapi.HTTPException(status_code=502, detail=str(e))
     except MCPClientError as e:
@@ -232,7 +242,7 @@ async def mcp_oauth_login(
     client_id = ""
     client_secret = ""
     if registration_endpoint:
-        # Validate the registration endpoint to prevent SSRF via metadata.
+        # Validate the registration endpoint from metadata to prevent SSRF.
         try:
             await validate_url_host(registration_endpoint)
         except ValueError:
@@ -393,39 +403,46 @@ async def mcp_oauth_callback(
     )
 
 
-# ======================== Bearer Token ======================== #
+# ======================== Manual Authentication ======================== #
 
 
 class MCPStoreTokenRequest(BaseModel):
-    """Request to store a bearer token for an MCP server that doesn't support OAuth."""
+    """Request to store a manual MCP authentication credential."""
 
     server_url: str = Field(
-        description="MCP server URL the token authenticates against"
+        description="MCP server URL the credential authenticates against"
     )
     token: SecretStr = Field(
-        min_length=1, description="Bearer token / API key for the MCP server"
+        min_length=1,
+        description=(
+            "API credential. Bare values use Bearer; Basic/Bearer prefixes and "
+            "complete Authorization headers are accepted."
+        ),
     )
 
 
 @router.post(
     "/token",
+    # Keep the existing summary so generated clients retain their current method name.
     summary="Store a bearer token for an MCP server",
 )
 async def mcp_store_token(
     request: MCPStoreTokenRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
-    """
-    Store a manually provided bearer token as an MCP credential.
+    """Store a manually provided Bearer or Basic MCP credential.
 
-    Used by the Copilot MCPSetupCard when the server doesn't support the MCP
-    OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
-    ``run_mcp_tool`` calls will automatically pick up the token via
-    ``_auto_lookup_credential``.
+    Bare values retain the historical Bearer behavior. Explicit ``Basic`` or
+    ``Bearer`` prefixes — including a complete copied ``Authorization`` header —
+    are normalized and stored so every MCP execution surface sends the same
+    authentication scheme.
     """
-    token = request.token.get_secret_value().strip()
-    if not token:
-        raise fastapi.HTTPException(status_code=422, detail="Token must not be blank.")
+    try:
+        authorization = normalize_mcp_authorization(
+            request.token.get_secret_value()
+        )
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
 
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
@@ -453,12 +470,16 @@ async def mcp_store_token(
     except Exception:
         logger.debug("Could not query old MCP token credentials", exc_info=True)
 
+    auth_scheme = authorization.split(" ", 1)[0].lower()
     credentials = OAuth2Credentials(
         provider=ProviderName.MCP.value,
         title=f"MCP: {hostname}",
-        access_token=SecretStr(token),
+        access_token=SecretStr(authorization),
         scopes=[],
-        metadata={"mcp_server_url": server_url},
+        metadata={
+            "mcp_server_url": server_url,
+            "mcp_auth_scheme": auth_scheme,
+        },
     )
     await creds_manager.create(user_id, credentials)
 
