@@ -161,9 +161,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
             <select
               aria-label="Authentication type"
               value={authScheme}
-              onChange={(e) =>
-                setAuthScheme(e.target.value as MCPAuthScheme)
-              }
+              onChange={(e) => setAuthScheme(e.target.value as MCPAuthScheme)}
               disabled={isSubmitting}
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-normal text-zinc-900"
             >
