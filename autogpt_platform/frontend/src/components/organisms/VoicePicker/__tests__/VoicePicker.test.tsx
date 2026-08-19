@@ -37,6 +37,14 @@ describe("VoicePicker", () => {
     expect(screen.getAllByRole("radio")).toHaveLength(3);
   });
 
+  test("renders each voice option as its own card", () => {
+    setup();
+    const group = screen.getByRole("group", { name: "Writing voice" });
+    expect(group.className).toContain("gap-3");
+    expect(group.className).not.toContain("divide-y");
+    expect(group.querySelectorAll(".rounded-2xl.border").length).toBe(3);
+  });
+
   test("keeps submit disabled until a choice is made", () => {
     setup();
     const submit = screen.getByRole("button", {
@@ -72,10 +80,10 @@ describe("VoicePicker", () => {
 
   test("picks the user's own pasted sample", async () => {
     const { onPick } = setup();
-    await userEvent.type(
-      screen.getByPlaceholderText(/Paste a few sentences/),
-      "Keep it breezy.",
-    );
+    const customSample = screen.getByRole("textbox", {
+      name: "Custom voice sample",
+    });
+    await userEvent.type(customSample, "Keep it breezy.");
     await userEvent.click(
       screen.getByRole("button", { name: "Use this voice" }),
     );

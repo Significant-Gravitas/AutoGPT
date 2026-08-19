@@ -18,7 +18,7 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus, SharedVia
+from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
@@ -47,9 +47,15 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExecutionFailureReason,
+    NotFoundError,
+    get_execution_failure_reason,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -246,6 +252,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        failure_reason: ExecutionFailureReason | None = Field(
+            default=None,
+            description="Structured reason for a terminal execution failure",
+        )
         activity_status: str | None = Field(
             default=None,
             description="AI-generated summary of what the agent did",
@@ -265,6 +275,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                failure_reason=self.failure_reason,
                 activity_status=self.activity_status,
                 correctness_score=self.correctness_score,
             )
@@ -281,6 +292,7 @@ class GraphExecutionMeta(BaseDbModel):
     def from_db(_graph_exec: AgentGraphExecution):
         start_time = _graph_exec.startedAt
         end_time = _graph_exec.endedAt
+        execution_status = ExecutionStatus(_graph_exec.executionStatus)
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -291,6 +303,19 @@ class GraphExecutionMeta(BaseDbModel):
                     f"{_graph_exec.stats}: {e}"
                 )
             stats = None
+
+        failure_reason = stats.failure_reason if stats else None
+        if (
+            stats
+            and failure_reason is None
+            and execution_status == ExecutionStatus.FAILED
+        ):
+            # Historical error text may include provider-controlled content, so
+            # this compatibility path accepts only the anchored full-message forms.
+            failure_reason = get_execution_failure_reason(
+                stats.error,
+                allow_legacy_text=True,
+            )
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
@@ -310,7 +335,7 @@ class GraphExecutionMeta(BaseDbModel):
                 dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
             ),
             preset_id=_graph_exec.agentPresetId,
-            status=ExecutionStatus(_graph_exec.executionStatus),
+            status=execution_status,
             started_at=start_time,
             ended_at=end_time,
             stats=(
@@ -327,6 +352,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    failure_reason=failure_reason,
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
                 )
@@ -388,14 +414,12 @@ class GraphExecution(GraphExecutionMeta):
             },
         }
 
-        outputs: CompletedBlockOutput = defaultdict(list)
-        for exec in complete_node_executions:
-            if (
-                (block := get_block(exec.block_id))
-                and block.block_type == BlockType.OUTPUT
-                and "name" in exec.input_data
-            ):
-                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
+        outputs: CompletedBlockOutput = reconstruct_run_outputs(
+            (exec.queue_time, exec.add_time, exec.input_data)
+            for exec in complete_node_executions
+            if (block := get_block(exec.block_id))
+            and block.block_type == BlockType.OUTPUT
+        )
 
         return GraphExecution(
             **{
@@ -708,6 +732,26 @@ class GraphExecutionsPaginated(BaseModel):
     pagination: Pagination
 
 
+def _execution_visibility_filters(
+    user_id: str,
+    organization_id: str,
+    team_ids: list[str],
+) -> list[AgentGraphExecutionWhereInput]:
+    """Keep current PRIVATE expert runs owner-only.
+
+    Non-expert runs retain existing org/team visibility. Future shared expert
+    visibility must add an explicit access policy here before it is exposed.
+    """
+    shared_visibility = cast(
+        AgentGraphExecutionWhereInput,
+        visibility_filter(user_id, organization_id, team_ids),
+    )
+    expert_visibility: AgentGraphExecutionWhereInput = {
+        "OR": [{"expertId": None}, {"userId": user_id}]
+    }
+    return [shared_visibility, expert_visibility]
+
+
 async def get_graph_executions_paginated(
     user_id: str,
     graph_id: Optional[str] = None,
@@ -729,12 +773,9 @@ async def get_graph_executions_paginated(
     }
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where_filter["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where_filter["AND"] = _execution_visibility_filters(
+            user_id, organization_id, team_ids
+        )
     else:
         where_filter["userId"] = user_id
 
@@ -778,12 +819,7 @@ async def get_graph_execution_meta(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(where=where)
@@ -826,12 +862,7 @@ async def get_graph_execution(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(
@@ -898,10 +929,16 @@ async def create_graph_execution(
     # expert-attributed path.
     if expert_id:
         expert = await Expert.prisma().find_first(
-            where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
         )
         if expert is None:
-            raise ValueError(f"Expert #{expert_id} does not belong to user #{user_id}")
+            raise ValueError(f"Expert #{expert_id} is unavailable")
 
     result = await AgentGraphExecution.prisma().create(
         data={
@@ -1112,8 +1149,16 @@ async def update_graph_execution_stats(
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
     cascade_running_children: bool = True,
+    update_tenancy: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """Update a graph_exec's status and/or stats.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Callers are internal executor/scheduler paths (directly or via the
+    DatabaseManager RPC) operating on a `graph_exec_id` they obtained from
+    an ownership-checked fetch.
 
     When `status` transitions the row into a terminal state and
     `cascade_running_children` is True (default), all of its child node
@@ -1127,12 +1172,18 @@ async def update_graph_execution_stats(
     reason to leave child rows untouched (e.g. resume flows or
     speculative writes that will be reconciled separately).
     """
-    if not status and not stats:
+    if not status and not stats and not update_tenancy:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
         )
 
     update_data: AgentGraphExecutionUpdateManyMutationInput = {}
+
+    if update_tenancy:
+        if not organization_id:
+            raise ValueError("organization_id is required when updating tenancy")
+        update_data["organizationId"] = organization_id
+        update_data["teamId"] = team_id
 
     if stats:
         stats_dict = stats.model_dump()

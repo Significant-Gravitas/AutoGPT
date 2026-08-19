@@ -213,6 +213,54 @@ async def test_post_dm_happy_path_needs_no_channel(session):
 
 
 @pytest.mark.asyncio
+async def test_teams_post_defaults_to_the_users_dm(session):
+    # Teams cannot be targeted by channel, so omitting `target` must not send
+    # the call down the channel path just to have the bridge reject it.
+    bridge = _bridge()
+    bridge.send_dm_to_user.return_value = DeliveryResult(
+        ok=True, kind="dm", channel_id="19:dm", ref_id="m1"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER, session=session, platform="teams", content="morning brief"
+        )
+    assert isinstance(result, ChatPlatformPostedResponse)
+    bridge.send_dm_to_user.assert_awaited_once()
+    bridge.send_message_to_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_teams_rejects_an_explicit_channel_target(session):
+    bridge = _bridge()
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER,
+            session=session,
+            platform="teams",
+            target="channel",
+            channel="General",
+            content="hi",
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "unsupported_target"
+    bridge.send_message_to_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_platforms_still_default_to_channel(session):
+    bridge = _bridge()
+    bridge.send_message_to_channel.return_value = DeliveryResult(
+        ok=True, kind="message", channel_id="c1", ref_id="m1"
+    )
+    with patch(f"{_PATH}.get_copilot_chat_bridge_client", return_value=bridge):
+        result = await PostToChatPlatformTool()._execute(
+            user_id=_USER, session=session, channel="#standup", content="hi"
+        )
+    assert isinstance(result, ChatPlatformPostedResponse)
+    bridge.send_message_to_channel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_post_dm_without_link_maps_error(session):
     bridge = _bridge()
     bridge.send_dm_to_user.return_value = DeliveryResult(
@@ -362,6 +410,9 @@ def _secrets(**overrides) -> MagicMock:
     secrets.autopilot_bot_slack_client_secret = ""
     secrets.autopilot_bot_telegram_token = ""
     secrets.autopilot_bot_telegram_webhook_secret = ""
+    secrets.microsoft_client_id = ""
+    secrets.microsoft_client_secret = ""
+    secrets.microsoft_tenant_id = ""
     for key, value in overrides.items():
         setattr(secrets, key, value)
     return secrets
@@ -395,6 +446,24 @@ def _secrets(**overrides) -> MagicMock:
             {
                 "autopilot_bot_telegram_token": "123:abc",
                 "autopilot_bot_telegram_webhook_secret": "hex",
+            },
+            True,
+        ),
+        # Teams needs all three; posting has to mint a real Connector token,
+        # so a partial registration must not enable the tool.
+        ({"microsoft_client_id": "app"}, False),
+        (
+            {
+                "microsoft_client_id": "app",
+                "microsoft_client_secret": "pw",
+            },
+            False,
+        ),
+        (
+            {
+                "microsoft_client_id": "app",
+                "microsoft_client_secret": "pw",
+                "microsoft_tenant_id": "tenant",
             },
             True,
         ),

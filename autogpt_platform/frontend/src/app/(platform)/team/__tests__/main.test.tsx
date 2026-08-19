@@ -5,6 +5,10 @@ import {
   getInstallExpertWorkflowMockHandler,
   getInstallExpertWorkflowMockHandler404,
   getInstallExpertWorkflowMockHandler422,
+  getAssignExpertPodMockHandler,
+  getCreateExpertPodMockHandler,
+  getListExpertPodsMockHandler,
+  getListExpertPodsMockHandler401,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -18,6 +22,7 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
@@ -120,6 +125,7 @@ function makeSchedule(
 beforeEach(() => {
   server.use(
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    getListExpertPodsMockHandler([]),
     getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
   );
 });
@@ -169,6 +175,11 @@ vi.mock("next/navigation", () => ({
     throw new Error("NEXT_NOT_FOUND");
   },
 }));
+
+async function openNewPodDialog(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /create/i }));
+  await user.click(await screen.findByRole("menuitem", { name: "New pod" }));
+}
 
 const hiredMaria: Expert = {
   id: "expert-maria",
@@ -259,6 +270,8 @@ describe("TeamPage", () => {
       name: "Build an agent from scratch",
     });
     expect(build.getAttribute("href")).toBe("/build");
+
+    expect(screen.getByRole("menuitem", { name: "New pod" })).toBeDefined();
   });
 
   test("renders hired experts with a workflow count instead of chips", async () => {
@@ -830,10 +843,308 @@ describe("TeamPage", () => {
       name: "Browse the marketplace",
     });
     expect(link.getAttribute("href")).toBe("/marketplace");
+    expect(
+      screen.getByRole("link", { name: "Raise your own" }).getAttribute("href"),
+    ).toBe("/raise");
   });
 
   test("shows an error card when loading experts fails", async () => {
     server.use(getListExpertsMockHandler401());
+
+    render(<TeamPage />);
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
+  });
+
+  test("groups experts under their pod with ungrouped members below", async () => {
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    const poddedMaria: Expert = { ...hiredMaria, pod_id: "pod-growth" };
+    const lee: Expert = {
+      ...hiredMaria,
+      id: "expert-lee",
+      name: "Lee",
+      pod_id: null,
+    };
+    const archivedPoddedSam: Expert = {
+      ...hiredMaria,
+      id: "expert-sam",
+      name: "Sam",
+      pod_id: "pod-growth",
+      is_archived: true,
+    };
+    server.use(
+      getListExpertsMockHandler([poddedMaria, lee, archivedPoddedSam]),
+      getListExpertPodsMockHandler([growthPod]),
+    );
+
+    render(<TeamPage />);
+
+    const podHeader = await screen.findByRole("heading", { name: "Growth" });
+    const maria = await screen.findByText("Maria");
+    const leeNode = await screen.findByText("Lee");
+    // Maria sits under the pod header; Lee is ungrouped below.
+    const noPodHeader = screen.getByRole("heading", { name: "Ungrouped" });
+    expect(
+      podHeader.compareDocumentPosition(maria) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      maria.compareDocumentPosition(noPodHeader) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      noPodHeader.compareDocumentPosition(leeNode) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Archived experts never render, even with a pod_id.
+    expect(screen.queryByText("Sam")).toBeNull();
+  });
+
+  test("shows a pod with no members instead of hiding it", async () => {
+    const emptyPod: ExpertPod = {
+      id: "pod-empty",
+      name: "Support",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler([emptyPod]),
+    );
+
+    render(<TeamPage />);
+
+    const podHeader = await screen.findByRole("heading", { name: "Support" });
+    const emptyCopy = await screen.findByText("No experts in this pod yet.");
+    expect(
+      podHeader.compareDocumentPosition(emptyCopy) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The unpodded expert still renders under its own section.
+    expect(await screen.findByText("Maria")).toBeDefined();
+  });
+
+  test("creates a pod from the New pod dialog", async () => {
+    const user = userEvent.setup();
+    let createdName: string | undefined;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getCreateExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { name: string };
+        createdName = body.name;
+        return {
+          id: "pod-new",
+          name: body.name,
+          created_at: new Date("2026-08-14T00:00:00Z"),
+        };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await openNewPodDialog(user);
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    await user.type(nameInput, "Growth");
+    await user.click(screen.getByRole("button", { name: "Create pod" }));
+
+    await waitFor(() => expect(createdName).toBe("Growth"));
+  });
+
+  test("keeps the New pod dialog open and shows the reason when creation fails", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.post("/api/proxy/api/experts/pods", () =>
+        HttpResponse.json(
+          { detail: "A pod named 'Growth' already exists" },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    await openNewPodDialog(user);
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    await user.type(nameInput, "Growth");
+    await user.click(screen.getByRole("button", { name: "Create pod" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Could not create pod",
+          description: "A pod named 'Growth' already exists",
+          variant: "destructive",
+        }),
+      ),
+    );
+    // The dialog must survive the failure with the typed name intact.
+    expect(screen.getByRole("dialog", { name: "New pod" })).toBeDefined();
+    expect((nameInput as HTMLInputElement).value).toBe("Growth");
+  });
+
+  test("clears the pod name after cancelling and reopening the dialog", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await openNewPodDialog(user);
+    const nameInput = await screen.findByRole("textbox", { name: /pod name/i });
+    expect(nameInput.getAttribute("maxlength")).toBe("100");
+    await user.type(nameInput, "Draft pod");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "New pod" })).toBeNull(),
+    );
+
+    await openNewPodDialog(user);
+    const reopenedNameInput = await screen.findByRole("textbox", {
+      name: /pod name/i,
+    });
+    expect((reopenedNameInput as HTMLInputElement).value).toBe("");
+  });
+
+  test("moves an expert into a pod from the card menu", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    let assignedPodId: string | null | undefined;
+    let expertRequests = 0;
+    server.use(
+      getListExpertsMockHandler(() => {
+        expertRequests += 1;
+        return [hiredMaria];
+      }),
+      getListExpertPodsMockHandler([growthPod]),
+      getAssignExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { pod_id: string | null };
+        assignedPodId = body.pod_id;
+        return { ...hiredMaria, pod_id: body.pod_id };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    await waitFor(() => expect(expertRequests).toBe(1));
+    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
+
+    await waitFor(() => expect(assignedPodId).toBe("pod-growth"));
+    expect(toastMock).toHaveBeenCalledWith({ title: "Moved to Growth" });
+    // The PATCH response is written into the cache, so the heavy roster query
+    // is never refetched and the card reflects the move immediately.
+    expect(
+      await screen.findByRole("button", {
+        name: "Move to pod (currently Growth)",
+      }),
+    ).toBeDefined();
+    expect(expertRequests).toBe(1);
+  });
+
+  test("removes an expert from its pod from the card menu", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    const poddedMaria: Expert = { ...hiredMaria, pod_id: growthPod.id };
+    let assignedPodId: string | null | undefined;
+    server.use(
+      getListExpertsMockHandler([poddedMaria]),
+      getListExpertPodsMockHandler([growthPod]),
+      getAssignExpertPodMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { pod_id: string | null };
+        assignedPodId = body.pod_id;
+        return { ...poddedMaria, pod_id: body.pod_id };
+      }),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    // The trigger names the pod the expert is already in.
+    const trigger = screen.getByRole("button", {
+      name: "Move to pod (currently Growth)",
+    });
+    expect(trigger.textContent).toContain("Growth");
+    await user.click(trigger);
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Remove from pod" }),
+    );
+
+    await waitFor(() => expect(assignedPodId).toBeNull());
+    expect(toastMock).toHaveBeenCalledWith({ title: "Removed from pod" });
+  });
+
+  test("shows the assign failure reason and refreshes stale pods", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    let podRequests = 0;
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler(() => {
+        podRequests += 1;
+        return podRequests === 1 ? [growthPod] : [];
+      }),
+      http.patch("/api/proxy/api/experts/expert-maria/pod", () =>
+        HttpResponse.json(
+          { detail: "Expert or pod not found" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    await user.click(screen.getByRole("button", { name: "Move to pod" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Growth/ }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: "Could not move expert",
+        description: "Expert or pod not found",
+        variant: "destructive",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Move to pod" })).toBeNull(),
+    );
+  });
+
+  test("keeps the roster in loading state until pods resolve", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler(() => new Promise(() => {})),
+    );
+
+    render(<TeamPage />);
+
+    await screen.findByText("Autopilot");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Experts resolved but pods have not: no card may render yet, or a
+    // podded expert would flash as ungrouped.
+    expect(screen.queryByText("Maria")).toBeNull();
+  });
+
+  test("shows an error card when loading pods fails", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getListExpertPodsMockHandler401(),
+    );
 
     render(<TeamPage />);
 

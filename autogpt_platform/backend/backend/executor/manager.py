@@ -65,10 +65,12 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    ExecutionFailureReason,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
     NotFoundError,
+    get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
@@ -81,7 +83,10 @@ from backend.util.retry import (
 from backend.util.settings import Settings
 
 from . import billing, expert_posts
-from .activity_status_generator import generate_activity_status_for_execution
+from .activity_status_generator import (
+    INSUFFICIENT_BALANCE_GUIDANCE,
+    generate_activity_status_for_execution,
+)
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
@@ -110,6 +115,55 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
+
+
+def _get_execution_credit_balance(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> int:
+    """Return the balance for the wallet billed by this execution."""
+    organization_id = graph_exec.execution_context.organization_id
+    if organization_id:
+        return db_client.get_org_credits(org_id=organization_id)
+    return db_client.get_credits(graph_exec.user_id)
+
+
+def _record_execution_failure(
+    execution_stats: GraphExecutionStats,
+    error: BaseException,
+) -> None:
+    """Record an error without erasing a trusted reason promoted by a node.
+
+    Precedence is deliberately asymmetric between the two fields:
+
+    ``error`` always reflects the *latest* failure, so the message a user sees
+    describes what actually terminated the run.
+
+    ``failure_reason`` is *sticky*: once a typed failure (currently only
+    :class:`InsufficientBalanceError`) has been promoted from a node via
+    :func:`_propagate_node_failure`, a later untyped error cannot clear it.
+    An exhausted wallet is the root cause of whatever fails next, and losing
+    that reason would send the run back to LLM analysis — the exact cost this
+    module exists to avoid. Only another typed classification may replace it.
+
+    The trade-off: when a run hits a credit failure *and* a later unrelated
+    typed-less terminal error, the deterministic summary attributes the run to
+    the credit failure while ``error`` names the later one. That is intended;
+    the credit condition is the actionable one for the user.
+    """
+    if failure_reason := get_execution_failure_reason(error):
+        execution_stats.failure_reason = failure_reason
+    execution_stats.error = str(error) or type(error).__name__
+
+
+def _propagate_node_failure(
+    graph_stats: GraphExecutionStats,
+    node_error: BaseException,
+) -> None:
+    """Promote only trusted, typed node failures to graph-level stats."""
+    if get_execution_failure_reason(node_error):
+        _record_execution_failure(graph_stats, node_error)
+
 
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
@@ -720,6 +774,7 @@ class ExecutionProcessor:
             )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
+                _propagate_node_failure(graph_stats, execution_stats.error)
 
         node_error = execution_stats.error
         node_stats = execution_stats.model_dump()
@@ -924,16 +979,6 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=ExecutionStatus.RUNNING,
             )
-        elif exec_meta.status == ExecutionStatus.FAILED:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
         else:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
@@ -947,6 +992,12 @@ class ExecutionProcessor:
         else:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
+
+        # Analysis is terminal-only, so discard prior interpretation before continuing.
+        exec_stats.error = None
+        exec_stats.failure_reason = None
+        exec_stats.activity_status = None
+        exec_stats.correctness_score = None
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -1046,14 +1097,20 @@ class ExecutionProcessor:
         try:
             if (
                 not graph_exec.execution_context.dry_run
-                and db_client.get_credits(graph_exec.user_id) <= 0
+                and settings.config.enable_credit
             ):
-                raise InsufficientBalanceError(
-                    user_id=graph_exec.user_id,
-                    message="You have no credits left to run an agent.",
-                    balance=0,
-                    amount=1,
-                )
+                credit_balance = _get_execution_credit_balance(db_client, graph_exec)
+                required_balance = 1
+                if credit_balance < required_balance:
+                    raise InsufficientBalanceError(
+                        user_id=graph_exec.user_id,
+                        message=(
+                            f"At least {required_balance} credit must be available to run "
+                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                        ),
+                        balance=credit_balance,
+                        amount=required_balance,
+                    )
 
             # Input moderation
             try:
@@ -1269,7 +1326,11 @@ class ExecutionProcessor:
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
-            elif error is not None:
+            elif (
+                error is not None
+                or execution_stats.failure_reason
+                == ExecutionFailureReason.INSUFFICIENT_BALANCE
+            ):
                 execution_status = ExecutionStatus.FAILED
             else:
                 if db_client.has_pending_reviews_for_graph_exec(
@@ -1280,7 +1341,7 @@ class ExecutionProcessor:
                     execution_status = ExecutionStatus.COMPLETED
 
             if error:
-                execution_stats.error = str(error) or type(error).__name__
+                _record_execution_failure(execution_stats, error)
 
             return execution_status
 
@@ -1290,8 +1351,7 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
-            if not execution_stats.error:
-                execution_stats.error = str(error)
+            _record_execution_failure(execution_stats, error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):

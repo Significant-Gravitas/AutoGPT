@@ -1,7 +1,7 @@
 import asyncio
 import itertools
 import logging
-from typing import Literal, Optional, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -19,7 +19,7 @@ from backend.api.features.library.exceptions import (
 from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
-from backend.data.db import transaction
+from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
@@ -35,7 +35,7 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -1219,29 +1219,93 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     )
 
 
+async def is_store_listing_version_available_for_install(
+    store_listing_version_id: str,
+    *,
+    tx: prisma.Prisma | None = None,
+    lock_rows: bool = False,
+) -> bool:
+    """Validate one exact marketplace version for a library install.
+
+    Both the preflight and transactional revalidation use this query. The
+    shared row lock blocks withdrawal while permitting concurrent installs of
+    the same popular listing.
+    """
+    if lock_rows and tx is None:
+        raise ValueError("lock_rows requires a transaction client")
+
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
+    query = cast(
+        LiteralString,
+        """
+        SELECT slv.id
+        FROM {schema_prefix}"StoreListingVersion" AS slv
+        JOIN {schema_prefix}"StoreListing" AS sl
+          ON sl.id = slv."storeListingId"
+        WHERE slv.id = $1
+          AND slv."isDeleted" = false
+          AND slv."isAvailable" = true
+          AND slv."submissionStatus" = 'APPROVED'
+          AND sl."isDeleted" = false
+        {lock_clause}
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
+    )
+    client = tx if tx is not None else prisma.get_client()
+    rows = await client.query_raw(query, store_listing_version_id)
+    return bool(rows)
+
+
 async def add_store_agent_to_library(
-    store_listing_version_id: str, user_id: str
+    store_listing_version_id: str,
+    user_id: str,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
+
+
+async def add_store_agent_to_library_in_transaction(
+    store_listing_version_id: str,
+    user_id: str,
+    tx: prisma.Prisma,
+) -> library_model.LibraryAgent:
+    """Add a marketplace agent using the caller's transaction."""
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+
+
+async def _add_store_agent_to_library(
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    tx: prisma.Prisma | None,
+) -> library_model.LibraryAgent:
     logger.debug(
         "Adding agent from store listing version #%s to library for user #%s",
         store_listing_version_id,
         user_id,
     )
     store_listing_version = await resolve_store_version_for_library(
-        store_listing_version_id, admin=False
+        store_listing_version_id, admin=False, tx=tx
     )
-    existing = await restore_existing_library_agent(store_listing_version, user_id)
-    if existing is not None:
-        return existing
+    if tx is None:
+        # The transactional path upserts instead, so an existing entry is
+        # restored atomically with the caller's other writes.
+        existing = await restore_existing_library_agent(store_listing_version, user_id)
+        if existing is not None:
+            return existing
     graph_model = await resolve_graph_model_for_library(
         store_listing_version, user_id, admin=False
     )
-    return await add_graph_to_library(graph_model, user_id, store_listing_version)
+    return await add_graph_to_library(
+        graph_model, user_id, store_listing_version, tx=tx
+    )
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1923,7 +1987,12 @@ async def get_folder_agents_map(
 
 
 async def list_presets(
-    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
+    user_id: str,
+    page: int,
+    page_size: int,
+    graph_id: Optional[str] = None,
+    expert_id: str | None = None,
+    filter_by_expert: bool = False,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -1933,6 +2002,9 @@ async def list_presets(
         page: The current page index (1-based).
         page_size: Number of items to retrieve per page.
         graph_id: Agent Graph ID to filter by.
+        expert_id: Expert ID to match when expert filtering is enabled.
+        filter_by_expert: Whether to filter by the exact expert scope. This allows
+            ``None`` to select AutoPilot presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -1956,6 +2028,8 @@ async def list_presets(
     }
     if graph_id:
         query_filter["agentGraphId"] = graph_id
+    if filter_by_expert:
+        query_filter["expertId"] = expert_id
 
     presets_records = await prisma.models.AgentPreset.prisma().find_many(
         where=query_filter,
@@ -2007,6 +2081,24 @@ async def get_preset(
     return library_model.LibraryAgentPreset.from_db(preset)
 
 
+async def _resolve_private_expert_tenancy_or_not_found(
+    user_id: str,
+    expert_id: str,
+    not_found_message: str,
+) -> tuple[str, str | None]:
+    """Map only an inaccessible private expert to the caller's 404 contract."""
+    from backend.api.features.experts import experts_db
+
+    try:
+        return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise NotFoundError(not_found_message) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        ) from e
+
+
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
@@ -2023,9 +2115,10 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
-        expert_id: Requested expert attribution. Active ownership is validated
-            atomically with preset persistence. Runs fired by the preset
-            inherit the validated value.
+        expert_id: Expert attribution resolved by a trusted caller. The active
+            owned expert is revalidated here — atomically with preset
+            persistence — and forces personal tenancy; runs fired by the preset
+            inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -2049,11 +2142,26 @@ async def create_preset(
             "not found or not accessible"
         )
 
+    webhook = None
     # Refuse to attach a webhook the caller doesn't own
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+
+    if expert_id:
+        organization_id, team_id = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            expert_id,
+            f"Expert #{expert_id} not found",
+        )
+        if webhook is not None and (
+            webhook.organization_id,
+            webhook.team_id,
+        ) != (organization_id, team_id):
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    else:
+        organization_id, team_id = graph.organization_id, graph.team_id
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
@@ -2075,32 +2183,28 @@ async def create_preset(
             ]
         },
     )
-    if graph.organization_id:
-        create_input["organizationId"] = graph.organization_id
-    if graph.team_id:
-        create_input["teamId"] = graph.team_id
-    requested_expert_id = expert_id
-    if requested_expert_id:
+    if organization_id:
+        create_input["organizationId"] = organization_id
+    if team_id:
+        create_input["teamId"] = team_id
+    if expert_id:
+        # Re-resolve under a row lock so an archive or ownership change landing
+        # between the tenancy check above and this write can't be persisted.
+        # Experts are private and owner-only here, so a failed re-check is a
+        # not-found rather than a silently dropped attribution.
         async with transaction() as tx:
-            expert_id = await resolve_attributable_expert(
+            attributed_expert_id = await resolve_attributable_expert(
                 tx,
                 user_id,
-                requested_expert_id,
+                expert_id,
                 lock_for_update=True,
             )
-            if expert_id:
-                create_input["expertId"] = expert_id
+            if attributed_expert_id is None:
+                raise NotFoundError(f"Expert #{expert_id} not found")
+            create_input["expertId"] = attributed_expert_id
             new_preset = await prisma.models.AgentPreset.prisma(tx).create(
                 data=create_input,
                 include=AGENT_PRESET_INCLUDE,
-            )
-        if expert_id is None:
-            logger.warning(
-                "Ignoring inactive/unowned expert %s while creating preset "
-                "%s for user %s",
-                requested_expert_id,
-                preset.name,
-                user_id,
             )
     else:
         new_preset = await prisma.models.AgentPreset.prisma().create(
@@ -2204,8 +2308,21 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+
+    expert_tenancy: tuple[str, str | None] | None = None
+    if current.expert_id:
+        expert_tenancy = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            current.expert_id,
+            f"Preset #{preset_id} not found",
+        )
+
     async with transaction() as tx:
         update_data: prisma.types.AgentPresetUpdateInput = {}
+        if expert_tenancy is not None:
+            organization_id, team_id = expert_tenancy
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
         if name:
             update_data["name"] = name
         if description:
@@ -2257,18 +2374,34 @@ async def set_preset_webhook(
         raise NotFoundError(f"Preset #{preset_id} not found")
 
     # Refuse to attach a webhook the caller doesn't own
+    update_data: prisma.types.AgentPresetUpdateInput = (
+        {"Webhook": {"connect": {"id": webhook_id}}}
+        if webhook_id
+        else {"Webhook": {"disconnect": True}}
+    )
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+        if current.expertId:
+            organization_id, team_id = (
+                await _resolve_private_expert_tenancy_or_not_found(
+                    user_id,
+                    current.expertId,
+                    f"Preset #{preset_id} not found",
+                )
+            )
+            if (webhook.organization_id, webhook.team_id) != (
+                organization_id,
+                team_id,
+            ):
+                raise NotFoundError(f"Webhook #{webhook_id} not found")
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
 
     updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
-        data=(
-            {"Webhook": {"connect": {"id": webhook_id}}}
-            if webhook_id
-            else {"Webhook": {"disconnect": True}}
-        ),
+        data=update_data,
         include=AGENT_PRESET_INCLUDE,
     )
     if not updated:
