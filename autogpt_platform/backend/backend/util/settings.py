@@ -631,6 +631,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    autopilot_bot_teams_allow_unverified: bool = Field(
+        default=False,
+        description="Local dev only: accept Teams activities that carry no Bot "
+        "Connector token, so the Microsoft 365 Agents Playground can drive the "
+        "bot without a Teams tenant. Ignored unless app_env is 'local' — it "
+        "disables inbound authentication and must never take effect on a "
+        "deployed environment.",
+    )
+
     execution_event_bus_name: str = Field(
         default="execution_event",
         description="Name of the event bus",
@@ -894,6 +903,23 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="The bot's public @username (without the @) — used to "
         "build the t.me add-to-group link on the Bots settings page.",
+    )
+    microsoft_client_id: str = Field(
+        default="",
+        description="Entra application (client) ID, shared by Microsoft "
+        "integrations. Set together with the client secret and tenant ID to "
+        "mount the Teams bot adapter on the main API.",
+    )
+    microsoft_client_secret: str = Field(
+        default="",
+        description="Entra client secret for the shared Microsoft app, used "
+        "by the Teams bot to mint outbound Bot Connector tokens.",
+    )
+    microsoft_tenant_id: str = Field(
+        default="",
+        description="Tenant the Entra app belongs to. Required for the Teams "
+        "bot: single-tenant bots mint tokens against their own tenant "
+        "authority, and new registrations can no longer be multi-tenant.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
