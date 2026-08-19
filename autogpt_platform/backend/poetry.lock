@@ -7244,6 +7244,27 @@ doc = ["reno", "sphinx"]
 test = ["pytest", "tornado (>=4.5)", "typeguard"]
 
 [[package]]
+name = "tenki"
+version = "0.5.4"
+description = "Tenki Cloud Python SDK — cloud sandboxes (microVMs) for AI agents and code execution"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "tenki-0.5.4-py3-none-any.whl", hash = "sha256:d5df29fa5f7f93fc6c420d3a0b50e68e0b35fda63e17ed57c0f302a522cbf9ef"},
+    {file = "tenki-0.5.4.tar.gz", hash = "sha256:3d900ca3eedf98aea0ace315246a3f2bbdc19149d966a320cdb99fd406b681fa"},
+]
+
+[package.dependencies]
+grpcio = ">=1.73"
+protobuf = ">=5.29.5"
+websocket-client = ">=1.6"
+
+[package.extras]
+async = ["websockets (>=12)"]
+dev = ["grpcio-tools (>=1.73)", "pytest (>=8.0)", "pytest-asyncio (>=0.23)", "websockets (>=12)"]
+
+[[package]]
 name = "tiktoken"
 version = "0.12.0"
 description = "tiktoken is a fast BPE tokeniser for use with OpenAI's models"
@@ -8659,4 +8680,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "6dec3b5359b806ce23abc81506d4d2e6f8e7e47fa1637672996fecb7953ec113"
+content-hash = "6e78da9f349b6ebdbec613277bcf9a87bbdd52d5f5af2b57d00931c6e1fc6b54"

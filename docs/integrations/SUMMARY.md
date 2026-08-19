@@ -130,6 +130,7 @@
 * [Tavily Search](block-integrations/tavily/search.md)
 * [Telegram Blocks](block-integrations/telegram/blocks.md)
 * [Telegram Triggers](block-integrations/telegram/triggers.md)
+* [Tenki Code Execution](block-integrations/tenki/code_execution.md)
 * [Text](block-integrations/text.md)
 * [Todoist Comments](block-integrations/todoist/comments.md)
 * [Todoist Labels](block-integrations/todoist/labels.md)
