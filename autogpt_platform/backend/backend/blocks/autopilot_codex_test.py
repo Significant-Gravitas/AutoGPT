@@ -156,14 +156,15 @@ def test_transport_is_an_explicit_choice_not_inferred_from_the_credential():
     """Which account pays used to be encoded as "is a credential set", visible
     only by noticing an empty field. `platform` spends AutoGPT credits;
     `codex_app_server` spends the user's own ChatGPT subscription."""
-    from backend.blocks.autopilot import AutoPilotTransport
 
     schema = AutoPilotBlock.Input.jsonschema()
     transport = schema["properties"]["transport"]
 
-    assert transport["enum"] == ["platform", "codex_app_server"]
-    assert transport["default"] == AutoPilotTransport.PLATFORM.value
     assert transport["advanced"] is False
+    # Optional on purpose: a filled-in default cannot distinguish "never
+    # chosen" from "deliberately platform", and reading one as the other
+    # silently rebills legacy nodes.
+    assert transport.get("default") is None
 
 
 def test_platform_transport_maps_to_no_provider():
@@ -194,13 +195,10 @@ def test_autopilot_does_not_use_discriminator_type_mapping():
     assert not info.discriminator_type_mapping
 
 
-def test_legacy_node_without_transport_still_bills_to_its_connection():
-    """A node saved before `transport` existed carries a connection but no
-    transport, so pydantic fills the `platform` default and the two disagree.
-    Treating that default as a real choice would silently move the agent onto
-    platform credits."""
-    from backend.blocks.autopilot import AutoPilotTransport
-
+def test_legacy_node_has_no_transport_so_its_connection_decides():
+    """A node saved before the field existed carries a connection and no
+    transport. That must stay distinguishable from a deliberate platform
+    choice, or those agents get silently moved onto platform credits."""
     legacy = AutoPilotBlock.Input(
         prompt="do the thing",
         codex_credentials={
@@ -211,7 +209,24 @@ def test_legacy_node_without_transport_still_bills_to_its_connection():
         },
     )
 
-    # The disagreement the runtime has to detect and resolve in favour of the
-    # connection, rather than in favour of the filled-in default.
-    assert legacy.transport == AutoPilotTransport.PLATFORM
+    assert legacy.transport is None
     assert legacy.codex_credentials is not None
+
+
+def test_explicit_platform_is_distinguishable_from_unset():
+    """The whole reason the field is optional: a user moving a step back onto
+    platform credits must not be mistaken for a legacy node."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    chosen = AutoPilotBlock.Input(
+        prompt="do the thing",
+        transport=AutoPilotTransport.PLATFORM,
+        codex_credentials={
+            "id": "codex-1",
+            "provider": "codex",
+            "type": "oauth2",
+            "title": "ChatGPT for Codex",
+        },
+    )
+
+    assert chosen.transport == AutoPilotTransport.PLATFORM

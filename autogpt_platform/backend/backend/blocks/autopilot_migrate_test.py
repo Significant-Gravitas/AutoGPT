@@ -1,7 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma import Json
 
 from backend.blocks.autopilot_migrate import (
     AUTOPILOT_BLOCK_ID,
@@ -9,85 +8,64 @@ from backend.blocks.autopilot_migrate import (
 )
 
 
-def _node(node_id: str, constant_input: dict):
-    node = MagicMock()
-    node.id = node_id
-    node.constantInput = constant_input
-    return node
+@pytest.mark.asyncio
+async def test_dry_run_counts_without_writing():
+    with patch(
+        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        new=AsyncMock(return_value=[{"count": 3}]),
+    ), patch(
+        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        new=AsyncMock(),
+    ) as execute:
+        assert await migrate_autopilot_transport(apply=False) == 3
 
-
-def _patched_prisma(nodes: list):
-    client = MagicMock()
-    client.find_many = AsyncMock(return_value=nodes)
-    client.update = AsyncMock()
-    return client
+    execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_backfill_writes_json_not_a_raw_dict():
-    """Regression: prisma rejects a plain dict for a Json column with
-    "constantInput should be of any of the following types: JsonNullValueInput,
-    Json". The first live run of this migration failed on exactly that."""
-    client = _patched_prisma(
-        [
-            _node(
-                "node-1",
-                {"codex_credentials": {"id": "cred-1", "provider": "codex"}},
-            )
-        ]
-    )
-
-    with patch("backend.blocks.autopilot_migrate.AgentNode") as agent_node:
-        agent_node.prisma.return_value = client
+async def test_apply_writes_the_transport_value():
+    with patch(
+        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        new=AsyncMock(return_value=[{"count": 1}]),
+    ), patch(
+        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        new=AsyncMock(),
+    ) as execute:
         assert await migrate_autopilot_transport(apply=True) == 1
 
-    payload = client.update.await_args.kwargs["data"]["constantInput"]
-    assert isinstance(payload, Json), f"raw {type(payload).__name__} would be rejected"
+    sql, transport, block_id = execute.await_args.args
+    assert transport == "codex_app_server"
+    assert block_id == AUTOPILOT_BLOCK_ID
+    # Atomic single-key write, not a whole-blob replace: two booting pods must
+    # not be able to clobber each other or a concurrent user edit.
+    assert "jsonb_set" in sql
+    assert "UPDATE" in sql
 
 
 @pytest.mark.asyncio
-async def test_dry_run_reports_without_writing():
-    client = _patched_prisma([_node("node-1", {"codex_credentials": {"id": "cred-1"}})])
-
-    with patch("backend.blocks.autopilot_migrate.AgentNode") as agent_node:
-        agent_node.prisma.return_value = client
-        assert await migrate_autopilot_transport(apply=False) == 1
-
-    client.update.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_already_migrated_and_credential_free_nodes_are_skipped():
-    """Idempotent — it runs on every boot."""
-    client = _patched_prisma(
-        [
-            _node("no-credential", {"prompt": "hi"}),
-            _node("id-less-meta", {"codex_credentials": {"provider": "codex"}}),
-            _node(
-                "already-done",
-                {
-                    "transport": "codex_app_server",
-                    "codex_credentials": {"id": "cred-1"},
-                },
-            ),
-        ]
-    )
-
-    with patch("backend.blocks.autopilot_migrate.AgentNode") as agent_node:
-        agent_node.prisma.return_value = client
+async def test_nothing_pending_is_a_silent_no_op():
+    """Runs on every boot, so a steady "0 nodes" line would be pure noise."""
+    with patch(
+        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        new=AsyncMock(return_value=[{"count": 0}]),
+    ), patch(
+        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        new=AsyncMock(),
+    ) as execute:
         assert await migrate_autopilot_transport(apply=True) == 0
 
-    client.update.assert_not_awaited()
+    execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_only_autopilot_nodes_are_considered():
-    client = _patched_prisma([])
+async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
+    """The predicate is the idempotency guarantee — it must exclude nodes that
+    already have a transport, and id-less credential metas (nothing selected)."""
+    query = AsyncMock(return_value=[{"count": 0}])
+    with patch("backend.blocks.autopilot_migrate.query_raw_with_schema", new=query):
+        await migrate_autopilot_transport(apply=False)
 
-    with patch("backend.blocks.autopilot_migrate.AgentNode") as agent_node:
-        agent_node.prisma.return_value = client
-        await migrate_autopilot_transport(apply=True)
-
-    assert client.find_many.await_args.kwargs["where"] == {
-        "agentBlockId": AUTOPILOT_BLOCK_ID
-    }
+    sql, block_id = query.await_args.args
+    assert block_id == AUTOPILOT_BLOCK_ID
+    assert "NOT (\"constantInput\" ? 'transport')" in sql
+    assert "'codex_credentials'->>'id' IS NOT NULL" in sql

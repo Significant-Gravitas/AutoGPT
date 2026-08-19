@@ -642,6 +642,16 @@ class GraphModel(Graph, GraphMeta):
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
+                    # A value the mapping does not cover means this selection
+                    # needs no credential at all — AutoPilot's `platform`
+                    # transport, which is deliberately unmapped. Contribute
+                    # nothing rather than discriminating: `discriminate()`
+                    # rejects unknown values, and raising here would break
+                    # schema generation for the whole graph.
+                    mapping = field_info.discriminator_mapping
+                    if mapping and discriminator_value not in mapping:
+                        continue
+
                     discriminated_info = field_info.discriminate(discriminator_value)
                     discriminated_info.discriminator_values.add(discriminator_value)
 

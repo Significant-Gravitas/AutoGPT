@@ -99,11 +99,9 @@ CodexAutoPilotCredentials = CredentialsMetaInput[
 class AutoPilotTransport(str, Enum):
     """Which account pays for the model calls this block makes.
 
-    Modelled as an explicit choice rather than inferred from whether a codex
-    credential happens to be set, because the two options bill differently:
-    `platform` spends AutoGPT credits, `codex_app_server` spends the user's own
-    ChatGPT subscription. That distinction was previously visible only as an
-    empty credential field.
+    `platform` spends AutoGPT credits; `codex_app_server` spends the user's own
+    ChatGPT subscription. Because the two bill differently, the choice is
+    explicit rather than inferred from whether a credential happens to be set.
     """
 
     PLATFORM = "platform"
@@ -148,9 +146,9 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
-        transport: AutoPilotTransport = SchemaField(
+        transport: AutoPilotTransport | None = SchemaField(
             title="Transport",
-            default=AutoPilotTransport.PLATFORM,
+            default=None,
             description=(
                 "Run on platform credits, or on your connected ChatGPT "
                 "subscription if supported by your plan."
@@ -530,23 +528,34 @@ class AutoPilotBlock(Block):
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
         codex_connection = input_data.codex_credentials
-        if (
-            input_data.transport == AutoPilotTransport.PLATFORM
-            and codex_connection is not None
-        ):
-            # A node saved before `transport` existed carries a codex
-            # connection but no transport, so pydantic fills the `platform`
-            # default and the two disagree. Honour the connection: treating
-            # the default as a real choice would move those agents onto
-            # platform credits — a billing change nobody asked for. The
-            # backfill in `migrate_autopilot_transport` removes this case;
-            # the error is here so a skipped backfill is loud, not silent.
-            logger.error(
-                "AutoPilot node has a ChatGPT connection but no explicit "
-                "transport — treating it as codex_app_server. Run "
-                "`python -m backend.blocks.autopilot_migrate` to backfill."
-            )
-        use_codex = codex_connection is not None
+        # `transport` is optional precisely so "never chosen" stays
+        # distinguishable from "deliberately platform". A filled-in default
+        # cannot express that difference, and reading one as a real choice
+        # would silently move legacy agents onto platform credits.
+        if input_data.transport is None:
+            # Saved before the field existed: the connection *is* the choice.
+            use_codex = codex_connection is not None
+            if use_codex:
+                logger.warning(
+                    "AutoPilot node has a ChatGPT connection but no transport "
+                    "set — billing to the connection. Run "
+                    "`python -m backend.blocks.autopilot_migrate --apply`."
+                )
+        elif input_data.transport == AutoPilotTransport.CODEX_APP_SERVER:
+            if codex_connection is None:
+                # Falling back to platform here would bill a different account
+                # than the one the user asked for, without saying so.
+                yield "error", (
+                    "The ChatGPT transport needs a connected ChatGPT account. "
+                    "Connect one, or switch this step to platform credits."
+                )
+                return
+            use_codex = True
+        else:
+            # Explicit platform: honour it even if a connection is still
+            # attached, otherwise the user cannot move a step back onto
+            # platform credits once codex has been configured.
+            use_codex = False
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
