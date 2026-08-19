@@ -97,3 +97,61 @@ async def test_the_card_block_asks_for_the_card_without_an_opt_in():
     assert "include=card" in seen["path"]
     assert outputs["card_number"] == "4242424242424242"
     assert outputs["card_cvc"] == "123"
+
+
+def test_the_card_gate_predicate_itself_tracks_behave_as(monkeypatch):
+    """The other gate tests patch CARD_FLOW_DISABLED, so none of them pin the
+    predicate. Invert it — or point it at a setting Cloud does not set — and
+    they would all still pass while the card blocks went live on Cloud."""
+    from backend.util.settings import BehaveAs
+
+    monkeypatch.setattr(sr.settings.config, "behave_as", BehaveAs.CLOUD)
+    assert sr.card_flow_disabled() is True
+
+    monkeypatch.setattr(sr.settings.config, "behave_as", BehaveAs.LOCAL)
+    assert sr.card_flow_disabled() is False
+
+    # And the constant the blocks are wired to comes from that predicate.
+    assert sr.CARD_FLOW_DISABLED == sr.card_flow_disabled()
+
+
+@pytest.mark.asyncio
+async def test_listed_payment_methods_are_projected_to_known_fields():
+    """This block runs on Cloud, so what it emits cannot depend on Link's
+    response shape — a field added upstream would otherwise land in a
+    persisted execution record without anyone touching this repo."""
+    block = sr.StripeLinkListPaymentMethodsBlock()
+
+    async def _fake(credentials, method, path, body=None):
+        return {
+            "payment_details": [
+                {
+                    "id": "csmrpd_1",
+                    "type": "CARD",
+                    "name": "Debit",
+                    "is_default": True,
+                    "card_details": {
+                        "brand": "visa",
+                        "last4": "4242",
+                        "number": "4242424242424242",
+                        "cvc": "123",
+                    },
+                    "some_future_field": "should not be emitted",
+                }
+            ]
+        }
+
+    object.__setattr__(block, "_link_api_request", _fake)
+    inp = block.Input.model_validate({"credentials": TEST_CREDENTIALS_INPUT})
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+
+    [pm] = outputs["payment_methods"]
+    assert pm == {
+        "id": "csmrpd_1",
+        "type": "CARD",
+        "name": "Debit",
+        "is_default": True,
+        "card_details": {"brand": "visa", "last4": "4242"},
+    }
+    assert "number" not in pm["card_details"]
+    assert "some_future_field" not in pm

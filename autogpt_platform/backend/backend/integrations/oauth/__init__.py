@@ -243,31 +243,10 @@ _device_handlers_dict: dict[str, type[BaseDeviceAuthHandler]] = {
 }
 
 
-class DeviceHandlersDict(dict):
-    """Dictionary for device-code auth handlers."""
-
-    def __getitem__(self, key):
-        if key in _device_handlers_dict:
-            return _device_handlers_dict[key]
-        raise KeyError(key)
-
-    def get(self, key, default=None):
-        return _device_handlers_dict.get(key, default)
-
-    def __contains__(self, key):
-        return key in _device_handlers_dict
-
-    def keys(self):
-        return _device_handlers_dict.keys()
-
-    def values(self):
-        return _device_handlers_dict.values()
-
-    def items(self):
-        return _device_handlers_dict.items()
-
-
-DEVICE_HANDLERS_BY_NAME: dict[str, type[BaseDeviceAuthHandler]] = DeviceHandlersDict()
+# A plain dict: the registry is static, unlike the SDK-aware OAuth one, and a
+# wrapper overriding only __getitem__/get/__contains__ left len(), iteration,
+# truthiness and ** unpacking reporting it as empty.
+DEVICE_HANDLERS_BY_NAME: dict[str, type[BaseDeviceAuthHandler]] = _device_handlers_dict
 
 __all__ = [
     "HANDLERS_BY_NAME",

@@ -34,6 +34,9 @@ async def _not_found_handler(
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "test-user-id"
+# The id the mock_jwt_user fixture authenticates as, i.e. what the endpoints
+# must scope every store operation to.
+JWT_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 
 def _make_webhook(
@@ -1068,7 +1071,11 @@ class TestDeviceAuthEndpoints:
             )
 
         assert response.status_code == 200
-        assert response.json()["status"] == "approved"
+        # Not "approved with nothing attached": a client branching on status
+        # alone would show success, wire up nothing, and have no way to retry
+        # because the state token is gone. With no stored credential to report
+        # yet, the honest answer is that this is still in progress.
+        assert response.json()["status"] == "pending"
         assert response.json()["credentials"] is None
         mock_merge.assert_not_awaited()
 
@@ -1170,3 +1177,56 @@ class TestDeviceAuthEndpoints:
 
         assert response.status_code == 400
         assert "Expected a record" not in response.text
+
+    def test_every_state_operation_is_scoped_to_the_authenticated_user(self):
+        """User scoping is the whole authorization control on these endpoints.
+
+        Every other test here hands `creds_manager` a bare MagicMock and never
+        checks which user id reached the store, so a regression that passed a
+        constant — or dropped the argument — would leave the suite green.
+        """
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        handler = MagicMock()
+        handler.handle_default_scopes.return_value = ["userinfo:read"]
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="pending")
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(return_value=("tok", "v"))
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+
+        p1, p2, p3 = self._patched(handler, mock_mgr)
+        with p1, p2, p3:
+            client.post(f"/{self.PROVIDER}/device-auth/initiate")
+            client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        authenticated = mock_mgr.store.store_state_token.await_args.kwargs["user_id"]
+        assert authenticated == JWT_USER_ID
+        # peek is positional: (user_id, token, provider)
+        assert mock_mgr.store.peek_state_token.await_args.args[0] == JWT_USER_ID
+
+    def test_one_user_cannot_poll_another_users_state_token(self):
+        """The store scopes by user, so a token belonging to someone else reads
+        as absent rather than as someone else's flow."""
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        # What the store returns for a token that is not this user's.
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=None)
+
+        p1, p2, p3 = self._patched(handler, mock_mgr)
+        with p1, p2, p3:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "another-users-token"},
+            )
+
+        assert response.status_code == 400
+        assert mock_mgr.store.peek_state_token.await_args.args[0] == JWT_USER_ID
+        # And the provider is never contacted for a token we could not place.
+        handler.poll_for_tokens.assert_not_called()

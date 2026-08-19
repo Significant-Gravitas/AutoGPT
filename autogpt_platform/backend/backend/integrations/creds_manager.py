@@ -226,9 +226,23 @@ class IntegrationCredentialsManager:
         # integration_creds module which runs across multiple threads with separate
         # event loops; acquiring a Redis lock whose asyncio.Lock() was created on
         # a different loop raises "Future attached to a different loop".
-        if lock:
+        if lock or await self._rotates_refresh_token(credentials):
+            # A provider that rotates its refresh token cannot take the
+            # unlocked path: "last writer wins" is safe when the refresh token
+            # is static, but two workers replaying the same rotated token can
+            # have the grant revoked by a provider that treats reuse as
+            # compromise, and the loser can persist a token already
+            # invalidated upstream.
             return await self._refresh_locked(user_id, credentials)
         return await self._refresh_unlocked(user_id, credentials)
+
+    async def _rotates_refresh_token(self, credentials: OAuth2Credentials) -> bool:
+        try:
+            handler = await self._get_oauth_handler(credentials)
+        except Exception:
+            # Unknown provider: assume the safe answer.
+            return True
+        return bool(getattr(handler, "ROTATES_REFRESH_TOKEN", False))
 
     async def _get_oauth_handler(
         self, credentials: OAuth2Credentials

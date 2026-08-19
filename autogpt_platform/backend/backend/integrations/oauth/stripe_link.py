@@ -119,7 +119,13 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
                 access_token=SecretStr(data["access_token"]),
                 refresh_token=SecretStr(data["refresh_token"]),
                 access_token_expires_at=int(time.time()) + data["expires_in"],
-                scopes=granted or self.DEFAULT_SCOPES,
+                # No `or DEFAULT_SCOPES` fallback: recording the *requested*
+                # scopes as granted is exactly what this must not do. A
+                # credential that claims a scope its token lacks passes the
+                # up-front coverage check and then 403s at run time, and an
+                # inflated list can win `_merge_or_create_credential`'s
+                # superset check and overwrite a wider credential.
+                scopes=granted,
                 title="Stripe Link",
                 # Lets `_merge_or_create_credential` recognise a re-auth of the
                 # same wallet instead of stacking a second credential for it.
@@ -172,6 +178,14 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             logger.warning(f"Could not read Link userinfo for credential title: {e}")
             return None
 
+    # Link *rotates* the refresh token, unlike every other handler here. The
+    # credentials manager documents concurrent refreshes as tolerable because
+    # "the last writer wins and stale tokens are overwritten" — true only for a
+    # static refresh token. Two workers replaying the same rotated token can
+    # have the whole grant revoked by a provider that treats reuse as
+    # compromise, so refreshes for this provider must be serialized.
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
+
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials
     ) -> OAuth2Credentials:
@@ -192,8 +206,16 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             data = response.json()
 
         credentials.access_token = SecretStr(data["access_token"])
-        credentials.refresh_token = SecretStr(data["refresh_token"])
-        credentials.access_token_expires_at = int(time.time()) + data["expires_in"]
+        # RFC 6749 §6 makes `refresh_token` optional on refresh; a provider that
+        # does not rotate simply omits it. Indexing it unguarded would raise
+        # inside `_refresh_locked`, leaving the credential un-updated and every
+        # later run failing the same way with nothing pointing at the cause.
+        if data.get("refresh_token"):
+            credentials.refresh_token = SecretStr(data["refresh_token"])
+        if data.get("expires_in") is not None:
+            credentials.access_token_expires_at = int(time.time()) + int(
+                data["expires_in"]
+            )
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

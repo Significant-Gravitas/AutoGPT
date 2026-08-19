@@ -30,6 +30,7 @@ from backend.util.settings import BehaveAs, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+
 # Raw virtual-card numbers cannot be handed out on the hosted platform: block
 # outputs are persisted with the execution and surface into AutoPilot
 # transcripts, so a PAN there is cardholder data at rest and a stored CVC is
@@ -41,7 +42,36 @@ settings = Settings()
 # The Shared Payment Token flow is unaffected and runs on both. An SPT is a
 # token rather than a PAN, and the MPP blocks consume it in-process without
 # ever emitting it.
-CARD_FLOW_DISABLED = settings.config.behave_as == BehaveAs.CLOUD
+def card_flow_disabled() -> bool:
+    """Whether this deployment withholds the virtual-card blocks.
+
+    A function so the predicate itself is testable: the blocks read the
+    constant below at class-definition time, so a test that patches the
+    constant proves only that the wiring works, not that it is derived from
+    the right thing.
+    """
+    return settings.config.behave_as == BehaveAs.CLOUD
+
+
+CARD_FLOW_DISABLED = card_flow_disabled()
+
+# What a payment method may contribute to a block output. Listing payment
+# methods is not behind CARD_FLOW_DISABLED, so it runs on Cloud — projecting
+# explicitly makes "no cardholder data at rest on Cloud" a property of this
+# repo rather than of whatever Link happens to add to `payment_details` next.
+_PAYMENT_METHOD_FIELDS = ("id", "type", "name", "is_default")
+_CARD_DETAIL_FIELDS = ("brand", "last4", "exp_month", "exp_year")
+
+
+def _project_payment_method(pm: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the fields a graph needs to choose a payment method."""
+    projected: dict[str, Any] = {k: pm[k] for k in _PAYMENT_METHOD_FIELDS if k in pm}
+    details = pm.get("card_details")
+    if isinstance(details, dict):
+        projected["card_details"] = {
+            k: details[k] for k in _CARD_DETAIL_FIELDS if k in details
+        }
+    return projected
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +165,11 @@ class StripeLinkListPaymentMethodsBlock(Block):
             response = await self._link_api_request(
                 credentials, "GET", "/payment-details"
             )
-            yield "payment_methods", response.get("payment_details", [])
+            yield "payment_methods", [
+                _project_payment_method(pm)
+                for pm in response.get("payment_details", [])
+                if isinstance(pm, dict)
+            ]
         except Exception as e:
             yield "error", str(e)
 
@@ -478,9 +512,14 @@ class StripeLinkRetrieveCardBlock(Block):
                 f"/spend_requests/{input_data.spend_request_id}?include=card",
             )
 
-            yield "status", result["status"]
+            status = result["status"]
+            yield "status", status
 
-            card = result.get("card")
+            # Only for a spend the user actually approved. If a denied or
+            # expired request ever came back with card material attached,
+            # emitting it would put a PAN and CVC in the execution record for
+            # a charge that was refused.
+            card = result.get("card") if status == "approved" else None
             if card:
                 yield "card_number", card.get("number", "")
                 yield "card_cvc", card.get("cvc", "")
