@@ -320,8 +320,7 @@ class RunAgentTool(BaseTool):
                         message=f"Library agent '{params.library_agent_id}' not found",
                         session_id=session_id,
                     )
-                # Sub-graphs are needed to aggregate the full set of required
-                # credentials; an orchestrator agent has none of its own.
+                # Sub-graphs are needed to aggregate the full set of required credentials.
                 graph = await graph_db().get_graph(
                     library_agent.graph_id,
                     library_agent.graph_version,

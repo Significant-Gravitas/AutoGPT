@@ -275,8 +275,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             graph_id = library_agent.graph_id
             graph_version = library_agent.graph_version
 
-        # Sub-graphs are needed to aggregate the full set of required
-        # credentials; an agent that delegates to sub-agents has none of its own.
+        # Sub-graphs are needed to aggregate the full set of required credentials.
         graph = await graph_db().get_graph(
             graph_id, graph_version, user_id=user_id, include_subgraphs=True
         )
