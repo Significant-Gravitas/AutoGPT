@@ -1,0 +1,97 @@
+name: MCP Auth Backend Helper
+
+on:
+  push:
+    branches:
+      - feat/mcp-auth-schemes
+    paths:
+      - ".github/workflows/mcp-auth-backend-helper.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v6
+        with:
+          ref: feat/mcp-auth-schemes
+
+      - name: Apply compatibility hardening
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              if source.count(old) != 1:
+                  raise SystemExit(f"Expected one {label} match, found {source.count(old)}")
+              return source.replace(old, new, 1)
+
+          routes_path = Path("autogpt_platform/backend/backend/api/features/mcp/routes.py")
+          routes = routes_path.read_text()
+          routes = replace_once(
+              routes,
+              '''    auth_token: str | None = Field(\n        default=None,\n        description=(\n            "Optional authentication credential. Bare values use Bearer; "\n            "Basic/Bearer prefixes and complete Authorization headers are accepted."\n        ),\n    )''',
+              '''    auth_token: str | None = Field(\n        default=None,\n        description="Optional Bearer token for authenticated MCP servers",\n    )''',
+              "discover-tools field description",
+          )
+          routes = replace_once(
+              routes,
+              '''class MCPStoreTokenRequest(BaseModel):\n    """Request to store a manual MCP authentication credential."""\n\n    server_url: str = Field(\n        description="MCP server URL the credential authenticates against"\n    )\n    token: SecretStr = Field(\n        min_length=1,\n        description=(\n            "API credential. Bare values use Bearer; Basic/Bearer prefixes and "\n            "complete Authorization headers are accepted."\n        ),\n    )''',
+              '''class MCPStoreTokenRequest(BaseModel):\n    """Request to store a bearer token for an MCP server that doesn't support OAuth."""\n\n    server_url: str = Field(\n        description="MCP server URL the token authenticates against"\n    )\n    token: SecretStr = Field(\n        min_length=1, description="Bearer token / API key for the MCP server"\n    )''',
+              "store-token request schema",
+          )
+          routes = replace_once(
+              routes,
+              '''    """Store a manually provided Bearer or Basic MCP credential.\n\n    Bare values retain the historical Bearer behavior. Explicit ``Basic`` or\n    ``Bearer`` prefixes — including a complete copied ``Authorization`` header —\n    are normalized and stored so every MCP execution surface sends the same\n    authentication scheme.\n    """''',
+              '''    """\n    Store a manually provided bearer token as an MCP credential.\n\n    Used by the Copilot MCPSetupCard when the server doesn't support the MCP\n    OAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n    ``run_mcp_tool`` calls will automatically pick up the token via\n    ``_auto_lookup_credential``.\n    """''',
+              "store-token operation description",
+          )
+          routes_path.write_text(routes)
+
+          client_path = Path("autogpt_platform/backend/backend/blocks/mcp/client.py")
+          client = client_path.read_text()
+          client = replace_once(
+              client,
+              "import json\nimport logging\n",
+              "import json\nimport logging\nimport re\n",
+              "re import",
+          )
+          client = replace_once(
+              client,
+              '''    included_header_name = candidate.lower().startswith("authorization:")\n    if included_header_name:\n        candidate = candidate.split(":", 1)[1].strip()\n        if not candidate:\n            raise ValueError("Authorization header must include a credential.")''',
+              '''    authorization_header = re.match(\n        r"^authorization\\s*:\\s*(.*)$", candidate, flags=re.IGNORECASE\n    )\n    included_header_name = authorization_header is not None\n    if authorization_header:\n        candidate = authorization_header.group(1).strip()\n        if not candidate:\n            raise ValueError("Authorization header must include a credential.")''',
+              "Authorization header parser",
+          )
+          client_path.write_text(client)
+
+          test_path = Path(
+              "autogpt_platform/backend/backend/blocks/mcp/test_auth_schemes.py"
+          )
+          tests = test_path.read_text()
+          tests = replace_once(
+              tests,
+              '''        (\n            "Authorization: Basic cGstbGYtYWJjZA==",\n            "Basic cGstbGYtYWJjZA==",\n        ),''',
+              '''        (\n            "Authorization: Basic cGstbGYtYWJjZA==",\n            "Basic cGstbGYtYWJjZA==",\n        ),\n        (\n            "Authorization : Basic cGstbGYtYWJjZA==",\n            "Basic cGstbGYtYWJjZA==",\n        ),''',
+              "whitespace Authorization-header test",
+          )
+          test_path.write_text(tests)
+          PY
+
+          python -m compileall -q \
+            autogpt_platform/backend/backend/api/features/mcp/routes.py \
+            autogpt_platform/backend/backend/blocks/mcp/client.py \
+            autogpt_platform/backend/backend/blocks/mcp/test_auth_schemes.py
+
+      - name: Commit compatibility hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            autogpt_platform/backend/backend/api/features/mcp/routes.py \
+            autogpt_platform/backend/backend/blocks/mcp/client.py \
+            autogpt_platform/backend/backend/blocks/mcp/test_auth_schemes.py
+          git commit -m "fix(platform): preserve MCP API schema compatibility"
+          git push origin HEAD:feat/mcp-auth-schemes
