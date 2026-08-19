@@ -46,9 +46,12 @@ _COUNT_QUERY = f"""
     WHERE {_MATCH.replace("$2", "$1")}
 """
 
+# ARRAY['transport'] rather than the '{transport}' path literal: these
+# templates are run through str.format() to inject the schema prefix, so a
+# literal brace becomes a format field and raises KeyError at apply time.
 _UPDATE_QUERY = f"""
     UPDATE {{schema_prefix}}"AgentNode"
-    SET "constantInput" = jsonb_set("constantInput", '{{transport}}', to_jsonb($1::text), true)
+    SET "constantInput" = jsonb_set("constantInput", ARRAY['transport'], to_jsonb($1::text), true)
     WHERE {_MATCH}
 """
 
