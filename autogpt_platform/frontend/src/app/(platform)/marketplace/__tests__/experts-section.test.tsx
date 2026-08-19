@@ -113,6 +113,11 @@ describe("Marketplace ExpertsSection", () => {
     renderMarketplace();
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: /raise your own expert from scratch/i })
+        .getAttribute("href"),
+    ).toBe("/raise");
     await userEvent.click(await screen.findByText("Maria"));
     await userEvent.click(
       await screen.findByRole("button", { name: "Hire Maria" }),
@@ -141,7 +146,46 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("All AI Workflows")).toBeDefined();
     expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+    expect(screen.queryByText(/raise your own expert/)).toBeNull();
     expect(templatesRequested).toBe(false);
+  });
+
+  test("keeps the raise-your-own door open when no templates exist", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    await waitFor(
+      () => {
+        const raiseLink = screen.getByRole("link", {
+          name: "Raise your own expert from scratch",
+        });
+        expect(raiseLink.getAttribute("href")).toBe("/raise");
+        expect(raiseLink.textContent).not.toContain("…or");
+        expect(screen.queryByText("Meet the AI Experts")).toBeNull();
+      },
+      { timeout: 5_000 },
+    );
+  });
+
+  test("uses standalone raise copy when templates fail to load", async () => {
+    server.use(
+      http.get("/api/proxy/api/experts/templates", () =>
+        HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
+      ),
+      getListExpertsMockHandler([]),
+    );
+
+    renderMarketplace();
+
+    const raiseLink = await screen.findByRole("link", {
+      name: "Raise your own expert from scratch",
+    });
+    expect(raiseLink.getAttribute("href")).toBe("/raise");
+    expect(raiseLink.textContent).not.toContain("…or");
   });
 
   test("captures a voice pick as a plain-text soul PATCH after hire", async () => {
@@ -323,5 +367,19 @@ describe("Marketplace ExpertsSection", () => {
 
     expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
     expect(await screen.findByText("Hired")).toBeDefined();
+  });
+
+  test("template becomes hireable again once the expert is fired", async () => {
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([{ ...hiredMaria, is_archived: true }]),
+    );
+
+    renderMarketplace();
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    await screen.findByText("Maria");
+    expect(screen.getByText("Hire")).toBeDefined();
+    expect(screen.queryByText("Hired")).toBeNull();
   });
 });

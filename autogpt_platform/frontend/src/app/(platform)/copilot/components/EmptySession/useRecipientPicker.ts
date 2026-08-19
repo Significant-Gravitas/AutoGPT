@@ -10,7 +10,12 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 };
 
 export function useRecipientPicker() {
-  const { expertsById, isLoadingExperts, hasLoadedExperts } = useExpertMap();
+  const {
+    activeExperts,
+    activeExpertIds,
+    isLoadingExperts,
+    hasExpertsSettled,
+  } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
     parseAsString,
@@ -22,17 +27,17 @@ export function useRecipientPicker() {
   // rejects with a 404 on every send. Drop it so both agree on Autopilot.
   useEffect(
     function clearUnknownExpertParam() {
-      if (!hasLoadedExperts || !expertIdParam) return;
-      if (expertsById.has(expertIdParam)) return;
+      if (!hasExpertsSettled || !expertIdParam) return;
+      if (activeExpertIds.has(expertIdParam)) return;
       void setExpertIdParam(null);
     },
-    [hasLoadedExperts, expertIdParam, expertsById, setExpertIdParam],
+    [activeExpertIds, hasExpertsSettled, expertIdParam, setExpertIdParam],
   );
 
   const options: RecipientOption[] = [
     AUTOPILOT_RECIPIENT,
-    ...[...expertsById.entries()].map(([id, expert]) => ({
-      id,
+    ...activeExperts.map((expert) => ({
+      id: expert.id,
       name: expert.name,
       avatarUrl: expert.avatarUrl,
     })),

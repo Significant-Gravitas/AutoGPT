@@ -12,15 +12,14 @@ import uuid
 from datetime import datetime, timezone
 
 import prisma.models
+from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
-from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError
 from backend.util.settings import Settings
-from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -109,7 +108,7 @@ async def _delete_schedule_best_effort(
     """Never leave a schedule firing with no row pointing at it. One
     immediate retry covers transient RPC blips; a persistent failure is
     logged loudly by id. A surviving orphan is not invisible: it stays
-    expert-attributed, so it shows up in the detach preview and is deleted
+    expert-attributed, so it shows up in the detach preview and is paused
     by the archive detach sweep."""
     last_error: Exception | None = None
     for _attempt in range(2):
@@ -124,9 +123,11 @@ async def _delete_schedule_best_effort(
     )
 
 
-async def _get_expert_schedules(user_id: str, expert_id: str) -> list:
+async def _get_expert_schedules(
+    user_id: str, expert_id: str, *, include_paused: bool = False
+) -> list:
     schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="graph"
+        user_id=user_id, kind="graph", include_paused=include_paused
     )
     return [s for s in schedules if s.kind == "graph" and s.expert_id == expert_id]
 
@@ -150,11 +151,19 @@ async def get_detach_preview(user_id: str, expert_id: str) -> ExpertDetachPrevie
 
 
 async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
-    """Deactivate the expert's presets and delete her schedules.
+    """Deactivate the expert's presets and pause her schedules.
 
     Called on archive. Preset deactivation is the loud guard against
     orphaned webhook firing; the run-time gate (``enforce_expert_run_budget``
     refusing archived/paused experts) is the backstop for anything missed.
+
+    Schedules are paused, never deleted. Pausing keeps the trigger, inputs
+    and credentials on the job, so ``reattach_expert_triggers`` can restore
+    the exact schedule on re-hire — and it treats every schedule the same
+    whether the roster template seeded it or the user created it themselves
+    through the scheduling UI or chat. Deleting used to lose the latter set
+    permanently, because only template-seeded cadences are recoverable from
+    ``ExpertWorkflow.scheduleCron``.
     """
     # Only presets this flow turns off are marked, so re-hire restores
     # exactly them — one the user had deliberately disabled before archiving
@@ -169,31 +178,35 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
         data={"isActive": False, "deactivatedByExpertArchive": True},
     )
     scheduler = get_scheduler_client()
-    deleted_ids: list[str] = []
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
-            await scheduler.delete_schedule(schedule.id, user_id=user_id)
-            deleted_ids.append(schedule.id)
+            await scheduler.pause_schedule(schedule.id, user_id=user_id)
         except Exception as e:
+            # A schedule that refuses to pause keeps firing, so the run-time
+            # gate is what actually stops it. Log by id so the survivor is
+            # findable; it stays expert-attributed and a later detach retries.
             logger.warning(
-                f"Failed to delete schedule #{schedule.id} while detaching "
+                f"Failed to pause schedule #{schedule.id} while detaching "
                 f"expert #{expert_id}: {type(e).__name__}: {e}"
             )
-    # Only pointers to schedules that are actually gone are cleared. A
-    # failed deletion keeps its scheduleId, so the job stays visible and a
-    # later detach can retry it — wiping it would make re-hire create a
-    # second schedule while the orphaned original keeps firing.
-    if deleted_ids:
-        await prisma.models.ExpertWorkflow.prisma().update_many(
-            where={"expertId": expert_id, "scheduleId": {"in": deleted_ids}},
-            data={"scheduleId": None},
-        )
 
 
 async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     """Reverse of ``detach_expert_triggers``, for re-hire revival:
     reactivate the presets archiving deactivated (never ones the user had
-    turned off themselves) and recreate schedules from the stored cadence."""
+    turned off themselves) and resume the schedules archiving paused.
+
+    Resume is by expert attribution, the same key the pause used, so every
+    schedule comes back regardless of who created it. APScheduler recomputes
+    the next fire from the trigger, so a long-archived expert resumes at her
+    next cadence rather than replaying every run she missed.
+    """
+    # Local import avoids the experts_db -> scheduling module cycle. Re-hire
+    # may happen after a personal-org conversion, so restoring a trigger also
+    # moves its preset to the active owner's current private tenancy.
+    from backend.api.features.experts.experts_db import resolve_private_expert_tenancy
+
+    organization_id, team_id = await resolve_private_expert_tenancy(user_id, expert_id)
     await prisma.models.AgentPreset.prisma().update_many(
         where={
             "expertId": expert_id,
@@ -201,45 +214,40 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
             "isDeleted": False,
             "deactivatedByExpertArchive": True,
         },
-        data={"isActive": True, "deactivatedByExpertArchive": False},
-    )
-    workflows = await prisma.models.ExpertWorkflow.prisma().find_many(
-        where={
-            "expertId": expert_id,
-            "scheduleCron": {"not": None},
-            "scheduleId": None,
+        data={
+            "isActive": True,
+            "deactivatedByExpertArchive": False,
+            "organizationId": organization_id,
+            "teamId": team_id,
         },
-        include={"LibraryAgent": True, "StoreListingVersion": True},
     )
-    if not workflows:
-        return
-    user = await get_user_by_id(user_id)
-    user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
-    for workflow in workflows:
-        agent = workflow.LibraryAgent
-        if agent is None or not workflow.scheduleCron:
-            continue
-        listing = workflow.StoreListingVersion
-        await create_workflow_schedule(
-            workflow_row_id=workflow.id,
-            expert_id=expert_id,
-            user_id=user_id,
-            cron=workflow.scheduleCron,
-            graph_id=agent.agentGraphId,
-            graph_version=agent.agentGraphVersion,
-            name=listing.name if listing else "Expert workflow",
-            user_timezone=user_timezone,
-        )
+    scheduler = get_scheduler_client()
+    for schedule in await _get_expert_schedules(
+        user_id, expert_id, include_paused=True
+    ):
+        try:
+            await scheduler.resume_schedule(schedule.id, user_id=user_id)
+        except Exception as e:
+            logger.warning(
+                f"Failed to resume schedule #{schedule.id} while reviving "
+                f"expert #{expert_id}: {type(e).__name__}: {e}"
+            )
 
 
 async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> bool:
     """Pause the expert's scheduled/triggered runs (chat is untouched) and
-    log the pause. Returns False when already paused (no double events)."""
+    log the pause. Returns False when already paused (no double events).
+
+    Refuses archived experts so a pause can't silently mutate a row the rest
+    of the API reports as not-found; the archive flow itself pauses BEFORE
+    flipping ``isArchived`` (see ``experts_db.archive_expert``)."""
     updated = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
             "ownerUserId": user_id,
             "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
             "schedulesPausedAt": None,
         },
         data={"schedulesPausedAt": datetime.now(timezone.utc)},
@@ -260,9 +268,20 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     would re-pause her and Resume would be a no-op until the ISO week rolls
     over. Resuming is the user explicitly accepting more spend this week —
     the durable billing ledger is untouched, only the guardrail's counter
-    restarts."""
+    restarts.
+
+    Refuses archived experts: resuming one would un-pause schedules for an
+    expert every other surface 404s on (the route would then report 404
+    anyway, AFTER the mutation already landed). Revival goes through the
+    re-hire flow, which clears ``isArchived`` before resuming."""
     updated = await prisma.models.Expert.prisma().update_many(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False},
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
         data={"schedulesPausedAt": None},
     )
     if updated == 0:
@@ -291,10 +310,15 @@ async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
     the billing ledger, so the simpler check is the deliberate trade-off.
     """
     expert = await prisma.models.Expert.prisma().find_first(
-        where={"id": expert_id, "ownerUserId": user_id, "isTemplate": False}
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
     )
     if expert is None:
-        return
+        raise ExpertRunPausedError("Expert is unavailable.", expert_id)
     if expert.isArchived:
         raise ExpertRunPausedError(
             f"{expert.name} is archived; her schedules do not run.", expert_id

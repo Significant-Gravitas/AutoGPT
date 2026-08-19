@@ -125,13 +125,14 @@ describe("AutoPilot streaming — error paths", () => {
     const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
     flagState.experts = true;
     server.use(
-      http.get("*/api/experts", () =>
+      http.get("*/api/experts/identities", () =>
         HttpResponse.json([
           {
             id: expertId,
             name: "Maria",
             avatar_url: null,
             role: "Operations expert",
+            is_archived: false,
           },
         ]),
       ),

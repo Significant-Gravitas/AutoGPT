@@ -1,6 +1,7 @@
 """Graphiti client management with per-group_id isolation and LRU caching."""
 
 import asyncio
+import hashlib
 import logging
 import re
 import weakref
@@ -73,6 +74,51 @@ def derive_group_id(user_id: str) -> str:
         raise ValueError(f"Generated group_id '{group_id}' fails validation")
 
     return group_id
+
+
+def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
+    """Derive the Graphiti namespace for an AutoPilot or expert session.
+
+    Plain AutoPilot sessions retain the exact legacy ``user_<user_id>``
+    namespace so all existing user memories remain available. Expert sessions
+    use a fixed-length digest of the globally unique Expert ID, so memory stays
+    with the expert if authorized ownership changes later. Access remains a
+    separate server-side authorization concern; experts are owner-only today.
+    """
+    user_group_id = derive_group_id(user_id)
+    if expert_id is None:
+        return user_group_id
+    if not expert_id:
+        raise ValueError("expert_id must be non-empty to derive memory group_id")
+
+    safe_expert_id = re.sub(r"[^a-zA-Z0-9_-]", "", expert_id)
+    if not safe_expert_id:
+        raise ValueError(
+            f"expert_id '{expert_id[:32]}...' yields empty group_id after sanitization"
+        )
+    if safe_expert_id != expert_id:
+        raise ValueError(
+            "expert_id contains invalid characters for group_id derivation "
+            f"(original length={len(expert_id)}, "
+            f"sanitized='{safe_expert_id[:32]}'). "
+            "Only [a-zA-Z0-9_-] are allowed."
+        )
+
+    scope_digest = hashlib.sha256(expert_id.encode()).hexdigest()
+    return f"expert_{scope_digest}"
+
+
+def derive_memory_scope_key(user_id: str, expert_id: str | None = None) -> str:
+    """Stable internal key for queues, locks, and background markers.
+
+    AutoPilot keeps the legacy raw user key where existing Redis contracts use
+    it. Expert scopes use the same opaque ID as their Graphiti namespace.
+    """
+    if expert_id is None:
+        # Validate the opaque user ID while preserving the legacy raw Redis key.
+        derive_group_id(user_id)
+        return user_id
+    return derive_memory_group_id(user_id, expert_id)
 
 
 def _close_client_driver(client) -> None:

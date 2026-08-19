@@ -111,14 +111,27 @@ export function isKickoffMessage(message: UIMessage): boolean {
 
 export function shouldClearKickoffParam(
   isExpertsEnabled: boolean,
-  hasLoadedExperts: boolean,
+  hasExpertsSettled: boolean,
   expertId: string | null,
 ): boolean {
-  return !isExpertsEnabled || (hasLoadedExperts && expertId === null);
+  return !isExpertsEnabled || (hasExpertsSettled && expertId === null);
 }
 
-export function stripKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
-  return messages.filter((message) => !isKickoffMessage(message));
+// The kickoff prompt reads in the thread like any other opening message, so a
+// freshly raised expert answers something visible rather than thin air. Older
+// threads carry an inline marker that was never meant to be read.
+export function revealKickoffMessages<T extends UIMessage>(messages: T[]): T[] {
+  return messages.map((message) => {
+    if (!isKickoffMessage(message)) return message;
+    return {
+      ...message,
+      parts: message.parts.map((part) =>
+        part.type === "text"
+          ? { ...part, text: stripLegacyKickoffMarker(part.text) }
+          : part,
+      ),
+    };
+  });
 }
 
 export function kickoffStorageKey(userId: string, expertId: string): string {

@@ -288,6 +288,14 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=False,
     )
+    # The write gate only queries when ``session.expert_id`` is set; default it
+    # to "still hired" so expert-scoped tests reach the logic they care about.
+    # The gate's own tests re-patch this with the verdict they need.
+    mock_owns_active_expert = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     mocker.patch(
         "backend.api.features.chat.routes.chat_message_has_assistant_reply",
         new_callable=AsyncMock,
@@ -318,6 +326,7 @@ def _mock_stream_internals(
         enqueue=mock_schedule,
         paywall=mock_paywall,
         session=mock_session,
+        owns_active_expert=mock_owns_active_expert,
     )
 
 
@@ -345,6 +354,58 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+def test_stream_chat_allows_an_active_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-active"
+    active_check = mocks.owns_active_expert
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "keep working"},
+    )
+
+    assert response.status_code == 200
+    active_check.assert_awaited_once_with(test_user_id, "expert-active")
+    mocks.enqueue.assert_awaited_once()
+
+
+def test_stream_chat_rejects_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = "expert-archived"
+    active_check = mocks.owns_active_expert
+    active_check.return_value = False
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "keep working"},
+    )
+
+    assert response.status_code == 404
+    active_check.assert_awaited_once_with(test_user_id, "expert-archived")
+    mocks.enqueue.assert_not_awaited()
+    mocks.paywall.assert_not_awaited()
+
+
+def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Plain Autopilot turns must not pay for the write-gate's extra query."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.expert_id = None
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    mocks.owns_active_expert.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
 
 
 # ─── Duplicate message dedup ──────────────────────────────────────────
@@ -1689,6 +1750,39 @@ def test_create_session_with_archived_expert_returns_404(
     mock_create.assert_not_called()
 
 
+def test_create_session_maps_raced_expert_validation_to_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An expert archived after route validation still fails without a 500."""
+    from backend.api.features.experts import experts_db
+
+    mock_create = _mock_create_chat_session(mocker)
+    mock_create.side_effect = experts_db.ExpertNotFoundError("expert-1")
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Expert not found"}
+
+
+def test_create_session_maps_missing_personal_org_to_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.api.features.experts import experts_db
+
+    mock_create = _mock_create_chat_session(mocker)
+    mock_create.side_effect = experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+    _mock_get_expert(mocker, _make_expert("expert-1"))
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Your expert workspace is still being set up. Try again shortly."
+    }
+
+
 def test_create_session_rejects_builder_graph_id_with_expert_id(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -1760,6 +1854,7 @@ def _mock_stream_queue_internals(
     if session_exists:
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
+        mock_session.expert_id = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,
@@ -1807,6 +1902,7 @@ def _mock_stream_queue_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    return mock_session if session_exists else None
 
 
 def test_queue_pending_message_returns_200_when_turn_in_flight(
@@ -1837,6 +1933,72 @@ def test_queue_pending_message_session_not_found_returns_404(
         json={"message": "hi"},
     )
     assert response.status_code == 404
+
+
+def test_queue_pending_message_allows_an_active_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = "expert-active"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["buffer_length"] == 1
+    active_check.assert_awaited_once_with(test_user_id, "expert-active")
+
+
+def test_queue_pending_message_rejects_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = "expert-archived"
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 404
+    active_check.assert_awaited_once_with(test_user_id, "expert-archived")
+
+
+def test_queue_pending_message_skips_the_expert_gate_for_a_non_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_session = _mock_stream_queue_internals(mocker)
+    assert mock_session is not None
+    mock_session.expert_id = None
+    active_check = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 200
+    active_check.assert_not_awaited()
 
 
 def test_queue_pending_message_without_active_turn_returns_409(
@@ -2322,6 +2484,22 @@ def test_list_sessions_filters_by_expert_id(
     data = response.json()
     assert data["sessions"][0]["expert_id"] == "expert-1"
     assert mock_get.call_args.kwargs["expert_id"] == "expert-1"
+
+
+def test_list_sessions_rejects_empty_expert_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """GET /sessions?expert_id= must 422 at validation instead of reaching
+    the db layer, whose ValueError on "" would surface as a 4xx/5xx."""
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/sessions?expert_id=")
+
+    assert response.status_code == 422
+    mock_get.assert_not_awaited()
 
 
 def test_list_sessions_can_request_strict_recency(
@@ -3219,6 +3397,35 @@ def test_get_session_returns_backward_paginated(
     assert data["oldest_sequence"] == 0
     assert "forward_paginated" not in data
     assert "newest_sequence" not in data
+
+
+def test_get_session_serves_history_for_an_archived_expert_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Firing an expert must not take the thread's history with it.
+
+    The write gate lives on the two POST routes only. Reading a session
+    whose expert is fired stays a 200 and must not even consult the gate,
+    otherwise the read-only archive UX has nothing left to render.
+    """
+    page, _ = _make_paginated_messages(mocker)
+    page.session.expert_id = "expert-archived"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+    owns_active_expert = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    assert response.json()["messages"][0]["content"] == "hello"
+    owns_active_expert.assert_not_awaited()
 
 
 def test_get_session_releases_orphan_when_redis_empty_and_db_running(
