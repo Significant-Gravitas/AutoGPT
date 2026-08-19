@@ -21,7 +21,7 @@ from backend.util.feature_flag import (
 @pytest.fixture
 def ld_client(mocker):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch("ldclient.get", return_value=client)
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     client.is_initialized.return_value = True
     return client
 
