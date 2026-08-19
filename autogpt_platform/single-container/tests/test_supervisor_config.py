@@ -14,8 +14,14 @@ HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 # finish well inside this budget or Docker SIGKILLs the container (exit 137)
 # with the data stores still running.
 DOCKER_STOP_TIMEOUT_SECONDS = 10
-# Headroom for supervisor's own event loop, process reaping and final exit.
-SHUTDOWN_MARGIN_SECONDS = 2
+# Supervisor stops one group per phase, and each phase costs more than its
+# stopwaitsecs: `runforever()` polls with timeout=1 and needs at least one more
+# iteration to reap what `ordered_stop_groups_phase_1` just stopped. Measured
+# against supervisor 4.2.5 with every program ignoring SIGTERM, wall time came
+# out at sum(stopwaitsecs) + ~1.4s across 2-, 3- and 4-phase layouts, so charge
+# each phase for that rather than assuming stopwaitsecs is the whole cost.
+SUPERVISOR_PHASE_OVERHEAD_SECONDS = 0.5
+SHUTDOWN_MARGIN_SECONDS = 1
 
 # Programs that hold no durable state are signalled together, then the data
 # stores. `fatal-exit` is an event listener; supervisor always places those in
@@ -113,19 +119,20 @@ class SupervisorShutdownTierTest(unittest.TestCase):
 
         # Groups stop one after another, and a group is only done once its
         # slowest member has stopped, so the tiers add up.
-        budget = sum(
+        waits = [
             max(stop_wait(program, "program") for program in programs)
             for programs in GROUPS.values()
-        )
-        budget += sum(
-            stop_wait(listener, "eventlistener") for listener in EVENT_LISTENERS
-        )
+        ]
+        waits += [stop_wait(listener, "eventlistener") for listener in EVENT_LISTENERS]
+        phases = len(waits)
+        budget = sum(waits) + phases * SUPERVISOR_PHASE_OVERHEAD_SECONDS
 
         self.assertLessEqual(
             budget,
             DOCKER_STOP_TIMEOUT_SECONDS - SHUTDOWN_MARGIN_SECONDS,
-            f"worst-case supervised shutdown is {budget}s; Docker SIGKILLs the "
-            f"container at {DOCKER_STOP_TIMEOUT_SECONDS}s",
+            f"worst-case supervised shutdown is {sum(waits)}s of stopwaitsecs "
+            f"plus {phases} phases of supervisor overhead = {budget}s; Docker "
+            f"SIGKILLs the container at {DOCKER_STOP_TIMEOUT_SECONDS}s",
         )
 
     def test_postgres_uses_fast_shutdown(self) -> None:

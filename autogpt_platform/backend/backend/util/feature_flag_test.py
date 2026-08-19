@@ -12,6 +12,7 @@ from backend.util.feature_flag import (
     _env_flag_override,
     _fetch_user_context_data,
     feature_flag,
+    get_client,
     is_feature_enabled,
     mock_flag_variation,
     shutdown_launchdarkly,
@@ -417,10 +418,12 @@ class TestUserContextCacheDegradation:
 
 class TestShutdown:
     @pytest.fixture(autouse=True)
-    def reset_initialized_flag(self):
-        original = feature_flag_module._is_initialized
+    def reset_module_state(self):
+        initialized = feature_flag_module._is_initialized
+        shutdown = feature_flag_module._is_shutdown
         yield
-        feature_flag_module._is_initialized = original
+        feature_flag_module._is_initialized = initialized
+        feature_flag_module._is_shutdown = shutdown
 
     def test_shutdown_is_a_noop_when_never_initialized(self, mocker):
         # `initialize_launchdarkly` returns early when no SDK key is set, so
@@ -430,16 +433,45 @@ class TestShutdown:
         # took the exception out through service teardown, leaving the process
         # alive until it was killed.
         feature_flag_module._is_initialized = False
-        get_client = mocker.patch("backend.util.feature_flag.ldclient.get")
+        get_ldclient = mocker.patch("backend.util.feature_flag.ldclient.get")
 
         shutdown_launchdarkly()
 
-        get_client.assert_not_called()
+        get_ldclient.assert_not_called()
 
-    def test_shutdown_closes_an_initialized_client(self, mocker, ld_client):
+    def test_shutdown_closes_an_initialized_client(self, ld_client):
         feature_flag_module._is_initialized = True
 
         shutdown_launchdarkly()
 
         ld_client.close.assert_called_once()
-        assert feature_flag_module._is_initialized is False
+        assert feature_flag_module._is_shutdown is True
+
+    def test_shutdown_does_not_rearm_lazy_initialization(self, mocker, ld_client):
+        # A flag evaluation can land after teardown -- an in-flight request
+        # served during FastAPI's lifespan shutdown. Re-entering
+        # `initialize_launchdarkly` there would build a fresh client, with new
+        # streaming threads, inside the shutdown window.
+        # Only a *configured* deployment can rebuild a client, so the SDK key
+        # has to be present for this to exercise the regression at all.
+        mocker.patch.object(
+            feature_flag_module.settings.secrets,
+            "launch_darkly_sdk_key",
+            "sdk-key",
+        )
+        feature_flag_module._is_initialized = True
+        set_config = mocker.patch("backend.util.feature_flag.ldclient.set_config")
+
+        shutdown_launchdarkly()
+        get_client()
+
+        set_config.assert_not_called()
+
+    def test_shutdown_records_teardown_when_close_raises(self, ld_client):
+        feature_flag_module._is_initialized = True
+        ld_client.close.side_effect = RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            shutdown_launchdarkly()
+
+        assert feature_flag_module._is_shutdown is True

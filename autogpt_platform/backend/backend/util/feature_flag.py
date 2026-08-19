@@ -25,6 +25,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+_is_shutdown = False
 
 
 class Flag(str, Enum):
@@ -176,7 +177,7 @@ def is_configured() -> bool:
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
-    if not _is_initialized:
+    if not _is_initialized and not _is_shutdown:
         initialize_launchdarkly()
     return ldclient.get()
 
@@ -204,7 +205,7 @@ def initialize_launchdarkly() -> None:
 
 def shutdown_launchdarkly() -> None:
     """Shutdown the LaunchDarkly client."""
-    global _is_initialized
+    global _is_shutdown
     if not _is_initialized:
         # `initialize_launchdarkly` returns early when no SDK key is configured,
         # so `ldclient.set_config` was never called and `ldclient.get()` would
@@ -215,10 +216,19 @@ def shutdown_launchdarkly() -> None:
         # leave the process alive instead of exiting.
         return
 
-    if ldclient.get().is_initialized():
-        ldclient.get().close()
-        logger.info("LaunchDarkly client closed successfully")
-    _is_initialized = False
+    try:
+        if ldclient.get().is_initialized():
+            ldclient.get().close()
+            logger.info("LaunchDarkly client closed successfully")
+    finally:
+        # Deliberately not clearing `_is_initialized`: `get_client` reads that
+        # as "never started" and would call `initialize_launchdarkly` again,
+        # building a fresh client with new streaming threads inside the very
+        # shutdown window this is trying to end. A flag evaluation can still
+        # arrive here -- an in-flight request served during FastAPI's lifespan
+        # shutdown -- so record that teardown has happened instead, in a
+        # `finally` so a raising `close()` cannot leave the door open.
+        _is_shutdown = True
 
 
 async def _fetch_user_context_data(user_id: str) -> Context:

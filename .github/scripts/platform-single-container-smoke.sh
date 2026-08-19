@@ -12,6 +12,12 @@ readonly EXPECTED_CODEX_TEMP_ROOT=/dev/shm/autogpt-codex
 # it. Stopping with a generous timeout would pass here while a default host
 # SIGKILLs the container at 10s (exit 137) with the data stores still up.
 readonly STOCK_DOCKER_STOP_TIMEOUT=10
+# Exit code alone is a cliff: it only changes at the timeout, so a shutdown
+# drifting from 6s to 9.9s passes identically to a fast one until it tips over
+# to 137 on a slower host. Gate on the margin too, so erosion is caught here
+# rather than by an operator. Keep in step with SHUTDOWN_MARGIN_SECONDS in
+# single-container/tests/test_supervisor_config.py.
+readonly MAX_CLEAN_STOP_SECONDS=8
 readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
@@ -62,6 +68,12 @@ assert_clean_stop() {
   [[ "${exit_code}" == 0 ]] || {
     echo "container did not exit cleanly ${reason}: exit ${exit_code} after" \
       "${elapsed}s against the stock ${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2
+    return 1
+  }
+  ((elapsed <= MAX_CLEAN_STOP_SECONDS)) || {
+    echo "container exited cleanly ${reason} but took ${elapsed}s, over the" \
+      "${MAX_CLEAN_STOP_SECONDS}s budget, close to the stock" \
+      "${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2
     return 1
   }
   echo "clean stop ${reason} in ${elapsed}s"

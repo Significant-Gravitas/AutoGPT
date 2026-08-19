@@ -20,6 +20,8 @@ main() {
 check_supervised_processes() {
   # supervisord.conf assigns every program to an explicit stop tier, so status
   # lines are group-qualified. Keep this list in sync with those groups.
+  # fatal-exit stays bare: supervisor puts each event listener in a group
+  # named after itself, so it reports as `fatal-exit`, not `fatal-exit:...`.
   local programs=(
     fatal-exit
     state:postgres state:valkey-0 state:valkey-1 state:valkey-2

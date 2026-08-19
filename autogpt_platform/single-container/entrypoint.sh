@@ -138,7 +138,7 @@ configure_environment() {
   # mem0 and graphiti-core ship their own PostHog keys and report anonymous
   # usage to their vendors by default. A self-hosted appliance must not phone
   # home to third parties the operator never chose, so opt both out.
-  export MEM0_TELEMETRY=False
+  export MEM0_TELEMETRY=false
   export GRAPHITI_TELEMETRY_ENABLED=false
 
   export PYRO_HOST=127.0.0.1

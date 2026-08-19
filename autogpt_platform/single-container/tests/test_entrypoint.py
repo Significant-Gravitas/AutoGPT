@@ -262,7 +262,7 @@ class ThirdPartyTelemetryTest(unittest.TestCase):
         # mem0 and graphiti-core embed their own PostHog write keys and report
         # to their vendors unless these are set. A self-hosted appliance must
         # not send anything to a third party the operator never chose.
-        self.assertIn("export MEM0_TELEMETRY=False", entrypoint)
+        self.assertIn("export MEM0_TELEMETRY=false", entrypoint)
         self.assertIn("export GRAPHITI_TELEMETRY_ENABLED=false", entrypoint)
 
 
