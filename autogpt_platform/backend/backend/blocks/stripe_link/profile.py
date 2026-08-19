@@ -20,8 +20,8 @@ from backend.blocks.stripe_link._auth import (
     StripeLinkCredentials,
     StripeLinkCredentialsField,
     StripeLinkCredentialsInput,
+    link_api_request,
 )
-from backend.blocks.stripe_link.spend_request import link_api_request
 from backend.data.model import SchemaField
 
 

@@ -7,8 +7,9 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 ``backend/integrations/oauth/stripe_link.py``.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
+import httpx
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials
@@ -73,3 +74,35 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
+
+
+async def link_api_request(
+    credentials: StripeLinkCredentials,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Make an authenticated request to the Link API.
+
+    Uses the access_token from OAuth2Credentials as a Bearer token.
+
+    Refresh is deliberately not handled here: `IntegrationCredentialsManager`
+    already refreshes on acquire (`_refresh_locked`), under a per-credential
+    lock, and persists the rotated tokens. Refreshing inside the block would
+    bypass both and let concurrent nodes stampede the token endpoint.
+    """
+    headers = {
+        "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+        response = await client.request(
+            method=method,
+            url=f"{LINK_API_BASE_URL}{path}",
+            headers=headers,
+            json=body,
+        )
+        response.raise_for_status()
+        return response.json()

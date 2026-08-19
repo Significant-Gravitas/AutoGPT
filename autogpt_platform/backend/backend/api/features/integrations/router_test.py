@@ -1090,3 +1090,83 @@ class TestDeviceAuthEndpoints:
 
         assert response.status_code == 502
         assert "internal-host-1" not in response.text
+
+    def test_poll_stores_the_credential_on_the_winning_approval(self):
+        """The primary success path: consume wins, credential is stored.
+
+        Every other approved-status test here makes `consume_state_token`
+        return None to exercise the race loser, so the path that actually
+        stores a credential -- and the scope un-flatten below it -- had no
+        coverage at all.
+        """
+        from backend.data.model import OAuth2Credentials
+        from backend.integrations.oauth.device_base import DeviceAuthPollResult
+
+        stored = OAuth2Credentials(
+            provider="stripe_link",
+            access_token=SecretStr("tok-access-do-not-leak"),
+            refresh_token=SecretStr("tok-refresh-do-not-leak"),
+            # Link returns RFC 6749 space-delimited scopes; the router
+            # un-flattens them so scope checks compare like with like.
+            scopes=["userinfo:read payment_methods.agentic"],
+            title="Stripe Link",
+        )
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.poll_for_tokens = AsyncMock(
+            return_value=DeviceAuthPollResult(status="approved", credentials=stored)
+        )
+
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(return_value=self._state())
+        mock_mgr.store.consume_state_token = AsyncMock(return_value=self._state())
+
+        with (
+            patch.object(router, "dependencies", []),
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager", mock_mgr),
+            patch(
+                "backend.api.features.integrations.router._merge_or_create_credential",
+                new=AsyncMock(side_effect=lambda *a, **kw: a[2]),
+            ) as mock_merge,
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert body["credentials"] is not None
+        mock_merge.assert_awaited()
+        # The space-delimited scope string is split before storage.
+        assert stored.scopes == ["userinfo:read", "payment_methods.agentic"]
+        # And no secret rides along in the response.
+        assert "do-not-leak" not in response.text
+
+    def test_poll_maps_a_missing_user_row_to_an_invalid_token(self):
+        """A caller with no backend User row raises a Prisma RecordNotFound in
+        `peek_state_token`. That used to surface as a 500 carrying raw DB text,
+        inconsistent with `initiate`, which already returns a clean message."""
+        handler = MagicMock()
+        mock_mgr = MagicMock()
+        mock_mgr.store.peek_state_token = AsyncMock(
+            side_effect=RuntimeError(
+                "An operation failed because it depends on one or more records "
+                "that were required but not found. Expected a record, found none."
+            )
+        )
+
+        p1, p2, p3 = self._patched(handler, mock_mgr)
+        with p1, p2, p3:
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/poll",
+                json={"state_token": "state-token"},
+            )
+
+        assert response.status_code == 400
+        assert "Expected a record" not in response.text

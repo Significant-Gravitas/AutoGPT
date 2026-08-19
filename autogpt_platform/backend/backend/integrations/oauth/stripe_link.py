@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import SecretStr
 
+from backend.blocks.stripe_link._auth import LINK_API_BASE_URL, LINK_HTTP_TIMEOUT
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.device_base import (
     BaseDeviceAuthHandler,
@@ -28,11 +29,6 @@ app_config = Config()
 LINK_AUTH_BASE_URL = "https://login.link.com"
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
 LINK_CLIENT_NAME = "AutoGPT"
-
-# The initiate/poll endpoints await these calls inline, so an upstream that
-# accepts a connection and then stalls would pin a request worker for as long
-# as it cares to hold the socket. Bound every hop.
-LINK_HTTP_TIMEOUT = 15.0
 
 
 class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
@@ -112,13 +108,22 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
 
         if response.status_code == 200:
             data = response.json()
+            # Record what was actually granted, not what was asked for. The
+            # two can differ, and storing the request means a later scope
+            # check passes on scopes the token may not carry. Link returns a
+            # space-delimited `scope` string per RFC 6749; fall back to the
+            # requested set only when it is absent.
+            granted = str(data.get("scope") or "").split()
             credentials = OAuth2Credentials(
                 provider=self.PROVIDER_NAME,
                 access_token=SecretStr(data["access_token"]),
                 refresh_token=SecretStr(data["refresh_token"]),
                 access_token_expires_at=int(time.time()) + data["expires_in"],
-                scopes=self.DEFAULT_SCOPES,
+                scopes=granted or self.DEFAULT_SCOPES,
                 title="Stripe Link",
+                # Lets `_merge_or_create_credential` recognise a re-auth of the
+                # same wallet instead of stacking a second credential for it.
+                username=await self._fetch_username(data["access_token"]),
             )
             return DeviceAuthPollResult(status="approved", credentials=credentials)
 
@@ -145,6 +150,27 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
             f"Unexpected response from Link auth: "
             f"{response.status_code} {response.text}"
         )
+
+    async def _fetch_username(self, access_token: str) -> str | None:
+        """Best-effort wallet identity, used only to de-duplicate credentials.
+
+        A failure here must not fail an otherwise-successful authorization:
+        the grant is already complete by this point, and the caller would be
+        left with an approved device code and no credential.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
+                response = await client.get(
+                    f"{LINK_API_BASE_URL}/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if response.status_code != 200:
+                return None
+            info = response.json()
+            return info.get("email") or info.get("phone") or None
+        except Exception as e:
+            logger.warning(f"Could not read Link userinfo for credential title: {e}")
+            return None
 
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials

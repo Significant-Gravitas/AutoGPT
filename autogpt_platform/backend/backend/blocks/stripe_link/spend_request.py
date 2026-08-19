@@ -9,8 +9,6 @@ card or shared payment token from the user's Link wallet.
 import logging
 from typing import Any
 
-import httpx
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -19,13 +17,12 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.stripe_link._auth import (
-    LINK_API_BASE_URL,
-    LINK_HTTP_TIMEOUT,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     StripeLinkCredentials,
     StripeLinkCredentialsField,
     StripeLinkCredentialsInput,
+    link_api_request,
 )
 from backend.data.model import SchemaField
 from backend.util.settings import BehaveAs, Settings
@@ -50,38 +47,6 @@ CARD_FLOW_DISABLED = settings.config.behave_as == BehaveAs.CLOUD
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-async def link_api_request(
-    credentials: StripeLinkCredentials,
-    method: str,
-    path: str,
-    body: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """
-    Make an authenticated request to the Link API.
-
-    Uses the access_token from OAuth2Credentials as a Bearer token.
-
-    Refresh is deliberately not handled here: `IntegrationCredentialsManager`
-    already refreshes on acquire (`_refresh_locked`), under a per-credential
-    lock, and persists the rotated tokens. Refreshing inside the block would
-    bypass both and let concurrent nodes stampede the token endpoint.
-    """
-    headers = {
-        "Authorization": f"Bearer {credentials.access_token.get_secret_value()}",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
-        response = await client.request(
-            method=method,
-            url=f"{LINK_API_BASE_URL}{path}",
-            headers=headers,
-            json=body,
-        )
-        response.raise_for_status()
-        return response.json()
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +177,12 @@ class StripeLinkCreateCardSpendRequestBlock(Block):
             min_length=100,
         )
         amount: int = SchemaField(
-            description="Amount in cents (max 50000)", ge=1, le=50000
+            description=(
+                "Amount in the currency's smallest unit — cents for USD, but "
+                "whole units for zero-decimal currencies like JPY (max 50000)"
+            ),
+            ge=1,
+            le=50000,
         )
         currency: str = SchemaField(
             description="3-letter ISO currency code", default="usd"
