@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AIConnectionsSection } from "./components/AIConnectionsSection/AIConnectionsSection";
 import { ConnectServiceDialog } from "./components/ConnectServiceDialog/ConnectServiceDialog";
 import { IntegrationsHeader } from "./components/IntegrationsHeader/IntegrationsHeader";
 import { IntegrationsList } from "./components/IntegrationsList/IntegrationsList";
@@ -18,6 +19,7 @@ export function IntegrationsPanel({ withHeading = true }: Props) {
         onConnect={() => setIsConnectOpen(true)}
         withTitle={withHeading}
       />
+      <AIConnectionsSection />
       <IntegrationsList />
       <ConnectServiceDialog
         open={isConnectOpen}
