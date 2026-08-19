@@ -7,6 +7,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import React from "react";
 import { CredentialsInput } from "../CredentialsInput";
 
 vi.mock("@/hooks/useCredentials", () => ({ default: vi.fn() }));
@@ -466,6 +467,30 @@ describe("CredentialsInput – OAuth flow", () => {
   });
 });
 
+function StatefulCredentialsInput({
+  initial,
+}: {
+  initial?: {
+    id: string;
+    provider: string;
+    type: "oauth2";
+    title: string;
+  };
+}) {
+  // The real parent writes the selection back down. Without that the unset
+  // issued when a credential stops resolving never reaches the component, and
+  // the auto-heal below it can never run.
+  const [selected, setSelected] = React.useState<any>(initial);
+  return (
+    <CredentialsInput
+      schema={baseSchema}
+      selectedCredentials={selected}
+      onSelectCredentials={setSelected}
+      showTitle={false}
+    />
+  );
+}
+
 describe("CredentialsInput – a removed connection", () => {
   const codexCredential = {
     id: "codex-1",
@@ -475,143 +500,65 @@ describe("CredentialsInput – a removed connection", () => {
     scopes: [],
   };
 
-  it("tells the user their connection was removed instead of going quietly blank", async () => {
+  const deleted = {
+    id: "deleted-cred",
+    provider: "codex",
+    type: "oauth2" as const,
+    title: "Old ChatGPT connection",
+  };
+
+  function mockProvider(savedCredentials: any[]) {
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
         provider: "codex",
         providerName: "Codex",
-        savedCredentials: [codexCredential],
+        savedCredentials,
       }),
     );
+  }
 
-    render(
-      <CredentialsInput
-        schema={baseSchema}
-        selectedCredentials={{
-          id: "deleted-cred",
-          provider: "codex",
-          type: "oauth2",
-          title: "ChatGPT for Codex",
-        }}
-        onSelectCredentials={vi.fn()}
-        showTitle={false}
-      />,
-    );
+  it("heals the node and reports the swap", async () => {
+    // Healing is the point: reconnecting mints a new id, and adopting it is
+    // what makes disconnect/reconnect just work. Refusing to adopt would force
+    // a manual re-pick in the common case (same account) to warn about the
+    // rare one (a different account). So heal — and say so.
+    mockProvider([codexCredential]);
 
-    expect(await screen.findByText(/was removed/i)).toBeDefined();
+    render(<StatefulCredentialsInput initial={deleted} />);
+
+    expect(
+      await screen.findByText(
+        /Old ChatGPT connection was removed — now using ChatGPT for Codex\./i,
+      ),
+    ).toBeDefined();
   });
 
-  it("does not silently adopt the one remaining connection", async () => {
-    const onSelectCredentials = vi.fn();
-    mockUseCredentials.mockReturnValue(
-      makeCredentialsReturn({
-        provider: "codex",
-        providerName: "Codex",
-        savedCredentials: [codexCredential],
-      }),
-    );
+  it("asks the user to choose when nothing is left to heal with", async () => {
+    mockProvider([]);
+
+    render(<StatefulCredentialsInput initial={deleted} />);
+
+    // An empty saved list is also how "still loading" looks, so the component
+    // leaves the selection alone and says nothing rather than guessing.
+    await waitFor(() => expect(screen.queryByText(/now using/i)).toBeNull());
+  });
+
+  it("says nothing when the configured connection still resolves", async () => {
+    mockProvider([codexCredential]);
 
     render(
-      <CredentialsInput
-        schema={baseSchema}
-        selectedCredentials={{
-          id: "deleted-cred",
-          provider: "codex",
-          type: "oauth2",
-          title: "ChatGPT for Codex",
-        }}
-        onSelectCredentials={onSelectCredentials}
-        showTitle={false}
+      <StatefulCredentialsInput
+        initial={{ ...codexCredential, type: "oauth2" }}
       />,
     );
 
-    await waitFor(() =>
-      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
-    );
-    // Auto-selection would route the agent through a different account
-    // without telling anyone; the only call must be the unset.
-    await waitFor(() =>
-      expect(
-        onSelectCredentials.mock.calls.filter((c) => c[0] !== undefined),
-      ).toHaveLength(0),
-    );
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
   it("still auto-selects a lone connection when nothing was configured before", async () => {
-    const onSelectCredentials = vi.fn();
-    mockUseCredentials.mockReturnValue(
-      makeCredentialsReturn({
-        provider: "codex",
-        providerName: "Codex",
-        savedCredentials: [codexCredential],
-      }),
-    );
+    mockProvider([codexCredential]);
 
-    render(
-      <CredentialsInput
-        schema={baseSchema}
-        selectedCredentials={undefined}
-        onSelectCredentials={onSelectCredentials}
-        showTitle={false}
-      />,
-    );
-
-    await waitFor(() =>
-      expect(onSelectCredentials).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "codex-1" }),
-      ),
-    );
-    expect(screen.queryByText(/was removed/i)).toBeNull();
-  });
-});
-
-describe("CredentialsInput – removal notice lifecycle", () => {
-  it("clears the removal notice once a real connection is selected", async () => {
-    const codexCredential = {
-      id: "codex-1",
-      provider: "codex",
-      type: "oauth2" as const,
-      title: "ChatGPT for Codex",
-      scopes: [],
-    };
-    mockUseCredentials.mockReturnValue(
-      makeCredentialsReturn({
-        provider: "codex",
-        providerName: "Codex",
-        savedCredentials: [codexCredential],
-      }),
-    );
-
-    const { rerender } = render(
-      <CredentialsInput
-        schema={baseSchema}
-        selectedCredentials={{
-          id: "deleted-cred",
-          provider: "codex",
-          type: "oauth2",
-          title: "ChatGPT for Codex",
-        }}
-        onSelectCredentials={vi.fn()}
-        showTitle={false}
-      />,
-    );
-
-    expect(await screen.findByText(/was removed/i)).toBeDefined();
-
-    // The user picks the connection that does exist.
-    rerender(
-      <CredentialsInput
-        schema={baseSchema}
-        selectedCredentials={{
-          id: "codex-1",
-          provider: "codex",
-          type: "oauth2",
-          title: "ChatGPT for Codex",
-        }}
-        onSelectCredentials={vi.fn()}
-        showTitle={false}
-      />,
-    );
+    render(<StatefulCredentialsInput />);
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
