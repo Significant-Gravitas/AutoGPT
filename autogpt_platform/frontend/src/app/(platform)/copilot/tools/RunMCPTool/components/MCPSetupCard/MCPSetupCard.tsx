@@ -337,6 +337,14 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 <option value="basic">Basic authentication</option>
               </select>
             </label>
+            <label
+              htmlFor="mcp-manual-auth-token"
+              className="text-xs font-medium text-gray-700"
+            >
+              {manualAuthScheme === "basic"
+                ? "Basic authentication token"
+                : "API token"}
+            </label>
             <p className="text-xs text-gray-500">
               {manualAuthScheme === "basic"
                 ? 'Paste the value after "Basic", or paste the complete Authorization header.'
@@ -344,8 +352,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             </p>
             <div className="flex gap-2">
               <input
+                id="mcp-manual-auth-token"
                 type="password"
-                aria-label={`API token for ${service}`}
+                aria-label={`${
+                  manualAuthScheme === "basic"
+                    ? "Basic authentication token"
+                    : "API token"
+                } for ${service}`}
                 placeholder="Paste API token"
                 value={manualToken}
                 onChange={(e) => {
