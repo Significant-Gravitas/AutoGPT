@@ -254,6 +254,7 @@ export function useChatSession({
       );
     }
     if (
+      copilotLlmAuth !== null &&
       copilotLlmAuth.authProvider !== "platform" &&
       resolvedLLMAuth.authProvider === "platform"
     ) {

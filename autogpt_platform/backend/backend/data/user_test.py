@@ -614,3 +614,33 @@ class TestGetAuthUserFlagFields:
             fields = await user_module.get_auth_user_flag_fields("ghost")
 
         assert fields is None
+
+
+class TestGetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_returns_the_saved_route(self):
+        user = _application_user("user-1", "user@example.com")
+        user.default_chat_auth_provider = "codex"
+        user.default_chat_credential_id = "cred-1"
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == ("codex", "cred-1")
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_platform_row_yet_reads_as_nothing_saved(self):
+        """Sign-up leaves a window before ``POST /auth/user`` creates the row.
+
+        Transport discovery and session creation both read this on paths that
+        never touched the user table before the setting existed, so raising
+        here would take them down for a freshly signed-up account.
+        """
+        with patch.object(
+            user_module,
+            "get_user_by_id",
+            AsyncMock(side_effect=ValueError("User not found with ID: user-1")),
+        ):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
