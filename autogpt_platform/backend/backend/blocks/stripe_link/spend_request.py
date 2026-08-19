@@ -10,7 +10,7 @@ import logging
 from typing import Any
 from urllib.parse import quote
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from backend.blocks._base import (
     Block,
@@ -33,6 +33,7 @@ from backend.util.settings import BehaveAs, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+
 # Raw virtual-card numbers cannot be handed out on the hosted platform: block
 # outputs are persisted with the execution and surface into AutoPilot
 # transcripts, so a PAN there is cardholder data at rest and a stored CVC is
@@ -44,18 +45,49 @@ settings = Settings()
 # The Shared Payment Token flow is unaffected and runs on both. An SPT is a
 # token rather than a PAN, and the MPP blocks consume it in-process without
 # ever emitting it.
-CARD_FLOW_DISABLED = settings.config.behave_as == BehaveAs.CLOUD
+def card_flow_disabled() -> bool:
+    """Whether this deployment withholds the virtual-card blocks.
+
+    A function so the predicate itself is testable: the blocks read the
+    constant below at class-definition time, so a test that patches the
+    constant proves only that the wiring works, not that it is derived from
+    the right thing.
+    """
+    return settings.config.behave_as == BehaveAs.CLOUD
+
+
+CARD_FLOW_DISABLED = card_flow_disabled()
+
+# What a payment method may contribute to a block output. Listing payment
+# methods is not behind CARD_FLOW_DISABLED, so it runs on Cloud — projecting
+# explicitly makes "no cardholder data at rest on Cloud" a property of this
+# repo rather than of whatever Link happens to add to `payment_details` next.
+_PAYMENT_METHOD_FIELDS = ("id", "type", "name", "is_default")
+_CARD_DETAIL_FIELDS = ("brand", "last4", "exp_month", "exp_year")
+
+
+def _project_payment_method(pm: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the fields a graph needs to choose a payment method."""
+    projected: dict[str, Any] = {k: pm[k] for k in _PAYMENT_METHOD_FIELDS if k in pm}
+    details = pm.get("card_details")
+    if isinstance(details, dict):
+        projected["card_details"] = {
+            k: details[k] for k in _CARD_DETAIL_FIELDS if k in details
+        }
+    return projected
 
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-CREDENTIAL_TYPE_CARD = "card"
+# Only the token path sends a `credential_type`; the card path omits it and
+# lets Link default. There is deliberately no CREDENTIAL_TYPE_CARD constant —
+# it read as though the card request sends one, which invites someone to start
+# sending a field Link does not expect.
 CREDENTIAL_TYPE_SPT = "shared_payment_token"
 
-# The key Link returns card data under. Same spelling as CREDENTIAL_TYPE_CARD
-# today, but one is a request value and the other a response envelope; they
-# are free to diverge.
+# The key Link returns card data under — a response envelope, not a request
+# value, and free to diverge from anything sent.
 CARD_RESPONSE_KEY = "card"
 
 
@@ -163,7 +195,11 @@ class StripeLinkListPaymentMethodsBlock(Block):
             response = await self._link_api_request(
                 credentials, "GET", "/payment-details"
             )
-            yield "payment_methods", response.get("payment_details", [])
+            yield "payment_methods", [
+                _project_payment_method(pm)
+                for pm in response.get("payment_details", [])
+                if isinstance(pm, dict)
+            ]
         except Exception as e:
             yield "error", str(e)
 
@@ -296,6 +332,28 @@ class _BaseSpendRequestInput(BlockSchemaInput):
         default_factory=dict,
         advanced=True,
     )
+
+    @model_validator(mode="after")
+    def _totals_must_match_the_authorized_amount(self):
+        """The approval sheet is the only aggregate control in this flow.
+
+        `line_items` and `totals` are agent-supplied and rendered to the user
+        verbatim, so an untrusted upstream node could show a "total" of $4.99
+        while the credential issued is for `amount`. Nothing else caps
+        spending, so the headline the user reads has to be the number they are
+        actually authorizing.
+        """
+        for entry in self.totals:
+            if not isinstance(entry, dict) or entry.get("type") != "total":
+                continue
+            stated = entry.get("amount")
+            if stated is not None and stated != self.amount:
+                raise ValueError(
+                    f"totals entry of type 'total' is {stated} but the spend "
+                    f"request authorizes {self.amount}; the approval sheet must "
+                    "show the amount actually being authorized"
+                )
+        return self
 
 
 class _SpendRequestCreatedOutput(BlockSchemaOutput):
@@ -626,10 +684,18 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
                 action = _nested_dict(
                     result, "status_details", "requires_action", "next_action"
                 )
-                yield "next_action_type", action.get("type", "")
-                yield "next_action_message", action.get("display_message", "")
-                yield "next_action_url", action.get("action_url", "")
-                yield "auto_resumes", action.get("resolution") == "auto_resume"
+                # `or ""`, not `get(..., "")`: Link sends explicit nulls, and
+                # a None yielded into a str-typed output fails the output
+                # jsonschema check *outside* this try, hard-failing the node
+                # after `status` was already emitted.
+                yield "next_action_type", action.get("type") or ""
+                yield "next_action_message", action.get("display_message") or ""
+                yield "next_action_url", action.get("action_url") or ""
+                # Unknown or missing resolution keeps the caller polling. The
+                # unsafe direction is "needs a fresh request": the agent makes
+                # a second spend request, the first auto-resumes, and the user
+                # can end up approving two credentials for one purchase.
+                yield "auto_resumes", action.get("resolution") != "new_spend_request"
         except Exception as e:
             yield "error", str(e)
 
@@ -754,9 +820,16 @@ class StripeLinkRetrieveCardBlock(Block):
                 f"/spend_requests/{quote(input_data.spend_request_id, safe='')}?include=card",
             )
 
-            yield "status", result["status"]
+            status = result["status"]
+            yield "status", status
 
-            card = _nested_dict(result, CARD_RESPONSE_KEY)
+            # Only for a spend the user actually approved. If a denied or
+            # expired request ever came back with card material attached,
+            # emitting it would put a PAN and CVC in the execution record for
+            # a charge that was refused.
+            card = (
+                _nested_dict(result, CARD_RESPONSE_KEY) if status == "approved" else {}
+            )
             if card:
                 yield "card_number", card.get("number", "")
                 yield "card_cvc", card.get("cvc", "")

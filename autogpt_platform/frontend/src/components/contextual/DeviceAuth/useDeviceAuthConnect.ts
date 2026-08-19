@@ -23,6 +23,8 @@ interface Args {
 
 type Phase = "idle" | "awaiting_user" | "polling" | "done" | "error";
 
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+
 export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -33,6 +35,14 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const isUnmountedRef = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef(5);
+  // Identifies the live loop. Clearing the timeout cannot cancel a request
+  // already in flight, so a cancel mid-round-trip would let the resolved poll
+  // re-arm the loop — and two overlapping connect() calls would leave two live
+  // loops with only the newest in pollingRef. Each loop captures its id and
+  // stops if it is no longer the current one.
+  const runIdRef = useRef(0);
+  // A flow stays open ~10 minutes. One blip in that window must not end it.
+  const consecutiveFailuresRef = useRef(0);
 
   useEffect(() => {
     // Reset on mount: the ref survives a remount (StrictMode, or reopening the
@@ -52,8 +62,8 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   }, []);
 
   const poll = useCallback(
-    async (token: string) => {
-      if (isUnmountedRef.current) return;
+    async (token: string, runId: number) => {
+      if (isUnmountedRef.current || runId !== runIdRef.current) return;
 
       try {
         const response = await postV1PollDeviceCodeOauthFlowForCompletion(
@@ -61,11 +71,12 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           { state_token: token },
         );
 
-        if (isUnmountedRef.current) return;
+        if (isUnmountedRef.current || runId !== runIdRef.current) return;
 
         if (response.status !== 200) {
           throw new Error("Device auth poll failed");
         }
+        consecutiveFailuresRef.current = 0;
         const { status, credentials } = response.data;
 
         if (status === "approved") {
@@ -102,11 +113,24 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
 
         // pending or slow_down — schedule next poll
         pollingRef.current = setTimeout(
-          () => poll(token),
+          () => poll(token, runId),
           intervalRef.current * 1000,
         );
       } catch (error) {
-        if (isUnmountedRef.current) return;
+        if (isUnmountedRef.current || runId !== runIdRef.current) return;
+
+        // The device code is still valid at the provider for the rest of the
+        // window, so a wifi switch or a proxy 502 should not force the user to
+        // start over with a code they have already entered.
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current < MAX_CONSECUTIVE_POLL_FAILURES) {
+          pollingRef.current = setTimeout(
+            () => poll(token, runId),
+            intervalRef.current * 1000,
+          );
+          return;
+        }
+
         setPhase("error");
         stopPolling();
         toast({
@@ -122,13 +146,16 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
 
   async function connect() {
     // A second click would strand the first poll loop, which keeps polling a
-    // token nothing reads any more.
+    // token nothing reads any more. Bumping the run id also retires any poll
+    // already in flight, which clearing the timeout cannot do.
     stopPolling();
+    const runId = ++runIdRef.current;
+    consecutiveFailuresRef.current = 0;
     setPhase("awaiting_user");
     try {
       const response = await postV1InitiateDeviceCodeOauthFlow(provider);
 
-      if (isUnmountedRef.current) return;
+      if (isUnmountedRef.current || runId !== runIdRef.current) return;
 
       if (response.status !== 200) {
         throw new Error("Device auth initiation failed");
@@ -147,11 +174,11 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
       // `interval: 0` would otherwise spin the first poll immediately.
       setPhase("polling");
       pollingRef.current = setTimeout(
-        () => poll(data.state_token),
+        () => poll(data.state_token, runId),
         intervalRef.current * 1000,
       );
     } catch (error) {
-      if (isUnmountedRef.current) return;
+      if (isUnmountedRef.current || runId !== runIdRef.current) return;
       setPhase("error");
       toast({
         title: "Device auth initiation failed",
@@ -163,6 +190,8 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   }
 
   function cancel() {
+    // Retires any in-flight poll as well as the scheduled one.
+    runIdRef.current += 1;
     stopPolling();
     setPhase("idle");
     setUserCode("");

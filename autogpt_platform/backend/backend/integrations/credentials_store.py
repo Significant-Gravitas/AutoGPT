@@ -670,6 +670,25 @@ class IntegrationCredentialsStore:
             None,
         )
 
+    async def restore_state_token(self, user_id: str, state: OAuthState) -> None:
+        """Put a consumed state back, so a failed terminal step can be retried.
+
+        `consume_state_token` is the serialization point that stops two polls
+        both storing a credential — but consuming *before* the store means a
+        failure there strands a live authorization at the provider with no
+        local credential to revoke it with. Restoring lets the next poll try
+        again instead of leaving the grant orphaned.
+        """
+        async with await self.locked_user_integrations(user_id):
+            user_integrations = await self._get_user_integrations(user_id)
+            if any(
+                secrets.compare_digest(existing.token, state.token)
+                for existing in user_integrations.oauth_states
+            ):
+                return
+            user_integrations.oauth_states.append(state)
+            await self.db_manager.update_user_integrations(user_id, user_integrations)
+
     async def consume_state_token(
         self, user_id: str, token: str, provider: str
     ) -> Optional[OAuthState]:
