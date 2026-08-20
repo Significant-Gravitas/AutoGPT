@@ -13,7 +13,7 @@ import {
 } from "react-icons/pi";
 
 import { ChoiceRow } from "./ChoiceRow";
-import { tierLabel, tierModel, tierName } from "./helpers";
+import { offerSubtitle, tierLabel, tierModel, tierName } from "./helpers";
 import { useConnectionPicker } from "./useConnectionPicker";
 
 const TIERS = ["standard", "advanced"] as const;
@@ -110,10 +110,18 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
                 <ChoiceRow
                   key={offer.offer_id}
                   title={offer.display_name}
-                  subtitle={offer.backed_by_label}
+                  subtitle={offerSubtitle(offer)}
                   notes={offer.limitations}
                   isSelected={offer.offer_id === active?.offer_id}
                   onSelect={() => chooseConnection(offer)}
+                  lock={
+                    offer.lock_reason
+                      ? {
+                          reason: offer.lock_reason,
+                          href: offer.unlock_href ?? null,
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>
