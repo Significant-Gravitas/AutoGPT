@@ -51,25 +51,45 @@ async def test_set_subscription_tier_updates_db():
             "backend.data.credit.User.prisma",
             return_value=MagicMock(update=AsyncMock()),
         ) as mock_prisma,
-        patch("backend.data.credit.get_user_by_id"),
+        patch("backend.data.credit.get_user_by_id", new=MagicMock()),
+        patch("backend.data.credit.invalidate_user_subscription_tier") as invalidate,
+        patch.object(get_pending_subscription_change, "cache_delete"),
     ):
         await set_subscription_tier("user-1", SubscriptionTier.PRO)
         update_call = mock_prisma.return_value.update.await_args
         assert update_call.kwargs["where"] == {"id": "user-1"}
         assert update_call.kwargs["data"]["subscriptionTier"] == SubscriptionTier.PRO
+        invalidate.assert_called_once_with("user-1")
 
 
 @pytest.mark.asyncio
-async def test_set_subscription_tier_downgrade():
+async def test_set_subscription_tier_cache_failures_are_best_effort():
+    tier_cache_delete = MagicMock(side_effect=RuntimeError("redis unavailable"))
+    user_cache_delete = MagicMock(side_effect=RuntimeError("redis unavailable"))
+    pending_cache_delete = MagicMock(side_effect=RuntimeError("redis unavailable"))
+    user_getter = MagicMock(cache_delete=user_cache_delete)
+
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(update=AsyncMock()),
         ),
-        patch("backend.data.credit.get_user_by_id"),
+        patch("backend.data.credit.get_user_by_id", user_getter),
+        patch(
+            "backend.data.credit.invalidate_user_subscription_tier",
+            tier_cache_delete,
+        ),
+        patch.object(
+            get_pending_subscription_change,
+            "cache_delete",
+            pending_cache_delete,
+        ),
     ):
-        # Downgrade to BASIC should not raise
-        await set_subscription_tier("user-1", SubscriptionTier.BASIC)
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+    tier_cache_delete.assert_called_once_with("user-1")
+    user_cache_delete.assert_called_once_with("user-1")
+    pending_cache_delete.assert_called_once_with("user-1")
 
 
 def _make_user(
@@ -122,9 +142,14 @@ async def test_sync_subscription_from_stripe_active():
         patch(
             "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
         ) as mock_set,
+        patch.object(
+            get_pending_subscription_change,
+            "cache_delete",
+        ) as pending_cache_delete,
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+        pending_cache_delete.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -409,16 +434,11 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
                 "ENTERPRISE": 15 * 1024,
             },
         ),
-        patch.object(
-            get_pending_subscription_change,
-            "cache_delete",
-        ) as mock_pending_cache_delete,
     ):
         await sync_subscription_from_stripe(stripe_sub)
         result = await get_workspace_storage_limit_bytes("user-1")
 
     assert result == 250 * 1024 * 1024
-    mock_pending_cache_delete.assert_called_once_with("user-1")
 
 
 @pytest.mark.asyncio

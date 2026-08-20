@@ -54,47 +54,28 @@ boundary above is the contract.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from enum import Enum
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id
-from prisma.models import User as PrismaUser
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
-from backend.data.db_accessors import credit_db, user_db
+from backend.data.db_accessors import credit_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.subscription_tiers import (
+    SubscriptionTierUserNotFoundError,
+    get_user_subscription_tier,
+)
 
 logger = logging.getLogger(__name__)
 
 # "copilot:cost" (not the legacy "copilot:usage") so stale token-based
 # counters are not misread as microdollars.
 _USAGE_KEY_PREFIX = "copilot:cost"
-
-
-# ---------------------------------------------------------------------------
-# Subscription tier definitions
-# ---------------------------------------------------------------------------
-
-
-class SubscriptionTier(str, Enum):
-    """Subscription tiers with increasing cost allowances.
-
-    Mirrors the ``SubscriptionTier`` enum in ``schema.prisma``.
-    Once ``prisma generate`` is run, this can be replaced with::
-
-        from prisma.enums import SubscriptionTier
-    """
-
-    NO_TIER = "NO_TIER"
-    BASIC = "BASIC"
-    PRO = "PRO"
-    MAX = "MAX"
-    BUSINESS = "BUSINESS"
-    ENTERPRISE = "ENTERPRISE"
 
 
 # Default multiplier applied to the base cost limits (from LD / config) for each
@@ -911,39 +892,6 @@ async def _decr_counter_floor_zero(
     await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
 
 
-class _UserNotFoundError(Exception):
-    """Raised when a user record is missing or has no subscription tier.
-
-    Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
-    from persisting the fallback, which would otherwise keep serving FREE
-    for up to the TTL after the user's real tier is set.
-    """
-
-
-@cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
-async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier, cached across pods.
-
-    Only successful lookups are cached. Missing users raise
-    ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
-
-    Distinguishes "row genuinely missing" (``user_db().get_user_by_id``
-    raises ``ValueError``) from "transient DB / Prisma error" (other
-    exceptions propagate as-is). Without this distinction a Supabase
-    blip would silently degrade every paying user to NO_TIER and
-    ``enforce_payment_paywall`` would 402 them — contradicting its
-    503-on-blip contract.
-    """
-    try:
-        user = await user_db().get_user_by_id(user_id)
-    except ValueError:
-        # ValueError = "User not found" per get_user_by_id's contract.
-        raise _UserNotFoundError(user_id)
-    if user.subscription_tier:
-        return SubscriptionTier(user.subscription_tier)
-    raise _UserNotFoundError(user_id)
-
-
 _STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
 _STRIPE_RECONCILE_TTL = 300  # seconds — matches the tier cache TTL
 
@@ -986,7 +934,7 @@ async def _maybe_reconcile_stripe_tier(user_id: str) -> bool:
 async def get_user_tier(user_id: str) -> SubscriptionTier:
     """Look up the user's rate-limit tier from the database.
 
-    Successful results are cached for 5 minutes (via ``_fetch_user_tier``)
+    Successful results are cached for 5 minutes by the shared tier resolver
     to avoid a DB round-trip on every rate-limit check.
 
     Falls back to ``DEFAULT_TIER`` **without caching** when the DB is
@@ -999,9 +947,9 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     """
     tier_from_db = True
     try:
-        tier = await _fetch_user_tier(user_id)
-    except _UserNotFoundError:
-        # Row missing or tier is NULL — DB-confirmed NO_TIER, eligible for reconciliation.
+        tier = await get_user_subscription_tier(user_id)
+    except SubscriptionTierUserNotFoundError:
+        # A missing row is eligible for Stripe reconciliation as NO_TIER.
         tier = SubscriptionTier.NO_TIER
     except Exception as exc:
         logger.warning(
@@ -1018,7 +966,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
 
     if tier_from_db and await _maybe_reconcile_stripe_tier(user_id):
         try:
-            return await _fetch_user_tier(user_id)
+            return await get_user_subscription_tier(user_id)
         except Exception as exc:
             logger.warning(
                 "get_user_tier: tier re-read failed after reconciliation for %s: %s",
@@ -1029,10 +977,8 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     return tier
 
 
-# Expose cache management on the public function so callers (including tests)
-# never need to reach into the private ``_fetch_user_tier``.
-get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-defined]
-get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
+get_user_tier.cache_clear = get_user_subscription_tier.cache_clear  # type: ignore[attr-defined]
+get_user_tier.cache_delete = get_user_subscription_tier.cache_delete  # type: ignore[attr-defined]
 
 
 async def get_workspace_storage_limit_bytes(user_id: str) -> int:
@@ -1059,19 +1005,17 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
     """
-    await PrismaUser.prisma().update(
-        where={"id": user_id},
-        data={"subscriptionTier": tier.value},
-    )
-    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import: backend.data.credit imports from this module.
-    from backend.data.credit import get_pending_subscription_change
-
-    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
-    get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
+    await _persist_user_subscription_tier(user_id, tier)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
+
+
+async def _persist_user_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
+    # Importing credit here avoids its block-catalog dependency during module startup.
+    from backend.data.credit import set_subscription_tier
+
+    await set_subscription_tier(user_id, tier)
 
 
 async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
@@ -1293,7 +1237,7 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 async def is_user_paywalled(user_id: str) -> bool:
     """Return ``True`` if the user has no entitlement to paywalled features.
 
-    A user with no DB tier record (``_UserNotFoundError`` — fresh signup
+    A user with no DB tier record (``SubscriptionTierUserNotFoundError`` — fresh signup
     that hasn't been provisioned yet, or row missing) is treated as
     ``NO_TIER`` here: paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
     Without this branch the missing-tier case would propagate as a 500
@@ -1304,8 +1248,8 @@ async def is_user_paywalled(user_id: str) -> bool:
     background job → fail-open).
     """
     try:
-        tier = await _fetch_user_tier(user_id)
-    except _UserNotFoundError:
+        tier = await get_user_subscription_tier(user_id)
+    except SubscriptionTierUserNotFoundError:
         # No DB row / no subscription_tier set — fresh signup that hasn't
         # been provisioned yet, or row missing entirely. Logged at debug
         # so ops can correlate "402s on fresh signups" with provisioning

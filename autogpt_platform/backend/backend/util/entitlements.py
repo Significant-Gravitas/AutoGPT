@@ -5,8 +5,12 @@ from typing import Mapping
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, ConfigDict
 
-from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import BehaveAs, Settings
+from backend.util.subscription_tiers import (
+    SubscriptionTierUserNotFoundError,
+    get_user_subscription_tier,
+    subscription_tier_at_least,
+)
 
 
 class Entitlement(str, Enum):
@@ -29,16 +33,6 @@ ENTITLEMENT_POLICIES: Mapping[Entitlement, EntitlementPolicy] = MappingProxyType
     }
 )
 
-_TIER_ORDER = (
-    SubscriptionTier.NO_TIER,
-    SubscriptionTier.BASIC,
-    SubscriptionTier.PRO,
-    SubscriptionTier.MAX,
-    SubscriptionTier.BUSINESS,
-    SubscriptionTier.ENTERPRISE,
-)
-_TIER_RANK = {tier: rank for rank, tier in enumerate(_TIER_ORDER)}
-
 settings = Settings()
 
 
@@ -51,29 +45,17 @@ class EntitlementRequiredError(Exception):
         )
 
 
-async def _get_user_subscription_tier(user_id: str) -> SubscriptionTier:
-    """Resolve a tier through DatabaseManager without caching this result.
-
-    A missing user has no entitlement. Other database and transport failures
-    propagate so callers can retry instead of treating an outage as a denial.
-    """
-    try:
-        tier = await get_database_manager_async_client().get_user_subscription_tier(
-            user_id
-        )
-    except ValueError:
-        return SubscriptionTier.NO_TIER
-    return SubscriptionTier(tier)
-
-
 async def has_entitlement(user_id: str, entitlement: Entitlement) -> bool:
-    """Check one centralized entitlement policy against the user's DB tier."""
+    """Check policy against a shared tier cached for at most five minutes."""
     policy = ENTITLEMENT_POLICIES[entitlement]
     if policy.allow_local and settings.config.behave_as == BehaveAs.LOCAL:
         return True
 
-    tier = await _get_user_subscription_tier(user_id)
-    return _TIER_RANK[tier] >= _TIER_RANK[policy.minimum_tier]
+    try:
+        tier = await get_user_subscription_tier(user_id)
+    except SubscriptionTierUserNotFoundError:
+        tier = SubscriptionTier.NO_TIER
+    return subscription_tier_at_least(tier, policy.minimum_tier)
 
 
 async def require_entitlement(user_id: str, entitlement: Entitlement) -> None:
