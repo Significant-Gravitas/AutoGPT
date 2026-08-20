@@ -1,6 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -18,7 +19,7 @@ import { DeviceAuthCredentialsModal } from "./components/DeviceAuthCredentialsMo
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
-import { isSystemCredential } from "./helpers";
+import { getRemovedCredentialMessage, isSystemCredential } from "./helpers";
 import {
   CredentialsInputState,
   useCredentialsInput,
@@ -87,6 +88,7 @@ export function CredentialsInput({
     userCredentials,
     systemCredentials,
     oAuthError,
+    removedCredentialTitle,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
@@ -110,6 +112,7 @@ export function CredentialsInput({
     deleteWarningMessage,
     setCredentialToDelete,
     isDeletingCredential,
+    handleCredentialChange,
   } = hookData;
 
   const displayName = toDisplayName(provider);
@@ -131,7 +134,7 @@ export function CredentialsInput({
         credentials={allCredentials}
         selectedCredential={selectedCredential}
         onSelectCredential={handleCredentialSelect}
-        onClearCredential={() => onSelectCredential(undefined)}
+        onClearCredential={() => handleCredentialChange(undefined)}
         onAddCredential={
           usesConnectDialog
             ? () => setConnectDialogOpen(true)
@@ -165,7 +168,7 @@ export function CredentialsInput({
               providerName={providerName}
               supportedTypes={supportedTypes}
               onCredentialsCreate={(creds) => {
-                onSelectCredential(creds);
+                handleCredentialChange(creds);
               }}
               onOAuthLogin={handleOAuthLogin}
               onOpenPasswordModal={() =>
@@ -183,7 +186,7 @@ export function CredentialsInput({
               open={isAPICredentialsModalOpen}
               onClose={() => setAPICredentialsModalOpen(false)}
               onCredentialsCreate={(credsMeta) => {
-                onSelectCredential(credsMeta);
+                handleCredentialChange(credsMeta);
                 setAPICredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -204,7 +207,7 @@ export function CredentialsInput({
               provider={provider}
               providerName={providerName}
               onCredentialsCreate={(creds) => {
-                onSelectCredential(creds);
+                handleCredentialChange(creds);
                 setDeviceAuthModalOpen(false);
               }}
             />
@@ -215,7 +218,7 @@ export function CredentialsInput({
               open={isUserPasswordCredentialsModalOpen}
               onClose={() => setUserPasswordCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredential(creds);
+                handleCredentialChange(creds);
                 setUserPasswordCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -227,11 +230,25 @@ export function CredentialsInput({
               open={isHostScopedCredentialsModalOpen}
               onClose={() => setHostScopedCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredential(creds);
+                handleCredentialChange(creds);
                 setHostScopedCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
             />
+          )}
+
+          {removedCredentialTitle && (
+            <Alert variant="warning" aria-live="polite" className="mt-2">
+              <AlertDescription>
+                <Text variant="body" unmask={false}>
+                  {getRemovedCredentialMessage(
+                    removedCredentialTitle,
+                    selectedCredential,
+                    displayName,
+                  )}
+                </Text>
+              </AlertDescription>
+            </Alert>
           )}
 
           {oAuthError && (

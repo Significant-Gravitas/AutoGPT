@@ -65,29 +65,18 @@ export function classifyCredentials(
   return { savedCredentials, upgradeableCredentials };
 }
 
-export type CredentialsData =
-  | {
-      provider: string;
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsDeviceCode: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: true;
-      discriminatorValue?: string;
-    }
-  | (CredentialsProviderData & {
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsDeviceCode: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: false;
-      discriminatorValue?: string;
-      upgradeableCredentials: CredentialsMetaResponse[];
-    });
+export type CredentialsData = CredentialsProviderData & {
+  schema: BlockIOCredentialsSubSchema;
+  supportsApiKey: boolean;
+  supportsOAuth2: boolean;
+  supportsDeviceCode: boolean;
+  supportsUserPassword: boolean;
+  supportsHostScoped: boolean;
+  isLoading: false;
+  discriminatorValue?: string;
+  upgradeableCredentials: CredentialsMetaResponse[];
+  allProviderCredentials: CredentialsMetaResponse[];
+};
 
 export function getSupportedCredentialTypes(
   schema: BlockIOCredentialsSubSchema,
@@ -202,6 +191,7 @@ export default function useCredentials(
 
   return {
     ...provider,
+    allProviderCredentials: provider.savedCredentials,
     provider: providerName,
     schema: effectiveSchema,
     supportsApiKey,

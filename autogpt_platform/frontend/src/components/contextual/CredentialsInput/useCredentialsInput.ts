@@ -60,6 +60,9 @@ export function useCredentialsInput({
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupBlocked, setOAuthPopupBlocked] = useState(false);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
+  const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
+    string | null
+  >(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -93,16 +96,13 @@ export function useCredentialsInput({
 
   useEffect(() => {
     if (onLoaded) {
-      onLoaded(Boolean(credentials && credentials.isLoading === false));
+      onLoaded(Boolean(credentials));
     }
   }, [credentials, onLoaded]);
 
-  // Unselect credential if not available in the loaded credential list.
-  // Skip when no credentials have been loaded yet (empty list could mean
-  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
-    if (!credentials || !("savedCredentials" in credentials)) return;
+    if (!credentials) return;
     const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
@@ -112,23 +112,41 @@ export function useCredentialsInput({
       hasAttemptedAutoSelect.current = false;
       return;
     }
-    if (availableCreds.length === 0) return;
-    if (
-      selectedCredential &&
-      !availableCreds.some((c) => c.id === selectedCredential.id)
-    ) {
-      onSelectCredential(undefined);
-      // Reset auto-selection flag so it can run again after unsetting invalid credential
-      hasAttemptedAutoSelect.current = false;
+
+    if (!selectedCredential) return;
+    const stillUsable = availableCreds.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+    if (stillUsable) return;
+
+    const stillExists = credentials.allProviderCredentials.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+
+    const isDeletingSelected =
+      isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
+    if (!stillExists && !isDeletingSelected) {
+      setRemovedCredentialTitle(
+        selectedCredential.title || credentials.providerName,
+      );
     }
-  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
+    onSelectCredential(undefined);
+    hasAttemptedAutoSelect.current = false;
+  }, [
+    credentialToDelete?.id,
+    credentials,
+    isDeletingCredential,
+    onSelectCredential,
+    readOnly,
+    selectedCredential,
+  ]);
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
       if (readOnly) return;
-      if (!credentials || !("savedCredentials" in credentials)) return;
+      if (!credentials) return;
       if (selectedCredential?.id) return;
 
       const savedCreds = credentials.savedCredentials;
@@ -146,7 +164,7 @@ export function useCredentialsInput({
         id: cred.id,
         type: cred.type,
         provider: credentials.provider,
-        title: (cred as any).title,
+        title: cred.title,
       });
     },
     [
@@ -158,11 +176,7 @@ export function useCredentialsInput({
     ],
   );
 
-  if (
-    !credentials ||
-    credentials.isLoading ||
-    !("savedCredentials" in credentials)
-  ) {
+  if (!credentials) {
     return {
       isLoading: true,
     };
@@ -190,6 +204,11 @@ export function useCredentialsInput({
   const userUpgradeableCredentials = filterSystemCredentials(
     upgradeableCredentials,
   );
+
+  function handleCredentialChange(newValue?: CredentialsMetaInput) {
+    setRemovedCredentialTitle(null);
+    onSelectCredential(newValue);
+  }
 
   async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
@@ -308,7 +327,7 @@ export function useCredentialsInput({
         }
       }
 
-      onSelectCredential({
+      handleCredentialChange({
         id: credentialResult.id,
         type: "oauth2",
         title: credentialResult.title,
@@ -408,11 +427,11 @@ export function useCredentialsInput({
   function handleCredentialSelect(credentialId: string) {
     const selectedCreds = savedCredentials.find((c) => c.id === credentialId);
     if (selectedCreds) {
-      onSelectCredential({
+      handleCredentialChange({
         id: selectedCreds.id,
         type: selectedCreds.type,
         provider: provider,
-        title: (selectedCreds as any).title,
+        title: selectedCreds.title,
       });
     }
   }
@@ -435,6 +454,10 @@ export function useCredentialsInput({
       return;
 
     setIsDeletingCredential(true);
+    const isDeletingSelected = credentialToDelete.id === selectedCredential?.id;
+    if (isDeletingSelected) {
+      setRemovedCredentialTitle(null);
+    }
     try {
       const state = await processCredentialDeletion(
         credentialToDelete,
@@ -444,7 +467,7 @@ export function useCredentialsInput({
       );
 
       if (state.shouldUnselectCurrent) {
-        onSelectCredential(undefined);
+        handleCredentialChange(undefined);
       }
       setDeleteWarningMessage(state.warningMessage);
       setCredentialToDelete(state.credentialToDelete);
@@ -477,6 +500,7 @@ export function useCredentialsInput({
     systemCredentials,
     allCredentials: savedCredentials,
     selectedCredential,
+    removedCredentialTitle,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
@@ -511,7 +535,7 @@ export function useCredentialsInput({
     handleOAuthLogin,
     handleScopeUpgrade,
     userUpgradeableCredentials,
-    onSelectCredential,
+    handleCredentialChange,
     schema,
     siblingInputs,
   };

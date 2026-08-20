@@ -1,6 +1,13 @@
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { describe, expect, it } from "vitest";
+import { renderHook } from "@testing-library/react";
+import React from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
+  CredentialsProviderData,
+  CredentialsProvidersContext,
+  CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
+import useCredentials, {
   deriveAuthMethods,
   getSupportedCredentialTypes,
 } from "../useCredentials";
@@ -87,5 +94,65 @@ describe("deriveAuthMethods", () => {
       supportsUserPassword: false,
       supportsHostScoped: false,
     });
+  });
+});
+
+describe("useCredentials provider list", () => {
+  it("exposes the unfiltered provider credentials alongside the filtered ones", async () => {
+    const oauthOnly = {
+      id: "codex-1",
+      provider: "codex",
+      type: "oauth2" as const,
+      title: "ChatGPT for Codex",
+    };
+    const apiKeyToo = {
+      id: "codex-2",
+      provider: "codex",
+      type: "api_key" as const,
+      title: "A key",
+    };
+
+    const provider = {
+      provider: "codex",
+      providerName: "Codex",
+      savedCredentials: [oauthOnly, apiKeyToo],
+      isSystemProvider: false,
+      oAuthCallback: vi.fn(),
+      mcpOAuthCallback: vi.fn(),
+      createAPIKeyCredentials: vi.fn(),
+      createUserPasswordCredentials: vi.fn(),
+      createHostScopedCredentials: vi.fn(),
+      deleteCredentials: vi.fn(),
+    } satisfies CredentialsProviderData;
+    const providers: CredentialsProvidersContextType = { codex: provider };
+
+    const codexOnlySchema = {
+      type: "object",
+      properties: {},
+      credentials_provider: ["codex"],
+      credentials_types: ["oauth2"],
+    } as unknown as BlockIOCredentialsSubSchema;
+
+    const { result } = renderHook(() => useCredentials(codexOnlySchema, {}), {
+      wrapper: ({ children }: { children: React.ReactNode }) =>
+        React.createElement(
+          CredentialsProvidersContext.Provider,
+          { value: providers },
+          children,
+        ),
+    });
+
+    if (result.current === null) {
+      throw new Error("expected the provider to resolve");
+    }
+
+    // The api_key one is filtered out of savedCredentials by the schema's
+    // supported types, but must still be present in the unfiltered list.
+    expect(
+      result.current.savedCredentials.map((credential) => credential.id),
+    ).toEqual(["codex-1"]);
+    expect(
+      result.current.allProviderCredentials.map((credential) => credential.id),
+    ).toEqual(["codex-1", "codex-2"]);
   });
 });

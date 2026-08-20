@@ -186,12 +186,30 @@ export function getActionButtonText(
 }
 
 export function getCredentialDisplayName(
-  credential: { title?: string; username?: string },
+  credential: { title?: string | null; username?: string },
   displayName: string,
 ): string {
   return (
     credential.title || credential.username || `Your ${displayName} account`
   );
+}
+
+export function getRemovedCredentialMessage(
+  removedCredentialTitle: string,
+  selectedCredential:
+    | { id: string; title?: string | null; username?: string }
+    | undefined,
+  providerName: string,
+): string {
+  if (!selectedCredential?.id) {
+    return `${removedCredentialTitle} was removed. Choose a connection to keep this agent running.`;
+  }
+
+  const replacement = getCredentialDisplayName(
+    selectedCredential,
+    providerName,
+  );
+  return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
