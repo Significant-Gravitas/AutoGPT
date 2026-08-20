@@ -92,3 +92,16 @@ export function tierLabel(
   const name = tierName(offer, tier);
   return model ? `${name} · ${model}` : name;
 }
+
+/**
+ * The line under a connection's name.
+ *
+ * An available connection says what pays for it. A locked one says what the
+ * user would get, because "Your ChatGPT plan" presumes a plan they may not
+ * have -- and sitting directly above "a Max plan or higher is required" it
+ * reads as two different plans. A row the user cannot act on has to justify
+ * the space it takes.
+ */
+export function offerSubtitle(offer: AIConnectionOffer): string {
+  return offer.lock_reason ? offer.description : offer.backed_by_label;
+}
