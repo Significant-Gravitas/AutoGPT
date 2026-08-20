@@ -68,7 +68,7 @@ export function TaskProgressBar({
     : { duration: 0.22, ease: EASE_OUT };
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl border border-zinc-200 bg-neutral-100 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.12),inset_0_1px_0_0_rgba(255,255,255,0.9)]">
+    <div className="mx-auto w-[95%] overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_5px_6px_-4px_rgba(255,255,255,0.7)]">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

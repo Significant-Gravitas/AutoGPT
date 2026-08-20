@@ -97,9 +97,6 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
-  /** Ignore the NEW_TOOL_UI flag — used by the tool page so its
-   *  "Old" view stays on the legacy renderer regardless of flag state. */
-  forceOldToolUI?: boolean;
 }
 
 interface RenderSegmentOptions {
@@ -338,7 +335,6 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
   expertIdentity,
-  forceOldToolUI = false,
 }: Props) {
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
@@ -350,7 +346,7 @@ export function ChatMessagesContainer({
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI) && !forceOldToolUI;
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -479,6 +475,7 @@ export function ChatMessagesContainer({
       active={showThinking}
       elapsedSeconds={elapsedSeconds}
       statusMessage={latestStatusMessage}
+      variant={isNewToolUI ? "chain" : "legacy"}
     />
   );
   const showIndicator = showThinking;
@@ -680,7 +677,12 @@ export function ChatMessagesContainer({
                       ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
                       : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
-                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
+                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900" +
+                    // Chain hover pills use negative margins that the base
+                    // overflow-hidden would clip.
+                    (isNewToolUI
+                      ? " group-[.is-assistant]:overflow-visible"
+                      : "")
                   }
                 >
                   {hasReasoning && reasoningSegments && (
@@ -710,8 +712,8 @@ export function ChatMessagesContainer({
                       readOnly,
                     })
                   ) : (
-                    <UserMessageClamp>
-                      {renderableParts.map((part, i) => (
+                    (() => {
+                      const parts = renderableParts.map((part, i) => (
                         <MessagePartRenderer
                           key={`${message.id}-${i}`}
                           part={part}
@@ -722,8 +724,13 @@ export function ChatMessagesContainer({
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
                         />
-                      ))}
-                    </UserMessageClamp>
+                      ));
+                      return isNewToolUI ? (
+                        <UserMessageClamp>{parts}</UserMessageClamp>
+                      ) : (
+                        parts
+                      );
+                    })()
                   )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
@@ -827,6 +834,7 @@ export function ChatMessagesContainer({
                       statusMessage={
                         restoreStatusMessage ?? "Reconnecting to live stream..."
                       }
+                      variant={isNewToolUI ? "chain" : "legacy"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.

@@ -126,7 +126,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
     expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
   });
 
-  it("does not render a label heading even when credentialsLabel is provided", () => {
+  it("uses custom credentials label when provided", () => {
     render(
       <SetupRequirementsCard
         output={makeOutput({
@@ -137,8 +137,7 @@ describe("SetupRequirementsCard (edit mode)", () => {
         credentialsLabel="API Keys"
       />,
     );
-    expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
-    expect(screen.queryByText("API Keys")).toBeNull();
+    expect(screen.getByText("API Keys")).toBeDefined();
   });
 
   it("renders input form when inputs are provided", () => {
@@ -319,7 +318,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
     expect(screen.queryByText(/url • string/i)).toBeNull();
   });
 
-  it("renders the credentials view without a label heading", () => {
+  it("labels credentials section as 'Agent credentials' by default", () => {
     render(
       <SetupRequirementsCard
         inputsMode="preview"
@@ -330,8 +329,7 @@ describe("SetupRequirementsCard (preview mode)", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
-    expect(screen.queryByText("Agent credentials")).toBeNull();
+    expect(screen.getByText("Agent credentials")).toBeDefined();
   });
 
   it("does not render advanced toggle even when advanced inputs exist", () => {
@@ -637,6 +635,9 @@ describe("SetupRequirementsCard (trigger mode)", () => {
         })}
       />,
     );
+
+    // Trigger mode labels the credentials section "Account".
+    expect(screen.getByText("Account")).toBeDefined();
 
     // Proceed stays disabled until a credential is selected.
     expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(true);

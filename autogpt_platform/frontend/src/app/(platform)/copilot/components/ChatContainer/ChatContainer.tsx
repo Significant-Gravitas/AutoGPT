@@ -232,15 +232,7 @@ export const ChatContainer = ({
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
-              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isTaskBarEnabled && (
-                  <div className="absolute right-4 top-4 z-20 w-80">
-                    <TaskProgressBar
-                      todos={getLatestTaskList(messages) ?? []}
-                      isStreaming={isStreaming}
-                    />
-                  </div>
-                )}
+              <div className="flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -291,6 +283,14 @@ export const ChatContainer = ({
                       </div>
                     )}
                     <SharedChatNotice sessionId={sessionId} />
+                    {isTaskBarEnabled && (
+                      <div className="relative z-10">
+                        <TaskProgressBar
+                          todos={getLatestTaskList(messages) ?? []}
+                          isStreaming={isStreaming}
+                        />
+                      </div>
+                    )}
                     <Tooltip open={isLimitReached ? undefined : false}>
                       <TooltipTrigger asChild>
                         <div>

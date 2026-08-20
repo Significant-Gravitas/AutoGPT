@@ -7,6 +7,7 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { ConnectCredentialDialog } from "./components/ConnectCredentialDialog/ConnectCredentialDialog";
@@ -63,6 +64,10 @@ export function CredentialsInput({
     isOptional,
   });
   const [isConnectDialogOpen, setConnectDialogOpen] = useState(false);
+  // The unified connect dialog ships with the new tool UI; off keeps the
+  // legacy per-type action flow everywhere.
+  const usesConnectDialog =
+    useGetFlag(Flag.NEW_TOOL_UI) && variant === "default";
 
   if (!isLoaded(hookData)) {
     return null;
@@ -124,7 +129,7 @@ export function CredentialsInput({
         onSelectCredential={handleCredentialSelect}
         onClearCredential={() => onSelectCredential(undefined)}
         onAddCredential={
-          variant === "default"
+          usesConnectDialog
             ? () => setConnectDialogOpen(true)
             : handleActionButtonClick
         }
@@ -138,13 +143,15 @@ export function CredentialsInput({
 
       {!readOnly && (
         <>
-          <ConnectCredentialDialog
-            schema={schema}
-            provider={provider}
-            displayName={displayName}
-            open={isConnectDialogOpen}
-            onClose={() => setConnectDialogOpen(false)}
-          />
+          {usesConnectDialog && (
+            <ConnectCredentialDialog
+              schema={schema}
+              provider={provider}
+              displayName={displayName}
+              open={isConnectDialogOpen}
+              onClose={() => setConnectDialogOpen(false)}
+            />
+          )}
           {hasMultipleCredentialTypes && (
             <CredentialTypeSelector
               schema={schema}

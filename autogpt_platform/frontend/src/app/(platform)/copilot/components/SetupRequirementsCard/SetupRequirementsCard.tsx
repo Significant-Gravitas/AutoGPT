@@ -54,8 +54,6 @@ import {
 interface Props {
   output: SetupRequirementsResponse;
   retryInstruction?: string;
-  /** Retained for call-site compatibility — the card no longer renders a
-   *  label heading above the credentials list. */
   credentialsLabel?: string;
   inputsMode?: "edit" | "preview" | "trigger";
   onComplete?: () => void;
@@ -64,6 +62,7 @@ interface Props {
 export function SetupRequirementsCard({
   output,
   retryInstruction,
+  credentialsLabel,
   inputsMode = "edit",
   onComplete,
 }: Props) {
@@ -274,13 +273,19 @@ export function SetupRequirementsCard({
           below it; standalone the card keeps the full credentials picker. */}
       {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
-          <CredentialsGroupedView
-            credentialFields={credentialFields}
-            requiredCredentials={requiredCredentials}
-            inputCredentials={inputCredentials}
-            inputValues={siblingInputs}
-            onCredentialChange={handleCredentialChange}
-          />
+          <Text variant="small" className="w-fit border-b text-zinc-500">
+            {credentialsLabel ??
+              (isEditMode ? "Credentials" : "Agent credentials")}
+          </Text>
+          <div className="mt-6">
+            <CredentialsGroupedView
+              credentialFields={credentialFields}
+              requiredCredentials={requiredCredentials}
+              inputCredentials={inputCredentials}
+              inputValues={siblingInputs}
+              onCredentialChange={handleCredentialChange}
+            />
+          </div>
         </div>
       )}
 

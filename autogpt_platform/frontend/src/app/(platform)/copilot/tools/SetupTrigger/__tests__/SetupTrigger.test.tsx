@@ -81,8 +81,8 @@ describe("SetupTriggerTool", () => {
       />,
     );
     expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
-    // The card no longer renders a label heading above the credentials list.
-    expect(screen.queryByText("Account")).toBeNull();
+    // Trigger mode labels the credentials section "Account".
+    expect(screen.getByText("Account")).toBeDefined();
   });
 
   it("renders the webhook URL with a copy button for a trigger_setup output", () => {

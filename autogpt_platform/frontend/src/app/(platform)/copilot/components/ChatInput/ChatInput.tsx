@@ -76,9 +76,6 @@ interface Props {
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
   recipientPicker?: ReactNode;
-  /** Ignore the ONBOARDING_BRAIN_DUMP flag — used by the tool page so it
-   *  always previews the restyled flat composer. */
-  forceNewComposer?: boolean;
 }
 
 export function ChatInput({
@@ -96,7 +93,6 @@ export function ChatInput({
   hasSession = false,
   hideSubmitWhenEmpty = false,
   recipientPicker,
-  forceNewComposer = false,
 }: Props) {
   const {
     copilotChatMode,
@@ -236,8 +232,7 @@ export function ChatInput({
   // The composer restyle (flat card, chips relocated into the tray
   // below) ships with the brain-dump experience; off keeps the original
   // glowing composer with pill toggles in the footer.
-  const isBrainDumpEnabled =
-    useGetFlag(Flag.ONBOARDING_BRAIN_DUMP) || forceNewComposer;
+  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;

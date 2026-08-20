@@ -198,16 +198,10 @@ describe("ChatMessagesContainer — tool UI dispatch", () => {
     expect(screen.getByTestId("chain-message-parts")).toBeDefined();
   });
 
-  it("keeps the legacy renderer when forceOldToolUI is set", () => {
-    flagState.newToolUI = true;
+  it("keeps the legacy renderer when the flag is off", () => {
+    flagState.newToolUI = false;
 
-    render(
-      <ChatMessagesContainer
-        {...baseProps}
-        messages={messages}
-        forceOldToolUI
-      />,
-    );
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
 
     expect(screen.queryByTestId("chain-message-parts")).toBeNull();
   });
