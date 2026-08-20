@@ -1,13 +1,10 @@
-"""Unit tests for CoPilot mode routing logic in the processor.
+"""Unit tests for engine routing in the processor.
 
-Tests cover the mode→service mapping:
-  - 'fast' → baseline service
-  - 'extended_thinking' → SDK service
-  - None → feature flag / config fallback
-
-as well as the ``CHAT_MODE_OPTION`` server-side gate.  The tests import
-the real production helpers from ``processor.py`` so the routing logic
-has meaningful coverage.
+Nothing outside the server can name an engine, so the decision is one
+chain: the SDK kill switch, then a Claude Code subscription, then the
+``COPILOT_SDK`` flag, then the config default. The tests import the real
+production helper from ``processor.py`` so that chain has meaningful
+coverage.
 """
 
 import asyncio
