@@ -42,7 +42,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLLMModel
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
@@ -447,6 +447,11 @@ class _BaselineStreamState:
     # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
     # a CLI 529-overload swap); typed as the shared RoutingSource superset.
     routing_source: RoutingSource = "env"
+    # The connection this turn runs on, stamped onto each assistant row as
+    # it is built. Recorded per turn so a later route change cannot rewrite
+    # what already ran; see backend/copilot/segments.py.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -1266,6 +1271,8 @@ def _baseline_conversation_updater(
             role="assistant",
             model=state.model,
             routing_source=state.routing_source,
+            llm_auth_provider=state.llm_auth_provider,
+            llm_credential_id=state.llm_credential_id,
             content=response.response_text or "",
             tool_calls=[
                 {
@@ -2153,7 +2160,16 @@ async def stream_chat_completion_baseline(
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
     _stream_error = False  # Track whether an error occurred during streaming
-    state = _BaselineStreamState(model=active_model, routing_source=routing_source)
+    state = _BaselineStreamState(
+        model=active_model,
+        routing_source=routing_source,
+        llm_auth_provider=(
+            session.metadata.llm_auth_provider if session is not None else None
+        ),
+        llm_credential_id=(
+            session.metadata.llm_credential_id if session is not None else None
+        ),
+    )
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2311,6 +2327,8 @@ async def stream_chat_completion_baseline(
                                 content=text_only_text,
                                 model=state.model,
                                 routing_source=state.routing_source,
+                                llm_auth_provider=state.llm_auth_provider,
+                                llm_credential_id=state.llm_credential_id,
                             )
                         )
                     for _buffered in state.session_messages:
@@ -2599,6 +2617,8 @@ async def stream_chat_completion_baseline(
                     content=final_text,
                     model=state.model,
                     routing_source=state.routing_source,
+                    llm_auth_provider=state.llm_auth_provider,
+                    llm_credential_id=state.llm_credential_id,
                 )
             )
         try:
