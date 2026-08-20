@@ -1,5 +1,6 @@
 """The server-owned description of an AI connection."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,6 +34,16 @@ def _transport(
 def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
+    mocker.patch.object(offers, "resolve_use_sdk", new=AsyncMock(return_value=False))
+    mocker.patch.object(
+        offers,
+        "resolve_model_route",
+        new=AsyncMock(
+            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
+                model=f"{mode}-{tier}-model", source="config"
+            )
+        ),
+    )
 
 
 def _mock_transports(
@@ -104,17 +115,64 @@ async def test_offer_ids_are_stable_and_per_account(
 
 
 @pytest.mark.asyncio
-async def test_tiers_are_labelled_but_never_named_with_a_model(
+async def test_tiers_name_the_model_they_resolve_to(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Naming the model needs the execution path, decided per turn."""
     _mock_transports(mocker, [_transport(default=True)])
 
     (offer,) = await get_connection_offers(USER_ID)
 
     assert [tier.label for tier in offer.tiers] == ["Balanced", "Advanced"]
-    assert [tier.tier for tier in offer.tiers] == ["standard", "advanced"]
-    assert not any(hasattr(tier, "display_model") for tier in offer.tiers)
+    assert [tier.display_model for tier in offer.tiers] == [
+        "fast-standard-model",
+        "fast-advanced-model",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The engine is the server's decision, so it is knowable before a turn."""
+    mocker.patch.object(offers, "resolve_use_sdk", new=AsyncMock(return_value=True))
+    _mock_transports(mocker, [_transport(default=True)])
+
+    (offer,) = await get_connection_offers(USER_ID)
+
+    assert [tier.display_model for tier in offer.tiers] == [
+        "thinking-standard-model",
+        "thinking-advanced-model",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chatgpt_tiers_are_not_named(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Naming them means leasing a runtime per credential to render a list."""
+    _mock_transports(mocker, [_transport("codex", "cred-1", "ChatGPT")])
+
+    (offer,) = await get_connection_offers(USER_ID)
+
+    assert all(tier.display_model is None for tier in offer.tiers)
+    assert [tier.label for tier in offer.tiers] == ["Balanced", "Advanced"]
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_tier_is_described_without_a_name(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(
+        offers,
+        "resolve_model_route",
+        new=AsyncMock(side_effect=RuntimeError("registry down")),
+    )
+    _mock_transports(mocker, [_transport(default=True)])
+
+    (offer,) = await get_connection_offers(USER_ID)
+
+    assert all(tier.display_model is None for tier in offer.tiers)
+    assert offer.state == "ready"
 
 
 @pytest.mark.asyncio

@@ -17,11 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     _normalize_private_expert_session_tenancy,
-    resolve_use_sdk,
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -49,7 +49,7 @@ class TestResolveUseSdk:
     @pytest.mark.asyncio
     async def test_subscription_override_routes_to_sdk(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
@@ -64,7 +64,7 @@ class TestResolveUseSdk:
     @pytest.mark.asyncio
     async def test_feature_flag_routes_to_sdk(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ):
             assert (
@@ -84,7 +84,7 @@ class TestResolveUseSdk:
             captured["default"] = default
             return default
 
-        with patch("backend.copilot.executor.processor.is_feature_enabled", new=_flag):
+        with patch("backend.copilot.engine.is_feature_enabled", new=_flag):
             assert (
                 await resolve_use_sdk(
                     "user-1",
@@ -98,7 +98,7 @@ class TestResolveUseSdk:
     @pytest.mark.asyncio
     async def test_everything_disabled_routes_to_baseline(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
@@ -119,7 +119,7 @@ class TestResolveUseSdk:
         wire protocol.
         """
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ):
             assert (
@@ -135,7 +135,7 @@ class TestResolveUseSdk:
     @pytest.mark.asyncio
     async def test_anonymous_user_is_routable(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
