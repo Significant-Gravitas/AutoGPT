@@ -32,7 +32,7 @@ function makeApiError(status: number, detail = "boom"): Error {
 
 describe("McpConnectPanel", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     cleanup();
   });
 
@@ -63,9 +63,11 @@ describe("McpConnectPanel", () => {
       "@/app/api/__generated__/endpoints/mcp/mcp"
     );
 
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
-      makeApiError(400, "OAuth not supported"),
-    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
 
     render(<McpConnectPanel onSuccess={() => {}} />);
 
@@ -100,9 +102,11 @@ describe("McpConnectPanel", () => {
       cleanup: { abort: vi.fn() },
     } as never);
 
-    vi.mocked(postV2ExchangeOauthCodeForMcpTokens).mockRejectedValueOnce(
-      makeApiError(400, "bad code"),
-    );
+    vi.mocked(postV2ExchangeOauthCodeForMcpTokens).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "bad code" },
+      headers: new Headers(),
+    } as never);
 
     render(<McpConnectPanel onSuccess={() => {}} />);
 
@@ -160,6 +164,49 @@ describe("McpConnectPanel", () => {
     });
   });
 
+  it("submits a selected Basic credential with an explicit prefix", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { ok: true },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    expect(screen.getByText("Basic authentication token")).toBeDefined();
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "  cGstbGYtYWJjZA==  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    await waitFor(() => {
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+        server_url: "https://mcp.example.com",
+        token: "Basic cGstbGYtYWJjZA==",
+      });
+    });
+  });
+
   it("lets the user switch from manual-token back to OAuth", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
@@ -212,9 +259,11 @@ describe("McpConnectPanel", () => {
       expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
     });
 
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockRejectedValueOnce(
-      makeApiError(401, "invalid token"),
-    );
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 401,
+      data: { detail: "invalid token" },
+      headers: new Headers(),
+    } as never);
 
     fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
       target: { value: "wrong-token" },

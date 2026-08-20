@@ -4,6 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
 
+const flagState = vi.hoisted(() => ({ newToolUI: false }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.NEW_TOOL_UI ? flagState.newToolUI : false,
+  };
+});
+
 const mockScrollEl = {
   scrollHeight: 100,
   scrollTop: 0,
@@ -58,6 +72,9 @@ vi.mock("@/components/ai-elements/message", () => ({
 vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
+vi.mock("../components/ChainMessageParts", () => ({
+  ChainMessageParts: () => <div data-testid="chain-message-parts" />,
+}));
 
 vi.mock("../components/QueueBadge", () => ({
   QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
@@ -85,6 +102,9 @@ vi.mock("../components/ThinkingIndicator", () => ({
     <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
   ),
 }));
+vi.mock("../../ToolChain/ToolChain", () => ({
+  ToolChain: () => <div data-testid="tool-chain" />,
+}));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
@@ -98,6 +118,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: (text: string) => {
     if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
       return { markerType: "error" };
@@ -154,6 +175,37 @@ const baseProps = {
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
 };
+
+describe("ChatMessagesContainer — tool UI dispatch", () => {
+  const messages = [
+    {
+      id: "assistant-tools",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: "Done" }],
+    },
+  ];
+
+  afterEach(() => {
+    flagState.newToolUI = false;
+    cleanup();
+  });
+
+  it("uses chain rendering when the new tool UI flag is enabled", () => {
+    flagState.newToolUI = true;
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.getByTestId("chain-message-parts")).toBeDefined();
+  });
+
+  it("keeps the legacy renderer when the flag is off", () => {
+    flagState.newToolUI = false;
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByTestId("chain-message-parts")).toBeNull();
+  });
+});
 
 // ── queued-messages rendering ─────────────────────────────────────────────
 

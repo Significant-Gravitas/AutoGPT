@@ -109,6 +109,10 @@ afterEach(() => {
   cleanup();
 });
 
+// These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
+// abort/supersede handling). variant="node" wires the add-credential button
+// straight to that flow; the default variant routes through
+// ConnectCredentialDialog instead.
 describe("CredentialsInput – OAuth flow", () => {
   it("clears a credential retained from a different transport provider", async () => {
     const onSelectCredentials = vi.fn();
@@ -174,6 +178,7 @@ describe("CredentialsInput – OAuth flow", () => {
         }}
         onSelectCredentials={vi.fn()}
         showTitle
+        variant="node"
       />,
     );
 
@@ -209,6 +214,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
@@ -257,6 +263,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
@@ -293,6 +300,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
@@ -329,6 +337,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
@@ -367,6 +376,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 
@@ -429,6 +439,7 @@ describe("CredentialsInput – OAuth flow", () => {
         schema={baseSchema}
         onSelectCredentials={vi.fn()}
         showTitle={false}
+        variant="node"
       />,
     );
 

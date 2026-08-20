@@ -47,7 +47,7 @@ class DiscoverToolsRequest(BaseModel):
     server_url: str = Field(description="URL of the MCP server")
     auth_token: str | None = Field(
         default=None,
-        description="Optional Bearer token for authenticated MCP servers",
+        description="Optional Basic or Bearer credential for authenticated MCP servers",
     )
 
 
@@ -432,9 +432,7 @@ async def mcp_store_token(
     ``_auto_lookup_credential``.
     """
     try:
-        authorization = normalize_mcp_authorization(
-            request.token.get_secret_value()
-        )
+        authorization = normalize_mcp_authorization(request.token.get_secret_value())
     except ValueError as e:
         raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
 

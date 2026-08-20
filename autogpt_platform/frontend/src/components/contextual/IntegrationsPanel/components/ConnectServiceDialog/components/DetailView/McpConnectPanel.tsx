@@ -68,6 +68,9 @@ export function McpConnectPanel({ onSuccess }: Props) {
         loginRes = await postV2InitiateOauthLoginForAnMcpServer({
           server_url: trimmedUrl,
         });
+        if (loginRes.status !== 200) {
+          throw getAPIResponseError(loginRes.status, loginRes.data);
+        }
       } catch (e: unknown) {
         if (getErrorStatus(e) === 400) {
           setPhase("manual-token");
@@ -89,10 +92,16 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
       const result = await promise;
 
-      await postV2ExchangeOauthCodeForMcpTokens({
+      const callbackResponse = await postV2ExchangeOauthCodeForMcpTokens({
         code: result.code,
         state_token,
       });
+      if (callbackResponse.status !== 200) {
+        throw getAPIResponseError(
+          callbackResponse.status,
+          callbackResponse.data,
+        );
+      }
 
       await invalidateCredentials();
       onSuccess();
@@ -115,10 +124,13 @@ export function McpConnectPanel({ onSuccess }: Props) {
     setIsSubmitting(true);
 
     try {
-      await postV2StoreABearerTokenForAnMcpServer({
+      const response = await postV2StoreABearerTokenForAnMcpServer({
         server_url: trimmedUrl,
         token: prepareMCPAuthCredential(trimmedToken, authScheme),
       });
+      if (response.status !== 200) {
+        throw getAPIResponseError(response.status, response.data);
+      }
 
       await invalidateCredentials();
       onSuccess();
@@ -260,6 +272,15 @@ function getErrorStatus(error: unknown): number | null {
     if (typeof status === "number") return status;
   }
   return null;
+}
+
+function getAPIResponseError(status: number, data: unknown) {
+  if (typeof data !== "object" || data === null) {
+    return { status, detail: data };
+  }
+  const detail = "detail" in data ? data.detail : data;
+  const message = "message" in data ? data.message : undefined;
+  return { status, detail, message };
 }
 
 function isValidHttpUrl(value: string): boolean {

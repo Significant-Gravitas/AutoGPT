@@ -87,6 +87,15 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getAPIResponseError(status: number, data: unknown) {
+  if (typeof data !== "object" || data === null) {
+    return { status, detail: data };
+  }
+  const detail = "detail" in data ? data.detail : data;
+  const message = "message" in data ? data.message : undefined;
+  return { status, detail, message };
+}
+
 export function MCPToolDialog({
   open,
   onClose,
@@ -110,6 +119,9 @@ export function MCPToolDialog({
     null,
   );
   const [credentials, setCredentials] = useState<CredentialsMetaInput | null>(
+    null,
+  );
+  const [credentialServerUrl, setCredentialServerUrl] = useState<string | null>(
     null,
   );
 
@@ -139,6 +151,7 @@ export function MCPToolDialog({
     setShowManualToken(false);
     setSelectedTool(null);
     setCredentials(null);
+    setCredentialServerUrl(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -157,6 +170,8 @@ export function MCPToolDialog({
       setServerName(response.data.server_name ?? null);
       setAuthRequired(false);
       setShowManualToken(false);
+      setManualToken("");
+      setManualAuthScheme("bearer");
       setStep("tool");
     },
     [],
@@ -172,7 +187,7 @@ export function MCPToolDialog({
           auth_token: null,
         });
         if (response.status !== 200) {
-          throw { status: response.status, detail: response.data };
+          throw getAPIResponseError(response.status, response.data);
         }
         applyDiscoveredTools(response);
       } catch (error: unknown) {
@@ -206,7 +221,12 @@ export function MCPToolDialog({
         server_url: url,
         token: authValue,
       });
-      if (credentialResponse.status !== 200) throw credentialResponse.data;
+      if (credentialResponse.status !== 200) {
+        throw getAPIResponseError(
+          credentialResponse.status,
+          credentialResponse.data,
+        );
+      }
 
       setCredentials({
         id: credentialResponse.data.id,
@@ -214,6 +234,7 @@ export function MCPToolDialog({
         type: credentialResponse.data.type,
         title: credentialResponse.data.title,
       });
+      setCredentialServerUrl(url);
 
       // Discover through the stored credential so the same credential ID is
       // attached to the new block and used again when the graph executes.
@@ -221,7 +242,9 @@ export function MCPToolDialog({
         server_url: url,
         auth_token: null,
       });
-      if (toolsResponse.status !== 200) throw toolsResponse.data;
+      if (toolsResponse.status !== 200) {
+        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      }
       applyDiscoveredTools(toolsResponse);
     } catch (error: unknown) {
       setError(
@@ -254,7 +277,9 @@ export function MCPToolDialog({
       const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
         server_url: serverUrl.trim(),
       });
-      if (loginResponse.status !== 200) throw loginResponse.data;
+      if (loginResponse.status !== 200) {
+        throw getAPIResponseError(loginResponse.status, loginResponse.data);
+      }
       const { login_url, state_token } = loginResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
@@ -281,7 +306,9 @@ export function MCPToolDialog({
           code: result.code,
           state_token,
         });
-        if (cbResponse.status !== 200) throw cbResponse.data;
+        if (cbResponse.status !== 200) {
+          throw getAPIResponseError(cbResponse.status, cbResponse.data);
+        }
         callbackResult = cbResponse.data;
       }
 
@@ -291,13 +318,16 @@ export function MCPToolDialog({
         type: callbackResult.type,
         title: callbackResult.title,
       });
+      setCredentialServerUrl(serverUrl.trim());
       setAuthRequired(false);
 
       // Discover tools now that we're authenticated
       const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: serverUrl.trim(),
       });
-      if (toolsResponse.status !== 200) throw toolsResponse.data;
+      if (toolsResponse.status !== 200) {
+        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      }
       applyDiscoveredTools(toolsResponse);
     } catch (error: unknown) {
       const status = getErrorStatus(error);
@@ -350,7 +380,8 @@ export function MCPToolDialog({
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
       availableTools,
-      credentials,
+      credentials:
+        credentialServerUrl === serverUrl.trim() ? credentials : null,
     });
     reset();
   }, [
@@ -359,6 +390,7 @@ export function MCPToolDialog({
     serverUrl,
     serverName,
     credentials,
+    credentialServerUrl,
     onConfirm,
     reset,
   ]);
@@ -388,8 +420,22 @@ export function MCPToolDialog({
                 type="url"
                 placeholder="https://mcp.example.com/mcp"
                 value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
+                onChange={(e) => {
+                  const nextUrl = e.target.value;
+                  setServerUrl(nextUrl);
+                  if (credentialServerUrl !== nextUrl.trim()) {
+                    setCredentials(null);
+                    setCredentialServerUrl(null);
+                  }
+                  setManualToken("");
+                  setManualAuthScheme("bearer");
+                  setAuthRequired(false);
+                  setShowManualToken(false);
+                  setError(null);
+                  startOAuthRef.current = false;
+                }}
                 onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                disabled={loading || oauthLoading}
                 autoFocus
               />
             </div>
@@ -398,7 +444,7 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                className="text-xs text-gray-500 underline hover:text-gray-700"
               >
                 or enter an API credential manually
               </button>
@@ -416,6 +462,7 @@ export function MCPToolDialog({
                   onChange={(e) =>
                     setManualAuthScheme(e.target.value as MCPAuthScheme)
                   }
+                  disabled={loading || oauthLoading}
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="bearer">API token (Bearer)</option>
@@ -439,9 +486,10 @@ export function MCPToolDialog({
                     if (detected) setManualAuthScheme(detected);
                   }}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  disabled={loading || oauthLoading}
                   autoFocus
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-500">
                   {manualAuthScheme === "basic"
                     ? 'Paste the value after "Basic", or paste the complete Authorization line.'
                     : "Paste the token itself. AutoGPT will send it as Bearer authentication."}

@@ -11,7 +11,6 @@ Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transp
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,21 +38,22 @@ def normalize_mcp_authorization(value: str) -> str:
     if not candidate:
         raise ValueError("Authentication credential must not be blank.")
 
-    authorization_header = re.match(
-        r"^authorization\s*:\s*(.*)$", candidate, flags=re.IGNORECASE
+    header_name, separator, header_value = candidate.partition(":")
+    included_header_name = (
+        bool(separator) and header_name.strip().casefold() == "authorization"
     )
-    included_header_name = authorization_header is not None
-    if authorization_header:
-        candidate = authorization_header.group(1).strip()
+    if included_header_name:
+        candidate = header_value.strip()
         if not candidate:
             raise ValueError("Authorization header must include a credential.")
 
     parts = candidate.split(None, 1)
-    if len(parts) == 2 and parts[0].lower() in _SUPPORTED_AUTH_SCHEMES:
-        scheme = _SUPPORTED_AUTH_SCHEMES[parts[0].lower()]
+    scheme_key = parts[0].casefold()
+    if len(parts) == 2 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
+        scheme = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         credential = parts[1].strip()
-    elif len(parts) == 1 and parts[0].lower() in _SUPPORTED_AUTH_SCHEMES:
-        scheme_name = _SUPPORTED_AUTH_SCHEMES[parts[0].lower()]
+    elif len(parts) == 1 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
+        scheme_name = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         raise ValueError(f"{scheme_name} authentication requires a credential.")
     elif included_header_name:
         raise ValueError(
@@ -114,7 +114,7 @@ class MCPClient:
         # inspect it, while normalizing the actual request header separately.
         self.auth_token = auth_token
         self.authorization = (
-            normalize_mcp_authorization(auth_token) if auth_token else None
+            normalize_mcp_authorization(auth_token) if auth_token is not None else None
         )
         self._request_id = 0
         self._session_id: str | None = None

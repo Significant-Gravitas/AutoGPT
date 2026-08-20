@@ -202,6 +202,59 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     });
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+      server_url: "https://mcp.example.com/mcp",
+      token: "my-secret-token",
+    });
+  });
+
+  it("stores a selected Basic credential with an explicit prefix", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        id: "cred-basic",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.example.com",
+        scopes: [],
+      },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    fireEvent.change(
+      screen.getByLabelText("Authentication type for example.com"),
+      { target: { value: "basic" } },
+    );
+    fireEvent.change(
+      screen.getByLabelText("Basic authentication token for example.com"),
+      { target: { value: "  cGstbGYtYWJjZA==  " } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+        server_url: "https://mcp.example.com/mcp",
+        token: "Basic cGstbGYtYWJjZA==",
+      });
+    });
   });
 
   it("drops Connected state and surfaces manual token input when Reconnect hits HTTP 400", async () => {

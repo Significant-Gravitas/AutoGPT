@@ -9391,6 +9391,348 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/memory": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Erase My Memory",
+        "description": "Permanently erase the caller's entire account memory.",
+        "operationId": "erase_my_memory",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EraseMemoryResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/memory/experts/{expert_id}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Erase My Expert Memory",
+        "description": "Permanently erase one expert's entire isolated memory.",
+        "operationId": "erase_my_expert_memory",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EraseMemoryResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/facts": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "List My Expert Memory Facts",
+        "description": "Live facts in one expert's isolated memory, newest first.",
+        "operationId": "list_my_expert_memory_facts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/facts/{fact_uuid}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Expert Memory Fact",
+        "description": "Forget one fact from an expert's isolated memory.",
+        "operationId": "forget_my_expert_memory_fact",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          },
+          {
+            "name": "fact_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Fact edge uuid",
+              "title": "Fact Uuid"
+            },
+            "description": "Fact edge uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ForgetFactResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/overview": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Expert Memory Overview",
+        "description": "Counts for one of the caller's experts' isolated memory.",
+        "operationId": "get_my_expert_memory_overview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryScopeOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/facts": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "List My Memory Facts",
+        "description": "Live facts in the caller's account memory, newest first.",
+        "operationId": "list_my_memory_facts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/facts/{fact_uuid}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Memory Fact",
+        "description": "Forget one fact from the caller's account memory.",
+        "operationId": "forget_my_memory_fact",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "fact_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Fact edge uuid",
+              "title": "Fact Uuid"
+            },
+            "description": "Fact edge uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ForgetFactResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/overview": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Memory Overview",
+        "description": "Counts for the caller's account (AutoPilot) memory.",
+        "operationId": "get_my_memory_overview",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryScopeOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/app/{client_id}": {
       "get": {
         "tags": ["oauth"],
@@ -15470,6 +15812,11 @@
             "type": "array",
             "title": "Required Inputs",
             "description": "List of input fields for this block"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider",
+            "description": "Integration provider slug when the block uses exactly one provider (e.g. 'google', 'discord'); used for provider icons in the chat UI"
           }
         },
         "type": "object",
@@ -15544,6 +15891,10 @@
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
             "title": "Outputs"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
@@ -17975,6 +18326,20 @@
         "required": ["uuid", "name"],
         "title": "EntitySummary"
       },
+      "EraseMemoryResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "deleted_nodes": { "type": "integer", "title": "Deleted Nodes" },
+          "erased": { "type": "boolean", "title": "Erased" }
+        },
+        "type": "object",
+        "required": ["deleted_nodes", "erased"],
+        "title": "EraseMemoryResponse",
+        "description": "Result of a scope wipe. ``deleted_nodes`` counts every node removed —\nentities, episodes (raw text included), and communities."
+      },
       "ErrorResponse": {
         "properties": {
           "type": {
@@ -18965,6 +19330,15 @@
         "type": "object",
         "title": "FolderUpdateRequest",
         "description": "Request model for updating a folder."
+      },
+      "ForgetFactResponse": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "forgotten": { "type": "boolean", "title": "Forgotten" }
+        },
+        "type": "object",
+        "required": ["uuid", "forgotten"],
+        "title": "ForgetFactResponse"
       },
       "GlobalSearchResponse": {
         "properties": {
@@ -21328,6 +21702,45 @@
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
       },
+      "MemoryFact": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "source", "target"],
+        "title": "MemoryFact",
+        "description": "One live fact edge, as shown in the recent-memories list."
+      },
+      "MemoryFactListResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/MemoryFact" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "MemoryFactListResponse"
+      },
       "MemoryForgetCandidatesResponse": {
         "properties": {
           "type": {
@@ -21431,6 +21844,21 @@
         ],
         "title": "MemoryOverview",
         "description": "Counts surfaced in the visualizer's header strip."
+      },
+      "MemoryScopeOverview": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "facts": { "type": "integer", "title": "Facts" },
+          "entities": { "type": "integer", "title": "Entities" },
+          "episodes": { "type": "integer", "title": "Episodes" }
+        },
+        "type": "object",
+        "required": ["facts", "entities", "episodes"],
+        "title": "MemoryScopeOverview",
+        "description": "Counts for one memory scope, shown on the settings page and in the\nerase-confirmation dialog."
       },
       "MemorySearchResponse": {
         "properties": {

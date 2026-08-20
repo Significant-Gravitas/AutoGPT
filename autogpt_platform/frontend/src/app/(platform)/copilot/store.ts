@@ -129,6 +129,14 @@ interface CopilotUIState {
   setInitialPrompt: (prompt: string | null) => void;
 
   /**
+   * Bumped every time the composer actually sends a message. Chain action
+   * cards draft into the input rather than sending themselves, so this is
+   * how they learn their drafted message went out.
+   */
+  sentMessageCount: number;
+  notifyMessageSent: () => void;
+
+  /**
    * Expert ids whose latest thread was already adopted via a
    * /copilot?expertId= deep link this page load. Lives here — not in
    * useChatSession refs — because the chat host remounts on every sessionId
@@ -223,6 +231,10 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  sentMessageCount: 0,
+  notifyMessageSent: () =>
+    set((state) => ({ sentMessageCount: state.sentMessageCount + 1 })),
 
   adoptedExpertThreads: new Set<string>(),
   markExpertThreadAdopted: (expertId) =>

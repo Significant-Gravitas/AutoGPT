@@ -35,6 +35,7 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
@@ -46,6 +47,7 @@ import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
 import { TaskListNotice } from "./components/TaskListNotice";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { UserMessageClamp } from "./components/UserMessageClamp";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -344,6 +346,7 @@ export function ChatMessagesContainer({
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -472,6 +475,7 @@ export function ChatMessagesContainer({
       active={showThinking}
       elapsedSeconds={elapsedSeconds}
       statusMessage={latestStatusMessage}
+      variant={isNewToolUI ? "chain" : "legacy"}
     />
   );
   const showIndicator = showThinking;
@@ -637,8 +641,12 @@ export function ChatMessagesContainer({
 
             // For finalized assistant messages, split into reasoning + response.
             // During streaming, show everything normally with tool collapsing.
+            // The new tool UI renders chains inline instead, so it skips the
+            // reasoning split (and its "Show steps" modal) entirely.
             const isFinalized =
-              message.role === "assistant" && !isCurrentlyStreaming;
+              !isNewToolUI &&
+              message.role === "assistant" &&
+              !isCurrentlyStreaming;
             const { reasoning, response } = isFinalized
               ? splitReasoningAndResponse(renderableParts)
               : { reasoning: [] as MessagePart[], response: renderableParts };
@@ -669,7 +677,12 @@ export function ChatMessagesContainer({
                       ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
                       : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
-                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
+                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900" +
+                    // Chain hover pills use negative margins that the base
+                    // overflow-hidden would clip.
+                    (isNewToolUI
+                      ? " group-[.is-assistant]:overflow-visible"
+                      : "")
                   }
                 >
                   {hasReasoning && reasoningSegments && (
@@ -681,14 +694,26 @@ export function ChatMessagesContainer({
                       })}
                     </StepsCollapse>
                   )}
-                  {responseSegments
-                    ? renderSegments(responseSegments, message.id, {
-                        onRetry: isLastAssistant ? onRetry : undefined,
-                        fileUrlBuilder,
-                        forceArtifacts: readOnly,
-                        readOnly,
-                      })
-                    : renderableParts.map((part, i) => (
+                  {isAssistant && isNewToolUI ? (
+                    <ChainMessageParts
+                      parts={renderableParts}
+                      messageID={message.id}
+                      isCurrentlyStreaming={isCurrentlyStreaming}
+                      onRetry={isLastAssistant ? onRetry : undefined}
+                      fileUrlBuilder={fileUrlBuilder}
+                      forceArtifacts={readOnly}
+                      readOnly={readOnly}
+                    />
+                  ) : responseSegments ? (
+                    renderSegments(responseSegments, message.id, {
+                      onRetry: isLastAssistant ? onRetry : undefined,
+                      fileUrlBuilder,
+                      forceArtifacts: readOnly,
+                      readOnly,
+                    })
+                  ) : (
+                    (() => {
+                      const parts = renderableParts.map((part, i) => (
                         <MessagePartRenderer
                           key={`${message.id}-${i}`}
                           part={part}
@@ -699,7 +724,14 @@ export function ChatMessagesContainer({
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
                         />
-                      ))}
+                      ));
+                      return isNewToolUI ? (
+                        <UserMessageClamp>{parts}</UserMessageClamp>
+                      ) : (
+                        parts
+                      );
+                    })()
+                  )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
                       turnMessages={getTurnMessages(messages, messageIndex)}
@@ -802,6 +834,7 @@ export function ChatMessagesContainer({
                       statusMessage={
                         restoreStatusMessage ?? "Reconnecting to live stream..."
                       }
+                      variant={isNewToolUI ? "chain" : "legacy"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.

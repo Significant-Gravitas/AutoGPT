@@ -65,9 +65,11 @@ async def fetch_graph_from_store_slug(
     except NotFoundError:
         return None, None
 
-    # Get the graph from store listing version
+    # Sub-graphs are needed to aggregate the full set of required credentials.
     graph = await sdb.get_available_graph(
-        store_agent.store_listing_version_id, hide_nodes=False
+        store_agent.store_listing_version_id,
+        hide_nodes=False,
+        include_subgraphs=True,
     )
     return graph, store_agent
 
