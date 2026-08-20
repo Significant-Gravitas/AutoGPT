@@ -31,6 +31,7 @@ _CHARACTER_BILLED_PROVIDERS = frozenset(
 _WALLTIME_BILLED_PROVIDERS = frozenset(
     {
         ProviderName.FAL.value,
+        ProviderName.HEYGEN.value,
         ProviderName.REVID.value,
         ProviderName.REPLICATE.value,
     }
