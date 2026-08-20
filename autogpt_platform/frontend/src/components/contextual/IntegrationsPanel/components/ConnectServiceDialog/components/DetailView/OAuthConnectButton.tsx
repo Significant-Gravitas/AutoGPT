@@ -10,6 +10,9 @@ interface Props {
   provider: string;
   providerName: string;
   buttonLabel?: string;
+  /** Say whose terms a linked run falls under. Only true where runs execute
+   *  on the provider's own account rather than on AutoGPT's. */
+  termsNotice?: boolean;
   onSuccess: () => void;
 }
 
@@ -17,6 +20,7 @@ export function OAuthConnectButton({
   provider,
   providerName,
   buttonLabel,
+  termsNotice = false,
   onSuccess,
 }: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
@@ -37,6 +41,12 @@ export function OAuthConnectButton({
       >
         {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
+      {termsNotice && (
+        <Text variant="small" className="text-[#8A8A90]">
+          Linked runs are sent to {providerName} under your own account and
+          follow {providerName}&apos;s terms.
+        </Text>
+      )}
     </div>
   );
 }
