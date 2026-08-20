@@ -701,7 +701,7 @@ describe("CredentialsInput – a removed connection", () => {
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
-  it("keeps an existing credential while its filtered list is empty", async () => {
+  it("clears an existing credential when filtering excludes it", async () => {
     const onSelectionChange = vi.fn();
     mockProvider([], [{ ...codexCredential }]);
 
@@ -712,8 +712,10 @@ describe("CredentialsInput – a removed connection", () => {
       />,
     );
 
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith(undefined),
+    );
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
-    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it("heals again after an auto-selected connection is itself deleted", async () => {
