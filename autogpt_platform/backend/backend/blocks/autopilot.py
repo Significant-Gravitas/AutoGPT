@@ -551,11 +551,14 @@ class AutoPilotBlock(Block):
                 )
                 return
             use_codex = True
-        else:
+        elif input_data.transport == AutoPilotTransport.PLATFORM:
             # Explicit platform: honour it even if a connection is still
             # attached, otherwise the user cannot move a step back onto
             # platform credits once codex has been configured.
             use_codex = False
+        else:
+            yield "error", f"Unsupported AutoPilot transport: {input_data.transport}"
+            return
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
@@ -577,15 +580,25 @@ class AutoPilotBlock(Block):
                 sid,
                 execution_context.user_id,
             )
+            if existing_session is None:
+                yield "session_id", sid
+                yield "error", (
+                    "The AutoPilot session was not found. Start a new session "
+                    "or check that the session ID belongs to this account."
+                )
+                return
+
             expected_provider = "codex" if use_codex else "platform"
             expected_credential = codex_connection.id if use_codex else None
-            if not (
-                existing_session is not None
-                and existing_session.metadata.llm_auth_provider == expected_provider
-                and existing_session.metadata.llm_credential_id == expected_credential
+            if (
+                existing_session.metadata.llm_auth_provider != expected_provider
+                or existing_session.metadata.llm_credential_id != expected_credential
             ):
                 yield "session_id", sid
-                yield "error", "codex_session_route_mismatch"
+                yield "error", (
+                    "The AutoPilot session uses a different transport or connection. "
+                    "Start a new session for this selection."
+                )
                 return
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own

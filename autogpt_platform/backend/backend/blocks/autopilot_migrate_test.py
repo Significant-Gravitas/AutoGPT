@@ -26,13 +26,14 @@ async def test_dry_run_counts_without_writing():
 async def test_apply_writes_the_transport_value():
     with patch(
         "backend.blocks.autopilot_migrate.query_raw_with_schema",
-        new=AsyncMock(return_value=[{"count": 1}]),
-    ), patch(
-        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(),
+    ) as query, patch(
+        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        new=AsyncMock(return_value=1),
     ) as execute:
         assert await migrate_autopilot_transport(apply=True) == 1
 
+    query.assert_not_awaited()
     sql, transport, block_id = execute.await_args.args
     assert transport == "codex_app_server"
     assert block_id == AUTOPILOT_BLOCK_ID
@@ -43,8 +44,22 @@ async def test_apply_writes_the_transport_value():
 
 
 @pytest.mark.asyncio
-async def test_nothing_pending_is_a_silent_no_op():
-    """Runs on every boot, so a steady "0 nodes" line would be pure noise."""
+async def test_apply_nothing_pending_is_a_silent_no_op():
+    with patch(
+        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        new=AsyncMock(),
+    ) as query, patch(
+        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        new=AsyncMock(return_value=0),
+    ) as execute:
+        assert await migrate_autopilot_transport(apply=True) == 0
+
+    query.assert_not_awaited()
+    execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_nothing_pending_is_a_silent_no_op():
     with patch(
         "backend.blocks.autopilot_migrate.query_raw_with_schema",
         new=AsyncMock(return_value=[{"count": 0}]),
@@ -52,7 +67,7 @@ async def test_nothing_pending_is_a_silent_no_op():
         "backend.blocks.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(),
     ) as execute:
-        assert await migrate_autopilot_transport(apply=True) == 0
+        assert await migrate_autopilot_transport(apply=False) == 0
 
     execute.assert_not_awaited()
 

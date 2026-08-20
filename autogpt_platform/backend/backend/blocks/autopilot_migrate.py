@@ -24,6 +24,7 @@ from backend.data.db import (
 
 logger = logging.getLogger(__name__)
 
+
 # A single atomic statement rather than read-modify-write. Sibling startup
 # migrations either lock (org_migration) or use jsonb_set (migrate_llm_models);
 # reading every node and writing the whole blob back would let two booting pods
@@ -32,16 +33,18 @@ logger = logging.getLogger(__name__)
 # The predicate is the idempotency guarantee: it matches only nodes with a real
 # connection (an id-less meta means nothing was selected) and no transport yet,
 # so re-running selects nothing.
-_MATCH = """
-    "agentBlockId" = $2
+def _match(block_id_parameter: int) -> str:
+    return f"""
+    "agentBlockId" = ${block_id_parameter}
     AND "constantInput"->'codex_credentials'->>'id' IS NOT NULL
     AND NOT ("constantInput" ? 'transport')
 """
 
+
 _COUNT_QUERY = f"""
     SELECT COUNT(*)::int AS count
     FROM {{schema_prefix}}"AgentNode"
-    WHERE {_MATCH.replace("$2", "$1")}
+    WHERE {_match(1)}
 """
 
 # ARRAY['transport'] rather than the '{transport}' path literal: these
@@ -50,7 +53,7 @@ _COUNT_QUERY = f"""
 _UPDATE_QUERY = f"""
     UPDATE {{schema_prefix}}"AgentNode"
     SET "constantInput" = jsonb_set("constantInput", ARRAY['transport'], to_jsonb($1::text), true)
-    WHERE {_MATCH}
+    WHERE {_match(2)}
 """
 
 
@@ -59,22 +62,21 @@ async def migrate_autopilot_transport(*, apply: bool) -> int:
 
     Returns the number of nodes that needed the backfill.
     """
-    rows = await query_raw_with_schema(_COUNT_QUERY, AUTOPILOT_BLOCK_ID)
-    pending = int(rows[0]["count"]) if rows else 0
-
-    # Silent when there is nothing to do: this runs on every boot, and a steady
-    # "0 nodes" line would be pure noise.
-    if not pending:
-        return 0
-
     if apply:
-        await execute_raw_with_schema(
+        updated = await execute_raw_with_schema(
             _UPDATE_QUERY,
             AutoPilotTransport.CODEX_APP_SERVER.value,
             AUTOPILOT_BLOCK_ID,
         )
-        logger.info("%d AutoPilot node(s) given transport=codex_app_server", pending)
-    else:
+        if updated:
+            logger.info(
+                "%d AutoPilot node(s) given transport=codex_app_server", updated
+            )
+        return updated
+
+    rows = await query_raw_with_schema(_COUNT_QUERY, AUTOPILOT_BLOCK_ID)
+    pending = int(rows[0]["count"]) if rows else 0
+    if pending:
         logger.info(
             "%d AutoPilot node(s) need backfill (dry run — pass --apply to write)",
             pending,

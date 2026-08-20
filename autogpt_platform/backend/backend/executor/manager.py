@@ -386,6 +386,7 @@ async def execute_node(
                     input_data.get(field_info.discriminator)
                 )
             ):
+                input_data[field_name] = None
                 continue
             if field_info.credential_reference_only:
                 credentials = await creds_manager.get(

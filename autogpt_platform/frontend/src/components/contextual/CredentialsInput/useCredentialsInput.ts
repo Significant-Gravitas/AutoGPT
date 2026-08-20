@@ -72,7 +72,11 @@ export function useCredentialsInput({
   >(null);
 
   const api = useBackendAPI();
-  const credentials = useCredentials(schema, siblingInputs);
+  const credentials = useCredentials(
+    schema,
+    siblingInputs,
+    selectedCredential?.provider,
+  );
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
   const oauthFlowIdRef = useRef(0);

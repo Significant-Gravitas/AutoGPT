@@ -46,6 +46,12 @@ describe("getCredentialProviderFromSchema", () => {
     ).toBe("codex");
   });
 
+  it("resolves a saved legacy credential when the discriminator is unset", () => {
+    expect(getCredentialProviderFromSchema({}, autopilotSchema, "codex")).toBe(
+      "codex",
+    );
+  });
+
   it("still returns the lone provider when no discriminator is declared", () => {
     expect(getCredentialProviderFromSchema({}, githubSchema)).toBe("github");
   });

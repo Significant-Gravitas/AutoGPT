@@ -103,7 +103,25 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
 
 
 @pytest.mark.asyncio
-async def test_autopilot_block_rejects_codex_connection_change_on_resume():
+@pytest.mark.parametrize(
+    ("existing", "error_fragment"),
+    [
+        (None, "session was not found"),
+        (
+            SimpleNamespace(
+                metadata=SimpleNamespace(
+                    llm_auth_provider="codex",
+                    llm_credential_id="different-credential",
+                )
+            ),
+            "different transport or connection",
+        ),
+    ],
+)
+async def test_autopilot_block_rejects_invalid_session_route(
+    existing: SimpleNamespace | None,
+    error_fragment: str,
+):
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
     input_data = AutoPilotBlock.Input(
@@ -123,13 +141,6 @@ async def test_autopilot_block_rejects_codex_connection_change_on_resume():
         node_id="node-1",
         node_exec_id="node-exec-1",
     )
-    existing = SimpleNamespace(
-        metadata=SimpleNamespace(
-            llm_auth_provider="codex",
-            llm_credential_id="different-credential",
-        )
-    )
-
     with (
         patch(
             "backend.copilot.model.get_chat_session",
@@ -145,10 +156,9 @@ async def test_autopilot_block_rejects_codex_connection_change_on_resume():
             )
         ]
 
-    assert outputs == [
-        ("session_id", "session-1"),
-        ("error", "codex_session_route_mismatch"),
-    ]
+    assert outputs[0] == ("session_id", "session-1")
+    assert outputs[1][0] == "error"
+    assert error_fragment in outputs[1][1]
     execute_copilot.assert_not_awaited()
 
 
@@ -339,5 +349,5 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
             async for name, value in block.run(input_data, execution_context=_context())
         }
 
-    assert outputs["error"] == "codex_session_route_mismatch"
+    assert "different transport or connection" in outputs["error"]
     execute_copilot.assert_not_awaited()

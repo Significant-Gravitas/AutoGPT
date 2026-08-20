@@ -90,6 +90,7 @@ export const CredentialsField = (props: FieldProps) => {
   const availability = useCredentialAvailability(
     schema as BlockIOCredentialsSubSchema,
     hardcodedValues,
+    selectedCredentials?.provider,
   );
   const isUnavailable = availability === "unavailable";
 
@@ -130,6 +131,7 @@ export const CredentialsField = (props: FieldProps) => {
         uiOptions={uiOptions}
         schema={schema}
         required={isRequired}
+        selectedProvider={selectedCredentials?.provider}
       />
       {availability === "unavailable" && (
         <Text

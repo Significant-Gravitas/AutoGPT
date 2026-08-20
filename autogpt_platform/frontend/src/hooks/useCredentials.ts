@@ -1,5 +1,4 @@
 import { useContext } from "react";
-import { getValue } from "@/lib/utils";
 
 import {
   CredentialsProviderData,
@@ -8,10 +7,13 @@ import {
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaResponse,
-  CredentialsProviderName,
   CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
+import {
+  getCredentialProviderFromSchema,
+  getDiscriminatorValue,
+} from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 
 export function classifyCredentials(
   allSaved: readonly CredentialsMetaResponse[],
@@ -122,55 +124,20 @@ export function getConnectableCredentialTypes(
 
 export default function useCredentials(
   credsInputSchema: BlockIOCredentialsSubSchema,
-  nodeInputValues?: Record<string, any>,
+  nodeInputValues?: Record<string, unknown>,
+  selectedProvider?: string,
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const discriminatorValue = [
-    credsInputSchema.discriminator
-      ? getValue(credsInputSchema.discriminator, nodeInputValues)
-      : null,
-    ...(credsInputSchema.discriminator_values || []),
-  ].find(Boolean);
-
-  const discriminatedProvider = credsInputSchema.discriminator_mapping
-    ? credsInputSchema.discriminator_mapping[discriminatorValue]
-    : null;
-
-  let providerName: CredentialsProviderName;
-  if (credsInputSchema.credentials_provider.length > 1) {
-    if (!credsInputSchema.discriminator) {
-      throw new Error(
-        "Multi-provider credential input requires discriminator!",
-      );
-    }
-    if (!discriminatedProvider) {
-      console.warn(
-        `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
-          "hiding credentials input until it is set.",
-      );
-      return null;
-    }
-    providerName = discriminatedProvider;
-  } else if (
-    credsInputSchema.discriminator &&
-    credsInputSchema.discriminator_mapping
-  ) {
-    // A single-provider field that still declares a mapping is saying some of
-    // its discriminator values need no credential at all (AutoPilot's
-    // `platform` transport). Returning the lone provider regardless would ask
-    // for a credential the selected option will never use.
-    if (!discriminatedProvider) return null;
-    providerName = discriminatedProvider;
-  } else {
-    providerName = credsInputSchema.credentials_provider[0];
-  }
+  const inputs = nodeInputValues ?? {};
+  const discriminatorValue = getDiscriminatorValue(inputs, credsInputSchema);
+  const providerName = getCredentialProviderFromSchema(
+    inputs,
+    credsInputSchema,
+    selectedProvider,
+  );
+  if (!providerName) return null;
   const provider = allProviders ? allProviders[providerName] : null;
-
-  // If block input schema doesn't have credentials, return null
-  if (!credsInputSchema) {
-    return null;
-  }
 
   const supportedTypes = getSupportedCredentialTypes(
     credsInputSchema,

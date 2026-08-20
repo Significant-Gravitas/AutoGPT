@@ -98,6 +98,42 @@ describe("deriveAuthMethods", () => {
 });
 
 describe("useCredentials provider list", () => {
+  it("resolves a saved credential on a legacy node with no discriminator", () => {
+    const savedCredential = {
+      id: "codex-1",
+      provider: "codex",
+      type: "oauth2" as const,
+      title: "ChatGPT for Codex",
+    };
+    const provider = {
+      provider: "codex",
+      providerName: "Codex",
+      savedCredentials: [savedCredential],
+      isSystemProvider: false,
+      oAuthCallback: vi.fn(),
+      mcpOAuthCallback: vi.fn(),
+      createAPIKeyCredentials: vi.fn(),
+      createUserPasswordCredentials: vi.fn(),
+      createHostScopedCredentials: vi.fn(),
+      deleteCredentials: vi.fn(),
+    } satisfies CredentialsProviderData;
+
+    const { result } = renderHook(
+      () => useCredentials(schema, {}, savedCredential.provider),
+      {
+        wrapper: ({ children }: { children: React.ReactNode }) =>
+          React.createElement(
+            CredentialsProvidersContext.Provider,
+            { value: { codex: provider } },
+            children,
+          ),
+      },
+    );
+
+    expect(result.current?.provider).toBe("codex");
+    expect(result.current?.savedCredentials).toEqual([savedCredential]);
+  });
+
   it("exposes the unfiltered provider credentials alongside the filtered ones", async () => {
     const oauthOnly = {
       id: "codex-1",

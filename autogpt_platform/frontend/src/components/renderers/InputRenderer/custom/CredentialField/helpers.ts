@@ -151,6 +151,7 @@ export const getDiscriminatorValue = (
 export const getCredentialProviderFromSchema = (
   formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
 ) => {
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
@@ -161,6 +162,15 @@ export const getCredentialProviderFromSchema = (
   const discriminatedProvider = discriminatorMapping
     ? discriminatorMapping[discriminatorValue ?? ""]
     : null;
+
+  const legacySelectedProvider = providers.find(
+    (provider) =>
+      discriminator &&
+      discriminatorMapping &&
+      discriminatorValue === undefined &&
+      provider === selectedProvider,
+  );
+  if (legacySelectedProvider) return legacySelectedProvider;
 
   if (providers.length > 1) {
     if (!discriminator) {
@@ -208,5 +218,5 @@ export const credentialNotApplicable = (
   const value = getDiscriminatorValue(formData, schema);
   if (value === undefined || value === null) return false;
 
-  return !(String(value) in mapping);
+  return !Object.hasOwn(mapping, String(value));
 };

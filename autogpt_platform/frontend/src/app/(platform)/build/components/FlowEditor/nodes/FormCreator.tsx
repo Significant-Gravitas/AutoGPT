@@ -69,6 +69,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
         // that uses none — invisible, because its row is hidden.
         const property = jsonSchema.properties?.[key];
         const stale =
+          !jsonSchema.required?.includes(key) &&
           typeof property === "object" &&
           property !== null &&
           credentialNotApplicable(
