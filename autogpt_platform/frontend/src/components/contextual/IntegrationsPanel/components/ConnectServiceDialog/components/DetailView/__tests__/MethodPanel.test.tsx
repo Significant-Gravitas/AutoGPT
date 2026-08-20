@@ -35,4 +35,54 @@ describe("MethodPanel", () => {
       expect.objectContaining({ provider: "codex" }),
     );
   });
+
+  test("answers what linking a ChatGPT plan means before the OAuth window", () => {
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={openaiProvider}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("What it does.")).toBeDefined();
+    expect(screen.getByText("What it costs.")).toBeDefined();
+    expect(screen.getByText("What you get.")).toBeDefined();
+    expect(screen.getByText("Stay in control.")).toBeDefined();
+    expect(screen.getByText(/spend zero AutoGPT credits/i)).toBeDefined();
+    expect(screen.getByText(/follow ChatGPT's terms/i)).toBeDefined();
+  });
+
+  test("claims nothing it cannot back up", () => {
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={openaiProvider}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    // Model names are server-owned, and pause-and-resume at a provider limit
+    // is not built yet — neither may be promised here.
+    expect(screen.queryByText(/5\.6|Terra|Sol|Balanced|Advanced/)).toBeNull();
+    expect(screen.queryByText(/the run pauses/i)).toBeNull();
+  });
+
+  test("does not show the ChatGPT explainer for an unrelated provider", () => {
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={{
+          id: "notion",
+          name: "Notion",
+          description: "Notion",
+          supportedAuthTypes: [AuthType.oauth2],
+        }}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("What it costs.")).toBeNull();
+    expect(screen.queryByText(/follow Notion's terms/i)).toBeNull();
+  });
 });
