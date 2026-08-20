@@ -4,6 +4,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getV1ListCredentials,
   postV1InitiateDeviceCodeOauthFlow,
   postV1PollDeviceCodeOauthFlowForCompletion,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
@@ -13,6 +14,7 @@ import { useDeviceAuthConnect } from "../useDeviceAuthConnect";
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   postV1InitiateDeviceCodeOauthFlow: vi.fn(),
   postV1PollDeviceCodeOauthFlowForCompletion: vi.fn(),
+  getV1ListCredentials: vi.fn(),
   getGetV1ListCredentialsQueryKey: () => ["credentials"],
 }));
 
@@ -21,6 +23,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const initiate = vi.mocked(postV1InitiateDeviceCodeOauthFlow);
+const listCredentials = vi.mocked(getV1ListCredentials);
 const poll = vi.mocked(postV1PollDeviceCodeOauthFlowForCompletion);
 
 function initiated(overrides: Record<string, unknown> = {}) {
@@ -328,5 +331,60 @@ describe("useDeviceAuthConnect", () => {
     });
 
     await waitFor(() => expect(result.current.phase).toBe("error"));
+  });
+
+  it("resolves the credential when the poll approves without one", async () => {
+    // The backend omits it when a concurrent poll consumed the state token
+    // first. Reporting success with nothing attached closed the modal having
+    // wired nothing up, and the state token is spent so there is no retry.
+    initiate.mockResolvedValue(initiated());
+    poll.mockResolvedValue({
+      status: 200,
+      data: { status: "approved" },
+    } as never);
+    listCredentials.mockResolvedValue({
+      status: 200,
+      data: [
+        { id: "other", provider: "github", type: "oauth2" },
+        { id: "cred-stripe", provider: "stripe_link", type: "oauth2" },
+      ],
+    } as never);
+
+    const onSuccess = vi.fn();
+    const { result } = render(onSuccess);
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    await waitFor(() =>
+      expect(onSuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "cred-stripe" }),
+      ),
+    );
+  });
+
+  it("still reports success when the credential cannot be resolved", async () => {
+    initiate.mockResolvedValue(initiated());
+    poll.mockResolvedValue({
+      status: 200,
+      data: { status: "approved" },
+    } as never);
+    listCredentials.mockRejectedValue(new Error("list unavailable"));
+
+    const onSuccess = vi.fn();
+    const { result } = render(onSuccess);
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    // The connection did succeed; failing to name it is not the user's problem.
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(undefined));
+    expect(result.current.phase).toBe("done");
   });
 });
