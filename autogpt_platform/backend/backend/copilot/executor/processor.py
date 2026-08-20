@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.config import ChatConfig
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -32,7 +33,6 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
@@ -133,33 +133,6 @@ def sync_fail_close_session(
 
 
 # ============ Mode Routing ============ #
-
-
-async def resolve_use_sdk(
-    user_id: str | None,
-    *,
-    use_claude_code_subscription: bool,
-    config_default: bool,
-    thinking_available: bool = True,
-) -> bool:
-    """Pick the SDK vs baseline engine for a single turn.
-
-    The engine is entirely the server's call: the Claude Code subscription
-    override, then the ``COPILOT_SDK`` LaunchDarkly flag, then the config
-    default. Callers used to be able to name an engine per request; nothing
-    can now, so there is one decision here instead of a request overriding it.
-
-    ``thinking_available`` is the kill-switch for deployments where the SDK
-    transport simply cannot run (today: ``CHAT_USE_LOCAL=true`` — Ollama
-    doesn't speak Anthropic's wire protocol).
-    """
-    if not thinking_available:
-        return False
-    return use_claude_code_subscription or await is_feature_enabled(
-        Flag.COPILOT_SDK,
-        user_id or "anonymous",
-        default=config_default,
-    )
 
 
 # ============ Module Entry Points ============ #

@@ -17335,12 +17335,16 @@
             "title": "Tier"
           },
           "label": { "type": "string", "title": "Label" },
-          "selectable": { "type": "boolean", "title": "Selectable" }
+          "selectable": { "type": "boolean", "title": "Selectable" },
+          "display_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Model"
+          }
         },
         "type": "object",
         "required": ["tier", "label", "selectable"],
         "title": "ConnectionTier",
-        "description": "One quality level on a connection.\n\n``display_model`` is deliberately absent. Naming the model a tier will\nresolve to needs the execution path, which is decided per turn by which\nservice handles it — and on ChatGPT it needs a live call against the\naccount. A name that is right half the time is worse here than no name."
+        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nIt is ``None`` on a ChatGPT connection. Naming that model means asking\nthe account what it advertises, which takes a runtime lease against the\nprovider; doing that once per credential to render a list is the cost\nthis endpoint exists to avoid."
       },
       "ContentType": {
         "type": "string",
