@@ -114,6 +114,14 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
                   notes={offer.limitations}
                   isSelected={offer.offer_id === active?.offer_id}
                   onSelect={() => chooseConnection(offer)}
+                  lock={
+                    offer.lock_reason
+                      ? {
+                          reason: offer.lock_reason,
+                          href: offer.unlock_href ?? null,
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>
