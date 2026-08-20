@@ -668,4 +668,52 @@ describe("CredentialsInput – a removed connection", () => {
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
+
+  it("dismisses the notice once OAuth reconnects the account", async () => {
+    // Reconnecting is an explicit choice, same as picking from the dropdown,
+    // so the notice has done its job. Only `handleCredentialSelect` used to
+    // clear it, which left the warning up after the user had already fixed
+    // the thing it was warning about.
+    // The provider list starts empty and gains the connection when the
+    // callback resolves, which is what really happens: `oAuthCallback` mints
+    // the credential and refreshes the list.
+    const reconnected = {
+      id: "new-cred",
+      provider: "codex",
+      type: "oauth2" as const,
+      title: "Reconnected ChatGPT",
+      scopes: ["drive.file", "drive.metadata"],
+    };
+    const list: any[] = [];
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        savedCredentials: list,
+        providerCredentials: list,
+        oAuthCallback: vi.fn().mockImplementation(async () => {
+          list.push(reconnected);
+          return reconnected;
+        }),
+      }),
+    );
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "code-1", state: "state-xyz" }),
+      cleanup: { abort: vi.fn() },
+    });
+
+    render(<StatefulCredentialsInput initial={deleted} />);
+
+    expect(
+      await screen.findByText(
+        /Old ChatGPT connection was removed\. Choose a connection/i,
+      ),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /sign in with chatgpt/i }),
+    );
+
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
 });
