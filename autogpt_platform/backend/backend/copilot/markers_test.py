@@ -108,3 +108,61 @@ class TestRecognisingMarkers:
     def test_an_empty_session_has_no_trailing_marker(self) -> None:
         assert has_trailing_marker(_session()) is False
         assert has_trailing_marker(None) is False
+
+
+class TestTheMarkerReachesTheDatabase:
+    """Building the marker is not the same as saving it.
+
+    The baseline yields the error and its consumer immediately breaks and
+    closes the generator, so the tail of its ``finally`` -- including the
+    session upsert -- never runs. A marker appended there is constructed
+    correctly and then discarded, which is exactly what happened: the append
+    reported success while the row never appeared in Postgres.
+
+    The failure path therefore has to persist the marker itself, before it
+    yields the error that ends the stream.
+
+    These two are structural guards, not behavioural proof: they assert the
+    ordering in the source rather than driving a real turn, because standing
+    up that generator needs a provider, a session, tools and an execution
+    context. The behavioural evidence is a live run against a deployment --
+    a 404 leaves a non-retryable card and a dead endpoint leaves a retryable
+    one -- and these keep the ordering from silently regressing afterwards.
+    """
+
+    def test_the_error_path_persists_before_it_yields(self) -> None:
+        import inspect
+
+        from backend.copilot.baseline import service
+
+        source = inspect.getsource(service.stream_chat_completion_baseline)
+        marker_at = source.find("append_error_marker(")
+        assert marker_at != -1, "the failure path no longer records a marker"
+
+        upsert_at = source.find("upsert_chat_session", marker_at)
+        error_yield_at = source.find("yield StreamError(", marker_at)
+        assert upsert_at != -1, "the marker is appended but never persisted"
+        assert error_yield_at != -1
+
+        # Persisting after the error is yielded is the bug this guards:
+        # the consumer closes the generator on that yield.
+        assert upsert_at < error_yield_at, (
+            "the marker must be persisted before StreamError is yielded -- "
+            "the consumer closes the generator on it, so anything after is "
+            "not guaranteed to run"
+        )
+
+    def test_the_marker_is_not_left_to_the_finally_block(self) -> None:
+        import inspect
+
+        from backend.copilot.baseline import service
+
+        source = inspect.getsource(service.stream_chat_completion_baseline)
+        finally_at = source.rfind("\n    finally:")
+        marker_at = source.find("append_error_marker(")
+        assert marker_at != -1
+        assert finally_at != -1
+        assert marker_at < finally_at, (
+            "the marker moved into finally, where generator teardown cuts it "
+            "short at the first await"
+        )
