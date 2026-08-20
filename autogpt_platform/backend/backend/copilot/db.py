@@ -33,6 +33,7 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
 
@@ -1189,6 +1190,20 @@ async def update_chat_session_status(
     return updated > 0
 
 
+async def _default_route_metadata(user_id: str) -> ChatSessionMetadata:
+    """Session metadata carrying the user's default connection.
+
+    These sessions exist to hold an outbound message, but the user replies in
+    them — so they start on the same connection a chat the user opened
+    themselves would, instead of silently falling back to the platform route.
+    """
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    return ChatSessionMetadata(
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+    )
+
+
 async def append_expert_run_message(
     user_id: str,
     expert_id: str,
@@ -1214,7 +1229,10 @@ async def append_expert_run_message(
         session_id = session.id
     else:
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            expert_id=expert_id,
+            metadata=await _default_route_metadata(user_id),
         )
         session_id = created.session_id
 
@@ -1280,7 +1298,9 @@ async def append_plain_session_message(
         session_id = sessions[0].id
     else:
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            metadata=await _default_route_metadata(user_id),
         )
         session_id = created.session_id
 

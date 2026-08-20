@@ -201,8 +201,12 @@ interface CopilotUIState {
   copilotLlmModel: CopilotLlmModel;
   setCopilotLlmModel: (model: CopilotLlmModel) => void;
 
-  /** Authentication route locked into the next session when it is created. */
-  copilotLlmAuth: CopilotLlmAuthSelection;
+  /**
+   * Authentication route locked into the next session when it is created.
+   * `null` until something chooses — the user via the picker, or the default
+   * they set in Settings, which the server marks on the transport list.
+   */
+  copilotLlmAuth: CopilotLlmAuthSelection | null;
   setCopilotLlmAuth: (selection: CopilotLlmAuthSelection) => void;
 
   /** Developer dry-run mode: sessions created with dry_run=true. */
@@ -532,7 +536,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ copilotLlmModel: model });
   },
 
-  copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  copilotLlmAuth: null,
   setCopilotLlmAuth: (selection) => {
     set({ copilotLlmAuth: selection });
   },
@@ -579,7 +583,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
-      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      copilotLlmAuth: null,
       isDryRun: false,
     });
     if (isClient) {

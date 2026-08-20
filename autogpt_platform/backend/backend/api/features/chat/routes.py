@@ -125,28 +125,28 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.transports import (
+    ChatTransportsResponse,
+    DefaultChatRoute,
+    InvalidDefaultChatRoute,
+    get_chat_transports,
+    is_deployment_chat_available,
+    save_default_chat_route,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
-from backend.integrations.codex.access import (
-    enforce_codex_access_http,
-    has_codex_access_for_discovery,
-)
-from backend.integrations.codex.auth_bundle import CodexAuthBundleError
-from backend.integrations.codex.credential_codec import bundle_from_credentials
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.codex.access import enforce_codex_access_http
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
-from backend.util.settings import BehaveAs, Settings
+from backend.util.settings import Settings
 
 settings = Settings()
 
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-credentials_manager = IntegrationCredentialsManager()
 
 
 async def _validate_and_get_session(
@@ -370,18 +370,6 @@ class CreateSessionResponse(BaseModel):
     expert_id: str | None = None
 
 
-class ChatTransportResponse(BaseModel):
-    auth_provider: CopilotLlmAuthProvider
-    credential_id: str | None
-    label: str
-    available: bool
-    default: bool
-
-
-class ChatTransportsResponse(BaseModel):
-    transports: list[ChatTransportResponse]
-
-
 class ActiveStreamInfo(BaseModel):
     """Information about an active stream for reconnection."""
 
@@ -550,63 +538,6 @@ async def list_sessions(
     )
 
 
-def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
-    if credentials is None or credentials.type != "oauth2":
-        return False
-    try:
-        bundle_from_credentials(credentials)
-    except CodexAuthBundleError:
-        return False
-    return True
-
-
-def _is_deployment_chat_available() -> bool:
-    if settings.config.behave_as == BehaveAs.CLOUD:
-        return True
-    api_key, _ = config.main_client_credentials
-    return bool(config.test_mode or config.use_claude_code_subscription or api_key)
-
-
-async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
-    deployment_available = _is_deployment_chat_available()
-    transports = [
-        ChatTransportResponse(
-            auth_provider="platform",
-            credential_id=None,
-            label=(
-                "AutoGPT Platform"
-                if settings.config.behave_as == BehaveAs.CLOUD
-                else "Self-hosted chat"
-            ),
-            available=deployment_available,
-            default=deployment_available,
-        )
-    ]
-
-    codex_credentials = (
-        await credentials_manager.store.get_creds_by_provider(user_id, "codex")
-        if await has_codex_access_for_discovery(user_id)
-        else []
-    )
-    valid_codex_credentials = [
-        credentials
-        for credentials in codex_credentials
-        if _is_valid_codex_credentials(credentials)
-    ]
-    codex_is_default = not deployment_available and len(valid_codex_credentials) == 1
-    transports.extend(
-        ChatTransportResponse(
-            auth_provider="codex",
-            credential_id=credentials.id,
-            label="ChatGPT",
-            available=True,
-            default=codex_is_default,
-        )
-        for credentials in valid_codex_credentials
-    )
-    return transports
-
-
 @router.get(
     "/transports",
     dependencies=[Security(auth.requires_user)],
@@ -614,7 +545,58 @@ async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
 async def list_chat_transports(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> ChatTransportsResponse:
-    return ChatTransportsResponse(transports=await _get_chat_transports(user_id))
+    """Every transport the user can chat over.
+
+    Exactly one carries ``default: true`` — the connection this user chose in
+    Settings, or the server's own pick when they haven't chosen one.
+    """
+    return ChatTransportsResponse(transports=await get_chat_transports(user_id))
+
+
+class SetDefaultTransportRequest(BaseModel):
+    """The connection new chats should start on.
+
+    ``auth_provider: null`` clears the choice and hands the decision back to
+    the server. Sending ``codex`` requires naming the credential, so the
+    default keeps pointing at one account rather than "whichever ChatGPT".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    auth_provider: CopilotLlmAuthProvider | None = None
+    credential_id: str | None = Field(default=None, max_length=128)
+
+
+@router.put(
+    "/transports/default",
+    dependencies=[Security(auth.requires_user)],
+)
+async def set_default_chat_transport(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    request: SetDefaultTransportRequest,
+) -> ChatTransportsResponse:
+    """Save the connection every new chat starts on.
+
+    Applies to chats nobody routed explicitly — a fresh session in the web
+    app, and every conversation that arrives without a request to read a route
+    from: bot links, schedules, briefings, dream passes. It does not touch a
+    conversation that already exists; sessions keep the route they were
+    created with.
+    """
+    try:
+        transports = await save_default_chat_route(
+            user_id,
+            DefaultChatRoute(
+                auth_provider=request.auth_provider,
+                credential_id=request.credential_id,
+            ),
+        )
+    except InvalidDefaultChatRoute as e:
+        raise HTTPException(
+            status_code=404 if e.detail == "codex_credential_not_found" else 422,
+            detail=e.detail,
+        ) from e
+    return ChatTransportsResponse(transports=transports)
 
 
 async def _resolve_new_session_llm_route(
@@ -633,14 +615,14 @@ async def _resolve_new_session_llm_route(
                 status_code=422,
                 detail="codex_builder_session_unsupported",
             )
-        if not _is_deployment_chat_available():
+        if not is_deployment_chat_available():
             raise HTTPException(
                 status_code=503,
                 detail="chat_transport_not_configured",
             )
         return "platform", None
 
-    transports = await _get_chat_transports(user_id)
+    transports = await get_chat_transports(user_id)
     if request is not None:
         route_was_explicit = bool(
             {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
