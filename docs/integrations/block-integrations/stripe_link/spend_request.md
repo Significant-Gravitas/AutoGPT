@@ -147,7 +147,7 @@ _Add practical use case examples here._
 ## Stripe Link Retrieve Card
 
 ### What it is
-Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
+Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form. Both are stored in clear text with the execution record — do not use this where PCI compliance matters. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -166,8 +166,8 @@ _Add technical explanation here._
 |--------|-------------|------|
 | error | Error message if the request failed | str |
 | status | Current status of the spend request | str |
-| card_number | Virtual card number. Single-use, capped at the approved amount, and expires at `valid_until`. Block outputs are persisted with the execution, so avoid wiring this anywhere that logs, exports, or reaches a model prompt. | str |
-| card_cvc | Virtual card CVC. See the note on `card_number`: this is persisted with the execution record. | str |
+| card_number | Virtual card number. Single-use, capped at the approved amount, and expires at `valid_until`. Stored in clear text with the execution record and readable through the execution-results API — do not enable this block where PCI compliance matters. | str |
+| card_cvc | Virtual card CVC. Stored in clear text with the execution record, same as `card_number`. Retaining a CVC after authorization is prohibited under PCI DSS 3.2. | str |
 | card_exp_month | Card expiry month | int |
 | card_exp_year | Card expiry year | int |
 | card_brand | Card brand (visa, mastercard, etc.) | str |
