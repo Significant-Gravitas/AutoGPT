@@ -197,9 +197,17 @@ class _RecordingClient:
         self._responses = list(responses)
         self.calls: list[dict] = []
 
-    async def request(self, method, url, *, json=None, headers=None):
+    async def request(
+        self, method, url, *, json=None, headers=None, allow_redirects=True
+    ):
         self.calls.append(
-            {"method": method, "url": url, "json": json, "headers": headers or {}}
+            {
+                "method": method,
+                "url": url,
+                "json": json,
+                "headers": headers or {},
+                "allow_redirects": allow_redirects,
+            }
         )
         return self._responses.pop(0)
 
@@ -207,7 +215,14 @@ class _RecordingClient:
 def _patch_requests(monkeypatch, client):
     from backend.blocks.stripe_link import mpp
 
-    monkeypatch.setattr(mpp, "Requests", lambda *a, **kw: client)
+    configurations = []
+
+    def _factory(*args, **kwargs):
+        configurations.append(kwargs)
+        return client
+
+    monkeypatch.setattr(mpp, "Requests", _factory)
+    return configurations
 
 
 CHALLENGE_HEADER = (
@@ -225,16 +240,19 @@ async def test_pay_attaches_the_credential_on_the_retry(monkeypatch):
             _FakeResponse(200, payload={"contribution_id": "pi_1"}),
         ]
     )
-    _patch_requests(monkeypatch, client)
+    configurations = _patch_requests(monkeypatch, client)
 
     block = StripeLinkMPPPayBlock()
-    status, payload = await block._pay_with_token(
+    status, payload, payment_attempted = await block._pay_with_token(
         "spt_abc", "https://merchant.example/buy", "POST", {"amount": 100}, {}
     )
 
     assert status == 200
     assert payload == {"contribution_id": "pi_1"}
+    assert payment_attempted is True
+    assert configurations == [{"raise_for_status": False, "retry_max_attempts": 1}]
     assert len(client.calls) == 2
+    assert all(call["allow_redirects"] is False for call in client.calls)
     # First hop must be unauthenticated — that is what elicits the challenge.
     assert "Authorization" not in client.calls[0]["headers"]
     credential = client.calls[1]["headers"]["Authorization"]
@@ -243,6 +261,24 @@ async def test_pay_attaches_the_credential_on_the_retry(monkeypatch):
         "spt_abc"
         in base64.urlsafe_b64decode(credential.split(" ", 1)[1] + "==").decode()
     )
+
+
+@pytest.mark.asyncio
+async def test_challenge_probe_does_not_retry_or_follow_redirects(monkeypatch):
+    client = _RecordingClient(
+        [_FakeResponse(402, headers={"www-authenticate": CHALLENGE_HEADER})]
+    )
+    configurations = _patch_requests(monkeypatch, client)
+
+    block = StripeLinkGetPaymentChallengeBlock()
+    status, header = await block._probe(
+        "https://merchant.example/buy", "POST", {"amount": 100}
+    )
+
+    assert status == 402
+    assert header == CHALLENGE_HEADER
+    assert configurations == [{"raise_for_status": False, "retry_max_attempts": 1}]
+    assert client.calls[0]["allow_redirects"] is False
 
 
 @pytest.mark.asyncio
@@ -255,11 +291,40 @@ async def test_pay_does_not_retry_when_the_merchant_did_not_ask_for_payment(
     _patch_requests(monkeypatch, client)
 
     block = StripeLinkMPPPayBlock()
-    status, payload = await block._pay_with_token(
+    status, payload, payment_attempted = await block._pay_with_token(
         "spt_abc", "https://merchant.example/buy", "POST", {}, {}
     )
 
     assert status == 200 and payload == {"ok": True}
+    assert payment_attempted is False
+    assert len(client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_success_is_not_reported_as_paid(monkeypatch):
+    client = _RecordingClient([_FakeResponse(200, payload={"ok": True})])
+    _patch_requests(monkeypatch, client)
+
+    block = StripeLinkMPPPayBlock()
+
+    async def _fake_link(credentials, method, path, body=None):
+        return {
+            "status": "approved",
+            "shared_payment_token": {"id": "spt_abc"},
+        }
+
+    object.__setattr__(block, "_link_api_request", _fake_link)
+    inp = block.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "spend_request_id": "lsrq_test",
+            "url": "https://merchant.example/buy",
+        }
+    )
+
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+
+    assert outputs == {"status_code": 200, "paid": False, "response": {"ok": True}}
     assert len(client.calls) == 1
 
 
@@ -375,12 +440,13 @@ async def test_a_declined_payment_is_reported_as_unpaid(monkeypatch):
     _patch_requests(monkeypatch, client)
 
     block = StripeLinkMPPPayBlock()
-    status, payload = await block._pay_with_token(
+    status, payload, payment_attempted = await block._pay_with_token(
         "spt_abc", "https://merchant.example/buy", "POST", {"amount": 100}, {}
     )
 
     assert status == 402
     assert payload == {"error": "card_declined"}
+    assert payment_attempted is True
     assert not (200 <= status < 300)
 
 
@@ -498,7 +564,7 @@ async def test_the_pay_path_does_not_send_an_include_for_the_token():
 
     async def _pay(spt, url, method, body, headers):
         captured["spt"] = spt
-        return 200, {"ok": True}
+        return 200, {"ok": True}, True
 
     object.__setattr__(block, "_pay_with_token", _pay)
 
@@ -640,7 +706,7 @@ async def run_pay_against(
 
     async def _fake_pay(spt, url, method, body, headers):
         sent.update({"spt": spt, "body": body})
-        return 200, {"ok": True}
+        return 200, {"ok": True}, True
 
     block = StripeLinkMPPPayBlock()
     object.__setattr__(block, "_link_api_request", _fake_link)

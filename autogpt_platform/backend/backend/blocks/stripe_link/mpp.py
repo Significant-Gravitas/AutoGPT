@@ -72,11 +72,6 @@ MAX_REQUEST_BLOB_BYTES = 16 * 1024
 MAX_RESPONSE_BYTES = 256 * 1024
 # How much of an oversized or unparseable body we keep for diagnostics.
 MAX_TRUNCATED_BODY_CHARS = 1000
-# `Requests` retries throttle statuses forever when unbounded, and that set
-# includes 500. A read can be retried safely; the paying request cannot — a 500
-# may mean the merchant already processed it, so it gets a single attempt.
-PROBE_MAX_ATTEMPTS = 3
-PAY_MAX_ATTEMPTS = 1
 # A JSON number literal — no leading zeros, so identifiers survive as strings.
 JSON_NUMBER_PATTERN = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$")
 # Fields `mppx` keeps on the wire challenge; anything else the server sends is
@@ -264,11 +259,12 @@ class StripeLinkGetPaymentChallengeBlock(Block):
         URL comes from the agent, so a raw client here would be an SSRF hole.
         """
         response = await guarded_request(
-            Requests(raise_for_status=False, retry_max_attempts=PROBE_MAX_ATTEMPTS),
+            Requests(raise_for_status=False, retry_max_attempts=1),
             method,
             url,
             json=body or None,
             headers={"Content-Type": "application/json"},
+            allow_redirects=False,
         )
         return response.status, response.headers.get("www-authenticate", "")
 
@@ -341,7 +337,10 @@ class StripeLinkMPPPayBlock(Block):
     class Output(BlockSchemaOutput):
         status_code: int = SchemaField(description="HTTP status the merchant returned")
         paid: bool = SchemaField(
-            description="True when the merchant accepted the payment (2xx)"
+            description=(
+                "True when the merchant accepted the credential-bearing payment "
+                "request (2xx)"
+            )
         )
         response: dict[str, Any] = SchemaField(
             description="Merchant's JSON response, e.g. an order or receipt",
@@ -379,7 +378,7 @@ class StripeLinkMPPPayBlock(Block):
                     "status": "approved",
                     "shared_payment_token": {"id": "spt_test"},
                 },
-                "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}),
+                "_pay_with_token": lambda *args, **kwargs: (200, {"ok": True}, True),
             },
         )
 
@@ -417,7 +416,7 @@ class StripeLinkMPPPayBlock(Block):
                 )
                 return
 
-            status_code, payload = await self._pay_with_token(
+            status_code, payload, payment_attempted = await self._pay_with_token(
                 spt,
                 input_data.url,
                 input_data.method,
@@ -425,7 +424,7 @@ class StripeLinkMPPPayBlock(Block):
                 input_data.headers,
             )
             yield "status_code", status_code
-            yield "paid", 200 <= status_code < 300
+            yield "paid", payment_attempted and 200 <= status_code < 300
             yield "response", payload
         except Exception as e:
             yield "error", str(e)
@@ -437,7 +436,7 @@ class StripeLinkMPPPayBlock(Block):
         method: str,
         body: dict[str, Any],
         headers: dict[str, str],
-    ) -> tuple[int, dict[str, Any]]:
+    ) -> tuple[int, dict[str, Any], bool]:
         """Probe for a challenge, then retry the request carrying the token.
 
         Every hop goes through `Requests`. The URL is agent-supplied and the
@@ -445,15 +444,7 @@ class StripeLinkMPPPayBlock(Block):
         — so an unvalidated client could be steered into handing a payment
         token to an arbitrary or internal host.
         """
-        # Two clients: the probe is idempotent and safe to retry through a
-        # transient 429/503; the paying hop is not, because a retry can double
-        # a charge.
-        probe_client = Requests(
-            raise_for_status=False, retry_max_attempts=PROBE_MAX_ATTEMPTS
-        )
-        pay_client = Requests(
-            raise_for_status=False, retry_max_attempts=PAY_MAX_ATTEMPTS
-        )
+        client = Requests(raise_for_status=False, retry_max_attempts=1)
         # Caller headers first, so they cannot displace Content-Type or, more
         # importantly, the Authorization we are about to attach.
         base_headers = {**headers, "Content-Type": "application/json"}
@@ -466,12 +457,17 @@ class StripeLinkMPPPayBlock(Block):
         # The probe must be unauthenticated — that is what elicits the 402
         # challenge.
         first = await guarded_request(
-            probe_client, method, url, json=body or None, headers=base_headers
+            client,
+            method,
+            url,
+            json=body or None,
+            headers=base_headers,
+            allow_redirects=False,
         )
         if first.status != 402:
             # Nothing to pay — it either succeeded outright or failed for an
             # unrelated reason. Report what happened either way.
-            return first.status, _json_or_text(first)
+            return first.status, _json_or_text(first), False
 
         challenge = select_stripe_challenge(first.headers.get("www-authenticate", ""))
         if challenge is None:
@@ -480,13 +476,14 @@ class StripeLinkMPPPayBlock(Block):
             )
 
         retry = await guarded_request(
-            pay_client,
+            client,
             method,
             url,
             json=body or None,
             headers={**base_headers, "Authorization": build_credential(challenge, spt)},
+            allow_redirects=False,
         )
-        return retry.status, _json_or_text(retry)
+        return retry.status, _json_or_text(retry), True
 
 
 def _coerce_numeric_strings(body: dict[str, Any]) -> dict[str, Any]:
