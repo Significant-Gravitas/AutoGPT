@@ -7,6 +7,7 @@ import {
 } from "../../helpers";
 import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
 import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
+import { ChatGPTConnectExplainer } from "./ChatGPTConnectExplainer";
 import { OAuthConnectButton } from "./OAuthConnectButton";
 import { UnsupportedNotice } from "./UnsupportedNotice";
 
@@ -29,12 +30,16 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
   if (method === AuthType.oauth2) {
     const isChatGPT = authProvider === "codex";
     return (
-      <OAuthConnectButton
-        provider={authProvider}
-        providerName={isChatGPT ? "ChatGPT" : provider.name}
-        buttonLabel={isChatGPT ? "Sign in with ChatGPT" : undefined}
-        onSuccess={onSuccess}
-      />
+      <div className="flex flex-col gap-4">
+        {isChatGPT && <ChatGPTConnectExplainer />}
+        <OAuthConnectButton
+          provider={authProvider}
+          providerName={isChatGPT ? "ChatGPT" : provider.name}
+          buttonLabel={isChatGPT ? "Sign in with ChatGPT" : undefined}
+          termsNotice={isChatGPT}
+          onSuccess={onSuccess}
+        />
+      </div>
     );
   }
   if (method === AuthType.api_key) {
