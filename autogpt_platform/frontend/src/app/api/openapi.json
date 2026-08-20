@@ -3657,6 +3657,30 @@
         }
       }
     },
+    "/api/chat/connections": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Connections",
+        "description": "Every AI connection the user can chat over, described by the server.\n\nAdditive alongside ``GET /transports``, which keeps its shape. This\ncarries what a client would otherwise have to infer — provider family,\nwhat backs a run, the quality tiers, and the limitations that apply —\nso product and billing statements come from the side that enforces them.",
+        "operationId": "getV2ListChatConnections",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIConnectionOffersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/health": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -14227,6 +14251,61 @@
   },
   "components": {
     "schemas": {
+      "AIConnectionOffer": {
+        "properties": {
+          "offer_id": { "type": "string", "title": "Offer Id" },
+          "provider_family": { "type": "string", "title": "Provider Family" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "auth_method": { "type": "string", "title": "Auth Method" },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "backed_by_label": { "type": "string", "title": "Backed By Label" },
+          "description": { "type": "string", "title": "Description" },
+          "state": { "type": "string", "title": "State" },
+          "selectable": { "type": "boolean", "title": "Selectable" },
+          "is_default": { "type": "boolean", "title": "Is Default" },
+          "tiers": {
+            "items": { "$ref": "#/components/schemas/ConnectionTier" },
+            "type": "array",
+            "title": "Tiers"
+          },
+          "limitations": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Limitations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer_id",
+          "provider_family",
+          "display_name",
+          "auth_method",
+          "credential_id",
+          "backed_by_label",
+          "description",
+          "state",
+          "selectable",
+          "is_default",
+          "tiers",
+          "limitations"
+        ],
+        "title": "AIConnectionOffer"
+      },
+      "AIConnectionOffersResponse": {
+        "properties": {
+          "offers": {
+            "items": { "$ref": "#/components/schemas/AIConnectionOffer" },
+            "type": "array",
+            "title": "Offers"
+          }
+        },
+        "type": "object",
+        "required": ["offers"],
+        "title": "AIConnectionOffersResponse"
+      },
       "APIKeyCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -16554,6 +16633,21 @@
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
         "title": "ConfirmUserLinkResponse"
+      },
+      "ConnectionTier": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["standard", "advanced"],
+            "title": "Tier"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "selectable": { "type": "boolean", "title": "Selectable" }
+        },
+        "type": "object",
+        "required": ["tier", "label", "selectable"],
+        "title": "ConnectionTier",
+        "description": "One quality level on a connection.\n\n``display_model`` is deliberately absent. Naming the model a tier will\nresolve to needs the execution path, which is decided per turn by which\nservice handles it — and on ChatGPT it needs a live call against the\naccount. A name that is right half the time is worse here than no name."
       },
       "ContentType": {
         "type": "string",
