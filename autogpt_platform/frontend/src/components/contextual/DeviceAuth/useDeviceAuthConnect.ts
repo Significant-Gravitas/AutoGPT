@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   getGetV1ListCredentialsQueryKey,
+  getV1ListCredentials,
   postV1InitiateDeviceCodeOauthFlow,
   postV1PollDeviceCodeOauthFlowForCompletion,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
@@ -24,6 +25,22 @@ interface Args {
 type Phase = "idle" | "awaiting_user" | "polling" | "done" | "error";
 
 const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+
+/** The credential a just-completed grant produced, when the poll omitted it. */
+async function findConnectedCredential(
+  provider: string,
+): Promise<CredentialsMetaResponse | undefined> {
+  try {
+    const response = await getV1ListCredentials();
+    if (response.status !== 200) return undefined;
+    const forProvider = response.data.filter((c) => c.provider === provider);
+    return forProvider[forProvider.length - 1];
+  } catch {
+    // The connection itself succeeded; failing to name the credential is not
+    // worth turning into an error the user has to act on.
+    return undefined;
+  }
+}
 
 export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
@@ -86,7 +103,13 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           await queryClient.invalidateQueries({
             queryKey: getGetV1ListCredentialsQueryKey(),
           });
-          onSuccess(credentials ?? undefined);
+          // The backend omits the credential when a concurrent poll consumed
+          // the state token first, and says to pick it up from the refreshed
+          // list. Do that, rather than reporting success with nothing to wire
+          // up — the state token is spent, so there is no retry from here.
+          const connected =
+            credentials ?? (await findConnectedCredential(provider));
+          onSuccess(connected ?? undefined);
           return;
         }
 
