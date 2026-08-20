@@ -2462,6 +2462,27 @@ async def stream_chat_completion_baseline(
             credential_id=session.metadata.llm_credential_id if session else None,
             message=error_msg,
         )
+        # Written before the error is yielded, and deliberately not in
+        # ``finally``. The consumer breaks out of its loop the moment it sees
+        # a StreamError and closes this generator, so the tail of ``finally``
+        # -- including its session upsert -- is cut short at the first await.
+        # A marker appended there is built correctly and then thrown away.
+        #
+        # ``_session_holder[0]`` rather than ``session``: the inner task can
+        # replace the binding mid-turn, and the marker has to land on the
+        # object that is actually current.
+        _failed_session = _session_holder[0]
+        if append_error_marker(
+            _failed_session,
+            error_msg,
+            retryable=failure.retryable if failure is not None else True,
+        ):
+            try:
+                await upsert_chat_session(_failed_session)
+            except Exception as marker_err:
+                logger.error(
+                    "[Baseline] Failed to persist the error marker: %s", marker_err
+                )
         if failure is not None:
             # Before the error, so a client that acts on the envelope has it
             # in hand by the time the turn is reported failed.
@@ -2469,16 +2490,6 @@ async def stream_chat_completion_baseline(
             yield StreamError(errorText=error_msg, code=failure.kind.value)
         else:
             yield StreamError(errorText=error_msg, code="baseline_error")
-        # The stream error dies with the SSE connection. Without a row in the
-        # chat, reloading shows the question and nothing after it -- no
-        # answer, no error, no sign the turn ever ran. Retry is offered only
-        # when the failure says trying again could work; an unclassified
-        # error keeps the existing benefit of the doubt.
-        append_error_marker(
-            session,
-            error_msg,
-            retryable=failure.retryable if failure is not None else True,
-        )
     finally:
         # Cancel the inner task if we're unwinding early (client disconnect,
         # unexpected error in the consumer) so it doesn't keep streaming
