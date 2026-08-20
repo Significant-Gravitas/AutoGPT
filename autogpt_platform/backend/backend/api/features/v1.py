@@ -9,9 +9,15 @@ from urllib.parse import urlparse
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth import (
+    get_request_context,
+    get_user_id,
+    requires_org_permission,
+    requires_user,
+)
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction
 from fastapi import (
     APIRouter,
     Body,
@@ -659,6 +665,26 @@ async def upload_file(
 ########################################################
 
 
+# SECRT-2449: the credits routes below resolve their credit model through
+# ``ctx.org_id``, so for a real (pooled) org they read/mutate the shared
+# ``OrgBalance``. They are therefore restricted to org roles holding
+# ``MANAGE_BILLING`` (owner or billing_manager); a plain member — and
+# deliberately also an org admin — gets 403 during dependency resolution,
+# before any billing data is touched. Personal-org membership rows are always
+# ``isOwner=True``, so the gate is a no-op for personal orgs.
+#
+# RELEASE-ORDERING CONSTRAINT (SECRT-2450): the frontend currently never
+# forwards ``X-Org-Id``, so every call resolves to the caller's personal org
+# and this gate is inert. Real-org header forwarding MUST NOT ship before
+# SECRT-2450's graceful no-permission handling lands — ``GET /credits`` feeds
+# the global nav Wallet, so plain members of a shared org would otherwise 403
+# on every page load. Enforcement of that ordering lives in SECRT-2450.
+BillingManagerContext = Annotated[
+    RequestContext,
+    Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+]
+
+
 @v1_router.get(
     path="/credits",
     tags=["credits"],
@@ -667,7 +693,7 @@ async def upload_file(
 )
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> dict[str, int]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"credits": await credit_model.get_credits(user_id)}
@@ -682,7 +708,7 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     x_datafast_visitor_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
@@ -708,7 +734,7 @@ async def request_top_up(
 )
 async def refund_top_up(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
@@ -724,7 +750,7 @@ async def refund_top_up(
 )
 async def fulfill_checkout(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
     await credit_model.fulfill_checkout(user_id=user_id)
@@ -740,7 +766,7 @@ async def fulfill_checkout(
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
 
@@ -793,7 +819,7 @@ async def configure_user_auto_top_up(
 )
 async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -1555,7 +1581,7 @@ async def stripe_webhook(request: Request):
 )
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> dict[str, str]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return {"url": await credit_model.create_billing_portal_session(user_id)}
@@ -1569,7 +1595,7 @@ async def manage_payment_method(
 )
 async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
@@ -1594,7 +1620,7 @@ async def get_credit_history(
 )
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
 ) -> list[RefundRequest]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return await credit_model.get_refund_requests(user_id)
@@ -1608,14 +1634,18 @@ async def get_refund_requests(
 )
 async def list_invoices(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: BillingManagerContext,
     limit: int = Query(24, ge=1, le=100),
 ) -> list[InvoiceListItem]:
-    """Recent Stripe invoices for the current user.
+    """Recent Stripe invoices for the caller's active org, for billing managers.
+
+    The invoices belong to the org the request resolves to (the caller's
+    personal org when no ``X-Org-Id`` is supplied), so this is restricted to
+    org roles holding ``MANAGE_BILLING``.
 
     Each item includes ``hosted_invoice_url`` (Stripe-hosted view) and
     ``invoice_pdf_url`` (direct PDF download). Returns an empty list when
-    the credit system is disabled or the user has no Stripe customer yet.
+    the credit system is disabled or the org has no Stripe customer yet.
     """
     credit_model = await get_credit_model(user_id, ctx.org_id)
     return await credit_model.list_invoices(user_id, limit=limit)
