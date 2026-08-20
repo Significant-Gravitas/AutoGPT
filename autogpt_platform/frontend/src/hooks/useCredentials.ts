@@ -65,33 +65,18 @@ export function classifyCredentials(
   return { savedCredentials, upgradeableCredentials };
 }
 
-export type CredentialsData =
-  | {
-      provider: string;
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsDeviceCode: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: true;
-      discriminatorValue?: string;
-    }
-  | (CredentialsProviderData & {
-      schema: BlockIOCredentialsSubSchema;
-      supportsApiKey: boolean;
-      supportsOAuth2: boolean;
-      supportsDeviceCode: boolean;
-      supportsUserPassword: boolean;
-      supportsHostScoped: boolean;
-      isLoading: false;
-      discriminatorValue?: string;
-      upgradeableCredentials: CredentialsMetaResponse[];
-      /** Unfiltered provider list; `savedCredentials` above is narrowed by
-       * supported type and discriminator, so only this can answer "was this
-       * credential deleted?". */
-      providerCredentials: CredentialsMetaResponse[];
-    });
+export type CredentialsData = CredentialsProviderData & {
+  schema: BlockIOCredentialsSubSchema;
+  supportsApiKey: boolean;
+  supportsOAuth2: boolean;
+  supportsDeviceCode: boolean;
+  supportsUserPassword: boolean;
+  supportsHostScoped: boolean;
+  isLoading: false;
+  discriminatorValue?: string;
+  upgradeableCredentials: CredentialsMetaResponse[];
+  allProviderCredentials: CredentialsMetaResponse[];
+};
 
 export function getSupportedCredentialTypes(
   schema: BlockIOCredentialsSubSchema,
@@ -206,11 +191,7 @@ export default function useCredentials(
 
   return {
     ...provider,
-    // The provider's list *before* type/discriminator filtering.
-    // `savedCredentials` below is filtered, so an empty one does not mean the
-    // provider has none — callers deciding whether a credential was deleted
-    // must use this.
-    providerCredentials: provider.savedCredentials,
+    allProviderCredentials: provider.savedCredentials,
     provider: providerName,
     schema: effectiveSchema,
     supportsApiKey,

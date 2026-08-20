@@ -96,19 +96,13 @@ export function useCredentialsInput({
 
   useEffect(() => {
     if (onLoaded) {
-      onLoaded(Boolean(credentials && credentials.isLoading === false));
+      onLoaded(Boolean(credentials));
     }
   }, [credentials, onLoaded]);
 
-  // Unselect credential if not available in the loaded credential list.
   useEffect(() => {
     if (readOnly) return;
-    if (!credentials || !("savedCredentials" in credentials)) return;
-    // Gate on the load state, not on the list being empty. An empty list was
-    // previously taken to mean "not loaded yet", which skipped the check in
-    // exactly the case it exists for: deleting your only connection left a
-    // stale selection with nothing said about it.
-    if (credentials.isLoading) return;
+    if (!credentials) return;
     const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
@@ -118,40 +112,40 @@ export function useCredentialsInput({
       hasAttemptedAutoSelect.current = false;
       return;
     }
-    // Judge removal against the provider's unfiltered list. `savedCredentials`
-    // is narrowed by supported type and discriminator, so a credential missing
-    // from it can simply be "not usable for this selection" rather than
-    // deleted — clearing on that would drop a perfectly valid connection.
-    const providerCreds =
-      "providerCredentials" in credentials
-        ? (credentials.providerCredentials as { id: string }[])
-        : availableCreds;
-    if (
-      selectedCredential &&
-      !providerCreds.some((c) => c.id === selectedCredential.id)
-    ) {
-      // Remember what was configured before dropping it. Disconnecting an
-      // integration mints a new credential on reconnect, so the old id stops
-      // resolving. Auto-selection below then heals the node, which is the
-      // behaviour we want — this only records what was replaced so the swap
-      // can be reported instead of happening in silence.
+
+    if (!selectedCredential) return;
+    const stillUsable = availableCreds.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+    if (stillUsable) return;
+
+    const stillExists = credentials.allProviderCredentials.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+    const isDeletingSelected =
+      isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
+    if (!stillExists && !isDeletingSelected) {
       setRemovedCredentialTitle(
         selectedCredential.title || credentials.providerName,
       );
-      onSelectCredential(undefined);
-      // Let the heal below run again. The flag latches after the first
-      // auto-selection, so without this, deleting an auto-selected credential
-      // left the field empty instead of adopting whatever remained.
-      hasAttemptedAutoSelect.current = false;
     }
-  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
+    onSelectCredential(undefined);
+    hasAttemptedAutoSelect.current = false;
+  }, [
+    credentialToDelete?.id,
+    credentials,
+    isDeletingCredential,
+    onSelectCredential,
+    readOnly,
+    selectedCredential,
+  ]);
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
       if (readOnly) return;
-      if (!credentials || !("savedCredentials" in credentials)) return;
+      if (!credentials) return;
       if (selectedCredential?.id) return;
 
       const savedCreds = credentials.savedCredentials;
@@ -169,7 +163,7 @@ export function useCredentialsInput({
         id: cred.id,
         type: cred.type,
         provider: credentials.provider,
-        title: (cred as any).title,
+        title: cred.title,
       });
     },
     [
@@ -181,11 +175,7 @@ export function useCredentialsInput({
     ],
   );
 
-  if (
-    !credentials ||
-    credentials.isLoading ||
-    !("savedCredentials" in credentials)
-  ) {
+  if (!credentials) {
     return {
       isLoading: true,
     };
@@ -213,6 +203,11 @@ export function useCredentialsInput({
   const userUpgradeableCredentials = filterSystemCredentials(
     upgradeableCredentials,
   );
+
+  function handleCredentialChange(newValue?: CredentialsMetaInput) {
+    setRemovedCredentialTitle(null);
+    onSelectCredential(newValue);
+  }
 
   async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
@@ -331,12 +326,7 @@ export function useCredentialsInput({
         }
       }
 
-      // Completing OAuth is an explicit choice, same as picking from the
-      // dropdown, so the "was removed" notice has done its job. The automatic
-      // heal deliberately does not clear it — that swap is the one nobody
-      // asked for and the one worth reporting.
-      setRemovedCredentialTitle(null);
-      onSelectCredential({
+      handleCredentialChange({
         id: credentialResult.id,
         type: "oauth2",
         title: credentialResult.title,
@@ -436,15 +426,11 @@ export function useCredentialsInput({
   function handleCredentialSelect(credentialId: string) {
     const selectedCreds = savedCredentials.find((c) => c.id === credentialId);
     if (selectedCreds) {
-      // Dismiss on an explicit choice only. Clearing it whenever any valid
-      // credential became selected also fired on the automatic heal below,
-      // so the swap was reported to nobody.
-      setRemovedCredentialTitle(null);
-      onSelectCredential({
+      handleCredentialChange({
         id: selectedCreds.id,
         type: selectedCreds.type,
         provider: provider,
-        title: (selectedCreds as any).title,
+        title: selectedCreds.title,
       });
     }
   }
@@ -467,6 +453,10 @@ export function useCredentialsInput({
       return;
 
     setIsDeletingCredential(true);
+    const isDeletingSelected = credentialToDelete.id === selectedCredential?.id;
+    if (isDeletingSelected) {
+      setRemovedCredentialTitle(null);
+    }
     try {
       const state = await processCredentialDeletion(
         credentialToDelete,
@@ -476,7 +466,7 @@ export function useCredentialsInput({
       );
 
       if (state.shouldUnselectCurrent) {
-        onSelectCredential(undefined);
+        handleCredentialChange(undefined);
       }
       setDeleteWarningMessage(state.warningMessage);
       setCredentialToDelete(state.credentialToDelete);
@@ -544,7 +534,7 @@ export function useCredentialsInput({
     handleOAuthLogin,
     handleScopeUpgrade,
     userUpgradeableCredentials,
-    onSelectCredential,
+    handleCredentialChange,
     schema,
     siblingInputs,
   };

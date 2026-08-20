@@ -1,6 +1,13 @@
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { describe, expect, it } from "vitest";
+import { renderHook } from "-library/react";
+import React from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
+  CredentialsProviderData,
+  CredentialsProvidersContext,
+  CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
+import useCredentials, {
   deriveAuthMethods,
   getSupportedCredentialTypes,
 } from "../useCredentials";
@@ -92,17 +99,6 @@ describe("deriveAuthMethods", () => {
 
 describe("useCredentials provider list", () => {
   it("exposes the unfiltered provider credentials alongside the filtered ones", async () => {
-    // `savedCredentials` is narrowed by supported type and discriminator, so it
-    // cannot answer "was this credential deleted?" — a credential filtered out
-    // for the current selection looks identical to one that no longer exists.
-    // `providerCredentials` is the unfiltered list callers need for that.
-    const { renderHook } = await import("@testing-library/react");
-    const { CredentialsProvidersContext } = await import(
-      "@/providers/agent-credentials/credentials-provider"
-    );
-    const useCredentials = (await import("../useCredentials")).default;
-    const React = (await import("react")).default;
-
     const oauthOnly = {
       id: "codex-1",
       provider: "codex",
@@ -116,14 +112,19 @@ describe("useCredentials provider list", () => {
       title: "A key",
     };
 
-    const providers = {
-      codex: {
-        provider: "codex",
-        providerName: "Codex",
-        savedCredentials: [oauthOnly, apiKeyToo],
-        isSystemProvider: false,
-      },
-    } as any;
+    const provider = {
+      provider: "codex",
+      providerName: "Codex",
+      savedCredentials: [oauthOnly, apiKeyToo],
+      isSystemProvider: false,
+      oAuthCallback: vi.fn(),
+      mcpOAuthCallback: vi.fn(),
+      createAPIKeyCredentials: vi.fn(),
+      createUserPasswordCredentials: vi.fn(),
+      createHostScopedCredentials: vi.fn(),
+      deleteCredentials: vi.fn(),
+    } satisfies CredentialsProviderData;
+    const providers: CredentialsProvidersContextType = { codex: provider };
 
     const codexOnlySchema = {
       type: "object",
@@ -141,18 +142,17 @@ describe("useCredentials provider list", () => {
         ),
     });
 
-    if (result.current === null || result.current.isLoading) {
+    if (result.current === null) {
       throw new Error("expected the provider to resolve");
     }
 
     // The api_key one is filtered out of savedCredentials by the schema's
     // supported types, but must still be present in the unfiltered list.
-    expect(result.current.savedCredentials.map((c: any) => c.id)).toEqual([
-      "codex-1",
-    ]);
-    expect(result.current.providerCredentials.map((c: any) => c.id)).toEqual([
-      "codex-1",
-      "codex-2",
-    ]);
+    expect(
+      result.current.savedCredentials.map((credential) => credential.id),
+    ).toEqual(["codex-1"]);
+    expect(
+      result.current.allProviderCredentials.map((credential) => credential.id),
+    ).toEqual(["codex-1", "codex-2"]);
   });
 });

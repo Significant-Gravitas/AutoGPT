@@ -6,7 +6,11 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import type {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaInput,
+  CredentialsMetaResponse,
+} from "@/lib/autogpt-server-api";
 import React from "react";
 import { CredentialsInput } from "../CredentialsInput";
 
@@ -50,12 +54,14 @@ const mockPreOpenOAuthPopup = preOpenOAuthPopup as unknown as ReturnType<
 const mockToast = toast as unknown as ReturnType<typeof vi.fn>;
 
 const baseSchema: BlockIOCredentialsSubSchema = {
-  credentials_provider: ["google"],
+  type: "object",
+  properties: {},
+  credentials_provider: ["codex"],
   credentials_types: ["oauth2"],
   credentials_scopes: ["drive.file", "drive.metadata"],
-} as BlockIOCredentialsSubSchema;
+};
 
-type CredentialsReturn = ReturnType<typeof useCredentials>;
+type CredentialsReturn = NonNullable<ReturnType<typeof useCredentials>>;
 type BackendAPI = ReturnType<typeof useBackendAPI>;
 
 function makeCredentialsReturn(overrides: Partial<CredentialsReturn> = {}) {
@@ -63,7 +69,7 @@ function makeCredentialsReturn(overrides: Partial<CredentialsReturn> = {}) {
     provider: "google",
     providerName: "Google",
     savedCredentials: [],
-    providerCredentials: [],
+    allProviderCredentials: [],
     upgradeableCredentials: [],
     supportsApiKey: false,
     supportsOAuth2: true,
@@ -525,23 +531,25 @@ describe("CredentialsInput – device auth", () => {
 });
 function StatefulCredentialsInput({
   initial,
+  onSelectionChange,
 }: {
-  initial?: {
-    id: string;
-    provider: string;
-    type: "oauth2";
-    title: string;
-  };
+  initial?: CredentialsMetaInput;
+  onSelectionChange?: (credential?: CredentialsMetaInput) => void;
 }) {
-  // The real parent writes the selection back down. Without that the unset
-  // issued when a credential stops resolving never reaches the component, and
-  // the auto-heal below it can never run.
-  const [selected, setSelected] = React.useState<any>(initial);
+  const [selected, setSelected] = React.useState<
+    CredentialsMetaInput | undefined
+  >(initial);
+
+  function handleSelectionChange(credential?: CredentialsMetaInput) {
+    setSelected(credential);
+    onSelectionChange?.(credential);
+  }
+
   return (
     <CredentialsInput
       schema={baseSchema}
       selectedCredentials={selected}
-      onSelectCredentials={setSelected}
+      onSelectCredentials={handleSelectionChange}
       showTitle={false}
     />
   );
@@ -563,13 +571,17 @@ describe("CredentialsInput – a removed connection", () => {
     title: "Old ChatGPT connection",
   };
 
-  function mockProvider(savedCredentials: any[], providerCredentials?: any[]) {
+  function mockProvider(
+    savedCredentials: CredentialsMetaResponse[],
+    allProviderCredentials: CredentialsMetaResponse[] = savedCredentials,
+  ) {
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
         provider: "codex",
         providerName: "Codex",
+        schema: baseSchema,
         savedCredentials,
-        providerCredentials: providerCredentials ?? savedCredentials,
+        allProviderCredentials,
       }),
     );
   }
@@ -605,14 +617,76 @@ describe("CredentialsInput – a removed connection", () => {
     ).toBeDefined();
   });
 
-  it("stays quiet while the provider list is still loading", async () => {
-    // The guard that replaced the empty-list check: an unloaded provider must
-    // not be mistaken for one that has nothing in it.
-    mockUseCredentials.mockReturnValue({ isLoading: true } as any);
+  it("does not announce an external removal while deleting the selected credential", async () => {
+    const rerenderRef: {
+      current?: ReturnType<typeof render>["rerender"];
+    } = {};
+    let resolveDelete:
+      | ((result: { deleted: true; revoked: null }) => void)
+      | undefined;
+    const deleteCredentials = vi.fn(async () => {
+      mockProvider([]);
+      if (!rerenderRef.current)
+        throw new Error("expected the input to be rendered");
+      rerenderRef.current(
+        <StatefulCredentialsInput
+          initial={{ ...codexCredential, type: "oauth2" }}
+        />,
+      );
 
-    render(<StatefulCredentialsInput initial={deleted} />);
+      return new Promise<{ deleted: true; revoked: null }>((resolve) => {
+        resolveDelete = resolve;
+      });
+    });
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "codex",
+        providerName: "Codex",
+        schema: baseSchema,
+        savedCredentials: [codexCredential],
+        allProviderCredentials: [codexCredential],
+        deleteCredentials,
+      }),
+    );
+
+    const view = render(
+      <StatefulCredentialsInput
+        initial={{ ...codexCredential, type: "oauth2" }}
+      />,
+    );
+    rerenderRef.current = view.rerender;
+
+    const menuTrigger = screen
+      .getAllByRole("button")
+      .find((button) => button.getAttribute("aria-haspopup") === "menu");
+    if (!menuTrigger) throw new Error("expected the credential actions menu");
+    fireEvent.pointerDown(menuTrigger, { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(deleteCredentials).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+
+    if (!resolveDelete) throw new Error("expected the deletion to be pending");
+    resolveDelete({ deleted: true, revoked: null });
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+
+  it("stays quiet while the provider list is still loading", async () => {
+    mockUseCredentials.mockReturnValue(null);
+
+    const view = render(<StatefulCredentialsInput initial={deleted} />);
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+
+    mockProvider([codexCredential]);
+    view.rerender(<StatefulCredentialsInput initial={deleted} />);
+
+    expect(
+      await screen.findByText(
+        /Old ChatGPT connection was removed — now using ChatGPT for Codex/i,
+      ),
+    ).toBeDefined();
   });
 
   it("says nothing when the configured connection still resolves", async () => {
@@ -627,18 +701,20 @@ describe("CredentialsInput – a removed connection", () => {
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
-  it("does not treat a filtered-out credential as deleted", async () => {
-    // `savedCredentials` is narrowed by supported type and discriminator, so a
-    // credential missing from it can just mean "not usable for this selection".
-    // Clearing on that would drop a valid connection and cry wolf.
+  it("clears an unusable credential without claiming it was deleted", async () => {
+    const onSelectionChange = vi.fn();
     mockProvider([], [{ ...codexCredential }]);
 
     render(
       <StatefulCredentialsInput
         initial={{ ...codexCredential, type: "oauth2" }}
+        onSelectionChange={onSelectionChange}
       />,
     );
 
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith(undefined),
+    );
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
@@ -662,11 +738,73 @@ describe("CredentialsInput – a removed connection", () => {
   });
 
   it("still auto-selects a lone connection when nothing was configured before", async () => {
+    const onSelectionChange = vi.fn();
     mockProvider([codexCredential]);
 
-    render(<StatefulCredentialsInput />);
+    render(<StatefulCredentialsInput onSelectionChange={onSelectionChange} />);
 
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith({
+        id: codexCredential.id,
+        provider: codexCredential.provider,
+        title: codexCredential.title,
+        type: codexCredential.type,
+      }),
+    );
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+
+  it("dismisses the notice after an explicit dropdown selection", async () => {
+    const replacement = {
+      ...codexCredential,
+      id: "codex-2",
+      title: "Replacement ChatGPT",
+    };
+    const onSelectionChange = vi.fn();
+    mockProvider([codexCredential, replacement]);
+
+    render(
+      <StatefulCredentialsInput
+        initial={deleted}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        /Old ChatGPT connection was removed\. Choose a connection/i,
+      ),
+    ).toBeDefined();
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Select OpenAI credential/i }),
+      { target: { value: replacement.id } },
+    );
+
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenCalledWith({
+        id: replacement.id,
+        provider: replacement.provider,
+        title: replacement.title,
+        type: replacement.type,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+
+  it("names an adopted title-less credential with the existing fallback", async () => {
+    mockProvider([
+      {
+        ...codexCredential,
+        title: undefined,
+      },
+    ]);
+
+    render(<StatefulCredentialsInput initial={deleted} />);
+
+    expect(
+      await screen.findByText(/now using Your OpenAI account\./i),
+    ).toBeDefined();
   });
 
   it("dismisses the notice once OAuth reconnects the account", async () => {
@@ -684,13 +822,14 @@ describe("CredentialsInput – a removed connection", () => {
       title: "Reconnected ChatGPT",
       scopes: ["drive.file", "drive.metadata"],
     };
-    const list: any[] = [];
+    const list: CredentialsMetaResponse[] = [];
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
         provider: "codex",
         providerName: "Codex",
+        schema: baseSchema,
         savedCredentials: list,
-        providerCredentials: list,
+        allProviderCredentials: list,
         oAuthCallback: vi.fn().mockImplementation(async () => {
           list.push(reconnected);
           return reconnected;
