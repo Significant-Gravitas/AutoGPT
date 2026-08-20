@@ -4372,9 +4372,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            route_mode = "thinking"
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
-                route_mode,
+                # This turn is on the SDK engine by definition.
+                "thinking",
                 tier_name,
                 credential_lease,
             )
