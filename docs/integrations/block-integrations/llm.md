@@ -622,6 +622,50 @@ Choose `codex_app_server` to use a connected ChatGPT plan. This path requires ma
 
 ---
 
+## Create Hey Gen Avatar Video
+
+### What it is
+This block integrates with HeyGen to create avatar videos and retrieve their URLs.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+`avatar_id` and `script` are required; `resolution`, `aspect_ratio`, and `output_format` are constrained to HeyGen's supported enum values, and `max_polling_attempts`/`polling_interval` both enforce a minimum of 5 to avoid hammering the API. The block posts to HeyGen's `POST /v3/videos` endpoint with `type: "avatar"` and the provided `avatar_id`, `script`, `resolution`, `aspect_ratio`, and `output_format`. `voice_id` and `title` are only included in the payload when set, so omitting them falls back to HeyGen's own defaults (the avatar's default voice, no title).
+
+It then polls `GET /v3/videos/{video_id}` every `polling_interval` seconds, up to `max_polling_attempts` times. Once the status is `completed`, it downloads the returned `video_url` and stores it through the platform's media storage before yielding it as output. If the status is `failed`, it raises with HeyGen's own `failure_message`; if no terminal status is reached within the attempt budget, it raises a `TimeoutError` instead of polling indefinitely.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| avatar_id | The HeyGen avatar ID to use | str | Yes |
+| script | The script the avatar will speak | str | Yes |
+| voice_id | The HeyGen voice ID to use. If omitted, falls back to the avatar's default voice. | str | No |
+| title | Optional title for the video | str | No |
+| resolution | Output video resolution | "4k" \| "1080p" \| "720p" | No |
+| aspect_ratio | Output video aspect ratio | "auto" \| "16:9" \| "9:16" \| "4:5" \| "5:4" \| "1:1" | No |
+| output_format | Output video file format | "mp4" \| "webm" | No |
+| max_polling_attempts | Maximum number of polling attempts | int | No |
+| polling_interval | Interval between polling attempts in seconds | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| video_url | The URL of the created video | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Marketing Video Generation**: Turn a product description into a branded avatar video for social or ad campaigns without hiring on-camera talent.
+
+**Localized Training Content**: Run the same script across different avatars and voices to produce region- or language-specific onboarding and training videos.
+
+**Automated Personalized Outreach**: Feed a workflow-generated script (e.g. a lead's name and offer) into the block to produce a personalized avatar video at scale for sales or customer outreach.
+<!-- END MANUAL -->
+
+---
+
 ## Create Talking Avatar Video
 
 ### What it is
