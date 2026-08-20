@@ -12,11 +12,17 @@ import { MARKETPLACE_EXPERTS_HREF } from "@/lib/constants";
 import {
   FlowIcon,
   PlusSignIcon,
+  SparklesIcon,
   UserAdd01Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
-export function CreateMenu() {
+interface Props {
+  onNewPod: () => void;
+}
+
+export function CreateMenu({ onNewPod }: Props) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -35,10 +41,20 @@ export function CreateMenu() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <Link href="/raise">
+            <Icon icon={SparklesIcon} className="mr-2 size-4" />
+            Raise your own expert
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/build">
             <Icon icon={FlowIcon} className="mr-2 size-4" />
             Build an agent from scratch
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onNewPod}>
+          <Icon icon={UserGroupIcon} className="mr-2 size-4" />
+          New pod
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

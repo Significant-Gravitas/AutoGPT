@@ -314,16 +314,21 @@ describe("ChatContainer", () => {
   });
 
   describe("auto-open artifact panel behavior", () => {
+    // The chat column itself runs full width; the reading-width cap lives on
+    // the message list and the composer, so anchor the check on the composer.
+    function expectChatColumnIsCapped() {
+      expect(screen.getByTestId("chat-input").closest(".max-w-3xl")).not.toBe(
+        null,
+      );
+    }
+
     it("does not auto-open the artifact panel on initial render", () => {
       mockArtifactsEnabled.mockReturnValue(true);
 
       render(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not auto-open when rerendering within the same session", () => {
@@ -333,10 +338,7 @@ describe("ChatContainer", () => {
       rerender(<ChatContainer {...baseProps} />);
 
       expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("clears the artifact preview when sessionId changes", () => {
@@ -364,10 +366,7 @@ describe("ChatContainer", () => {
       const panel = useCopilotUIStore.getState().artifactPanel;
       expect(panel.activeArtifact).toBeNull();
       expect(panel.history).toEqual([]);
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
 
     it("does not carry a stale back stack into the next session", () => {
@@ -433,10 +432,7 @@ describe("ChatContainer", () => {
       expect(
         useCopilotUIStore.getState().artifactPanel.activeArtifact,
       ).toBeNull();
-      const wrapper = screen.getByTestId(
-        "chat-messages-container",
-      ).parentElement;
-      expect(wrapper?.className).toContain("max-w-3xl");
+      expectChatColumnIsCapped();
     });
   });
 });

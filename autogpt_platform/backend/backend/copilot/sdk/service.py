@@ -3579,6 +3579,9 @@ async def _run_stream_attempt(
     #   - ValueError: ContextVar token mismatch (AUTOGPT-SERVER-8BT)
     #   - RuntimeError: cancel scope in wrong task  (AUTOGPT-SERVER-8BW)
     # Both are harmless — the TCP connection is already dead.
+    # CLI subprocess spawn + MCP init can take seconds on cold starts —
+    # narrate it so the status doesn't sit on the context-prep message.
+    yield StreamStatus(message="Starting the assistant…")
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -4233,6 +4236,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 code="sdk_cwd_error",
             )
             return
+
+        # Narrate the parallel setup below (sandbox spin-up, system prompt
+        # build, CLI session restore) — it can take several seconds and the
+        # generator cannot yield mid-gather.
+        yield StreamStatus(
+            message=(
+                "Restoring your session…" if has_history else "Preparing workspace…"
+            )
+        )
+
         # --- Run independent async I/O operations in parallel ---
         # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
         # warm-context, and CLI session restore are all independent network
@@ -4473,6 +4486,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
+            # Never load the host machine's ~/.claude settings (hooks,
+            # skills, plugins) or filesystem MCP servers into the CoPilot
+            # subprocess.  On developer machines a personal Claude Code
+            # setup can inject hundreds of MCP tool schemas, inflating the
+            # static prompt past the autocompact threshold and causing
+            # compaction thrash on the very first turn.  Prod containers
+            # have a clean HOME, so this is a no-op there.
+            setting_sources=[],
+            extra_args={"strict-mcp-config": None},
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,
@@ -4617,6 +4639,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # persist_session_safe (routes.py has already saved the user
         # message at sequence N before the executor runs, so an
         # incremental upsert would write a second copy at N+1).
+        # Narrate the context-assembly phase (pending drain, user-context
+        # injection, attachment prep, query/transcript build) before the
+        # SDK client spawns.
+        yield StreamStatus(message="Preparing conversation context…")
+
         pending_messages = await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(

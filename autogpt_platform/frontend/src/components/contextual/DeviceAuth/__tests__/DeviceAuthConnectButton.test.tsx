@@ -9,7 +9,6 @@ const state = {
   phase: "idle" as string,
   userCode: "",
   verificationUrl: "",
-  isPending: false,
 };
 
 vi.mock("../useDeviceAuthConnect", () => ({

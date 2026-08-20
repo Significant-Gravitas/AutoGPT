@@ -25,6 +25,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+_init_attempted = False
 
 
 class Flag(str, Enum):
@@ -176,12 +177,19 @@ def is_configured() -> bool:
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
-    if not _is_initialized:
+    # Gate on "did we try" rather than "did it work". Without a key
+    # `_is_initialized` never becomes True, so gating on it re-entered
+    # `initialize_launchdarkly` on every flag evaluation -- a warning and a
+    # raise per call on the unconfigured deployments this appliance ships as.
+    if not _init_attempted:
         initialize_launchdarkly()
     return ldclient.get()
 
 
 def initialize_launchdarkly() -> None:
+    global _init_attempted
+    _init_attempted = True
+
     sdk_key = settings.secrets.launch_darkly_sdk_key
     logger.debug(
         f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
@@ -194,9 +202,15 @@ def initialize_launchdarkly() -> None:
     config = Config(sdk_key)
     ldclient.set_config(config)
 
+    # Read the client before recording that one exists: if constructing it
+    # raised, `shutdown_launchdarkly` would otherwise build a fresh one purely
+    # to close it. Being unreachable is not a construction failure -- that
+    # returns an uninitialized client rather than raising -- so this only
+    # covers the abnormal case.
     global _is_initialized
+    connected = ldclient.get().is_initialized()
     _is_initialized = True
-    if ldclient.get().is_initialized():
+    if connected:
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -204,9 +218,29 @@ def initialize_launchdarkly() -> None:
 
 def shutdown_launchdarkly() -> None:
     """Shutdown the LaunchDarkly client."""
-    if ldclient.get().is_initialized():
-        ldclient.get().close()
-        logger.info("LaunchDarkly client closed successfully")
+    if not _is_initialized:
+        # `initialize_launchdarkly` returns early when no SDK key is configured,
+        # so `ldclient.set_config` was never called and `ldclient.get()` would
+        # raise "set_config was not called". Callers pair init/shutdown on
+        # app_env alone (see `rest_api.launch_darkly_context` and
+        # `scheduler._shutdown_launchdarkly_for_scheduler`), so an unconfigured
+        # non-LOCAL deployment would otherwise raise out of service teardown and
+        # leave the process alive instead of exiting.
+        return
+
+    # Close whenever a client was constructed, not just when it connected, so
+    # buffered events are flushed and sockets are torn down in order. This is
+    # not about keeping the process alive: every SDK thread is a daemon, so
+    # they never blocked interpreter exit -- it was the escaping exception that
+    # did. Note `close()` flushes synchronously, so an unreachable
+    # LaunchDarkly can make it wait on the SDK's HTTP timeouts.
+    #
+    # `_is_initialized` is deliberately left set: `get_client` reads a false
+    # value as "never started", and clearing it here would let a flag
+    # evaluation arriving during shutdown -- an in-flight request served through
+    # FastAPI's lifespan teardown -- rebuild the client we just closed.
+    ldclient.get().close()
+    logger.info("LaunchDarkly client closed successfully")
 
 
 async def _fetch_user_context_data(user_id: str) -> Context:

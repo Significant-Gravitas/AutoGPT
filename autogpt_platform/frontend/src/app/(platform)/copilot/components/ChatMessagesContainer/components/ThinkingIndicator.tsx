@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
+import { PixelGridLoader } from "../../PixelGridLoader/PixelGridLoader";
 import { ScaleLoader } from "../../ScaleLoader/ScaleLoader";
+import { SwapText } from "../../ToolChain/SwapText";
 
 const THINKING_PHRASES = [
   "Thinking...",
@@ -81,18 +83,46 @@ interface Props {
    * Backend-emitted status message for the current silent gap (e.g.
    * "Reading your message…", "Analyzing result…", "Optimizing conversation
    * context…"). When provided, it replaces the rotating generic phrase so
-   * the user sees what's actually happening instead of a placeholder.
+   * the user sees what's actually happening instead of a placeholder. In
+   * the chain variant an absent message shows no label at all rather than
+   * inventing a generic placeholder.
    */
   statusMessage?: string | null;
+  /** "chain" is the NEW_TOOL_UI pixel-loader look; "legacy" (default)
+   *  keeps the original rotating-phrase indicator. */
+  variant?: "legacy" | "chain";
 }
 
 export function ThinkingIndicator({
   active,
   elapsedSeconds,
   statusMessage,
+  variant = "legacy",
 }: Props) {
   const { phrase, visible } = useCyclingPhrase(active);
   const showTime = active && elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
+
+  if (variant === "chain") {
+    return (
+      <span
+        role="status"
+        aria-live="polite"
+        className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
+      >
+        <PixelGridLoader className="text-zinc-600" />
+        {statusMessage && (
+          <SwapText text={statusMessage} shimmer className="text-sm" />
+        )}
+        {!statusMessage && <span className="sr-only">Thinking…</span>}
+        {showTime && (
+          <span className="font-mono text-xs tabular-nums text-zinc-400">
+            {formatElapsed(elapsedSeconds)}
+          </span>
+        )}
+      </span>
+    );
+  }
+
   const displayText = statusMessage || phrase;
   const transitionOpacity = statusMessage ? 1 : visible ? 1 : 0;
 

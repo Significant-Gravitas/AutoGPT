@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
-
-import { METHOD_ORDER } from "../ConnectMethodView";
+import { METHOD_ORDER } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
 
 describe("METHOD_ORDER", () => {
   // The dialog renders `METHOD_ORDER.filter(...)`, so a method missing here is

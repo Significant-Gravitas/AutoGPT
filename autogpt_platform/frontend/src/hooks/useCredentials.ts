@@ -114,14 +114,21 @@ export function getSupportedCredentialTypes(
  * secret for, which is what made these blocks unconnectable.
  */
 export function deriveAuthMethods(supportedTypes: readonly CredentialsType[]) {
-  const supportsDeviceCode = supportedTypes.includes("device_code");
+  const authMethods = getConnectableCredentialTypes(supportedTypes);
   return {
-    supportsApiKey: supportedTypes.includes("api_key"),
-    supportsDeviceCode,
-    supportsOAuth2: supportedTypes.includes("oauth2") && !supportsDeviceCode,
-    supportsUserPassword: supportedTypes.includes("user_password"),
-    supportsHostScoped: supportedTypes.includes("host_scoped"),
+    supportsApiKey: authMethods.includes("api_key"),
+    supportsDeviceCode: authMethods.includes("device_code"),
+    supportsOAuth2: authMethods.includes("oauth2"),
+    supportsUserPassword: authMethods.includes("user_password"),
+    supportsHostScoped: authMethods.includes("host_scoped"),
   };
+}
+
+export function getConnectableCredentialTypes(
+  supportedTypes: readonly CredentialsType[],
+) {
+  const usesDeviceAuth = supportedTypes.includes("device_code");
+  return supportedTypes.filter((type) => type !== "oauth2" || !usesDeviceAuth);
 }
 
 export default function useCredentials(

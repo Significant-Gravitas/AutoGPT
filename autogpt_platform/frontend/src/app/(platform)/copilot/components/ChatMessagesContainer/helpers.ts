@@ -32,7 +32,7 @@ export type RenderSegment =
   | { kind: "collapsed-group"; parts: ToolUIPart[] }
   | { kind: "reasoning-group"; parts: MessagePart[]; index: number };
 
-const CUSTOM_TOOL_TYPES = new Set([
+const LEGACY_CUSTOM_TOOL_TYPES = new Set([
   "tool-ask_question",
   "tool-find_block",
   "tool-find_agent",
@@ -67,6 +67,13 @@ const REASONING_TOOL_TYPES = new Set([
 
 export function isReasoningToolPart(part: MessagePart): boolean {
   return REASONING_TOOL_TYPES.has(part.type);
+}
+
+// Every assistant tool belongs to the new ToolChain. ToolResult supplies a
+// compact result view for known backend tools and a structured fallback for
+// SDK or future tools, so no tool can fall back to the legacy top-level UI.
+export function isChainableToolPart(part: MessagePart): boolean {
+  return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
@@ -180,7 +187,7 @@ export function buildRenderSegments(
     if (part.type === "step-start") return;
 
     const isGenericCompletedTool =
-      isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
+      isCompletedToolPart(part) && !LEGACY_CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
       flushReasoning();

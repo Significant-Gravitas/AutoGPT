@@ -2,6 +2,7 @@ import asyncio
 import re
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from backend.api.features.experts.models import (
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     HireResult,
+    RaiseAttachment,
     VoiceSample,
     encode_voice_preferences,
 )
@@ -73,6 +75,22 @@ async def test_user():
 @pytest.fixture
 async def other_user():
     return await _create_seed_user()
+
+
+def _marketplace_workflow(listing_id: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="workflow", source="marketplace", id=listing_id)]
+
+
+def _library_workflow(library_agent_id: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="workflow", source="library", id=library_agent_id)]
+
+
+def _library_skill(slug: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="skill", source="library", id=slug)]
+
+
+def _marketplace_skill(listing_id: str) -> list[RaiseAttachment]:
+    return [RaiseAttachment(kind="skill", source="marketplace", id=listing_id)]
 
 
 async def _create_seed_user():
@@ -319,7 +337,7 @@ async def test_hire_and_raise_share_active_expert_cap(server: SpinTestServer):
 
     results = await asyncio.gather(
         experts_db.hire_expert(owner.id, template.id, None),
-        experts_db.create_raised_expert(owner.id, "Nova", None, None, None),
+        experts_db.create_raised_expert(owner.id, "Nova", None, None),
         return_exceptions=True,
     )
 
@@ -351,23 +369,87 @@ async def test_raise_expert_creates_blank_owned_expert(server: SpinTestServer):
         name="Otto",
         role=None,
         voice_preferences=None,
-        first_job_store_listing_version_id=None,
     )
     assert not raised.expert.is_template
     assert raised.expert.source_template_id is None
     assert raised.expert.name == "Otto"
     assert "Otto" in raised.expert.identity
     assert raised.expert.workflows == []
-    assert raised.first_job_installed is False
-    assert raised.first_job_failure_reason is None
+    assert raised.failed_attachments == []
     assert raised.expert.id in {e.id for e in await experts_db.list_experts(owner.id)}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        avatar_url="https://storage.googleapis.com/bucket/nova.png",
+        color="sky-300",
+    )
+    assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
+    assert raised.expert.color == "sky-300"
+
+    reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
+    assert reloaded is not None
+    assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
+    assert reloaded.color == "sky-300"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_stores_about_as_identity(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        about="Keeps replies short and always cites a source.",
+    )
+    assert raised.expert.identity == "Keeps replies short and always cites a source."
+
+    reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
+    assert reloaded is not None
+    assert reloaded.identity == "Keeps replies short and always cites a source."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_falls_back_to_default_identity_without_about(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Otto",
+        role=None,
+        voice_preferences=None,
+    )
+    assert raised.expert.identity == experts_db._raised_identity("Otto")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_defaults_avatar_and_color_when_omitted(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Otto",
+        role=None,
+        voice_preferences=None,
+    )
+    assert raised.expert.avatar_url is None
+    assert raised.expert.color == ""
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_allows_multiple_per_owner(server: SpinTestServer):
     owner = await _create_seed_user()
-    first = await experts_db.create_raised_expert(owner.id, "Otto", None, None, None)
-    second = await experts_db.create_raised_expert(owner.id, "Nova", None, None, None)
+    first = await experts_db.create_raised_expert(owner.id, "Otto", None, None)
+    second = await experts_db.create_raised_expert(owner.id, "Nova", None, None)
     assert first.expert.id != second.expert.id
     owned = {e.id for e in await experts_db.list_experts(owner.id)}
     assert {first.expert.id, second.expert.id} <= owned
@@ -376,13 +458,13 @@ async def test_raise_expert_allows_multiple_per_owner(server: SpinTestServer):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_is_scoped_to_owner(server: SpinTestServer, other_user):
     owner = await _create_seed_user()
-    raised = await experts_db.create_raised_expert(owner.id, "Otto", None, None, None)
+    raised = await experts_db.create_raised_expert(owner.id, "Otto", None, None)
     assert await experts_db.get_expert(other_user.id, raised.expert.id) is None
     assert await experts_db.get_expert(owner.id, raised.expert.id) is not None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_raise_expert_installs_first_job(server: SpinTestServer):
+async def test_raise_expert_installs_marketplace_workflow(server: SpinTestServer):
     owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
     raised = await experts_db.create_raised_expert(
@@ -390,12 +472,11 @@ async def test_raise_expert_installs_first_job(server: SpinTestServer):
         name="Nova",
         role="Research Assistant",
         voice_preferences="Warm and detailed.",
-        first_job_store_listing_version_id=slv_id,
+        attachments=_marketplace_workflow(slv_id),
     )
     assert raised.expert.role == "Research Assistant"
     assert raised.expert.voice_preferences == "Warm and detailed."
-    assert raised.first_job_installed is True
-    assert raised.first_job_failure_reason is None
+    assert raised.failed_attachments == []
     assert len(raised.expert.workflows) == 1
     assert raised.expert.workflows[0].store_listing_version_id == slv_id
 
@@ -417,7 +498,9 @@ async def test_raise_expert_restores_existing_first_job_library_agent(
         data={"isDeleted": True, "isArchived": True},
     )
 
-    raised = await experts_db.create_raised_expert(owner.id, "Nova", None, None, slv_id)
+    raised = await experts_db.create_raised_expert(
+        owner.id, "Nova", None, None, attachments=_marketplace_workflow(slv_id)
+    )
 
     restored = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": existing.id}
@@ -430,9 +513,13 @@ async def test_raise_expert_restores_existing_first_job_library_agent(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_first_job_install_rolls_back_library_agent_on_link_failure(
+async def test_first_job_install_rolls_back_library_agent_on_link_race(
     server: SpinTestServer,
 ):
+    """A concurrent raise already attached this listing, so the link insert
+    loses the unique constraint: the transaction — including the library agent
+    it created — rolls back, and the caller still sees success because the
+    workflow is attached."""
     owner = await _create_seed_user()
     slv_id = await _seed_store_listing(server)
     expert = await prisma.models.Expert.prisma().create(
@@ -450,8 +537,7 @@ async def test_first_job_install_rolls_back_library_agent_on_link_failure(
         }
     )
 
-    with pytest.raises(prisma.errors.UniqueViolationError):
-        await experts_db._install_first_job(owner.id, expert.id, slv_id)
+    await experts_db._install_first_job(owner.id, expert.id, slv_id)
 
     listing = await prisma.models.StoreListingVersion.prisma().find_unique(
         where={"id": slv_id}, include={"AgentGraph": True}
@@ -481,12 +567,12 @@ async def test_raise_expert_reports_failed_first_job(server: SpinTestServer):
         side_effect=RuntimeError("install exploded"),
     ):
         raised = await experts_db.create_raised_expert(
-            owner.id, "Otto", None, None, slv_id
+            owner.id, "Otto", None, None, attachments=_marketplace_workflow(slv_id)
         )
     assert not raised.expert.is_template
     assert raised.expert.workflows == []
-    assert raised.first_job_installed is False
-    assert raised.first_job_failure_reason == "installation_failed"
+    assert len(raised.failed_attachments) == 1
+    assert raised.failed_attachments[0].reason == "installation_failed"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -503,17 +589,17 @@ async def test_raise_expert_reports_vanished_graph_as_unavailable(
         side_effect=NotFoundError("Graph #x v1 not found or accessible"),
     ):
         raised = await experts_db.create_raised_expert(
-            owner.id, "Otto", None, None, slv_id
+            owner.id, "Otto", None, None, attachments=_marketplace_workflow(slv_id)
         )
     assert raised.expert.workflows == []
-    assert raised.first_job_installed is False
-    assert raised.first_job_failure_reason == "unavailable"
+    assert len(raised.failed_attachments) == 1
+    assert raised.failed_attachments[0].reason == "unavailable"
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_raise_expert_handles_braces_in_name(server: SpinTestServer):
     owner = await _create_seed_user()
-    raised = await experts_db.create_raised_expert(owner.id, "a{b", None, None, None)
+    raised = await experts_db.create_raised_expert(owner.id, "a{b", None, None)
     assert raised.expert.name == "a{b"
     assert "a{b" in raised.expert.identity
 
@@ -532,8 +618,9 @@ async def test_raise_expert_degrades_when_first_job_vanishes_mid_flight(
         name: str,
         role: str | None,
         voice_preferences: str | None,
+        **kwargs,
     ) -> prisma.models.Expert:
-        expert = await create_row(user_id, name, role, voice_preferences)
+        expert = await create_row(user_id, name, role, voice_preferences, **kwargs)
         await prisma.models.StoreListingVersion.prisma().update(
             where={"id": slv_id}, data={"isAvailable": False}
         )
@@ -545,11 +632,11 @@ async def test_raise_expert_degrades_when_first_job_vanishes_mid_flight(
         new=create_then_withdraw,
     ):
         raised = await experts_db.create_raised_expert(
-            owner.id, "Otto", None, None, slv_id
+            owner.id, "Otto", None, None, attachments=_marketplace_workflow(slv_id)
         )
     assert raised.expert.workflows == []
-    assert raised.first_job_installed is False
-    assert raised.first_job_failure_reason == "unavailable"
+    assert len(raised.failed_attachments) == 1
+    assert raised.failed_attachments[0].reason == "unavailable"
     assert (
         await prisma.models.ExpertWorkflow.prisma().count(
             where={"expertId": raised.expert.id}
@@ -565,7 +652,11 @@ async def test_raise_expert_rejects_unapproved_first_job(server: SpinTestServer)
 
     with pytest.raises(experts_db.FirstJobUnavailableError):
         await experts_db.create_raised_expert(
-            owner.id, "Otto", None, None, pending_slv_id
+            owner.id,
+            "Otto",
+            None,
+            None,
+            attachments=_marketplace_workflow(pending_slv_id),
         )
 
     assert await experts_db.list_experts(owner.id) == []
@@ -581,7 +672,11 @@ async def test_raise_expert_rejects_withdrawn_first_job(server: SpinTestServer):
 
     with pytest.raises(experts_db.FirstJobUnavailableError):
         await experts_db.create_raised_expert(
-            owner.id, "Otto", None, None, withdrawn_slv_id
+            owner.id,
+            "Otto",
+            None,
+            None,
+            attachments=_marketplace_workflow(withdrawn_slv_id),
         )
 
     assert await experts_db.list_experts(owner.id) == []
@@ -616,9 +711,158 @@ async def test_raise_expert_rejects_pending_version_of_approved_graph(
     )
 
     with pytest.raises(experts_db.FirstJobUnavailableError):
-        await experts_db.create_raised_expert(owner.id, "Otto", None, None, pending.id)
+        await experts_db.create_raised_expert(
+            owner.id, "Otto", None, None, attachments=_marketplace_workflow(pending.id)
+        )
 
     assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_persists_weekly_budget(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Otto",
+        role=None,
+        voice_preferences=None,
+        weekly_budget=250,
+    )
+    row = await prisma.models.Expert.prisma().find_unique(
+        where={"id": raised.expert.id}
+    )
+    assert row is not None
+    assert row.weeklyBudget == 250
+    assert raised.expert.weekly_budget == 250
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_omitted_weekly_budget_uses_platform_default(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id, name="Otto", role=None, voice_preferences=None
+    )
+    row = await prisma.models.Expert.prisma().find_unique(
+        where={"id": raised.expert.id}
+    )
+    assert row is not None
+    assert row.weeklyBudget is None
+    assert raised.expert.weekly_budget == scheduling.effective_weekly_budget(row)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_attaches_library_workflow(server: SpinTestServer):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    library_agent = await library_db.add_store_agent_to_library(slv_id, owner.id)
+
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        attachments=_library_workflow(library_agent.id),
+    )
+
+    assert raised.failed_attachments == []
+    assert len(raised.expert.workflows) == 1
+    assert raised.expert.workflows[0].library_agent_id == library_agent.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_other_users_library_workflow(
+    server: SpinTestServer, other_user
+):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    library_agent = await library_db.add_store_agent_to_library(slv_id, other_user.id)
+
+    with pytest.raises(experts_db.FirstJobUnavailableError):
+        await experts_db.create_raised_expert(
+            owner.id,
+            "Otto",
+            None,
+            None,
+            attachments=_library_workflow(library_agent.id),
+        )
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_attaches_library_skill(server: SpinTestServer):
+    owner = await _create_seed_user()
+    skill = SimpleNamespace(name="oauth_flow")
+    with (
+        patch.object(
+            experts_db.raise_attachments,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db.raise_attachments,
+            "read_user_skill_with_body",
+            new_callable=AsyncMock,
+            return_value=skill,
+        ),
+    ):
+        raised = await experts_db.create_raised_expert(
+            owner.id,
+            name="Nova",
+            role=None,
+            voice_preferences=None,
+            attachments=_library_skill("oauth_flow"),
+        )
+    assert raised.expert.skills == ["oauth_flow"]
+    assert raised.failed_attachments == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_rejects_missing_library_skill(server: SpinTestServer):
+    owner = await _create_seed_user()
+    with (
+        patch.object(
+            experts_db.raise_attachments,
+            "get_default_skill_with_body",
+            return_value=None,
+        ),
+        patch.object(
+            experts_db.raise_attachments,
+            "read_user_skill_with_body",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        pytest.raises(experts_db.FirstJobUnavailableError),
+    ):
+        await experts_db.create_raised_expert(
+            owner.id,
+            "Otto",
+            None,
+            None,
+            attachments=_library_skill("missing_skill"),
+        )
+    assert await experts_db.list_experts(owner.id) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_raise_expert_attaches_marketplace_skill_name(server: SpinTestServer):
+    owner = await _create_seed_user()
+    slv_id = await _seed_store_listing(server)
+    listing = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": slv_id}
+    )
+    assert listing is not None
+
+    raised = await experts_db.create_raised_expert(
+        owner.id,
+        name="Nova",
+        role=None,
+        voice_preferences=None,
+        attachments=_marketplace_skill(slv_id),
+    )
+    assert raised.expert.skills == [listing.name]
+    assert raised.expert.workflows == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -637,9 +881,7 @@ async def test_raise_expert_enforces_active_expert_cap(server: SpinTestServer):
     )
 
     with pytest.raises(experts_db.ExpertLimitExceededError):
-        await experts_db.create_raised_expert(
-            owner.id, "One Too Many", None, None, None
-        )
+        await experts_db.create_raised_expert(owner.id, "One Too Many", None, None)
 
     filler = await prisma.models.Expert.prisma().find_first(
         where={"ownerUserId": owner.id}
@@ -647,9 +889,7 @@ async def test_raise_expert_enforces_active_expert_cap(server: SpinTestServer):
     assert filler is not None
     await experts_db.archive_expert(owner.id, filler.id)
 
-    raised = await experts_db.create_raised_expert(
-        owner.id, "Fits Now", None, None, None
-    )
+    raised = await experts_db.create_raised_expert(owner.id, "Fits Now", None, None)
     assert raised.expert.name == "Fits Now"
 
 
@@ -669,8 +909,8 @@ async def test_raise_expert_serializes_concurrent_cap_checks(server: SpinTestSer
     )
 
     results = await asyncio.gather(
-        experts_db.create_raised_expert(owner.id, "Alpha", None, None, None),
-        experts_db.create_raised_expert(owner.id, "Beta", None, None, None),
+        experts_db.create_raised_expert(owner.id, "Alpha", None, None),
+        experts_db.create_raised_expert(owner.id, "Beta", None, None),
         return_exceptions=True,
     )
 
@@ -713,11 +953,11 @@ async def test_raise_expert_locks_are_independent_per_owner(server: SpinTestServ
 
     with patch.object(experts_db, "_lock_expert_creation", new=lock_and_hold_first):
         first = asyncio.create_task(
-            experts_db.create_raised_expert(first_owner.id, "Alpha", None, None, None)
+            experts_db.create_raised_expert(first_owner.id, "Alpha", None, None)
         )
         await asyncio.wait_for(first_lock_acquired.wait(), timeout=5)
         second = asyncio.create_task(
-            experts_db.create_raised_expert(second_owner.id, "Beta", None, None, None)
+            experts_db.create_raised_expert(second_owner.id, "Beta", None, None)
         )
         try:
             await asyncio.wait_for(second_lock_acquired.wait(), timeout=5)
@@ -746,9 +986,7 @@ async def test_raise_expert_enforces_lifetime_cap(server: SpinTestServer):
     )
 
     with pytest.raises(experts_db.RaisedExpertLifetimeLimitExceededError):
-        await experts_db.create_raised_expert(
-            owner.id, "One Too Many", None, None, None
-        )
+        await experts_db.create_raised_expert(owner.id, "One Too Many", None, None)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -760,9 +998,7 @@ async def test_hired_experts_do_not_consume_raised_lifetime_cap(
     await experts_db.hire_expert(owner.id, template.id, None)
 
     with patch.object(experts_db, "LIFETIME_RAISED_EXPERT_LIMIT", 1):
-        raised = await experts_db.create_raised_expert(
-            owner.id, "Nova", None, None, None
-        )
+        raised = await experts_db.create_raised_expert(owner.id, "Nova", None, None)
 
     assert raised.expert.source_template_id is None
 
@@ -1075,9 +1311,11 @@ async def test_existing_non_private_hire_is_never_revived():
     async def fake_transaction(*args, **kwargs):
         yield tx
 
-    with patch.object(experts_db, "transaction", fake_transaction):
-        with pytest.raises(experts_db.ExpertNotFoundError):
-            await experts_db._reserve_hired_expert("owner-1", "template-1", {})
+    with (
+        patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db._reserve_hired_expert("owner-1", "template-1", {})
 
     tx.expert.update.assert_not_awaited()
     tx.expert.create.assert_not_awaited()
@@ -1089,6 +1327,7 @@ async def test_hire_existing_team_expert_fails_closed():
         id="template-1",
         name="Maria",
         avatarUrl=None,
+        color="",
         role="Marketing Specialist",
         tagline=None,
         bio=None,
@@ -1122,9 +1361,9 @@ async def test_hire_existing_team_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
-            await experts_db.hire_expert("owner-1", "template-1", None)
+        await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
     tx.expert.create.assert_not_awaited()
@@ -1138,6 +1377,7 @@ async def test_hire_raced_org_expert_fails_closed():
         id="template-1",
         name="Maria",
         avatarUrl=None,
+        color="",
         role="Marketing Specialist",
         tagline=None,
         bio=None,
@@ -1173,9 +1413,9 @@ async def test_hire_raced_org_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertNotFoundError) as exc_info:
-            await experts_db.hire_expert("owner-1", "template-1", None)
+        await experts_db.hire_expert("owner-1", "template-1", None)
 
     assert exc_info.value.expert_id == "shared-expert"
     tx.expert.create.assert_awaited_once()
@@ -1212,9 +1452,9 @@ async def test_rehire_missing_private_tenancy_rolls_back_to_archived():
         patch.object(
             scheduling, "detach_expert_triggers", new_callable=AsyncMock
         ) as detach,
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
     ):
-        with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
-            await experts_db._resume_revived_hire(row)
+        await experts_db._resume_revived_hire(row)
 
     resume.assert_not_awaited()
     reattach.assert_not_awaited()
@@ -1259,9 +1499,9 @@ async def test_rehire_reattach_failure_restores_archived_state():
         patch.object(
             scheduling, "detach_expert_triggers", new_callable=AsyncMock
         ) as detach,
+        pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info,
     ):
-        with pytest.raises(experts_db.ExpertHireUnavailableError) as exc_info:
-            await experts_db._resume_revived_hire(row)
+        await experts_db._resume_revived_hire(row)
 
     assert exc_info.value.expert_id == "expert-1"
     assert isinstance(exc_info.value.__cause__, RuntimeError)
@@ -1342,9 +1582,9 @@ async def test_resolve_private_expert_tenancy_fails_without_personal_org():
             new_callable=AsyncMock,
             return_value=(None, None),
         ),
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
     ):
-        with pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError):
-            await experts_db.resolve_private_expert_tenancy("owner-1", "expert-1")
+        await experts_db.resolve_private_expert_tenancy("owner-1", "expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2038,9 +2278,11 @@ async def test_enforce_budget_pauses_blocks_and_resumes(
         where={"id": hired.expert.id}, data={"weeklyBudget": 100}
     )
 
-    with patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=150)):
-        with pytest.raises(ExpertRunPausedError):
-            await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
+    with (
+        patch.object(scheduling, "get_weekly_spend", new=AsyncMock(return_value=150)),
+        pytest.raises(ExpertRunPausedError),
+    ):
+        await scheduling.enforce_expert_run_budget(test_user.id, hired.expert.id)
 
     row = await prisma.models.Expert.prisma().find_unique(where={"id": hired.expert.id})
     assert row is not None and row.schedulesPausedAt is not None
@@ -2593,6 +2835,494 @@ async def test_seed_backfills_presentation_fields_onto_hired_copies(
     assert refreshed.skills == ["Content strategy", "SEO writing"]
     # A user's rename of their own hire survives the refresh.
     assert refreshed.name == "My Maria"
+
+
+# ─── Pods ──────────────────────────────────────────────────────────────
+
+
+def _pod_name(prefix: str = "Pod") -> str:
+    """Unique per call: pods are unique per (user, name) and the fixed test
+    user's pods persist across tests and reruns."""
+    return f"{prefix} {uuid.uuid4().hex[:8]}"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_pod_and_assign_membership(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    name = _pod_name("Growth")
+    pod = await experts_db.create_pod(test_user.id, name)
+    assigned = await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+    assert assigned.pod_id == pod.id
+
+    pods = await experts_db.list_pods(test_user.id)
+    matching = [p for p in pods if p.id == pod.id]
+    assert len(matching) == 1
+    assert matching[0].name == name
+    # Membership is read off the expert list, not the pod payload.
+    experts = await experts_db.list_experts(test_user.id)
+    assert {e.id for e in experts if e.pod_id == pod.id} == {hired.expert.id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_pod_duplicate_name_raises(server: SpinTestServer, test_user):
+    name = _pod_name("Growth")
+    await experts_db.create_pod(test_user.id, name)
+    with pytest.raises(experts_db.ExpertPodNameTakenError):
+        await experts_db.create_pod(test_user.id, name)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_pod_rejects_past_the_per_user_cap(
+    server: SpinTestServer, test_user, monkeypatch: pytest.MonkeyPatch
+):
+    """The cap counts only the caller's own pods, so it is user-scoped."""
+    # The fixed test user's pods persist across tests, so pin the cap one above
+    # whatever is already there rather than assuming an empty slate.
+    existing = len(await experts_db.list_pods(test_user.id))
+    monkeypatch.setattr(experts_db, "MAX_PODS_PER_USER", existing + 1)
+
+    await experts_db.create_pod(test_user.id, _pod_name("Capped"))
+    with pytest.raises(experts_db.ExpertPodLimitReachedError):
+        await experts_db.create_pod(test_user.id, _pod_name("Overflow"))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_pod_names_unique_per_user_not_globally(
+    server: SpinTestServer, test_user, other_user
+):
+    name = _pod_name("Shared")
+    mine = await experts_db.create_pod(test_user.id, name)
+    theirs = await experts_db.create_pod(other_user.id, name)
+    assert mine.id != theirs.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_pods_is_user_scoped(server: SpinTestServer, test_user, other_user):
+    mine = await experts_db.create_pod(test_user.id, _pod_name("Mine"))
+    theirs = await experts_db.create_pod(other_user.id, _pod_name("Theirs"))
+
+    pod_ids = {p.id for p in await experts_db.list_pods(test_user.id)}
+    assert mine.id in pod_ids
+    assert theirs.id not in pod_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_pods_uses_creation_order(server: SpinTestServer, test_user):
+    now = datetime.now(timezone.utc)
+    later = await prisma.models.ExpertPod.prisma().create(
+        data={
+            "userId": test_user.id,
+            "name": _pod_name("Later"),
+            "createdAt": now + timedelta(days=1),
+        }
+    )
+    earlier = await prisma.models.ExpertPod.prisma().create(
+        data={
+            "userId": test_user.id,
+            "name": _pod_name("Earlier"),
+            "createdAt": now,
+        }
+    )
+
+    ordered_ids = [
+        pod.id
+        for pod in await experts_db.list_pods(test_user.id)
+        if pod.id in {earlier.id, later.id}
+    ]
+    assert ordered_ids == [earlier.id, later.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_other_users_pod(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    foreign_pod = await experts_db.create_pod(other_user.id, _pod_name("Theirs"))
+
+    with pytest.raises(experts_db.ExpertPodNotFoundError):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, foreign_pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_other_users_expert(
+    server: SpinTestServer, test_user, other_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    their_hire = await experts_db.hire_expert(other_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, their_hire.expert.id, pod.id)
+
+    theirs = await experts_db.get_expert(other_user.id, their_hire.expert.id)
+    assert theirs is not None
+    assert theirs.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_template_expert(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, template.id, pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_rejects_archived_expert(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_unknown_expert_raises(server: SpinTestServer, test_user):
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    with pytest.raises(experts_db.ExpertNotFoundError):
+        await experts_db.assign_pod(test_user.id, "does-not-exist", pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_none_detaches(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+    detached = await experts_db.assign_pod(test_user.id, hired.expert.id, None)
+    assert detached.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_moves_between_pods(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first_pod = await experts_db.create_pod(test_user.id, _pod_name("First"))
+    second_pod = await experts_db.create_pod(test_user.id, _pod_name("Second"))
+    await experts_db.assign_pod(test_user.id, hired.expert.id, first_pod.id)
+
+    moved = await experts_db.assign_pod(test_user.id, hired.expert.id, second_pod.id)
+
+    assert moved.pod_id == second_pod.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_assign_pod_deleted_concurrently_raises_not_found(
+    server: SpinTestServer, test_user
+):
+    """A pod deleted between the ownership check and the update must surface
+    as not-found, not a foreign-key 500."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+
+    real_find_first = prisma.models.ExpertPod.prisma().find_first
+
+    async def find_then_delete(*args, **kwargs):
+        row = await real_find_first(*args, **kwargs)
+        await prisma.models.ExpertPod.prisma().delete(where={"id": pod.id})
+        return row
+
+    with (
+        patch.object(
+            prisma.models.ExpertPod.prisma().__class__,
+            "find_first",
+            side_effect=find_then_delete,
+        ),
+        pytest.raises(experts_db.ExpertPodNotFoundError),
+    ):
+        await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deleting_pod_detaches_its_experts(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    await experts_db.assign_pod(test_user.id, hired.expert.id, pod.id)
+
+    await prisma.models.ExpertPod.prisma().delete(where={"id": pod.id})
+
+    refreshed = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert refreshed is not None
+    assert refreshed.pod_id is None
+
+
+# ─── Work surface: run composition (pure, no DB) ────────────────────────
+
+
+def _run_execution(**overrides) -> SimpleNamespace:
+    values = {
+        "id": "exec-1",
+        "agentGraphId": "graph-1",
+        "executionStatus": "COMPLETED",
+        "startedAt": None,
+        "endedAt": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def test_to_expert_run_uses_workflow_name_and_deep_link():
+    run = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", "result", needs_review=True
+    )
+    assert run.execution_id == "exec-1"
+    assert run.agent_name == "SEO Blog Writer"
+    assert run.output_type == "table"
+    assert run.output_key == "result"
+    assert run.needs_review is True
+    assert run.link == (
+        "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
+    )
+
+
+def test_to_expert_run_falls_back_when_workflow_unresolved():
+    run = experts_db._to_expert_run(
+        _run_execution(), None, "unknown", None, needs_review=False
+    )
+    assert run.agent_name == "Agent task"
+    assert run.library_agent_id is None
+    assert run.output_key is None
+    assert run.link is None
+
+
+def _output_node_exec(
+    name: str,
+    value,
+    *,
+    execution_data: dict | None = None,
+    added_minutes: int = 0,
+    queued_minutes: int | None = None,
+    stats: dict | None = None,
+) -> SimpleNamespace:
+    base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
+    return SimpleNamespace(
+        stats=stats,
+        executionData=execution_data,
+        queuedTime=(
+            base + timedelta(minutes=queued_minutes)
+            if queued_minutes is not None
+            else None
+        ),
+        addedTime=base + timedelta(minutes=added_minutes),
+        Input=(
+            [
+                SimpleNamespace(name="name", data=name),
+                SimpleNamespace(name="value", data=value),
+            ]
+            if execution_data is None
+            else []
+        ),
+    )
+
+
+def test_outputs_from_node_execs_builds_pin_map_from_input_rows():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("status", "ok", added_minutes=0),
+            _output_node_exec("results", [{"metric": "signups"}], added_minutes=1),
+        ]
+    )
+    assert outputs == {"status": ["ok"], "results": [[{"metric": "signups"}]]}
+
+
+def test_outputs_from_node_execs_prefers_execution_data_and_orders_by_time():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 2}, added_minutes=5
+            ),
+            _output_node_exec(
+                "", None, execution_data={"name": "rows", "value": 1}, added_minutes=1
+            ),
+        ]
+    )
+    assert outputs == {"rows": [1, 2]}
+
+
+def test_outputs_from_node_execs_orders_queued_rows_before_unqueued_rows():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec("rows", 2, added_minutes=0, queued_minutes=5),
+            _output_node_exec("rows", 1, added_minutes=1),
+        ]
+    )
+    assert outputs == {"rows": [2, 1]}
+
+
+def test_outputs_from_node_execs_skips_rows_without_name():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("", None, execution_data={"other": "x"})]
+    )
+    assert outputs == {}
+
+
+def test_outputs_from_node_execs_prefers_moderation_cleared_inputs():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                execution_data={"name": "stale", "value": "stale"},
+                stats={"cleared_inputs": {"name": ["report"], "value": ["cleared"]}},
+            )
+        ]
+    )
+    assert outputs == {"report": ["cleared"]}
+
+
+def test_outputs_from_node_execs_uses_last_cleared_input_message():
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "",
+                None,
+                stats={"cleared_inputs": {"name": ["rows"], "value": ["a", "b"]}},
+            )
+        ]
+    )
+    assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("status", "ok", stats={"cleared_inputs": "not-a-dict"})]
+    )
+    assert outputs == {"status": ["ok"]}
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
+    expert_client = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(Workflows=[]))
+    )
+    execution_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                _run_execution(id="exec-1"),
+                _run_execution(id="exec-2", executionStatus="REVIEW"),
+            ]
+        )
+    )
+    review_client = SimpleNamespace(
+        find_many=AsyncMock(return_value=[SimpleNamespace(graphExecId="exec-2")])
+    )
+
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
+        patch.object(
+            prisma.models.AgentGraphExecution,
+            "prisma",
+            return_value=execution_client,
+        ),
+        patch.object(
+            prisma.models.PendingHumanReview,
+            "prisma",
+            return_value=review_client,
+        ),
+        patch.object(
+            experts_db,
+            "_classify_run_outputs",
+            new=AsyncMock(
+                return_value={
+                    "exec-1": ("table", "rows"),
+                    "exec-2": ("unknown", None),
+                }
+            ),
+        ),
+    ):
+        runs = await experts_db.list_expert_runs("owner-1", "expert-1")
+
+    expert_where = expert_client.find_first.await_args.kwargs["where"]
+    assert expert_where == {
+        "id": "expert-1",
+        "ownerUserId": "owner-1",
+        "isTemplate": False,
+        "isArchived": False,
+        "visibility": prisma.enums.ResourceVisibility.PRIVATE,
+    }
+    execution_where = execution_client.find_many.await_args.kwargs["where"]
+    assert execution_where == {
+        "userId": "owner-1",
+        "expertId": "expert-1",
+        "isDeleted": False,
+    }
+    review_where = review_client.find_many.await_args.kwargs["where"]
+    assert review_where["userId"] == "owner-1"
+    assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
+    assert [run.status for run in runs] == ["completed", "review"]
+    assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_list_expert_runs_rejects_missing_or_foreign_expert():
+    expert_client = SimpleNamespace(find_first=AsyncMock(return_value=None))
+
+    with (
+        patch.object(
+            prisma.models.Expert,
+            "prisma",
+            return_value=expert_client,
+        ),
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db.list_expert_runs("owner-1", "foreign-expert")
+
+    assert expert_client.find_first.await_args.kwargs["where"]["ownerUserId"] == (
+        "owner-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_classify_run_outputs_degrades_only_corrupt_execution():
+    node_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-bad",
+                    **vars(_output_node_exec("broken", {"bad": True})),
+                ),
+                SimpleNamespace(
+                    agentGraphExecutionId="exec-good",
+                    **vars(_output_node_exec("report", "word " * 100)),
+                ),
+            ]
+        )
+    )
+
+    with (
+        patch.object(
+            prisma.models.AgentNodeExecution,
+            "prisma",
+            return_value=node_client,
+        ),
+        patch.object(
+            experts_db,
+            "classify_run_output",
+            side_effect=[ValueError("corrupt output"), ("doc", "report")],
+        ),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-bad", "exec-good"])
+
+    assert classified == {
+        "exec-bad": ("unknown", None),
+        "exec-good": ("doc", "report"),
+    }
 
 
 @pytest.mark.asyncio(loop_scope="session")

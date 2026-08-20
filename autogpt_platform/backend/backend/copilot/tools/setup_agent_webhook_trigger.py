@@ -275,7 +275,10 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             graph_id = library_agent.graph_id
             graph_version = library_agent.graph_version
 
-        graph = await graph_db().get_graph(graph_id, graph_version, user_id=user_id)
+        # Sub-graphs are needed to aggregate the full set of required credentials.
+        graph = await graph_db().get_graph(
+            graph_id, graph_version, user_id=user_id, include_subgraphs=True
+        )
         if not graph:
             return None, ErrorResponse(
                 message=f"Agent graph '{graph_id}' not found.",
