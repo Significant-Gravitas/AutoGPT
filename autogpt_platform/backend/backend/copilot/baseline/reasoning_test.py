@@ -16,6 +16,7 @@ from backend.copilot.baseline.reasoning import (
     _is_reasoning_route,
     anthropic_thinking_extra_body,
     reasoning_extra_body,
+    tool_reasoning_effort,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
@@ -624,3 +625,57 @@ class TestClaude5FamilyThinking:
         assert anthropic_thinking_extra_body("claude-sonnet-4-6", 5000) == {
             "thinking": {"type": "enabled", "budget_tokens": 5000}
         }
+
+
+class TestToolReasoningEffort:
+    """GPT-5.6 refuses function tools alongside its default reasoning effort.
+
+    Copilot always sends tools, so without the explicit ``none`` every turn
+    on a 5.6 model 400s before it starts. Verified against the live API:
+    luna and terra reject the tools-without-effort shape, and both gpt-5 and
+    gpt-5-mini accept it, so the match is deliberately narrow.
+    """
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+            "openai/gpt-5.6-luna",
+            "openai.gpt-5.6-terra",
+            "GPT-5.6-Luna",
+        ],
+    )
+    def test_the_family_that_needs_it_gets_it(self, model: str) -> None:
+        assert tool_reasoning_effort(model, has_tools=True) == {
+            "reasoning_effort": "none"
+        }
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-pro",
+            "claude-opus-4.7",
+            "kimi-k2.6",
+            "llama3.1:8b-instruct-q4_K_M",
+        ],
+    )
+    def test_no_other_model_is_given_it(self, model: str) -> None:
+        # gpt-5 and gpt-5-mini accept tools as-is; forcing effort off would
+        # silently downgrade them.
+        assert tool_reasoning_effort(model, has_tools=True) is None
+
+    def test_a_turn_without_tools_keeps_the_model_s_own_reasoning(self) -> None:
+        # The restriction is about tools. With none sent there is nothing to
+        # work around, and suppressing reasoning would be a real regression.
+        assert tool_reasoning_effort("gpt-5.6-luna", has_tools=False) is None
+
+    def test_a_lookalike_local_model_does_not_inherit_it(self) -> None:
+        # Same care _is_reasoning_route takes: an operator's own model whose
+        # name merely contains the string must not pick up the parameter.
+        assert (
+            tool_reasoning_effort("someprovider/gpt-5.6-mock", has_tools=True) is None
+        )

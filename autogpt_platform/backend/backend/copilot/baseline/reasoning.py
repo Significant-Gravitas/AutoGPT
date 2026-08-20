@@ -152,6 +152,40 @@ class OpenRouterDeltaExtension(BaseModel):
         return "".join(d.visible_text for d in self.reasoning_details)
 
 
+# OpenAI's GPT-5.6 family applies a reasoning effort server-side, and
+# ``/v1/chat/completions`` refuses to combine that with function tools:
+#
+#   Function tools with reasoning_effort are not supported for gpt-5.6-luna
+#   in /v1/chat/completions. To use function tools, use /v1/responses or set
+#   reasoning_effort to 'none'.
+#
+# Copilot always sends tools, so without this every turn on a 5.6 model 400s
+# before it starts. Sending ``none`` explicitly is the documented escape and
+# was verified against the live API for luna and terra; gpt-5 and gpt-5-mini
+# do not need it and are deliberately not matched.
+#
+# Anchored to the model id the same way :func:`_is_reasoning_route` is, so a
+# local backend serving an unrelated model whose name merely contains the
+# string cannot inherit the parameter.
+_GPT_5_6_PREFIXES = ("gpt-5.6-", "openai/gpt-5.6-", "openai.gpt-5.6-")
+
+
+def tool_reasoning_effort(model: str, *, has_tools: bool) -> dict[str, Any] | None:
+    """``{"reasoning_effort": "none"}`` when this route needs it, else None.
+
+    Only for a model that refuses tools alongside its default reasoning
+    effort. Returns None when no tools are being sent, because the
+    restriction does not apply and the turn should keep the model's own
+    reasoning behaviour.
+    """
+    if not has_tools:
+        return None
+    normalized = model.strip().lower()
+    if not normalized.startswith(_GPT_5_6_PREFIXES):
+        return None
+    return {"reasoning_effort": "none"}
+
+
 def _is_reasoning_route(model: str) -> bool:
     """Return True when the route supports OpenRouter's ``reasoning`` extension.
 

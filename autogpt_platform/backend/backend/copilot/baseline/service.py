@@ -37,6 +37,7 @@ from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
     reasoning_extra_body,
+    tool_reasoning_effort,
 )
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
@@ -836,6 +837,12 @@ async def _baseline_llm_caller(
             )
             if thinking_param:
                 extra_body.update(thinking_param)
+        # Applies on every transport, because the restriction belongs to the
+        # model rather than the endpoint it is reached through, and the id is
+        # matched narrowly enough that nothing else can pick it up.
+        effort_param = tool_reasoning_effort(state.model, has_tools=bool(tools))
+        if effort_param:
+            extra_body.update(effort_param)
         # Direct: Anthropic requires max_tokens > budget_tokens explicitly; OR injects a default.
         max_tokens_arg: int | Any = openai_omit
         if not is_openrouter_transport and "thinking" in extra_body:
