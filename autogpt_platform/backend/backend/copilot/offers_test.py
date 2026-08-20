@@ -220,3 +220,98 @@ async def test_exactly_one_offer_is_the_default(
     offer_list = await get_connection_offers(USER_ID)
 
     assert [offer.is_default for offer in offer_list].count(True) == 1
+
+
+def _upsell(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    entitled: bool = False,
+    flag: bool = True,
+) -> None:
+    mocker.patch.object(
+        offers,
+        "has_codex_access_for_discovery",
+        new=AsyncMock(return_value=entitled),
+    )
+    mocker.patch.object(offers, "is_feature_enabled", new=AsyncMock(return_value=flag))
+
+
+def _locked(offer_list: list) -> list:
+    return [offer for offer in offer_list if offer.state == "locked"]
+
+
+@pytest.mark.asyncio
+async def test_a_plan_that_excludes_chatgpt_says_so_instead_of_hiding_it(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker)
+
+    locked = _locked(await get_connection_offers("user"))
+
+    assert len(locked) == 1
+    assert locked[0].display_name == "ChatGPT"
+    assert locked[0].lock_reason
+    assert locked[0].unlock_href == "/settings/billing"
+
+
+@pytest.mark.asyncio
+async def test_a_locked_offer_can_never_be_routed_to(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # The whole risk of showing an unusable connection is that something
+    # picks it. It carries no credential and refuses selection, so the
+    # picker cannot select it and a turn cannot be addressed to it.
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker)
+
+    locked = _locked(await get_connection_offers("user"))[0]
+
+    assert locked.selectable is False
+    assert locked.credential_id is None
+    assert locked.is_default is False
+
+
+@pytest.mark.asyncio
+async def test_a_connected_account_is_never_shadowed_by_an_upsell(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(
+        mocker, [_transport("platform", None), _transport("codex", "cred-1")]
+    )
+    _upsell(mocker, entitled=True)
+
+    assert _locked(await get_connection_offers("user")) == []
+
+
+@pytest.mark.asyncio
+async def test_being_entitled_but_unconnected_is_not_an_upsell(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Nothing to sell: the plan already includes it, so the invitation to
+    # connect belongs on the settings page, not in the composer.
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker, entitled=True)
+
+    assert _locked(await get_connection_offers("user")) == []
+
+
+@pytest.mark.asyncio
+async def test_the_upsell_stays_off_until_its_cohort_is_opened(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker, flag=False)
+
+    assert _locked(await get_connection_offers("user")) == []
+
+
+@pytest.mark.asyncio
+async def test_self_host_sells_nothing_because_it_grants_everything(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.LOCAL)
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker)
+
+    assert _locked(await get_connection_offers("user")) == []
