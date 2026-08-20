@@ -1123,6 +1123,79 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 
 ---
 
+## Shieldz Create Payment Link
+
+### What it is
+Create a keyless, non-custodial crypto payment link with Shieldz (no API key).
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| address | Destination wallet (0x EVM address). Funds settle here; Shieldz never holds them. | str | Yes |
+| amount_usd | Amount in USD, e.g. 49 for $49.00 | float | Yes |
+| chain | Settlement chain: base, arbitrum, optimism, polygon, or ethereum | str | No |
+| asset | Stablecoin: USDC or USDT | str | No |
+| memo | Description shown on the checkout | str | No |
+| email | Optional; lets the owner claim a dashboard later | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the link could not be created | str |
+| pay_url | Hosted checkout URL to send the payer to | str |
+| manage_url | Capability URL to read status later (keep private) | str |
+| embed | Embeddable <script> button snippet | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Shieldz Create Tip Jar
+
+### What it is
+Create a keyless, non-custodial 'pay what you want' tip jar with Shieldz.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| address | Destination wallet (0x EVM address). Funds settle here; Shieldz never holds them. | str | Yes |
+| chain | Settlement chain: base, arbitrum, optimism, polygon, or ethereum | str | No |
+| asset | Stablecoin: USDC or USDT | str | No |
+| title | Heading shown on the tip page | str | No |
+| suggested_amounts_usd | Preset amount buttons in USD, e.g. [3, 5, 10] | List[float] | No |
+| email | Optional; lets the owner claim a dashboard later | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the tip jar could not be created | str |
+| url | Reusable tip-jar URL | str |
+| manage_url | Capability URL to read status later (keep private) | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Transcribe Youtube Video
 
 ### What it is
