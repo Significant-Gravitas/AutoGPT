@@ -12,6 +12,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
@@ -654,6 +655,11 @@ async def add_chat_messages_batch(
                     if msg.get("routing_source") is not None:
                         data["routingSource"] = msg["routing_source"]
 
+                    if msg.get("llm_auth_provider") is not None:
+                        data["llmAuthProvider"] = msg["llm_auth_provider"]
+                    if msg.get("llm_credential_id") is not None:
+                        data["llmCredentialId"] = msg["llm_credential_id"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -1156,17 +1162,31 @@ async def update_chat_message_stamps(
     sequence: int,
     model: str | None,
     routing_source: str | None,
+    llm_auth_provider: str | None = None,
+    llm_credential_id: str | None = None,
 ) -> bool:
-    """Back-fill model/routingSource on an already-persisted message row.
+    """Back-fill the execution stamps on an already-persisted message row.
 
     Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
     the end-of-turn stamping runs; this repairs those rows so the
     analytics columns survive in the DB. Same mechanism and authorization
     reasoning as ``update_chat_message_tool_calls``.
+
+    The route is written only when known. Passing None for it would blank a
+    row that a previous stamp already got right, which is precisely the
+    rewriting of history per-turn segments exist to prevent.
     """
+    data: ChatMessageUpdateInput = {
+        "model": model,
+        "routingSource": routing_source,
+    }
+    if llm_auth_provider is not None:
+        data["llmAuthProvider"] = llm_auth_provider
+    if llm_credential_id is not None:
+        data["llmCredentialId"] = llm_credential_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
-        data={"model": model, "routingSource": routing_source},
+        data=data,
     )
     if not result:
         logger.warning(
