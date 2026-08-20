@@ -29,7 +29,9 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startError, setStartError] = useState(false);
   const pendingPromptRef = useRef<string | null>(null);
-  const openingRef = useRef(false);
+  // Session-create lock, keyed by scope generation: a stale in-flight create
+  // for a previous scope must not block the new scope's first open.
+  const openingGenRef = useRef<number | null>(null);
   const lastSeedRef = useRef<MemoryChatSeed | null>(null);
 
   const { mutateAsync: createSession } = usePostV2CreateSession();
@@ -103,9 +105,9 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     lastSeedRef.current = seed;
     setIsOpen(true);
     setStartError(false);
-    if (openingRef.current) return;
-    openingRef.current = true;
+    if (openingGenRef.current === scopeGenRef.current) return;
     const generation = scopeGenRef.current;
+    openingGenRef.current = generation;
     setSessionId(null);
     setMessages([]);
     try {
@@ -122,7 +124,9 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       Sentry.captureException(err);
       if (generation === scopeGenRef.current) setStartError(true);
     } finally {
-      openingRef.current = false;
+      // Only release the lock if this call still owns it — a superseded
+      // create must not unlock a newer scope's in-flight create.
+      if (openingGenRef.current === generation) openingGenRef.current = null;
     }
   }
 
