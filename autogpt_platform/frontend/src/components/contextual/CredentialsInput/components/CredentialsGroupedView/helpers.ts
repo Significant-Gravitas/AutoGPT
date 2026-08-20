@@ -28,8 +28,13 @@ function matchesDiscriminatorValues(
   credential: { host?: string | null; provider: string; type: string },
   discriminatorValues?: string[],
 ) {
-  // MCP OAuth2 credentials must match by server URL
-  if (credential.type === "oauth2" && credential.provider === "mcp") {
+  // MCP credentials (OAuth2 tokens and static API-key / bearer tokens) must
+  // match by server URL — otherwise a token for one server would be treated
+  // as valid for every server.
+  if (
+    (credential.type === "oauth2" || credential.type === "api_key") &&
+    credential.provider === "mcp"
+  ) {
     if (!discriminatorValues || discriminatorValues.length === 0) return false;
     return (
       credential.host != null && discriminatorValues.includes(credential.host)

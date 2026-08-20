@@ -27,8 +27,10 @@ import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2InitiateOauthLoginForAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -116,22 +118,54 @@ export function MCPToolDialog({
         auth_token: authToken || null,
       });
       if (response.status !== 200) throw response.data;
+
+      // When the user authenticated with a static API key / bearer token,
+      // persist it so the block can authenticate at runtime — discovery only
+      // uses the token transiently and would otherwise be discarded, leaving
+      // the placed block with no credentials and failing on the next run.
+      if (authToken) {
+        const tokenRes = await postV2StoreABearerTokenForAnMcpServer({
+          server_url: url,
+          token: authToken,
+        });
+        if (tokenRes.status !== 200)
+          throw new Error(
+            "Discovered the server, but saving your API token failed. Please try again.",
+          );
+        setCredentials({
+          id: tokenRes.data.id,
+          provider: tokenRes.data.provider,
+          type: tokenRes.data.type,
+          title: tokenRes.data.title,
+        });
+      }
+
       setTools(response.data.tools);
       setServerName(response.data.server_name ?? null);
       setAuthRequired(false);
       setShowManualToken(false);
       setStep("tool");
-    } catch (e: any) {
-      if (e?.status === 401 || e?.status === 403) {
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string; detail?: string };
+      if (err?.status === 401 || err?.status === 403) {
+        setLoading(false);
+        // If the user supplied a token and the server still rejected it, the
+        // token is wrong — don't bounce them into an OAuth flow that will just
+        // fail again. Surface a clear "check your token" message instead.
+        if (authToken) {
+          setError(
+            "Authentication failed. Please check your API key / bearer token and try again.",
+          );
+          return;
+        }
         setAuthRequired(true);
         setError(null);
         // Automatically start OAuth sign-in instead of requiring a second click
-        setLoading(false);
         startOAuthRef.current = true;
         return;
       } else {
         const message =
-          e?.message || e?.detail || "Failed to connect to MCP server";
+          err?.message || err?.detail || "Failed to connect to MCP server";
         setError(
           typeof message === "string" ? message : JSON.stringify(message),
         );
@@ -256,7 +290,10 @@ export function MCPToolDialog({
     }
 
     onConfirm({
-      serverUrl: serverUrl.trim(),
+      // Normalized so the node's `server_url` — the discriminator the
+      // credentials picker matches on — is identical to the URL the backend
+      // stored the credential under.
+      serverUrl: normalizeMCPUrl(serverUrl),
       serverName,
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
@@ -305,26 +342,45 @@ export function MCPToolDialog({
               />
             </div>
 
-            {/* Auth required: show manual token option */}
-            {authRequired && !showManualToken && (
+            {/* Manual token option — available up front for servers that
+                authenticate with a static API key / bearer token rather than
+                OAuth (e.g. a token issued in the vendor's own dashboard). */}
+            {!showManualToken && (
               <button
-                onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                type="button"
+                onClick={() => {
+                  setShowManualToken(true);
+                  setError(null);
+                }}
+                className="self-start text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
               >
-                or enter a token manually
+                Use an API key / bearer token instead
               </button>
             )}
 
             {/* Manual token entry — only visible when expanded */}
             {showManualToken && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="mcp-auth-token" className="text-sm">
-                  Bearer Token
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mcp-auth-token" className="text-sm">
+                    API Key / Bearer Token
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowManualToken(false);
+                      setManualToken("");
+                      setError(null);
+                    }}
+                    className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  >
+                    Use OAuth sign-in instead
+                  </button>
+                </div>
                 <Input
                   id="mcp-auth-token"
                   type="password"
-                  placeholder="Paste your auth token here"
+                  placeholder="Paste your API key or bearer token here"
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
@@ -333,7 +389,11 @@ export function MCPToolDialog({
               </div>
             )}
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p role="alert" className="text-sm text-red-500">
+                {error}
+              </p>
+            )}
           </div>
         )}
 
@@ -374,14 +434,21 @@ export function MCPToolDialog({
                   ? handleOAuthSignIn
                   : handleDiscoverTools
               }
-              disabled={!serverUrl.trim() || loading || oauthLoading}
+              disabled={
+                !serverUrl.trim() ||
+                loading ||
+                oauthLoading ||
+                (showManualToken && !manualToken.trim())
+              }
             >
               {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
                   <LoadingSpinner className="size-4" />
                   {oauthLoading ? "Waiting for sign-in..." : "Connecting..."}
                 </span>
-              ) : authRequired && !showManualToken ? (
+              ) : showManualToken ? (
+                "Connect with Token"
+              ) : authRequired ? (
                 "Sign in & Connect"
               ) : (
                 "Discover Tools"
@@ -443,9 +510,17 @@ function MCPToolCard({
   cleanDescription = cleanDescription.trim();
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
-      className={`group flex flex-col rounded-lg border text-left transition-colors ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`group flex cursor-pointer flex-col rounded-lg border text-left transition-colors ${
         selected
           ? "border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950"
           : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800"
@@ -555,6 +630,6 @@ function MCPToolCard({
           />
         </button>
       )}
-    </button>
+    </div>
   );
 }

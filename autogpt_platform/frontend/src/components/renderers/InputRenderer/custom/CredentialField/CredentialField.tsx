@@ -67,9 +67,11 @@ export const CredentialsField = (props: FieldProps) => {
     [formData?.id, formData?.provider, formData?.title, formData?.type],
   );
 
-  // In builder canvas (nodeId exists): show star based on credentialsOptional toggle
+  // In builder canvas (nodeId exists): the toggle can only make a
+  // schema-required credential optional, never the other way around — blocks
+  // like MCP declare a default for `credentials` and run fine without them.
   // In run dialogs (no nodeId): show star based on schema's required array
-  const isRequired = nodeId ? !credentialsOptional : required;
+  const isRequired = nodeId ? required && !credentialsOptional : required;
 
   return (
     <div className="flex flex-col gap-2">
