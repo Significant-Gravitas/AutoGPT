@@ -8,7 +8,7 @@ from backend.blocks.autopilot_migrate import (
 )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_dry_run_counts_without_writing():
     with patch(
         "backend.blocks.autopilot_migrate.query_raw_with_schema",
@@ -22,7 +22,7 @@ async def test_dry_run_counts_without_writing():
     execute.assert_not_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_apply_writes_the_transport_value():
     with patch(
         "backend.blocks.autopilot_migrate.query_raw_with_schema",
@@ -42,7 +42,7 @@ async def test_apply_writes_the_transport_value():
     assert "UPDATE" in sql
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_nothing_pending_is_a_silent_no_op():
     """Runs on every boot, so a steady "0 nodes" line would be pure noise."""
     with patch(
@@ -57,7 +57,7 @@ async def test_nothing_pending_is_a_silent_no_op():
     execute.assert_not_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
     """The predicate is the idempotency guarantee — it must exclude nodes that
     already have a transport, and id-less credential metas (nothing selected)."""

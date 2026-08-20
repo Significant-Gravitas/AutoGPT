@@ -39,7 +39,7 @@ export const CredentialsField = (props: FieldProps) => {
     return typeof value === "boolean" ? value : false;
   }, [node?.data?.metadata?.credentials_optional]);
 
-  const handleChange = (newValue: any) => {
+  const handleChange = (newValue: unknown) => {
     onChange(newValue, fieldPathId?.path);
   };
 

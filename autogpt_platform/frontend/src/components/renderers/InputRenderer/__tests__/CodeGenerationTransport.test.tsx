@@ -410,7 +410,7 @@ describe("An optional discriminator is still gated", () => {
       },
     },
     required: ["prompt"],
-  } as unknown as RJSFSchema;
+  } as RJSFSchema;
 
   it("removes the gated option from inside anyOf", () => {
     useNodeStore.setState({
@@ -443,6 +443,56 @@ describe("An optional discriminator is still gated", () => {
       (o) => o.textContent,
     );
     expect(labels).not.toContain("codex_app_server");
+  });
+
+  it("clears a hidden credential when switching to platform transport", async () => {
+    const node = createCodeGenerationNode();
+    useNodeStore.setState({
+      nodes: [
+        {
+          ...node,
+          data: {
+            ...node.data,
+            hardcodedValues: {
+              prompt: "hi",
+              transport: "codex_app_server",
+              codex_credentials: codexCredential,
+            },
+            inputSchema: optionalTransportSchema,
+          },
+        },
+      ],
+      nodeAdvancedStates: {},
+    });
+
+    render(
+      <CredentialsProvidersContext.Provider
+        value={{ codex: makeProvider("codex", "Codex", [codexCredential]) }}
+      >
+        <FormCreator
+          jsonSchema={optionalTransportSchema}
+          nodeId="code-generation-node"
+          uiType={BlockUIType.STANDARD}
+          showHandles={false}
+        />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    const select = screen.getByLabelText("agpt_%_transport");
+    const platform = Array.from(select.querySelectorAll("option")).find(
+      (option) => option.textContent === "platform",
+    );
+    if (!platform) throw new Error("expected the platform transport option");
+
+    fireEvent.change(select, { target: { value: platform.value } });
+
+    await waitFor(() => {
+      const values = useNodeStore
+        .getState()
+        .getHardCodedValues("code-generation-node");
+      expect(values.transport).toBe("platform");
+      expect(values).not.toHaveProperty("codex_credentials");
+    });
   });
 });
 

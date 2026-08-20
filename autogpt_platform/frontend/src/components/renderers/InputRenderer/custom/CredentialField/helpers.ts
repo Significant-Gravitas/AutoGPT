@@ -83,7 +83,7 @@ export function toDisplayName(provider: string): string {
     .join(" ");
 }
 
-export function isCredentialFieldSchema(schema: any): boolean {
+export function isCredentialFieldSchema(schema: unknown): boolean {
   return (
     typeof schema === "object" &&
     schema !== null &&
@@ -134,20 +134,22 @@ export const providerIcons: Partial<Record<string, IconSvgElement>> = {
 };
 
 export const getDiscriminatorValue = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ): string | undefined => {
   const discriminator = schema.discriminator;
   const discriminatorValues = schema.discriminator_values;
 
-  return [
+  const value = [
     discriminator ? formData[discriminator] : null,
     ...(discriminatorValues || []),
   ].find(Boolean);
+
+  return value === undefined || value === null ? undefined : String(value);
 };
 
 export const getCredentialProviderFromSchema = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ) => {
   const discriminator = schema.discriminator;
@@ -197,7 +199,7 @@ export const getCredentialProviderFromSchema = (
  * the second question directly.
  */
 export const credentialNotApplicable = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ): boolean => {
   const mapping = schema.discriminator_mapping;

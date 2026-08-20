@@ -156,6 +156,51 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert "credential_leases" not in captured
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_platform_transport_ignores_attached_codex_credential():
+    manager = MagicMock()
+    manager.get = AsyncMock()
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, Any] = {}
+    block = _block_with_credentials(
+        {"codex_credentials": CodexCredentialsInput},
+        captured,
+        reference_only_fields={"codex_credentials"},
+    )
+    block.input_schema.get_credentials_fields_info.return_value = {
+        "codex_credentials": CredentialsFieldInfo(
+            credentials_provider=frozenset({ProviderName.CODEX}),
+            credentials_types=frozenset({"oauth2"}),
+            credential_reference_only=True,
+            discriminator="transport",
+            discriminator_mapping={"codex_app_server": ProviderName.CODEX},
+        )
+    }
+    block.input_schema.get_required_fields.return_value = set()
+    gate = AsyncMock()
+
+    with patch("backend.executor.manager.enforce_codex_access", new=gate):
+        outputs = [
+            item
+            async for item in execute_node(
+                _node(block),
+                _entry(
+                    {
+                        "transport": "platform",
+                        "codex_credentials": _credential_metadata("cred-1"),
+                    }
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+    gate.assert_not_awaited()
+    assert "codex_credentials" not in captured
+
+
 @pytest.mark.asyncio
 async def test_codex_credential_is_rejected_and_released_without_entitlement():
     credentials = _codex_credentials("cred-1")

@@ -14,7 +14,7 @@ import argparse
 import asyncio
 import logging
 
-from backend.blocks.autopilot import AutoPilotTransport
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.data.db import (
     connect,
     disconnect,
@@ -23,8 +23,6 @@ from backend.data.db import (
 )
 
 logger = logging.getLogger(__name__)
-
-AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
 
 # A single atomic statement rather than read-modify-write. Sibling startup
 # migrations either lock (org_migration) or use jsonb_set (migrate_llm_models);

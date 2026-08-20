@@ -7,18 +7,22 @@ import {
 
 // AutoPilot's shape: one provider, but a discriminator whose `platform` value
 // is deliberately unmapped because that transport needs no credential.
-const autopilotSchema = {
+const autopilotSchema: BlockIOCredentialsSubSchema = {
+  type: "object",
+  properties: {},
   credentials_provider: ["codex"],
   credentials_types: ["oauth2"],
   discriminator: "transport",
   discriminator_mapping: { codex_app_server: "codex" },
-} as unknown as BlockIOCredentialsSubSchema;
+};
 
 // A plain single-provider field with no discriminator at all.
-const githubSchema = {
+const githubSchema: BlockIOCredentialsSubSchema = {
+  type: "object",
+  properties: {},
   credentials_provider: ["github"],
   credentials_types: ["api_key"],
-} as unknown as BlockIOCredentialsSubSchema;
+};
 
 describe("getCredentialProviderFromSchema", () => {
   it("hides the input when a single-provider field's value is unmapped", () => {
