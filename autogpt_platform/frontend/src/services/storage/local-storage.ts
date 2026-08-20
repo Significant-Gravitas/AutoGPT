@@ -49,7 +49,12 @@ function set(key: Key, value: string) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
-  return window.localStorage.setItem(key, value);
+  try {
+    return window.localStorage.setItem(key, value);
+  } catch {
+    // Fine, storage may be unavailable (e.g. blocked on some browsers/WebViews)
+    return;
+  }
 }
 
 function clean(key: Key) {
@@ -57,7 +62,12 @@ function clean(key: Key) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
-  return window.localStorage.removeItem(key);
+  try {
+    return window.localStorage.removeItem(key);
+  } catch {
+    // Fine, storage may be unavailable (e.g. blocked on some browsers/WebViews)
+    return;
+  }
 }
 
 export const storage = {
