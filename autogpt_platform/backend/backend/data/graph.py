@@ -1054,8 +1054,6 @@ class GraphModel(Graph, GraphMeta):
                 if for_run:
                     dependencies.extend(field_json_schema.get("depends_on", []))
 
-                # Check if dependent field has value in input_default
-                field_has_value = has_value(node, field_name)
                 field_is_required = field_name in required_fields
 
                 # Require presence of credentials discriminator.
@@ -1088,6 +1086,7 @@ class GraphModel(Graph, GraphMeta):
                 if not dependencies:
                     continue
 
+                field_has_value = has_value(node, field_name)
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):

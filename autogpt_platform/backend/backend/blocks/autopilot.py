@@ -581,9 +581,9 @@ class AutoPilotBlock(Block):
             # `use_codex` let an explicit `platform` node resume a session that
             # was created against codex, which then billed the ChatGPT
             # subscription the user had just opted out of.
-            from backend.copilot.model import get_chat_session
+            from backend.copilot.model import get_chat_session_metadata
 
-            existing_session = await get_chat_session(
+            existing_session = await get_chat_session_metadata(
                 sid,
                 execution_context.user_id,
             )

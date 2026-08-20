@@ -143,7 +143,7 @@ async def test_autopilot_block_rejects_invalid_session_route(
     )
     with (
         patch(
-            "backend.copilot.model.get_chat_session",
+            "backend.copilot.model.get_chat_session_metadata",
             new=AsyncMock(return_value=existing),
         ),
         patch.object(block, "execute_copilot", execute_copilot),
@@ -342,7 +342,7 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
     with (
         patch.object(block, "execute_copilot", execute_copilot),
         patch(
-            "backend.copilot.model.get_chat_session",
+            "backend.copilot.model.get_chat_session_metadata",
             new=AsyncMock(return_value=session),
         ),
     ):

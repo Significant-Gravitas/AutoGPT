@@ -141,14 +141,31 @@ describe("SelectWidget", () => {
     });
   });
 
-  it("uses schema enum names as display labels", () => {
+  it("uses top-level metadata for a nullable enum field", () => {
+    const enumSchema: WidgetProps["schema"] = {
+      type: "string",
+      enum: ["platform", "codex_app_server"],
+      enumNames: ["AutoGPT Platform", "ChatGPT"],
+      title: "AutoPilotTransport",
+    };
+    const transportSchema: WidgetProps["schema"] = {
+      anyOf: [enumSchema, { type: "null" }],
+      placeholder: "Select a transport",
+      title: "Transport",
+    };
+
     render(
       <SelectWidget
         {...createProps({
-          schema: {
-            type: "string",
-            enum: ["platform", "codex_app_server"],
-            enumNames: ["AutoGPT Platform", "ChatGPT"],
+          name: "transport",
+          label: "AutoPilotTransport",
+          schema: enumSchema,
+          registry: {
+            ...createProps().registry,
+            rootSchema: {
+              type: "object",
+              properties: { transport: transportSchema },
+            },
           },
           options: {
             enumOptions: [
@@ -161,6 +178,8 @@ describe("SelectWidget", () => {
     );
 
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      label: "Transport",
+      placeholder: "Select a transport",
       options: [
         { value: "0", label: "AutoGPT Platform" },
         { value: "1", label: "ChatGPT" },
