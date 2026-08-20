@@ -11,6 +11,7 @@ from backend.copilot.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
+from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
 from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
@@ -54,6 +55,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
+from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
@@ -73,6 +75,7 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "ask_question": AskQuestionTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
@@ -151,6 +154,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    # Expert Soul edits from chat (expert sessions only): preview + confirm
+    "update_expert_soul": UpdateExpertSoulTool(),
+    "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -164,13 +170,17 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti"]
+ToolGroup = Literal["graphiti", "experts"]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
     "memory_search": "graphiti",
     "memory_forget_search": "graphiti",
     "memory_forget_confirm": "graphiti",
+    # Soul edits only make sense in an expert-scoped session; the engines
+    # disable this group when the session has no expert_id.
+    "update_expert_soul": "experts",
+    "confirm_expert_soul_update": "experts",
 }
 
 

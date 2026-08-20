@@ -255,5 +255,16 @@ class ProxyIsolationTest(unittest.TestCase):
         self.assertNotIn("user=autogpt\n", nginx_program)
 
 
+class ThirdPartyTelemetryTest(unittest.TestCase):
+    def test_entrypoint_exports_the_vendor_telemetry_opt_outs(self) -> None:
+        entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+
+        # mem0 and graphiti-core embed their own PostHog write keys and report
+        # to their vendors unless these are set. A self-hosted appliance must
+        # not send anything to a third party the operator never chose.
+        self.assertIn("export MEM0_TELEMETRY=false", entrypoint)
+        self.assertIn("export GRAPHITI_TELEMETRY_ENABLED=false", entrypoint)
+
+
 if __name__ == "__main__":
     unittest.main()

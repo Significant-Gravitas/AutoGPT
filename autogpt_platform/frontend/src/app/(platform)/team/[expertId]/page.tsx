@@ -1,6 +1,6 @@
 "use client";
 
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import {
   Avatar,
   AvatarFallback,
@@ -16,15 +16,18 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
+import { notFound, useParams, useRouter } from "next/navigation";
 import { getLastRunLabel } from "../helpers";
+import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
+import { FireExpertMenu } from "../components/FireExpertMenu/FireExpertMenu";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
+import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-8 pb-20 pt-16 sm:px-8 md:px-12";
+  "container min-h-screen space-y-8 pb-20 pt-8 sm:px-8 md:px-12";
 
 function BackToTeamLink() {
   return (
@@ -41,6 +44,7 @@ function BackToTeamLink() {
 
 export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
+  const router = useRouter();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     expert,
@@ -53,6 +57,9 @@ export default function ExpertDetailPage() {
     closePicker,
     resumeSchedules,
     isResuming,
+    isFireOpen,
+    openFire,
+    closeFire,
   } = useExpertDetailPage({
     expertId,
     enabled: Boolean(enabled) && ready,
@@ -85,7 +92,7 @@ export default function ExpertDetailPage() {
     );
   }
 
-  const accent = getExpertAccent(expert.role);
+  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   return (
@@ -123,7 +130,7 @@ export default function ExpertDetailPage() {
             <p className="mt-1.5 text-base text-zinc-500">{expert.tagline}</p>
           ) : null}
         </div>
-        <div className="shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             as="NextLink"
             href={`/copilot?expertId=${expert.id}`}
@@ -132,6 +139,12 @@ export default function ExpertDetailPage() {
           >
             Chat
           </Button>
+          <FireExpertMenu
+            expertName={expert.name}
+            onFire={openFire}
+            testId="expert-detail-actions"
+            triggerClassName="bg-white/70 text-zinc-500 ring-1 ring-inset ring-black/5 hover:bg-white hover:text-zinc-800"
+          />
         </div>
       </header>
 
@@ -171,6 +184,11 @@ export default function ExpertDetailPage() {
         </section>
       ) : null}
 
+      <ExpertWorkSection
+        expertId={expert.id}
+        enabled={Boolean(enabled) && ready}
+      />
+
       <ExpertSchedulesSection
         expertName={expert.name}
         schedules={schedules}
@@ -188,6 +206,14 @@ export default function ExpertDetailPage() {
         expertId={expert.id}
         open={isPickerOpen}
         onClose={closePicker}
+      />
+
+      <FireExpertDialog
+        expertId={expert.id}
+        expertName={expert.name}
+        open={isFireOpen}
+        onClose={closeFire}
+        onFired={() => router.push("/team")}
       />
     </main>
   );

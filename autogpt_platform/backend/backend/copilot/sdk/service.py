@@ -47,6 +47,8 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
@@ -1575,7 +1577,10 @@ async def _apply_building_mode_restart(
             f"empty — continuing without prompt upgrade"
         )
     expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
     )
     system_prompt = (
         base_system_prompt
@@ -3574,6 +3579,9 @@ async def _run_stream_attempt(
     #   - ValueError: ContextVar token mismatch (AUTOGPT-SERVER-8BT)
     #   - RuntimeError: cancel scope in wrong task  (AUTOGPT-SERVER-8BW)
     # Both are harmless — the TCP connection is already dead.
+    # CLI subprocess spawn + MCP init can take seconds on cold starts —
+    # narrate it so the status doesn't sit on the context-prep message.
+    yield StreamStatus(message="Starting the assistant…")
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -4024,6 +4032,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+    expert_identity_validated = True
+
     # Stamping state for THIS turn: messages beyond this index were created
     # by the current turn and get model/routing_source at persist time.
     # Pre-feature history rows (NULL model) must never be back-stamped.
@@ -4220,6 +4236,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 code="sdk_cwd_error",
             )
             return
+
+        # Narrate the parallel setup below (sandbox spin-up, system prompt
+        # build, CLI session restore) — it can take several seconds and the
+        # generator cannot yield mid-gather.
+        yield StreamStatus(
+            message=(
+                "Restoring your session…" if has_history else "Preparing workspace…"
+            )
+        )
+
         # --- Run independent async I/O operations in parallel ---
         # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
         # warm-context, and CLI session restore are all independent network
@@ -4291,9 +4317,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
         session.guide_in_system_prompt = bool(builder_session_suffix)
-        expert_session_suffix = await build_expert_identity_suffix(
-            session.user_id, session.expert_id
-        )
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
@@ -4341,6 +4364,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
+        if not session.expert_id:
+            disabled_tool_groups.append("experts")
 
         # Hide both permission-denied tools AND group-disabled tools at
         # registration. ``allowed_tools`` filtering alone routes group-
@@ -4461,6 +4486,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
+            # Never load the host machine's ~/.claude settings (hooks,
+            # skills, plugins) or filesystem MCP servers into the CoPilot
+            # subprocess.  On developer machines a personal Claude Code
+            # setup can inject hundreds of MCP tool schemas, inflating the
+            # static prompt past the autocompact threshold and causing
+            # compaction thrash on the very first turn.  Prod containers
+            # have a clean HOME, so this is a no-op there.
+            setting_sources=[],
+            extra_args={"strict-mcp-config": None},
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,
@@ -4605,6 +4639,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # persist_session_safe (routes.py has already saved the user
         # message at sequence N before the executor runs, so an
         # incremental upsert would write a second copy at N+1).
+        # Narrate the context-assembly phase (pending drain, user-context
+        # injection, attachment prep, query/transcript build) before the
+        # SDK client spawns.
+        yield StreamStatus(message="Preparing conversation context…")
+
         pending_messages = await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
@@ -4992,7 +5031,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # interrupted.capture / snapshot restore here. Detection
                 # cannot re-fire: guide_in_system_prompt flips True on
                 # success, building_mode_requested flips False either way.
-                yield await _apply_building_mode_restart(
+                expert_identity_validated = False
+                restart_status = await _apply_building_mode_restart(
                     session=session,
                     state=state,
                     sdk_options=sdk_options,
@@ -5003,6 +5043,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     message_id=message_id,
                     log_prefix=log_prefix,
                 )
+                expert_identity_validated = True
+                yield restart_status
                 continue
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
@@ -5505,9 +5547,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if graphiti_enabled and user_id and message and is_user_message:
-            from ..graphiti.ingest import enqueue_conversation_turn
-
+        if _graphiti_ingest_allowed(
+            expert_identity_validated=expert_identity_validated,
+            graphiti_enabled=graphiti_enabled,
+            user_id=user_id,
+            message=message,
+            is_user_message=is_user_message,
+        ):
             # Extract last assistant message from THIS TURN only (not all
             # session history) to avoid distilling stale content from prior
             # turns when the current turn errors before producing output.
@@ -5520,8 +5566,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
 
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
-                    user_id, session_id, message, assistant_msg=_last_assistant
+                _enqueue_graphiti_turn(
+                    user_id,
+                    session,
+                    session_id,
+                    message,
+                    _last_assistant,
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -5745,10 +5795,44 @@ async def _fetch_graphiti_context(
     if not (user_id and len(session.messages) <= 1):
         return True, ""
 
-    from ..graphiti.context import fetch_warm_context
-
-    ctx = await fetch_warm_context(user_id, message or "") or ""
+    ctx = (
+        await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
+        or ""
+    )
     return True, ctx
+
+
+def _graphiti_ingest_allowed(
+    *,
+    expert_identity_validated: bool,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    return bool(
+        expert_identity_validated
+        and graphiti_enabled
+        and user_id
+        and message
+        and is_user_message
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
 
 
 def _canonical_model(model: str) -> str:

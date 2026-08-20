@@ -28,7 +28,7 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
+import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
@@ -141,37 +141,53 @@ function NewTaskItem() {
   );
 }
 
-function NavMenu({
-  links,
-  leading,
-}: {
-  links: NavLink[];
-  leading?: ReactNode;
-}) {
+interface NavItemProps {
+  link: NavLink;
+  children?: ReactNode;
+}
+
+function NavItem({ link, children }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
   return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip={link.name}
+        isActive={isLinkActive(pathname, link.href)}
+        className={navItemClassName}
+      >
+        <Link href={link.href}>
+          <Icon
+            icon={link.icon}
+            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+          />
+          <span className="truncate">{link.name}</span>
+          <NavLinkLoader />
+        </Link>
+      </SidebarMenuButton>
+      {children}
+    </SidebarMenuItem>
+  );
+}
+
+function NavMenu({
+  links,
+  leading,
+  renderAfterItem,
+}: {
+  links: NavLink[];
+  leading?: ReactNode;
+  renderAfterItem?: (link: NavLink) => ReactNode;
+}) {
+  return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <SidebarMenuItem key={link.href}>
-          <SidebarMenuButton
-            asChild
-            tooltip={link.name}
-            isActive={isLinkActive(pathname, link.href)}
-            className={navItemClassName}
-          >
-            <Link href={link.href}>
-              <Icon
-                icon={link.icon}
-                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-              />
-              <span className="truncate">{link.name}</span>
-              <NavLinkLoader />
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <NavItem key={link.href} link={link}>
+          {renderAfterItem?.(link)}
+        </NavItem>
       ))}
     </SidebarMenu>
   );
@@ -239,7 +255,7 @@ export function AppSidebar(props: Props) {
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
-    ? [HOME_LINK, ...MAIN_LINKS.filter((link) => link.href !== "/library")]
+    ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
     ? [
@@ -290,8 +306,8 @@ export function AppSidebar(props: Props) {
                   links={mainLinks}
                   leading={
                     <>
+                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
                       <NewTaskItem />
-                      <SidebarSearch />
                     </>
                   }
                 />
@@ -301,7 +317,12 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={workspaceLinks} />
+              <NavMenu
+                links={workspaceLinks}
+                renderAfterItem={(link) =>
+                  link.href === "/team" ? <SidebarTeamMembers /> : null
+                }
+              />
             </CollapsibleNavGroup>
           </motion.div>
 

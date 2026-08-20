@@ -12,6 +12,7 @@ from backend.api.features.admin.model import (
     AgentDiagnosticsResponse,
     ExecutionDiagnosticsResponse,
 )
+from backend.api.features.experts import experts_db
 from backend.data.diagnostics import (
     FailedExecutionDetail,
     OrphanedScheduleDetail,
@@ -415,13 +416,21 @@ async def requeue_single_execution(
     # Use add_graph_execution in requeue mode. ``bypass_paywall=True``
     # because admins are recovering stuck executions on behalf of users
     # who may now be on NO_TIER — the original run was already gated.
-    await add_graph_execution(
-        graph_id=execution.graph_id,
-        user_id=execution.user_id,
-        graph_version=execution.graph_version,
-        graph_exec_id=request.execution_id,  # Requeue existing execution
-        bypass_paywall=True,
-    )
+    try:
+        await add_graph_execution(
+            graph_id=execution.graph_id,
+            user_id=execution.user_id,
+            graph_version=execution.graph_version,
+            graph_exec_id=request.execution_id,  # Requeue existing execution
+            bypass_paywall=True,
+        )
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="The expert workspace is still being set up. Try again shortly.",
+        ) from e
+    except experts_db.ExpertNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Expert not found") from e
 
     return RequeueExecutionResponse(
         success=True,

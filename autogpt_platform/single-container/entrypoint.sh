@@ -135,6 +135,15 @@ configure_environment() {
   # The appliance bundles no antivirus daemon. Force the scanner off so uploads
   # short-circuit as clean instead of failing on an unreachable ClamAV service.
   export CLAMAV_SERVICE_ENABLED=false
+  # mem0 and graphiti-core ship their own PostHog keys and report anonymous
+  # usage to their vendors by default. A self-hosted appliance must not phone
+  # home to third parties the operator never chose, so opt both out.
+  #
+  # This suppresses the events, not the client. mem0 constructs its PostHog
+  # client at import and only sets .disabled afterwards, so its atexit join
+  # still costs seconds on every service shutdown regardless of this flag.
+  export MEM0_TELEMETRY=false
+  export GRAPHITI_TELEMETRY_ENABLED=false
 
   export PYRO_HOST=127.0.0.1
   export AGENTSERVER_HOST=127.0.0.1 SCHEDULER_HOST=127.0.0.1

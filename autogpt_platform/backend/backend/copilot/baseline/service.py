@@ -46,6 +46,8 @@ from backend.copilot.config import CopilotLLMModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -1559,6 +1561,34 @@ async def _upload_final_transcript(
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
 
+async def _fetch_graphiti_context(
+    user_id: str,
+    session: ChatSession,
+    message: str | None,
+) -> str | None:
+    return await fetch_warm_context(
+        user_id,
+        message or "",
+        expert_id=session.expert_id,
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
+
+
 async def stream_chat_completion_baseline(
     session_id: str,
     message: str | None = None,
@@ -1590,6 +1620,13 @@ async def stream_chat_completion_baseline(
         raise NotFoundError(
             f"Session {session_id} not found. Please create a new session first."
         )
+
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
 
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
@@ -1781,9 +1818,6 @@ async def stream_chat_completion_baseline(
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
-    )
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
@@ -1799,9 +1833,7 @@ async def stream_chat_completion_baseline(
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
-        from backend.copilot.graphiti.context import fetch_warm_context
-
-        warm_ctx = await fetch_warm_context(user_id, message or "")
+        warm_ctx = await _fetch_graphiti_context(user_id, session, message)
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
@@ -2035,6 +2067,8 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
+    if not session.expert_id:
+        disabled_tool_groups.append("experts")
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
@@ -2522,17 +2556,16 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-
             # Pass only the final assistant reply (after stripping tool-loop
             # chatter) so derived-finding distillation sees the substantive
             # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
+                _enqueue_graphiti_turn(
                     user_id,
+                    session,
                     session_id,
                     message,
-                    assistant_msg=final_text if state else "",
+                    final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)

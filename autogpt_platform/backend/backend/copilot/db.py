@@ -21,6 +21,8 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.data import db
+from backend.data.expert_attribution import resolve_attributable_expert
+from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, sanitize_string
 
 from .model import (
@@ -73,6 +75,32 @@ async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     return ChatSessionInfo.from_db(session) if session else None
 
 
+async def chat_message_has_assistant_reply(
+    message_id: str,
+    session_id: str,
+) -> bool | None:
+    """Whether a persisted user message already has an assistant reply after it.
+
+    ``None`` means the message does not exist, ``False`` means no assistant row
+    follows it, and ``True`` means an assistant reply was persisted after it in
+    the same session.
+    """
+    messages = PrismaChatMessage.prisma()
+    existing = await messages.find_first(
+        where={"id": message_id, "sessionId": session_id},
+    )
+    if existing is None:
+        return None
+    assistant_reply = await messages.find_first(
+        where={
+            "sessionId": session_id,
+            "role": "assistant",
+            "sequence": {"gt": existing.sequence},
+        },
+    )
+    return assistant_reply is not None
+
+
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 
@@ -82,10 +110,24 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     (``api/features/library/db.py``); exact ``organizationId`` equality would
     silently hide them. Always paired with a ``userId`` filter, so it only
     ever widens to the caller's own rows.
+
+    Expert-scoped sessions (``expertId`` set) are exempt from org scoping:
+    they are pinned to the owner's personal organization by design (see
+    ``copilot/model.py::create_chat_session``), so filtering them by the
+    caller's *active* org would make them invisible and undeletable whenever
+    a shared org is active — while streaming into them still works.
     """
     if organization_id is None:
         return []
-    return [{"OR": [{"organizationId": organization_id}, {"organizationId": None}]}]
+    return [
+        {
+            "OR": [
+                {"organizationId": organization_id},
+                {"organizationId": None},
+                {"expertId": {"not": None}},
+            ]
+        }
+    ]
 
 
 async def get_chat_messages_paginated(
@@ -276,7 +318,57 @@ async def create_chat_session(
     metadata: ChatSessionMetadata | None = None,
     expert_id: str | None = None,
 ) -> ChatSessionInfo:
-    """Create a new chat session in the database."""
+    """Create a chat session, atomically validating expert attribution."""
+    requested_expert_id = expert_id
+    if requested_expert_id:
+        async with db.transaction() as tx:
+            expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                requested_expert_id,
+                lock_for_update=True,
+            )
+            if expert_id is None:
+                # Fail closed: the expert vanished (archived/deleted/shared)
+                # between the caller's tenancy pre-check and this locked
+                # re-check. Creating an unattributed session would silently
+                # land the chat in AutoPilot memory scope — the opposite of
+                # what the caller asked for.
+                raise ExpertNotFoundError(requested_expert_id)
+            prisma_session = await PrismaChatSession.prisma(tx).create(
+                data=_chat_session_create_input(
+                    session_id=session_id,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    metadata=metadata,
+                    expert_id=expert_id,
+                )
+            )
+        return ChatSessionInfo.from_db(prisma_session)
+
+    prisma_session = await PrismaChatSession.prisma().create(
+        data=_chat_session_create_input(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=metadata,
+            expert_id=None,
+        )
+    )
+    return ChatSessionInfo.from_db(prisma_session)
+
+
+def _chat_session_create_input(
+    *,
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    metadata: ChatSessionMetadata | None,
+    expert_id: str | None,
+) -> ChatSessionCreateInput:
     data = ChatSessionCreateInput(
         id=session_id,
         userId=user_id,
@@ -289,8 +381,7 @@ async def create_chat_session(
         **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
-    prisma_session = await PrismaChatSession.prisma().create(data=data)
-    return ChatSessionInfo.from_db(prisma_session)
+    return data
 
 
 async def update_chat_session(
@@ -301,6 +392,9 @@ async def update_chat_session(
     total_prompt_tokens: int | None = None,
     total_completion_tokens: int | None = None,
     title: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    update_tenancy: bool = False,
 ) -> ChatSessionInfo | None:
     """Update a chat session's mutable fields.
 
@@ -322,6 +416,9 @@ async def update_chat_session(
         data["totalCompletionTokens"] = total_completion_tokens
     if title is not None:
         data["title"] = title
+    if update_tenancy:
+        data["organizationId"] = organization_id
+        data["teamId"] = team_id
 
     # Returns the bare session row (no eager Messages include): pulling the
     # full message history per update was a top-egress query, and the only
@@ -619,6 +716,8 @@ async def get_user_chat_sessions(
     organization_id: str | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
+    pinned_first: bool = True,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -633,25 +732,44 @@ async def get_user_chat_sessions(
     without waiting on async embedding.
 
     ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``autopilot_only`` restricts it to sessions whose ``expertId`` is NULL.
+    The explicit flag is necessary because ``expert_id=None`` retains the
+    existing meaning of "all expert scopes" for user-facing session lists.
+
+    ``pinned_first=False`` provides strict recency ordering for internal
+    adoption flows; the user-facing sidebar keeps pinned sessions first.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
         params.append(organization_id)
+        # Same carve-out as _own_org_scope: the owner's expert sessions are
+        # personal-org resources and stay visible under any active org.
         conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
+            ' OR "expertId" IS NOT NULL)'
         )
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")
         conditions.append(f'"title" ILIKE ${len(params)}')
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     params.extend((limit, offset))
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+    )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions)
-        + ' ORDER BY "isPinned" DESC, "updatedAt" DESC '
+        + f" ORDER BY {ordering} "
         + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
     )
     sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
@@ -662,6 +780,7 @@ async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
     expert_id: str | None = None,
+    autopilot_only: bool = False,
 ) -> int:
     """Get the total number of chat sessions for a user.
 
@@ -669,16 +788,26 @@ async def get_user_session_count(
     filter as :func:`get_user_chat_sessions` so pagination totals always
     match the visible list.
     """
+    if expert_id == "":
+        raise ValueError("expert_id must be non-empty")
+    if expert_id is not None and autopilot_only:
+        raise ValueError("expert_id and autopilot_only are mutually exclusive")
+
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
     if organization_id is not None:
         params.append(organization_id)
+        # Keep in lockstep with get_user_chat_sessions so pagination totals
+        # always match the visible list (expert sessions included).
         conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL)'
+            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
+            ' OR "expertId" IS NOT NULL)'
         )
-    if expert_id:
+    if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
+    elif autopilot_only:
+        conditions.append('"expertId" IS NULL')
     rows = await db.query_raw_with_schema(
         'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
         + " AND ".join(conditions),
@@ -1065,12 +1194,15 @@ async def append_expert_run_message(
     expert_id: str,
     content: str,
     message_id: str,
+    metadata: dict[str, Any] | None = None,
 ) -> str | None:
     """Post an assistant message into the expert's latest thread, creating a
     thread when none exists — run results land in her workspace, not a void.
 
     Deduplicates on *message_id* (deterministic per event at the caller), so
     executor retries and double-fires never produce duplicate posts.
+    ``metadata`` rides on the row's JSONB bag so the thread can render a
+    structured work card; ``None`` keeps legacy posts rendering as plain text.
     Returns the session id the message landed in, or None when deduped.
     """
     existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
@@ -1101,6 +1233,7 @@ async def append_expert_run_message(
                 sequence=await get_next_sequence(session_id),
                 content=content,
                 message_id=message_id,
+                metadata=metadata,
             )
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
@@ -1114,6 +1247,7 @@ async def append_expert_run_message(
                 sequence=await get_next_sequence(session_id),
                 content=content,
                 message_id=message_id,
+                metadata=metadata,
             )
     return session_id
 

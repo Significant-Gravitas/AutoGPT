@@ -123,6 +123,9 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Experts (soul edits)
+    EXPERT_SOUL_UPDATED = "expert_soul_updated"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -486,6 +489,32 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     current_understanding: dict[str, Any] = Field(default_factory=dict)
 
 
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
+class SoulFieldChange(BaseModel):
+    """One field's before/after values for an expert soul edit."""
+
+    field: SoulFieldName
+    before: str
+    after: str
+
+
+class ExpertSoulUpdatedResponse(ToolResponseBase):
+    """Response for the two-step Soul edit tools.
+
+    Carries the diff so the model must surface exactly what changed. ``applied``
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
+    applied: bool = False
+    changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
+
+
 # Agent generation models
 class ClarifyingQuestion(BaseModel):
     """A question that needs user clarification."""
@@ -606,6 +635,12 @@ class BlockInfoSummary(BaseModel):
         default_factory=list,
         description="List of input fields for this block",
     )
+    provider: str | None = Field(
+        default=None,
+        description="Integration provider slug when the block uses exactly "
+        "one provider (e.g. 'google', 'discord'); used for provider icons "
+        "in the chat UI",
+    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -647,6 +682,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_id: str
     block_name: str
     outputs: dict[str, list[Any]]
+    provider: str | None = None
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
@@ -676,6 +712,11 @@ class WebFetchResponse(ToolResponseBase):
     status_code: int
     content_type: str
     content: str
+    title: str | None = None
+    content_length: int = Field(
+        default=0,
+        description="Original response body size in bytes",
+    )
     truncated: bool = False
 
 
