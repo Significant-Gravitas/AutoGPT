@@ -71,6 +71,8 @@ const locked = (over: Partial<AIConnectionOffer> = {}) =>
     is_default: false,
     tiers: [],
     limitations: [],
+    description:
+      "Run chats on a ChatGPT plan you already pay for, spending no AutoGPT credits.",
     lock_reason: "A Max plan or higher is required to use ChatGPT.",
     unlock_href: "/settings/billing",
     ...over,
@@ -346,6 +348,22 @@ describe("ConnectionPicker", () => {
       screen.getByText("A Max plan or higher is required to use ChatGPT."),
     ).toBeDefined();
     expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+  });
+
+  it("spends a locked row on the benefit, not on a plan the user may lack", async () => {
+    mockOffers([offer(), locked()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(
+      await screen.findByText(/spending no AutoGPT credits/),
+    ).toBeDefined();
+    // "Your ChatGPT plan" above "a Max plan is required" reads as two
+    // different plans, and presumes one they may not have.
+    expect(screen.queryByText("Your ChatGPT plan")).toBeNull();
   });
 
   it("does not offer a locked connection as something to pick", async () => {
