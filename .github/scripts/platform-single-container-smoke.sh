@@ -15,9 +15,12 @@ readonly STOCK_DOCKER_STOP_TIMEOUT=10
 # Exit code alone is a cliff: it only changes at the timeout, so a shutdown
 # drifting from 6s to 9.9s passes identically to a fast one until it tips over
 # to 137 on a slower host. Gate on the margin too, so erosion is caught here
-# rather than by an operator. Keep in step with SHUTDOWN_MARGIN_SECONDS in
-# single-container/tests/test_supervisor_config.py.
-readonly MAX_CLEAN_STOP_SECONDS=8
+# rather than by an operator. This is the same ceiling the unit test applies --
+# DOCKER_STOP_TIMEOUT_SECONDS minus SHUTDOWN_MARGIN_SECONDS in
+# single-container/tests/test_supervisor_config.py -- derived here rather than
+# written down twice with different values.
+readonly SHUTDOWN_MARGIN_SECONDS=1
+readonly MAX_CLEAN_STOP_SECONDS=$((STOCK_DOCKER_STOP_TIMEOUT - SHUTDOWN_MARGIN_SECONDS))
 readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
@@ -61,16 +64,17 @@ cleanup() {
 assert_clean_stop() {
   local reason="$1"
   local started elapsed exit_code
-  started="${SECONDS}"
+  # Integer SECONDS truncates at both ends, so a real 8.9s stop reads as 8.
+  started="${EPOCHREALTIME}"
   docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${CONTAINER_NAME}" >/dev/null
-  elapsed=$((SECONDS - started))
+  elapsed="$(awk -v a="${started}" -v b="${EPOCHREALTIME}" 'BEGIN { printf "%.2f", b - a }')"
   exit_code="$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
   [[ "${exit_code}" == 0 ]] || {
     echo "container did not exit cleanly ${reason}: exit ${exit_code} after" \
       "${elapsed}s against the stock ${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2
     return 1
   }
-  ((elapsed <= MAX_CLEAN_STOP_SECONDS)) || {
+  awk -v e="${elapsed}" -v m="${MAX_CLEAN_STOP_SECONDS}" 'BEGIN { exit !(e <= m) }' || {
     echo "container exited cleanly ${reason} but took ${elapsed}s, over the" \
       "${MAX_CLEAN_STOP_SECONDS}s budget, close to the stock" \
       "${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2

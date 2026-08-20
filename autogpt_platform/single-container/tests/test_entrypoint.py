@@ -256,7 +256,7 @@ class ProxyIsolationTest(unittest.TestCase):
 
 
 class ThirdPartyTelemetryTest(unittest.TestCase):
-    def test_vendor_analytics_are_opted_out(self) -> None:
+    def test_entrypoint_exports_the_vendor_telemetry_opt_outs(self) -> None:
         entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
 
         # mem0 and graphiti-core embed their own PostHog write keys and report

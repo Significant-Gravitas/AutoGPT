@@ -20,7 +20,9 @@ DOCKER_STOP_TIMEOUT_SECONDS = 10
 # against supervisor 4.2.5 with every program ignoring SIGTERM, wall time came
 # out at sum(stopwaitsecs) + ~1.4s across 2-, 3- and 4-phase layouts, so charge
 # each phase for that rather than assuming stopwaitsecs is the whole cost.
-SUPERVISOR_PHASE_OVERHEAD_SECONDS = 0.5
+# Measured flat, not per phase: 2 phases cost +1.30s, 3 cost +1.38s, 4 cost
+# +1.27s. Charging per phase happens to fit at three and under-charges at two.
+SUPERVISOR_SHUTDOWN_OVERHEAD_SECONDS = 1.5
 SHUTDOWN_MARGIN_SECONDS = 1
 
 # Programs that hold no durable state are signalled together, then the data
@@ -93,6 +95,13 @@ class SupervisorShutdownTierTest(unittest.TestCase):
                 }
                 self.assertEqual(declared, expected)
 
+    def test_event_listeners_are_accounted_for(self) -> None:
+        config = load_supervisor_config()
+
+        # Supervisor groups each event listener on its own, so an undeclared one
+        # is an extra stop phase the budget never charged for.
+        self.assertEqual(section_names(config, "eventlistener"), EVENT_LISTENERS)
+
     def test_state_services_stop_after_everything_that_uses_them(self) -> None:
         config = load_supervisor_config()
 
@@ -124,15 +133,29 @@ class SupervisorShutdownTierTest(unittest.TestCase):
             for programs in GROUPS.values()
         ]
         waits += [stop_wait(listener, "eventlistener") for listener in EVENT_LISTENERS]
-        phases = len(waits)
-        budget = sum(waits) + phases * SUPERVISOR_PHASE_OVERHEAD_SECONDS
+        budget = sum(waits) + SUPERVISOR_SHUTDOWN_OVERHEAD_SECONDS
 
         self.assertLessEqual(
             budget,
             DOCKER_STOP_TIMEOUT_SECONDS - SHUTDOWN_MARGIN_SECONDS,
             f"worst-case supervised shutdown is {sum(waits)}s of stopwaitsecs "
-            f"plus {phases} phases of supervisor overhead = {budget}s; Docker "
-            f"SIGKILLs the container at {DOCKER_STOP_TIMEOUT_SECONDS}s",
+            f"plus {SUPERVISOR_SHUTDOWN_OVERHEAD_SECONDS}s of supervisor "
+            f"overhead = {budget}s; Docker SIGKILLs the container at "
+            f"{DOCKER_STOP_TIMEOUT_SECONDS}s",
+        )
+
+    def test_state_tier_holds_the_larger_share_of_the_budget(self) -> None:
+        config = load_supervisor_config()
+
+        def wait(program: str) -> int:
+            return config[f"program:{program}"].getint("stopwaitsecs")
+
+        # The sum alone would let the tiers be inverted. PostgreSQL's shutdown
+        # checkpoint measured 3.2s on a seeded database, so the drainable tier
+        # has to keep the larger cap.
+        self.assertGreater(
+            min(wait(program) for program in STATE_PROGRAMS),
+            max(wait(program) for program in RUNTIME_PROGRAMS),
         )
 
     def test_postgres_uses_fast_shutdown(self) -> None:
@@ -142,6 +165,10 @@ class SupervisorShutdownTierTest(unittest.TestCase):
         # disconnect and so never completes on a deadline. SIGINT is the fast
         # shutdown - roll back open transactions, checkpoint, exit.
         self.assertEqual(config["program:postgres"]["stopsignal"], "INT")
+        # run-service.sh execs the postmaster, so supervisor's child *is* the
+        # postmaster. killpg'ing SIGINT would also hit backends, where INT means
+        # cancel-query, racing the postmaster's own orchestrated shutdown.
+        self.assertEqual(config["program:postgres"]["stopasgroup"], "false")
 
     def test_supervisor_activity_log_reaches_container_logs_once(self) -> None:
         config = load_supervisor_config()

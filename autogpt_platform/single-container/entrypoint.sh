@@ -138,6 +138,10 @@ configure_environment() {
   # mem0 and graphiti-core ship their own PostHog keys and report anonymous
   # usage to their vendors by default. A self-hosted appliance must not phone
   # home to third parties the operator never chose, so opt both out.
+  #
+  # This suppresses the events, not the client. mem0 constructs its PostHog
+  # client at import and only sets .disabled afterwards, so its atexit join
+  # still costs seconds on every service shutdown regardless of this flag.
   export MEM0_TELEMETRY=false
   export GRAPHITI_TELEMETRY_ENABLED=false
 
