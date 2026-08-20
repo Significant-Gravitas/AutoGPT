@@ -52,6 +52,7 @@ from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
 )
+from backend.copilot.markers import append_error_marker
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -2429,7 +2430,16 @@ async def stream_chat_completion_baseline(
             yield StreamError(errorText=error_msg, code=failure.kind.value)
         else:
             yield StreamError(errorText=error_msg, code="baseline_error")
-        # Still persist whatever we got
+        # The stream error dies with the SSE connection. Without a row in the
+        # chat, reloading shows the question and nothing after it -- no
+        # answer, no error, no sign the turn ever ran. Retry is offered only
+        # when the failure says trying again could work; an unclassified
+        # error keeps the existing benefit of the doubt.
+        append_error_marker(
+            session,
+            error_msg,
+            retryable=failure.retryable if failure is not None else True,
+        )
     finally:
         # Cancel the inner task if we're unwinding early (client disconnect,
         # unexpected error in the consumer) so it doesn't keep streaming
