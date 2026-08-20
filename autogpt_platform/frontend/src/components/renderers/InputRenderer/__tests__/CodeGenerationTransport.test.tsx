@@ -443,6 +443,7 @@ describe("An optional discriminator is still gated", () => {
       (o) => o.textContent,
     );
     expect(labels).not.toContain("codex_app_server");
+    expect(screen.queryByText("credential")).toBeNull();
   });
 
   it("clears a hidden credential when switching to platform transport", async () => {

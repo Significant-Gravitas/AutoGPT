@@ -149,6 +149,7 @@ class AutoPilotBlock(Block):
         transport: AutoPilotTransport | None = SchemaField(
             title="Transport",
             default=None,
+            placeholder="Select a transport",
             description=(
                 "Run on platform credits, or on your connected ChatGPT "
                 "subscription if supported by your plan."

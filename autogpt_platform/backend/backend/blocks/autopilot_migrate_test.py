@@ -1,5 +1,7 @@
+import uuid
 from unittest.mock import AsyncMock, patch
 
+import prisma.models
 import pytest
 
 from backend.blocks.autopilot_migrate import (
@@ -84,6 +86,88 @@ async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
     assert block_id == AUTOPILOT_BLOCK_ID
     assert "NOT (\"constantInput\" ? 'transport')" in sql
     assert "'codex_credentials'->>'id' IS NOT NULL" in sql
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_apply_is_idempotent_against_database(server):
+    user_id = str(uuid.uuid4())
+    graph_id = str(uuid.uuid4())
+    await prisma.models.User.prisma().create(
+        data={
+            "id": user_id,
+            "email": f"autopilot-migrate-{user_id}@example.com",
+            "name": "AutoPilot Migration Test",
+        }
+    )
+    await prisma.models.AgentGraph.prisma().create(
+        data={
+            "id": graph_id,
+            "version": 1,
+            "name": "autopilot-migrate-test",
+            "description": "autopilot-migrate-test",
+            "userId": user_id,
+            "isActive": True,
+        }
+    )
+
+    autopilot_block = await prisma.models.AgentBlock.prisma().find_unique(
+        where={"id": AUTOPILOT_BLOCK_ID}
+    )
+    assert autopilot_block is not None
+    other_blocks = await prisma.models.AgentBlock.prisma().find_many()
+    other_block = next(
+        block for block in other_blocks if block.id != AUTOPILOT_BLOCK_ID
+    )
+
+    async def seed(block_id: str, constant_input: dict) -> str:
+        node = await prisma.models.AgentNode.prisma().create(
+            data={
+                "agentBlockId": block_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": 1,
+                "constantInput": prisma.Json(constant_input),
+            }
+        )
+        return node.id
+
+    try:
+        matching = await seed(
+            AUTOPILOT_BLOCK_ID,
+            {"codex_credentials": {"id": "cred-1"}},
+        )
+        already_migrated = await seed(
+            AUTOPILOT_BLOCK_ID,
+            {
+                "transport": "platform",
+                "codex_credentials": {"id": "cred-2"},
+            },
+        )
+        idless = await seed(
+            AUTOPILOT_BLOCK_ID,
+            {"codex_credentials": {"provider": "codex", "type": "oauth2"}},
+        )
+        other = await seed(
+            other_block.id,
+            {"codex_credentials": {"id": "cred-3"}},
+        )
+
+        assert await migrate_autopilot_transport(apply=True) == 1
+        assert await migrate_autopilot_transport(apply=True) == 0
+
+        async def constant_input(node_id: str) -> dict:
+            node = await prisma.models.AgentNode.prisma().find_unique(
+                where={"id": node_id}
+            )
+            assert node is not None
+            return dict(node.constantInput or {})
+
+        assert (await constant_input(matching))["transport"] == "codex_app_server"
+        assert (await constant_input(already_migrated))["transport"] == "platform"
+        assert "transport" not in await constant_input(idless)
+        assert "transport" not in await constant_input(other)
+    finally:
+        await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
+        await prisma.models.User.prisma().delete_many(where={"id": user_id})
 
 
 def test_query_templates_survive_schema_formatting():

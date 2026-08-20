@@ -27,6 +27,8 @@ export function SelectWidget(props: WidgetProps) {
     className,
     id,
     formContext,
+    label,
+    placeholder,
   } = props;
   const rawEnumOptions: EnumOptionsType[] = options.enumOptions || [];
   const enumOptions = rawEnumOptions.filter((option) => option.value !== "");
@@ -110,11 +112,12 @@ export function SelectWidget(props: WidgetProps) {
 
     return (
       <Select
-        label=""
+        label={label}
+        placeholder={placeholder || "Select an option"}
         id={id}
         hideLabel={true}
         disabled={disabled || readonly}
-        size={selectSize as any}
+        size={selectSize}
         value={selectedValue}
         onValueChange={(newValue) =>
           onChange(

@@ -5,8 +5,10 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { SelectWidget } from "../SelectWidget";
 
 interface SelectMockProps {
+  label?: string;
   onValueChange?: (value: string) => void;
   options?: unknown;
+  placeholder?: string;
   value?: string;
 }
 
@@ -120,6 +122,22 @@ describe("SelectWidget", () => {
     expect(selectSpy.mock.calls[0][0]).toMatchObject({
       value: "",
       options: [{ value: "0", label: "Red" }],
+    });
+  });
+
+  it("forwards an accessible label and placeholder", () => {
+    render(
+      <SelectWidget
+        {...createProps({
+          label: "Transport",
+          placeholder: "Select a transport",
+        })}
+      />,
+    );
+
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      label: "Transport",
+      placeholder: "Select a transport",
     });
   });
 

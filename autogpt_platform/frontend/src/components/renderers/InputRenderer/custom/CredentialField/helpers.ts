@@ -201,22 +201,21 @@ export const getCredentialProviderFromSchema = (
 };
 
 /**
- * True when the current discriminator selection needs no credential at all.
+ * True when the field has no usable credential route for the current state.
  *
- * `getCredentialProviderFromSchema` returns null both for "still loading" and
- * for "this choice needs nothing", which is indistinguishable to callers — so
- * the row lingered for a selection like AutoPilot's `platform`. This answers
- * the second question directly.
+ * An unmapped value needs no credential. An unset discriminator also has no
+ * actionable control unless a saved provider identifies a legacy selection.
  */
 export const credentialNotApplicable = (
   formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
 ): boolean => {
   const mapping = schema.discriminator_mapping;
   if (!schema.discriminator || !mapping) return false;
 
   const value = getDiscriminatorValue(formData, schema);
-  if (value === undefined || value === null) return false;
+  if (value === undefined || value === null) return !selectedProvider;
 
   return !Object.hasOwn(mapping, String(value));
 };

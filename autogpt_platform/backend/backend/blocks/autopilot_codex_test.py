@@ -175,6 +175,7 @@ def test_transport_is_an_explicit_choice_not_inferred_from_the_credential():
     # chosen" from "deliberately platform", and reading one as the other
     # silently rebills legacy nodes.
     assert transport.get("default") is None
+    assert transport["placeholder"] == "Select a transport"
 
 
 def test_platform_transport_maps_to_no_provider():

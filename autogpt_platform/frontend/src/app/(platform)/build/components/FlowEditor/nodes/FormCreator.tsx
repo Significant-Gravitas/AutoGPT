@@ -63,7 +63,9 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       // `*_credentials` while being ordinary values; a name test deleted them.
       for (const key of Object.keys(formData)) {
         if (!isCredentialsProperty(jsonSchema, key)) continue;
-        const value = formData[key] as { id?: unknown } | undefined;
+        const value = formData[key] as
+          | { id?: unknown; provider?: unknown }
+          | undefined;
         // Also drop a credential the current selection no longer needs, or a
         // connection chosen under one transport survives a switch to another
         // that uses none — invisible, because its row is hidden.
@@ -75,6 +77,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
           credentialNotApplicable(
             formData,
             property as unknown as BlockIOCredentialsSubSchema,
+            typeof value?.provider === "string" ? value.provider : undefined,
           );
         if (!value?.id || stale) {
           delete formData[key];

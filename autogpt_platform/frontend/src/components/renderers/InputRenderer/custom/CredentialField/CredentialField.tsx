@@ -82,10 +82,13 @@ export const CredentialsField = (props: FieldProps) => {
   // Nothing to ask for: the selected discriminator value maps to no provider
   // (AutoPilot's `platform` transport), so the row is not merely unavailable —
   // it does not apply at all.
-  const notApplicable = credentialNotApplicable(
-    hardcodedValues,
-    schema as BlockIOCredentialsSubSchema,
-  );
+  const notApplicable =
+    !required &&
+    credentialNotApplicable(
+      hardcodedValues,
+      schema as BlockIOCredentialsSubSchema,
+      selectedCredentials?.provider,
+    );
 
   const availability = useCredentialAvailability(
     schema as BlockIOCredentialsSubSchema,

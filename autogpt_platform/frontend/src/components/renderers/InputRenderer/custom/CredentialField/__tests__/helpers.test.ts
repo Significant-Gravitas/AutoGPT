@@ -76,9 +76,12 @@ describe("credentialNotApplicable", () => {
     ).toBe(false);
   });
 
-  it("is false when nothing has been selected yet", () => {
-    // Unset is not the same as "needs nothing" — leave the field alone.
-    expect(credentialNotApplicable({}, autopilotSchema)).toBe(false);
+  it("is true when neither a selection nor a legacy credential exists", () => {
+    expect(credentialNotApplicable({}, autopilotSchema)).toBe(true);
+  });
+
+  it("is false when a legacy node has a saved credential", () => {
+    expect(credentialNotApplicable({}, autopilotSchema, "codex")).toBe(false);
   });
 
   it("is false for a field with no discriminator at all", () => {
