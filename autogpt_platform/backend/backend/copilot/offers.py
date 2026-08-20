@@ -14,7 +14,9 @@ import logging
 
 from pydantic import BaseModel
 
-from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.model_router import resolve_model_route
 from backend.copilot.transports import (
     ChatTransportResponse,
     get_chat_transports,
@@ -36,15 +38,20 @@ TIER_LABELS: dict[CopilotLLMModel, str] = {
 class ConnectionTier(BaseModel):
     """One quality level on a connection.
 
-    ``display_model`` is deliberately absent. Naming the model a tier will
-    resolve to needs the execution path, which is decided per turn by which
-    service handles it — and on ChatGPT it needs a live call against the
-    account. A name that is right half the time is worse here than no name.
+    ``display_model`` is the model this tier resolves to, run through the
+    same router the turn will use — LaunchDarkly cell, then registry, then
+    config — so it cannot drift from what actually answers.
+
+    It is ``None`` on a ChatGPT connection. Naming that model means asking
+    the account what it advertises, which takes a runtime lease against the
+    provider; doing that once per credential to render a list is the cost
+    this endpoint exists to avoid.
     """
 
     tier: CopilotLLMModel
     label: str
     selectable: bool
+    display_model: str | None = None
 
 
 class AIConnectionOffer(BaseModel):
@@ -67,7 +74,50 @@ class AIConnectionOffersResponse(BaseModel):
 
 
 async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
-    return [_offer(transport) for transport in await get_chat_transports(user_id)]
+    """Describe every connection, naming the models where they are knowable.
+
+    The engine is resolved once for the user rather than per offer: it is a
+    property of the deployment and the user, not of which connection they
+    pick.
+    """
+    config = ChatConfig()
+    models = await _platform_tier_models(user_id, config)
+    return [
+        _offer(transport, models) for transport in await get_chat_transports(user_id)
+    ]
+
+
+async def _platform_tier_models(
+    user_id: str, config: ChatConfig
+) -> dict[CopilotLLMModel, str | None]:
+    """Resolve each tier against the engine this user's turns will run on.
+
+    Answerable at all only because nothing can name an engine per request
+    any more — the decision is the server's, so it can be made before a turn
+    exists rather than during one.
+    """
+    use_sdk = await resolve_use_sdk(
+        user_id,
+        use_claude_code_subscription=config.use_claude_code_subscription,
+        config_default=config.use_claude_agent_sdk,
+        thinking_available=config.thinking_available,
+    )
+    mode = "thinking" if use_sdk else "fast"
+    resolved: dict[CopilotLLMModel, str | None] = {}
+    for tier in TIER_LABELS:
+        try:
+            route = await resolve_model_route(mode, tier, user_id, config=config)
+            resolved[tier] = route.model
+        except Exception:
+            # A tier that cannot be resolved is described without a name
+            # rather than failing the whole list.
+            logger.warning(
+                "Could not resolve the %s model for the platform connection",
+                tier,
+                exc_info=True,
+            )
+            resolved[tier] = None
+    return resolved
 
 
 def offer_id_for(transport: ChatTransportResponse) -> str:
@@ -79,7 +129,10 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
     return f"{transport.auth_provider}:{transport.credential_id or 'deployment'}"
 
 
-def _offer(transport: ChatTransportResponse) -> AIConnectionOffer:
+def _offer(
+    transport: ChatTransportResponse,
+    platform_models: dict[CopilotLLMModel, str | None],
+) -> AIConnectionOffer:
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
         provider_family=_provider_family(transport.auth_provider),
@@ -92,7 +145,16 @@ def _offer(transport: ChatTransportResponse) -> AIConnectionOffer:
         selectable=transport.available,
         is_default=transport.default,
         tiers=[
-            ConnectionTier(tier=tier, label=label, selectable=transport.available)
+            ConnectionTier(
+                tier=tier,
+                label=label,
+                selectable=transport.available,
+                display_model=(
+                    platform_models.get(tier)
+                    if transport.auth_provider == "platform"
+                    else None
+                ),
+            )
             for tier, label in TIER_LABELS.items()
         ],
         limitations=_limitations(transport),
