@@ -156,7 +156,7 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert "credential_leases" not in captured
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_platform_transport_ignores_attached_codex_credential():
     manager = MagicMock()
     manager.get = AsyncMock()

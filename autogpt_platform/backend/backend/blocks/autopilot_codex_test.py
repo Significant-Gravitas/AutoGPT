@@ -47,7 +47,7 @@ def test_graph_export_strips_autopilot_codex_credential_reference():
     assert stripped.input_default == {"prompt": "do the thing"}
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_autopilot_block_routes_new_session_to_selected_codex_connection():
     block = AutoPilotBlock()
     create_session = AsyncMock(return_value="session-1")
@@ -102,7 +102,7 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
     execute_copilot.assert_awaited_once()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_autopilot_block_rejects_codex_connection_change_on_resume():
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
@@ -274,7 +274,7 @@ async def _run_block(input_data):
     return outputs, create_session
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_run_honours_explicit_platform_over_an_attached_connection():
     """Without this a user could never move a step back onto platform credits:
     the leftover connection kept deciding."""
@@ -293,7 +293,7 @@ async def test_run_honours_explicit_platform_over_an_attached_connection():
     assert create_session.await_args.kwargs["llm_credential_id"] is None
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_run_fails_closed_when_codex_is_chosen_without_a_connection():
     """Falling back to platform would bill a different account than the one
     asked for, without saying so."""
@@ -307,7 +307,7 @@ async def test_run_fails_closed_when_codex_is_chosen_without_a_connection():
     create_session.assert_not_awaited()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_run_rejects_resuming_a_codex_session_on_platform():
     """Regression: gating the resume check on `use_codex` skipped it entirely
     for a platform node, so it silently continued on the codex session and
