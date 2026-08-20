@@ -71,6 +71,7 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
@@ -147,7 +148,7 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and

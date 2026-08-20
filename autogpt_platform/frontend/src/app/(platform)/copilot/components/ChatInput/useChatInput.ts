@@ -20,7 +20,8 @@ export function useChatInput({
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
+  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
+    useCopilotUIStore();
 
   useEffect(
     function consumeInitialPrompt() {
@@ -67,6 +68,7 @@ export function useChatInput({
     try {
       await onSend(trimmedMessage);
       setValue("");
+      notifyMessageSent();
     } finally {
       isSubmittingRef.current = false;
       setIsSending(false);

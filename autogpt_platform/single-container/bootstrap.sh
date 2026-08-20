@@ -115,11 +115,59 @@ migrate_database() {
     --set=ON_ERROR_STOP=1 \
     --file="${INIT_SQL}" >/dev/null
 
+  report_interrupted_migration
+
   log "applying Prisma migrations"
   (
     cd "${AUTOGPT_BACKEND_DIR}"
     prisma migrate deploy
   )
+}
+
+query_scalar() {
+  PGPASSWORD="${POSTGRES_PASSWORD}"     "${POSTGRES_BINDIR}/psql"     --host=127.0.0.1     --port=5432     --username=postgres     --dbname=postgres     --set=ON_ERROR_STOP=1     --tuples-only     --no-align     --command="$1"
+}
+
+# Prisma records a migration before applying it and completes the row
+# afterwards, so a container stopped during its first boot -- while
+# `prisma migrate deploy` is still running -- can leave `finished_at` NULL.
+# Every later boot then fails with Prisma's own "migration is in a failed
+# state" trace, which says nothing about how the appliance got there or what to
+# do next. Name the migration and the fix instead.
+#
+# Deliberately not resolved automatically: the interrupted migration may have
+# applied part of its DDL, and marking it rolled back would skip the remainder
+# on the next deploy, leaving a schema that matches neither state.
+report_interrupted_migration() {
+  local table_exists unfinished
+  table_exists="$(query_scalar \
+    "SELECT to_regclass('platform._prisma_migrations') IS NOT NULL")"
+  [[ "${table_exists}" == t ]] || return 0
+
+  unfinished="$(query_scalar "
+    SELECT coalesce(string_agg(migration_name, ', ' ORDER BY started_at), '')
+    FROM platform._prisma_migrations
+    WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+  [[ -n "${unfinished}" ]] || return 0
+
+  log "a previous database migration did not finish: ${unfinished}"
+  log "This usually means the container was stopped while it was still starting"
+  log "for the first time."
+  log ""
+  log "If that was the first boot, no data exists yet: delete this container's"
+  log "/data volume (on Unraid, its appdata directory) and start it again."
+  log ""
+  log "If the instance already holds data, restore it from a backup taken"
+  log "before the update."
+  log ""
+  log "The migration can also be marked resolved by hand, but note that this"
+  log "container will not stay up to run the command: it needs PostgreSQL"
+  log "running against ${PGDATA:-/data/postgres} some other way. Determine"
+  log "whether that migration's changes reached the database first, because the"
+  log "two answers are not interchangeable:"
+  log "  prisma migrate resolve --rolled-back ${unfinished}   # changes absent"
+  log "  prisma migrate resolve --applied     ${unfinished}   # changes present"
+  fatal "refusing to migrate over an interrupted migration"
 }
 
 configure_frontend_database_role() {
