@@ -1,6 +1,7 @@
 import type { FileUIPart, UIMessage } from "ai";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { ExpertKickoffMetadata } from "./expertKickoff";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -24,10 +25,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
  */
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;
+  lastSubmittedKickoffExpertId: string | null;
+  lastSubmittedKickoffAttemptToken: string | null;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
+  lastSubmittedKickoffExpertId: null,
+  lastSubmittedKickoffAttemptToken: null,
 };
 
 /**
@@ -49,12 +54,21 @@ const defaultCoord: SessionCoord = {
 export interface PendingFirstSend {
   text: string;
   files: File[];
+  metadata?: ExpertKickoffMetadata;
+}
+
+interface PersistedCopilotStreamState {
+  sessions: Record<string, SessionCoord>;
+  pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
+  pendingFirstSendSessionId: string | null;
+  pendingFileParts: FileUIPart[];
 }
 
 interface CopilotStreamStore {
   sessions: Record<string, SessionCoord>;
   messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
+  pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
   /**
    * True while the current chat is in `streaming` or `submitted` state.
@@ -72,9 +86,10 @@ interface CopilotStreamStore {
   setStreaming: (streaming: boolean) => void;
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
+  bindPendingFirstSendToSession: (sessionId: string) => void;
   setPendingFileParts: (parts: FileUIPart[]) => void;
   /** Read-and-clear; used by the post-session-creation flush effect. */
-  takePendingFirstSend: () => {
+  takePendingFirstSend: (sessionId: string) => {
     send: PendingFirstSend | null;
     parts: FileUIPart[];
   };
@@ -84,16 +99,17 @@ interface CopilotStreamStore {
 }
 
 export const useCopilotStreamStore = create<CopilotStreamStore>()(
-  persist(
+  persist<CopilotStreamStore, [], [], PersistedCopilotStreamState>(
     (set, get) => ({
       sessions: {},
       messageSnapshots: {},
       pendingFirstSend: null,
+      pendingFirstSendSessionId: null,
       pendingFileParts: [],
       isStreaming: false,
 
       getCoord(sessionId) {
-        return get().sessions[sessionId] ?? defaultCoord;
+        return { ...defaultCoord, ...get().sessions[sessionId] };
       },
       updateCoord(sessionId, patch) {
         set((state) => ({
@@ -137,14 +153,29 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       },
 
       setPendingFirstSend(send) {
-        set({ pendingFirstSend: send });
+        set({ pendingFirstSend: send, pendingFirstSendSessionId: null });
+      },
+      bindPendingFirstSendToSession(sessionId) {
+        if (!get().pendingFirstSend) return;
+        set({ pendingFirstSendSessionId: sessionId });
       },
       setPendingFileParts(parts) {
         set({ pendingFileParts: parts });
       },
-      takePendingFirstSend() {
-        const { pendingFirstSend, pendingFileParts } = get();
-        set({ pendingFirstSend: null, pendingFileParts: [] });
+      takePendingFirstSend(sessionId) {
+        const {
+          pendingFirstSend,
+          pendingFirstSendSessionId,
+          pendingFileParts,
+        } = get();
+        if (pendingFirstSendSessionId !== sessionId) {
+          return { send: null, parts: [] };
+        }
+        set({
+          pendingFirstSend: null,
+          pendingFirstSendSessionId: null,
+          pendingFileParts: [],
+        });
         return { send: pendingFirstSend, parts: pendingFileParts };
       },
 
@@ -153,22 +184,21 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           sessions: {},
           messageSnapshots: {},
           pendingFirstSend: null,
+          pendingFirstSendSessionId: null,
           pendingFileParts: [],
           isStreaming: false,
         });
       },
     }),
     {
-      // Persist ONLY the per-session ``sessions`` map (which carries
-      // ``lastSubmittedMessageText``). Refresh / new tab in the same browser
-      // session keeps the dedup memory so the wrapped sendMessage's
-      // ``getSendSuppressionReason`` can still block duplicate POSTs after
-      // the in-memory state would otherwise be lost.
+      // Persist the per-session dedup memory plus the serializable portion of
+      // the first send. A full navigation can happen while adding sessionId to
+      // the URL on mobile, so a module-scoped slot alone is not sufficient.
+      // Browser File objects remain memory-only; workspace FileUIParts are
+      // already server-backed and safe to restore after navigation.
       // ``messageSnapshots`` is intentionally excluded — it's a per-render
       // cache of UIMessages (often hundreds) that the next mount should
       // re-derive from the server, not restore from storage.
-      // ``pendingFirstSend`` / ``pendingFileParts`` are tab-local artefacts
-      // of the session-creation remount and would be confusing if persisted.
       name: "copilot-stream-store",
       version: 1,
       // SSR-safe storage adapter: ``window.sessionStorage`` in the browser,
@@ -180,7 +210,49 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           ? window.sessionStorage
           : { getItem: () => null, setItem: () => {}, removeItem: () => {} },
       ),
-      partialize: (state) => ({ sessions: state.sessions }),
+      partialize(state) {
+        const canRestorePending =
+          state.pendingFirstSend !== null &&
+          state.pendingFirstSend.files.length === 0 &&
+          state.pendingFirstSendSessionId !== null;
+        return {
+          sessions: state.sessions,
+          pendingFirstSend: canRestorePending
+            ? {
+                text: state.pendingFirstSend!.text,
+                metadata: state.pendingFirstSend!.metadata,
+              }
+            : null,
+          pendingFirstSendSessionId: canRestorePending
+            ? state.pendingFirstSendSessionId
+            : null,
+          pendingFileParts: canRestorePending ? state.pendingFileParts : [],
+        };
+      },
+      merge(persistedState, currentState) {
+        const persisted =
+          persistedState as Partial<PersistedCopilotStreamState>;
+        const restoredPending =
+          persisted.pendingFirstSend &&
+          typeof persisted.pendingFirstSendSessionId === "string"
+            ? {
+                send: {
+                  text: persisted.pendingFirstSend.text,
+                  files: [],
+                  metadata: persisted.pendingFirstSend.metadata,
+                },
+                sessionId: persisted.pendingFirstSendSessionId,
+                parts: persisted.pendingFileParts ?? [],
+              }
+            : null;
+        return {
+          ...currentState,
+          sessions: persisted.sessions ?? {},
+          pendingFirstSend: restoredPending?.send ?? null,
+          pendingFirstSendSessionId: restoredPending?.sessionId ?? null,
+          pendingFileParts: restoredPending?.parts ?? [],
+        };
+      },
     },
   ),
 );

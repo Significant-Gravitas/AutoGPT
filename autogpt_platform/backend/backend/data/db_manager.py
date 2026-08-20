@@ -150,6 +150,7 @@ from backend.data.user import (
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    get_user_subscription_tier,
     set_user_credentials,
     update_user_integrations,
 )
@@ -318,6 +319,7 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    get_user_subscription_tier = _(get_user_subscription_tier)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -495,8 +497,13 @@ class DatabaseManager(AppService):
     # Exposed so the Prisma-less copilot executor can resolve expert
     # identity/team context via db_accessors.experts_db().
     get_expert = _(experts_db.get_expert)
+    expert_row_exists = _(experts_db.expert_row_exists)
+    resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
+    resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    update_soul_fields = _(experts_db.update_soul_fields)
+    update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -648,6 +655,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_user_subscription_tier = d.get_user_subscription_tier
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -814,8 +822,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Experts ============ #
     get_expert = d.get_expert
+    expert_row_exists = d.expert_row_exists
+    resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
+    resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    update_soul_fields = d.update_soul_fields
+    update_soul_fields_if_current = d.update_soul_fields_if_current
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

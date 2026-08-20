@@ -1,3 +1,5 @@
+import re
+from enum import Enum
 from typing import Mapping
 
 
@@ -49,6 +51,24 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class ExpertNotFoundError(NotFoundError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} not found"
+
+
+class ExpertPrivateTenancyNotFoundError(MissingConfigError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Private tenancy for expert {self.expert_id} not found"
+
+
 class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
@@ -90,6 +110,49 @@ class InsufficientBalanceError(ValueError):
     def __str__(self):
         """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
         return self.message
+
+
+class ExecutionFailureReason(str, Enum):
+    """Structured reasons for terminal graph execution failures."""
+
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+
+
+# Keep this legacy-only fallback synchronized with the equivalent predicates in
+# autogpt_platform/analytics/queries/graph_execution.sql and the shared corpus in
+# exceptions_test.py. Live failures are classified by type, never by these messages.
+_LEGACY_INSUFFICIENT_BALANCE_PATTERNS = (
+    re.compile(r"You have no credits left to run an agent\."),
+    re.compile(
+        r"Insufficient balance of \$-?\d+(?:\.\d+)?, "
+        r"where this will cost \$-?\d+(?:\.\d+)?"
+    ),
+    re.compile(
+        r"Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: "
+        r"dynamic-cost blocks require a positive balance\."
+    ),
+    re.compile(r"Organization has -?\d+ credits but needs \d+"),
+)
+
+
+def get_execution_failure_reason(
+    error: BaseException | str | None,
+    *,
+    allow_legacy_text: bool = False,
+) -> ExecutionFailureReason | None:
+    """Classify trusted exceptions, with an opt-in fallback for persisted text."""
+    if isinstance(error, InsufficientBalanceError):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    if (
+        allow_legacy_text
+        and isinstance(error, str)
+        and any(
+            pattern.fullmatch(error)
+            for pattern in _LEGACY_INSUFFICIENT_BALANCE_PATTERNS
+        )
+    ):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    return None
 
 
 class ModerationError(ValueError):
@@ -180,6 +243,12 @@ class DuplicateChatMessageError(ValueError):
 
 class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
+
+
+class WebhookSetupUnavailableError(Exception):
+    """Webhook setup infrastructure (e.g. the Redis setup lock) is
+    temporarily unavailable. Retryable server-side condition — not a
+    configuration problem, so don't map it to a 4xx."""
 
 
 class ExpertRunPausedError(ValueError):

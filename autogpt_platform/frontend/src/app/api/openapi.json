@@ -1224,6 +1224,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Communities",
+        "description": "Communities in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListCommunities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1488,6 +1489,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Entities",
+        "description": "Entities in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListEntities",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1538,10 +1540,393 @@
         }
       }
     },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/communities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Communities",
+        "description": "Communities in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertCommunities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/entities": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Entities",
+        "description": "Entities in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertEntities",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EntityListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/facts": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "List Expert Facts",
+        "description": "Facts (RELATES_TO edges) in one expert's isolated memory graph.",
+        "operationId": "getV2ListExpertFacts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["active", "superseded", "contradicted", "any"],
+              "type": "string",
+              "default": "any",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FactListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/graph": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Expert Graph",
+        "description": "Visualizer graph payload for one expert's isolated memory graph.",
+        "operationId": "getV2GetExpertGraph",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          },
+          {
+            "name": "node_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Node Limit"
+            }
+          },
+          {
+            "name": "edge_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Edge Limit"
+            }
+          },
+          {
+            "name": "include_episodes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Episodes"
+            }
+          },
+          {
+            "name": "include_communities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Communities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/memory/{user_id}/experts/{expert_id}/overview": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "memory"],
+        "summary": "Get Expert Memory Overview",
+        "description": "Count summary of one expert's isolated memory graph.",
+        "operationId": "getV2GetExpertMemoryOverview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User id or 'me'",
+              "title": "User Id"
+            },
+            "description": "User id or 'me'"
+          },
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the user",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the user"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/memory/{user_id}/facts": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "List Facts",
+        "description": "Facts (RELATES_TO edges) in the user's account (AutoPilot) memory graph.",
         "operationId": "getV2ListFacts",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1616,7 +2001,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Graph",
-        "description": "Single-shot graph payload for the visualizer canvas.\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
+        "description": "Single-shot graph payload for the visualizer canvas (account scope).\n\nReturns nodes + edges in one round-trip so the frontend can hand\nthe whole thing to a force-directed layout without N+1 fetches.\n\nDefaults to entities + communities (the \"what does my memory know\nabout\" view). ``include_episodes=True`` adds the temporal\n:Episodic nodes — useful for debugging extraction but noisy for the\ntypical inspector view.",
         "operationId": "getV2GetGraph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1800,6 +2185,7 @@
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
         "summary": "Get Memory Overview",
+        "description": "Count summary of the user's account (AutoPilot) memory graph.",
         "operationId": "getV2GetMemoryOverview",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3353,7 +3739,8 @@
                     {
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
-                    { "$ref": "#/components/schemas/TodoWriteResponse" }
+                    { "$ref": "#/components/schemas/TodoWriteResponse" },
+                    { "$ref": "#/components/schemas/ExpertSoulUpdatedResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -3367,7 +3754,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3400,11 +3787,23 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "string", "maxLength": 128 },
+                { "type": "string", "minLength": 1, "maxLength": 128 },
                 { "type": "null" }
               ],
               "title": "Expert Id"
             }
+          },
+          {
+            "name": "pinned_first",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread.",
+              "default": true,
+              "title": "Pinned First"
+            },
+            "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread."
           }
         ],
         "responses": {
@@ -3434,7 +3833,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed\n  on ``(user_id, builder_graph_id)``. Returns the existing session for\n  that graph or creates one locked to it.  Graph ownership is validated\n  inside :func:`get_or_create_builder_session`; raises 404 on\n  unauthorized access.  Write-side scope is enforced per-tool\n  (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than\n  the bound graph) and a small blacklist hides tools that conflict\n  with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).\n- Expert kickoff: atomically create or adopt the canonical first session\n  for ``(user_id, expert_id)``.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run``,\n        ``builder_graph_id`` and/or ``expert_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -4098,6 +4497,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/transports": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Transports",
+        "operationId": "getV2ListChatTransports",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
                 }
               }
             }
@@ -5261,7 +5683,7 @@
       "post": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Generate Execution Analytics",
-        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all terminal executions matching the criteria\n2. Identifies executions missing a complete activity analysis\n3. Generates missing data in batches, using deterministic results where available\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
         "operationId": "postV2Generate execution analytics",
         "requestBody": {
           "content": {
@@ -5433,6 +5855,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "List Experts",
+        "description": "List the user's active hired experts.",
         "operationId": "list_experts",
         "responses": {
           "200": {
@@ -5477,7 +5900,139 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert template not found" },
+          "404": { "description": "Expert or expert template not found" },
+          "409": { "description": "Active expert limit reached" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Expert workspace unavailable" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/identities": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Identities",
+        "description": "List the lightweight active and archived identity projection for chat.",
+        "operationId": "list_expert_identities",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertIdentity" },
+                  "type": "array",
+                  "title": "Response List Expert Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/pods": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Pods",
+        "operationId": "list_expert_pods",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertPod" },
+                  "type": "array",
+                  "title": "Response List Expert Pods"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Create Expert Pod",
+        "operationId": "create_expert_pod",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePodRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertPod" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Duplicate pod name, or the pod limit is reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/raise": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Create Raised Expert",
+        "operationId": "create_raised_expert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRaisedExpertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RaiseResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Attachment not found or unavailable" },
+          "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5603,6 +6158,95 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ExpertDetachPreview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/pod": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Assign Expert Pod",
+        "operationId": "assign_expert_pod",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignPodRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or pod not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/runs": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Runs",
+        "description": "Recent executions attributed to this expert, with a classified output\ntype for the Work surface's typed viewer.",
+        "operationId": "list_expert_runs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertRun" },
+                  "title": "Response List Expert Runs"
+                }
               }
             }
           },
@@ -6610,6 +7254,29 @@
         }
       }
     },
+    "/api/home": {
+      "get": {
+        "tags": ["home", "private"],
+        "summary": "Get Home Dashboard",
+        "operationId": "get_home_dashboard",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDashboardResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -6630,6 +7297,92 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/account": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Account",
+        "operationId": "getV1CodexAccount",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexAccountSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/codex/credentials/{credential_id}/rate-limits": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Codex Rate Limits",
+        "operationId": "getV1CodexRateLimits",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Credential Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRateLimitsSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/integrations/credentials": {
@@ -6678,7 +7431,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "HTTPBearer": [] }]
       }
     },
     "/api/integrations/providers/constants": {
@@ -14239,6 +14993,17 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "AssignPodRequest": {
+        "properties": {
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id"],
+        "title": "AssignPodRequest"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -15131,6 +15896,11 @@
           "platform": { "type": "string", "title": "Platform" },
           "display_name": { "type": "string", "title": "Display Name" },
           "icon": { "type": "string", "title": "Icon" },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
+          },
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
@@ -15145,6 +15915,12 @@
             "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
             "type": "array",
             "title": "Server Links"
+          },
+          "pending_install": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingInstallInfo" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -15228,8 +16004,25 @@
           },
           "decision_total": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Decision Total",
             "default": 0
+          },
+          "completed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed Total",
+            "default": 0
+          },
+          "failed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Total",
+            "default": 0
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
           }
         },
         "type": "object",
@@ -15334,6 +16127,29 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "expert_role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Role"
+          },
+          "title": { "type": "string", "title": "Title", "default": "" },
+          "detail": { "type": "string", "title": "Detail", "default": "" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
           }
         },
         "type": "object",
@@ -15437,6 +16253,16 @@
             "title": "Dry Run",
             "default": false
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Builder Graph Id"
@@ -15490,6 +16316,43 @@
         "type": "object",
         "title": "ChatShareStateResponse",
         "description": "Surfaces the chat's current share state so the modal can open\nin the right mode (share-vs-revoke) without an extra round-trip.\n\nThe three counts power the consent-disclosure block above the\ntoggle so the owner sees exactly what they're about to expose.\nThey reflect live state — sharing is live (not snapshot-at-enable),\nso these numbers are also a lower bound for what subsequent\nviewers will see if more messages / runs / files land before\nrevocation."
+      },
+      "ChatTransportResponse": {
+        "properties": {
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "available": { "type": "boolean", "title": "Available" },
+          "default": { "type": "boolean", "title": "Default" }
+        },
+        "type": "object",
+        "required": [
+          "auth_provider",
+          "credential_id",
+          "label",
+          "available",
+          "default"
+        ],
+        "title": "ChatTransportResponse"
+      },
+      "ChatTransportsResponse": {
+        "properties": {
+          "transports": {
+            "items": { "$ref": "#/components/schemas/ChatTransportResponse" },
+            "type": "array",
+            "title": "Transports"
+          }
+        },
+        "type": "object",
+        "required": ["transports"],
+        "title": "ChatTransportsResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -15557,6 +16420,96 @@
         "type": "object",
         "title": "CoPilotUsagePublic",
         "description": "Current usage status for a user — public (client-safe) shape."
+      },
+      "CodexAccountSnapshot": {
+        "properties": {
+          "connected": { "type": "boolean", "title": "Connected" },
+          "requires_openai_auth": {
+            "type": "boolean",
+            "title": "Requires Openai Auth"
+          },
+          "account_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Account Type"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["connected", "requires_openai_auth"],
+        "title": "CodexAccountSnapshot"
+      },
+      "CodexRateLimitWindow": {
+        "properties": {
+          "used_percent": { "type": "integer", "title": "Used Percent" },
+          "window_duration_mins": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Window Duration Mins"
+          },
+          "resets_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Resets At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["used_percent"],
+        "title": "CodexRateLimitWindow"
+      },
+      "CodexRateLimitsSnapshot": {
+        "properties": {
+          "plan_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan Type"
+          },
+          "limit_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Id"
+          },
+          "limit_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Limit Name"
+          },
+          "rate_limit_reached_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Rate Limit Reached Type"
+          },
+          "primary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "secondary": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CodexRateLimitWindow" },
+              { "type": "null" }
+            ]
+          },
+          "has_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Has Credits"
+          },
+          "unlimited_credits": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Unlimited Credits"
+          },
+          "bucket_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Bucket Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodexRateLimitsSnapshot"
       },
       "CommunityListResponse": {
         "properties": {
@@ -15687,6 +16640,10 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
           }
         },
         "type": "object",
@@ -15706,7 +16663,11 @@
             "default": "USER"
           },
           "platform": { "type": "string", "title": "Platform" },
-          "platform_user_id": { "type": "string", "title": "Platform User Id" }
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "return_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Return Url"
+          }
         },
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
@@ -15807,6 +16768,11 @@
             "title": "Cap Retry Count",
             "default": 0
           },
+          "expert_lookup_retry_count": {
+            "type": "integer",
+            "title": "Expert Lookup Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -15818,6 +16784,10 @@
           "team_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Team Id"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -16095,6 +17065,80 @@
         "required": ["name", "slug"],
         "title": "CreateOrgRequest"
       },
+      "CreatePodRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreatePodRequest"
+      },
+      "CreateRaisedExpertRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "role": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
+            "title": "Role"
+          },
+          "avatar_url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
+          "voice_preferences": {
+            "anyOf": [
+              { "type": "string", "maxLength": 4000 },
+              { "type": "null" }
+            ],
+            "title": "Voice Preferences"
+          },
+          "about": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "About"
+          },
+          "weekly_budget": {
+            "anyOf": [
+              { "type": "integer", "maximum": 1000000.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Weekly Budget"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachment" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Attachments"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreateRaisedExpertRequest"
+      },
       "CreateSessionRequest": {
         "properties": {
           "dry_run": {
@@ -16109,18 +17153,36 @@
             ],
             "title": "Builder Graph Id"
           },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
+          },
           "expert_id": {
             "anyOf": [
               { "type": "string", "maxLength": 128 },
               { "type": "null" }
             ],
             "title": "Expert Id"
+          },
+          "expert_kickoff": {
+            "type": "boolean",
+            "title": "Expert Kickoff",
+            "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -16132,7 +17194,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17205,6 +18271,12 @@
         "title": "ExecutionDiagnosticsResponse",
         "description": "Response model for execution diagnostics"
       },
+      "ExecutionFailureReason": {
+        "type": "string",
+        "enum": ["insufficient_balance"],
+        "title": "ExecutionFailureReason",
+        "description": "Structured reasons for terminal graph execution failures."
+      },
       "ExecutionOptions": {
         "properties": {
           "manual": { "type": "boolean", "title": "Manual", "default": true },
@@ -17320,6 +18392,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17338,6 +18411,12 @@
           "voice_preferences": {
             "type": "string",
             "title": "Voice Preferences"
+          },
+          "voice_samples": {
+            "items": { "$ref": "#/components/schemas/VoiceSample" },
+            "type": "array",
+            "title": "Voice Samples",
+            "default": []
           },
           "boundaries": { "type": "string", "title": "Boundaries" },
           "protected_soul_rules": {
@@ -17382,6 +18461,10 @@
               { "type": "null" }
             ],
             "title": "Schedules Paused At"
+          },
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
           }
         },
         "type": "object",
@@ -17422,6 +18505,104 @@
         "title": "ExpertDetachPreview",
         "description": "What archiving the expert would pause — drives the confirm dialog."
       },
+      "ExpertIdentity": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" },
+          "is_archived": { "type": "boolean", "title": "Is Archived" }
+        },
+        "type": "object",
+        "required": ["id", "name", "avatar_url", "role", "is_archived"],
+        "title": "ExpertIdentity"
+      },
+      "ExpertPod": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "created_at"],
+        "title": "ExpertPod",
+        "description": "A named group of hired experts, scoped to the owner."
+      },
+      "ExpertRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "incomplete",
+              "queued",
+              "running",
+              "completed",
+              "terminated",
+              "failed",
+              "review"
+            ],
+            "title": "Status"
+          },
+          "output_type": {
+            "type": "string",
+            "enum": ["table", "doc", "image", "unknown"],
+            "title": "Output Type"
+          },
+          "output_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Output Key"
+          },
+          "needs_review": { "type": "boolean", "title": "Needs Review" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "agent_name",
+          "library_agent_id",
+          "status",
+          "output_type",
+          "output_key",
+          "needs_review",
+          "started_at",
+          "ended_at",
+          "link"
+        ],
+        "title": "ExpertRun",
+        "description": "One expert-attributed execution, for the /team Work surface."
+      },
       "ExpertSoulUpdate": {
         "properties": {
           "name": {
@@ -17450,6 +18631,37 @@
         "type": "object",
         "required": ["name", "identity", "voice_preferences", "boundaries"],
         "title": "ExpertSoulUpdate"
+      },
+      "ExpertSoulUpdatedResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "expert_soul_updated"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "default": false
+          },
+          "changes": {
+            "items": { "$ref": "#/components/schemas/SoulFieldChange" },
+            "type": "array",
+            "title": "Changes"
+          },
+          "confirmation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Confirmation Id"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ExpertSoulUpdatedResponse",
+        "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
       },
       "ExpertWorkflowRef": {
         "properties": {
@@ -18561,6 +19773,10 @@
       "GraphResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "group_id": { "type": "string", "title": "Group Id" },
           "nodes": {
             "items": { "$ref": "#/components/schemas/GraphNode" },
@@ -18671,6 +19887,371 @@
         "type": "object",
         "required": ["expert", "failed_preloads"],
         "title": "HireResult"
+      },
+      "HomeAction": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "href": { "type": "string", "title": "Href" }
+        },
+        "type": "object",
+        "required": ["label", "href"],
+        "title": "HomeAction"
+      },
+      "HomeActiveTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "queued"],
+            "title": "Status"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "title": "HomeActiveTask"
+      },
+      "HomeAgentStatus": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/HomeExpert" },
+          "status": {
+            "type": "string",
+            "enum": ["ready", "working", "needs_setup", "paused", "failed"],
+            "title": "Status"
+          },
+          "detail": { "type": "string", "title": "Detail" },
+          "next_run_time": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Run Time"
+          },
+          "spend_cents": {
+            "type": "integer",
+            "title": "Spend Cents",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["expert", "status", "detail"],
+        "title": "HomeAgentStatus"
+      },
+      "HomeAttentionItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["approval", "setup", "paused", "credits"],
+            "title": "Kind"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "normal"],
+            "title": "Priority"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "description": { "type": "string", "title": "Description" },
+          "why_it_matters": { "type": "string", "title": "Why It Matters" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "preview": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Preview"
+          },
+          "review": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingHumanReviewModel" },
+              { "type": "null" }
+            ]
+          },
+          "primary_action": { "$ref": "#/components/schemas/HomeAction" },
+          "secondary_action": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeAction" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "priority",
+          "title",
+          "description",
+          "why_it_matters",
+          "primary_action"
+        ],
+        "title": "HomeAttentionItem"
+      },
+      "HomeBriefing": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "window_started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Started At"
+          },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "routine_count": { "type": "integer", "title": "Routine Count" },
+          "outcomes": {
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
+            "type": "array",
+            "title": "Outcomes"
+          },
+          "narrative": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narrative"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["persisted", "live"],
+            "title": "Source",
+            "default": "live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "window_started_at",
+          "completed_count",
+          "failed_count",
+          "routine_count",
+          "outcomes"
+        ],
+        "title": "HomeBriefing"
+      },
+      "HomeBriefingOutcome": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed"],
+            "title": "Status"
+          },
+          "title": { "type": "string", "title": "Title" },
+          "summary": { "type": "string", "title": "Summary" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": ["id", "status", "title", "summary", "agent_name"],
+        "title": "HomeBriefingOutcome"
+      },
+      "HomeDailyActivity": {
+        "properties": {
+          "date": { "type": "string", "format": "date", "title": "Date" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" }
+        },
+        "type": "object",
+        "required": ["date", "completed_count", "review_count", "failed_count"],
+        "title": "HomeDailyActivity"
+      },
+      "HomeDashboardResponse": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "attention": {
+            "items": { "$ref": "#/components/schemas/HomeAttentionItem" },
+            "type": "array",
+            "title": "Attention"
+          },
+          "briefing": { "$ref": "#/components/schemas/HomeBriefing" },
+          "active_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeActiveTask" },
+            "type": "array",
+            "title": "Active Tasks"
+          },
+          "upcoming_tasks": {
+            "items": { "$ref": "#/components/schemas/HomeUpcomingTask" },
+            "type": "array",
+            "title": "Upcoming Tasks"
+          },
+          "team": { "$ref": "#/components/schemas/HomeTeamSummary" },
+          "agents": {
+            "items": { "$ref": "#/components/schemas/HomeAgentStatus" },
+            "type": "array",
+            "title": "Agents"
+          },
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "timezone",
+          "attention",
+          "briefing",
+          "active_tasks",
+          "upcoming_tasks",
+          "team",
+          "agents",
+          "week"
+        ],
+        "title": "HomeDashboardResponse"
+      },
+      "HomeExpert": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "role", "avatar_url"],
+        "title": "HomeExpert"
+      },
+      "HomeTeamSummary": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "ready": { "type": "integer", "title": "Ready" },
+          "working": { "type": "integer", "title": "Working" },
+          "needs_attention": { "type": "integer", "title": "Needs Attention" },
+          "spend_cents": {
+            "type": "integer",
+            "title": "Spend Cents",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["total", "ready", "working", "needs_attention"],
+        "title": "HomeTeamSummary"
+      },
+      "HomeUpcomingTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "followup"],
+            "title": "Kind"
+          },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          },
+          "next_run_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run Time"
+          }
+        },
+        "type": "object",
+        "required": ["id", "title", "kind", "next_run_time"],
+        "title": "HomeUpcomingTask"
+      },
+      "HomeWeekSummary": {
+        "properties": {
+          "run_count": { "type": "integer", "title": "Run Count" },
+          "completed_count": { "type": "integer", "title": "Completed Count" },
+          "review_count": { "type": "integer", "title": "Review Count" },
+          "failed_count": { "type": "integer", "title": "Failed Count" },
+          "total_runtime_seconds": {
+            "type": "number",
+            "title": "Total Runtime Seconds"
+          },
+          "timed_run_count": { "type": "integer", "title": "Timed Run Count" },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents"
+          },
+          "credits_balance": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Credits Balance"
+          },
+          "daily": {
+            "items": { "$ref": "#/components/schemas/HomeDailyActivity" },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_count",
+          "completed_count",
+          "review_count",
+          "failed_count",
+          "total_runtime_seconds",
+          "timed_run_count",
+          "total_cost_cents",
+          "credits_balance",
+          "daily"
+        ],
+        "title": "HomeWeekSummary"
       },
       "HostScopedCredentials": {
         "properties": {
@@ -19098,6 +20679,11 @@
               { "$ref": "#/components/schemas/MarketplaceListing" },
               { "type": "null" }
             ]
+          },
+          "store_listing_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Store Listing Version Id",
+            "description": "ID of the approved marketplace listing version whose graph snapshot exactly matches this agent's graph_id and graph_version. Install flows can use it directly to install this exact version."
           }
         },
         "type": "object",
@@ -19494,6 +21080,11 @@
           "server_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Server Name"
+          },
+          "server_noun": {
+            "type": "string",
+            "title": "Server Noun",
+            "default": "server"
           }
         },
         "type": "object",
@@ -19558,7 +21149,11 @@
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
-          "state_token": { "type": "string", "title": "State Token" }
+          "state_token": { "type": "string", "title": "State Token" },
+          "cancel_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cancel Url"
+          }
         },
         "type": "object",
         "required": ["login_url", "state_token"],
@@ -19810,6 +21405,10 @@
       "MemoryOverview": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "group_id": { "type": "string", "title": "Group Id" },
           "entities": { "type": "integer", "title": "Entities" },
           "episodes": { "type": "integer", "title": "Episodes" },
@@ -20390,6 +21989,23 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": ["oauth_handler", "provider_runtime"],
+            "title": "Refresh Strategy",
+            "default": "oauth_handler"
+          },
+          "provider_state": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Provider State"
+          },
+          "provider_state_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Provider State Version"
           }
         },
         "type": "object",
@@ -20854,6 +22470,19 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PendingInstallInfo": {
+        "properties": {
+          "server_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Server Name"
+          },
+          "open_bot_url": { "type": "string", "title": "Open Bot Url" }
+        },
+        "type": "object",
+        "required": ["open_bot_url"],
+        "title": "PendingInstallInfo",
+        "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
       },
       "PhaseUsage": {
         "properties": {
@@ -21432,10 +23061,12 @@
             "type": "array",
             "title": "Presets"
           },
-          "total_count": { "type": "integer", "title": "Total Count" }
+          "total_count": { "type": "integer", "title": "Total Count" },
+          "page": { "type": "integer", "title": "Page" },
+          "page_size": { "type": "integer", "title": "Page Size" }
         },
         "type": "object",
-        "required": ["message", "presets", "total_count"],
+        "required": ["message", "presets", "total_count", "page", "page_size"],
         "title": "PresetListResponse",
         "description": "Response listing the user's presets."
       },
@@ -21802,6 +23433,68 @@
         "title": "QueuePendingMessageResponse",
         "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
       },
+      "RaiseAttachment": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "source", "id"],
+        "title": "RaiseAttachment",
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+      },
+      "RaiseAttachmentFailure": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "reason": {
+            "type": "string",
+            "enum": ["unavailable", "installation_failed"],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "source", "id", "reason"],
+        "title": "RaiseAttachmentFailure"
+      },
+      "RaiseResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachmentFailure" },
+            "type": "array",
+            "title": "Failed Attachments",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["expert"],
+        "title": "RaiseResult",
+        "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -22097,7 +23790,8 @@
           "skill_stored",
           "skill_loaded",
           "skill_deleted",
-          "skill_list"
+          "skill_list",
+          "expert_soul_updated"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -22692,7 +24386,11 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ChatSessionMetadata",
-            "default": { "dry_run": false, "kind": "normal" }
+            "default": {
+              "dry_run": false,
+              "llm_auth_provider": "platform",
+              "kind": "normal"
+            }
           },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -22996,6 +24694,21 @@
         "title": "SkippedWebhookPreset",
         "description": "A webhook preset that was left pinned to its old version because the\nnewly activated version swaps or reconfigures the trigger block. The user\nneeds to reconfigure the trigger on the new version for it to fire."
       },
+      "SoulFieldChange": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["identity", "voice_preferences", "boundaries"],
+            "title": "Field"
+          },
+          "before": { "type": "string", "title": "Before" },
+          "after": { "type": "string", "title": "After" }
+        },
+        "type": "object",
+        "required": ["field", "before", "after"],
+        "title": "SoulFieldChange",
+        "description": "One field's before/after values for an expert soul edit."
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -23044,6 +24757,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error",
             "description": "Error message if any"
+          },
+          "failure_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExecutionFailureReason" },
+              { "type": "null" }
+            ],
+            "description": "Structured reason for a terminal execution failure"
           },
           "activity_status": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23732,7 +25452,13 @@
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, so the Postgres unique-constraint on the resulting PK is the atomic dedup primitive. A duplicate INSERT returns a subscribe-only response without creating a parallel turn. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+          },
+          "expert_kickoff": {
+            "type": "boolean",
+            "title": "Expert Kickoff",
+            "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
+            "default": false
           }
         },
         "type": "object",
@@ -26013,6 +27739,12 @@
             "type": "array",
             "title": "By Agent"
           },
+          "by_expert": {
+            "items": { "$ref": "#/components/schemas/UserExpertCostRollup" },
+            "type": "array",
+            "title": "By Expert",
+            "default": []
+          },
           "top_runs": {
             "items": { "$ref": "#/components/schemas/UserTopRun" },
             "type": "array",
@@ -26035,6 +27767,16 @@
           "daily"
         ],
         "title": "UserExecutionCostSummary"
+      },
+      "UserExpertCostRollup": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "cost_cents": { "type": "integer", "title": "Cost Cents" },
+          "run_count": { "type": "integer", "title": "Run Count" }
+        },
+        "type": "object",
+        "required": ["expert_id", "cost_cents", "run_count"],
+        "title": "UserExpertCostRollup"
       },
       "UserHistoryResponse": {
         "properties": {
@@ -26428,6 +28170,16 @@
         "type": "object",
         "required": ["public_key"],
         "title": "VapidPublicKeyResponse"
+      },
+      "VoiceSample": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "text": { "type": "string", "title": "Text" }
+        },
+        "type": "object",
+        "required": ["label", "text"],
+        "title": "VoiceSample",
+        "description": "A short writing sample in a persona's own voice, offered as a pick in\nthe hire or raise flow. The first sample is choice \"a\", the second choice\n\"b\"."
       },
       "Webhook": {
         "properties": {

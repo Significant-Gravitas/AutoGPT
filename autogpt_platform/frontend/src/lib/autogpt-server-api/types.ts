@@ -220,6 +220,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: Record<string, CredentialsProviderName>;
+  discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
   secret?: boolean;
 };

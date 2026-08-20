@@ -38,6 +38,7 @@ import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ModelToggleButton } from "./components/ModelToggleButton";
 import { ModeToggleButton } from "./components/ModeToggleButton";
+import { LLMRouteSelector } from "./components/LlmRouteSelector";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -364,6 +365,7 @@ export function ChatInput({
               disabled={isBusy}
             />
             {recipientPicker}
+            {!hasSession && <LLMRouteSelector />}
             {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
               <>
                 <ModeToggleButton

@@ -582,13 +582,13 @@ The block supports conversation continuation through three mechanisms:
 ## Code Generation
 
 ### What it is
-Generate or refactor code using OpenAI's Codex (Responses API).
+Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses OpenAI's Codex model optimized for code generation and refactoring. Provide a prompt describing the code you need, and optionally a system prompt with coding guidelines or context.
+Choose `openai_api` to call the selected Codex model through the OpenAI Responses API with an OpenAI API key. This path applies `model`, `max_output_tokens` (up to 128,000), and every reasoning effort except `ultra`; `none` omits the reasoning configuration. It rejects non-OpenAI API-key credentials and unsupported `ultra` requests before making an API call.
 
-Configure reasoning_effort to control how much the model "thinks" before responding. The block returns generated code along with any reasoning the model produced.
+Choose `codex_app_server` to use a connected ChatGPT plan. This path requires matching Codex OAuth credentials and an active credential lease, selects the subscription model from the live App Server catalog, and uses the plan's output-token limit. The `model` and `max_output_tokens` inputs therefore do not affect App Server requests, while all listed reasoning efforts are forwarded through the App Server mapping. Missing or mismatched credentials fail validation, and transport failures are returned through the block's standard `error` output. Successful responses include the generated text, any reasoning summary, and the transport response ID; usage may be absent without failing the response.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -596,10 +596,11 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
-| system_prompt | Optional instructions injected via the Responses API instructions field. | str | No |
-| model | Codex-optimized model served via the Responses API. | "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
-| reasoning_effort | Controls the Responses API reasoning budget. Select 'none' to skip reasoning configs. | "none" \| "low" \| "medium" \| "high" | No |
-| max_output_tokens | Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide. | int | No |
+| system_prompt | Optional instructions passed to the selected Codex transport. | str | No |
+| transport | Use an OpenAI API key or your connected ChatGPT plan through Codex App Server. | "openai_api" \| "codex_app_server" | No |
+| model | OpenAI API transport only. Codex App Server selects the current subscription model from its live model catalog. | "gpt-5.6-sol" \| "gpt-5.6-terra" \| "gpt-5.6-luna" \| "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
+| reasoning_effort | Controls the selected transport's reasoning effort. OpenAI API does not support 'ultra'; select 'none' to omit reasoning config. | "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
+| max_output_tokens | OpenAI API transport only: upper bound for generated tokens (hard limit 128,000). Codex App Server uses its model and plan limits. | int | No |
 
 ### Outputs
 
@@ -608,7 +609,7 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 | error | Error message if the operation failed | str |
 | response | Code-focused response returned by the Codex model. | str |
 | reasoning | Reasoning summary returned by the model, if available. | str |
-| response_id | ID of the Responses API call for auditing/debugging. | str |
+| response_id | Transport response ID for auditing and debugging. | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -713,7 +714,9 @@ Uses AI to intelligently decide what tool to use.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. It can execute connected tools and feed their results back to the model, creating autonomous reasoning loops.
+
+In the default `built_in` execution mode, configure `agent_mode_max_iterations` to control loop behavior: `0` makes one decision and yields tool calls for external execution, `-1` loops until finished, and a positive number caps the iterations. The block outputs tool calls or a finished message. The `extended_thinking` mode manages its own loop and ignores this iteration setting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -745,7 +748,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Autonomous Agents**: Build agents that can independently decide which tools to use for a task.
+
+**Dynamic Workflows**: Create workflows that adapt their execution path based on model decisions.
+
+**Multi-Tool Orchestration**: Let a model coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---

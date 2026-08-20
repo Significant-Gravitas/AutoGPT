@@ -477,6 +477,52 @@ class IntegrationCredentialsStore:
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
+    async def upsert_single_provider_creds(
+        self,
+        user_id: str,
+        credentials: Credentials,
+    ) -> Credentials:
+        if credentials.id in SYSTEM_CREDENTIAL_IDS or credentials.is_managed:
+            raise ValueError("Single-provider upsert requires user-owned credentials")
+
+        async with await self.locked_user_integrations(user_id):
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            matching = [
+                credential
+                for credential in persisted
+                if provider_matches(credential.provider, credentials.provider)
+            ]
+            if any(credential.is_managed for credential in matching):
+                raise ValueError("Cannot replace a managed credential")
+
+            replacement = credentials
+            compatible = next(
+                (
+                    credential
+                    for credential in matching
+                    if type(credential) is type(credentials)
+                ),
+                None,
+            )
+            if compatible is not None:
+                replacement = credentials.model_copy(
+                    update={
+                        "id": compatible.id,
+                        "title": compatible.title or credentials.title,
+                    }
+                )
+
+            kept = [
+                credential
+                for credential in persisted
+                if not provider_matches(credential.provider, credentials.provider)
+            ]
+            await self._set_user_integration_creds(
+                user_id,
+                [*kept, replacement],
+            )
+            return replacement
+
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
         if credentials_id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(f"System credential #{credentials_id} cannot be deleted")
@@ -524,6 +570,7 @@ class IntegrationCredentialsStore:
         provider: str,
         scopes: list[str],
         use_pkce: bool = False,
+        expires_in_seconds: int = 600,
         # New parameters for external API OAuth flows
         callback_url: Optional[str] = None,
         state_metadata: Optional[dict] = None,
@@ -531,7 +578,7 @@ class IntegrationCredentialsStore:
         credential_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
 
         (code_challenge, code_verifier) = self._generate_code_challenge()
 

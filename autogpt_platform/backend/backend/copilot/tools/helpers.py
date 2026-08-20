@@ -31,7 +31,11 @@ from backend.executor.auto_credentials import (
 )
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
+from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
@@ -271,20 +275,54 @@ async def execute_block(
 
         # Inject credentials
         creds_manager = IntegrationCredentialsManager()
-        for field_name, cred_meta in matched_credentials.items():
-            if field_name not in input_data:
-                input_data[field_name] = cred_meta.model_dump()
+        credential_leases: dict[str, CredentialLease] = {}
+        credential_field_name = "credentials"
+        try:
+            for field_name, cred_meta in matched_credentials.items():
+                credential_field_name = field_name
+                if field_name not in input_data:
+                    input_data[field_name] = cred_meta.model_dump()
+                if cred_meta.provider == ProviderName.CODEX:
+                    lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
+                    credential_leases[field_name] = lease
+                    credentials = lease.credentials
+                    if not (
+                        provider_matches(credentials.provider, cred_meta.provider)
+                        and credentials.type == cred_meta.type
+                    ):
+                        raise ValueError
+                    await enforce_codex_access(user_id)
+                    exec_kwargs[field_name] = credentials
+                    continue
 
-            actual_credentials = await creds_manager.get(
-                user_id, cred_meta.id, lock=False
-            )
-            if actual_credentials:
-                exec_kwargs[field_name] = actual_credentials
-            else:
-                return ErrorResponse(
-                    message=f"Failed to retrieve credentials for {field_name}",
-                    session_id=session_id,
+                credentials = await creds_manager.get(
+                    user_id,
+                    cred_meta.id,
+                    lock=False,
                 )
+                if not (
+                    credentials is not None
+                    and provider_matches(credentials.provider, cred_meta.provider)
+                    and credentials.type == cred_meta.type
+                ):
+                    await _release_credential_leases(credential_leases)
+                    return ErrorResponse(
+                        message=f"Failed to retrieve credentials for {field_name}",
+                        session_id=session_id,
+                    )
+                exec_kwargs[field_name] = credentials
+        except ValueError:
+            await _release_credential_leases(credential_leases)
+            return ErrorResponse(
+                message=f"Failed to retrieve credentials for {credential_field_name}",
+                session_id=session_id,
+            )
+        except BaseException:
+            await _release_credential_leases(credential_leases)
+            raise
+
+        if credential_leases:
+            exec_kwargs["credential_leases"] = credential_leases
 
         # Auto-credentials (picker-populated fields like GoogleDriveFileField).
         # If the picker hasn't been filled, surface the existing setup-card so
@@ -299,6 +337,7 @@ async def execute_block(
                 user_id=user_id,
             )
         except MissingAutoCredentialsError as e:
+            await _release_credential_leases(credential_leases)
             input_schema = block.input_schema.jsonschema()
             credentials_fields = set(block.input_schema.get_credentials_fields().keys())
             return SetupRequirementsResponse(
@@ -326,7 +365,11 @@ async def execute_block(
                 graph_version=None,
             )
         except ValueError as e:
+            await _release_credential_leases(credential_leases)
             return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
+        except BaseException:
+            await _release_credential_leases(credential_leases)
+            raise
 
         # Everything from here owns the auto-cred locks; wrap so any early
         # return / exception (coerce, credit check, execution, etc.) still
@@ -453,6 +496,7 @@ async def execute_block(
                         )
                     )
         finally:
+            await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
             for lock in auto_locks:
                 try:
@@ -494,6 +538,20 @@ async def _collect_block_outputs(
     """
     async for output_name, output_data in block.execute(input_data, **exec_kwargs):
         outputs[output_name].append(output_data)
+
+
+async def _release_credential_leases(
+    leases: dict[str, CredentialLease],
+) -> None:
+    for field_name, lease in leases.items():
+        try:
+            await lease.release()
+        except Exception as release_exc:
+            logger.warning(
+                "Failed to release credential lease for %s: %s",
+                field_name,
+                release_exc,
+            )
 
 
 async def resolve_block_credentials(

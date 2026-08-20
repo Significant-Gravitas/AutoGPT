@@ -138,6 +138,7 @@ export function getActionButtonText(
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
+  provider?: string,
 ): string {
   const multipleTypes =
     countSupportedTypes(
@@ -149,6 +150,12 @@ export function getActionButtonText(
 
   if (multipleTypes) {
     return hasExistingCredentials ? "Add another credential" : "Add credential";
+  }
+
+  if (provider === "codex" && supportsOAuth2) {
+    return hasExistingCredentials
+      ? "Reconnect ChatGPT"
+      : "Sign in with ChatGPT";
   }
 
   if (hasExistingCredentials) {

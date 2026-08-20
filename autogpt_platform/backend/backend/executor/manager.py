@@ -36,13 +36,20 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    GraphExecutionStats,
+    NodeExecutionStats,
+    OAuth2Credentials,
+)
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
 )
+from backend.integrations.codex.access import enforce_codex_access
+from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.clients import (
@@ -58,10 +65,12 @@ from backend.util.decorator import (
     time_measured,
 )
 from backend.util.exceptions import (
+    ExecutionFailureReason,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
     NotFoundError,
+    get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
@@ -74,7 +83,10 @@ from backend.util.retry import (
 from backend.util.settings import Settings
 
 from . import billing, expert_posts
-from .activity_status_generator import generate_activity_status_for_execution
+from .activity_status_generator import (
+    INSUFFICIENT_BALANCE_GUIDANCE,
+    generate_activity_status_for_execution,
+)
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
@@ -103,6 +115,55 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
+
+
+def _get_execution_credit_balance(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+) -> int:
+    """Return the balance for the wallet billed by this execution."""
+    organization_id = graph_exec.execution_context.organization_id
+    if organization_id:
+        return db_client.get_org_credits(org_id=organization_id)
+    return db_client.get_credits(graph_exec.user_id)
+
+
+def _record_execution_failure(
+    execution_stats: GraphExecutionStats,
+    error: BaseException,
+) -> None:
+    """Record an error without erasing a trusted reason promoted by a node.
+
+    Precedence is deliberately asymmetric between the two fields:
+
+    ``error`` always reflects the *latest* failure, so the message a user sees
+    describes what actually terminated the run.
+
+    ``failure_reason`` is *sticky*: once a typed failure (currently only
+    :class:`InsufficientBalanceError`) has been promoted from a node via
+    :func:`_propagate_node_failure`, a later untyped error cannot clear it.
+    An exhausted wallet is the root cause of whatever fails next, and losing
+    that reason would send the run back to LLM analysis — the exact cost this
+    module exists to avoid. Only another typed classification may replace it.
+
+    The trade-off: when a run hits a credit failure *and* a later unrelated
+    typed-less terminal error, the deterministic summary attributes the run to
+    the credit failure while ``error`` names the later one. That is intended;
+    the credit condition is the actionable one for the user.
+    """
+    if failure_reason := get_execution_failure_reason(error):
+        execution_stats.failure_reason = failure_reason
+    execution_stats.error = str(error) or type(error).__name__
+
+
+def _propagate_node_failure(
+    graph_stats: GraphExecutionStats,
+    node_error: BaseException,
+) -> None:
+    """Promote only trusted, typed node failures to graph-level stats."""
+    if get_execution_failure_reason(node_error):
+        _record_execution_failure(graph_stats, node_error)
+
 
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
@@ -260,65 +321,107 @@ async def execute_node(
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
     creds_locks: list[AsyncRedisLock] = []
+    credential_leases: dict[str, CredentialLease] = {}
+    runtime_credential_leases: dict[str, CredentialLease] = {}
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
-    # Handle regular credentials fields
-    for field_name, input_type in input_model.get_credentials_fields().items():
-        # Dry-run platform credentials bypass the credential store.
-        # Keep the existing credential metadata so _execute's input_schema(**...)
-        # doesn't fail on the required field.  If no metadata is present,
-        # synthesize a minimal placeholder from the platform credentials.
-        if _dry_run_creds is not None:
-            if input_data.get(field_name) is None:
-                input_data[field_name] = {
-                    "id": _dry_run_creds.id,
-                    "provider": _dry_run_creds.provider,
-                    "type": _dry_run_creds.type,
-                    "title": _dry_run_creds.title,
-                }
-            extra_exec_kwargs[field_name] = _dry_run_creds
-            continue
-
-        field_value = input_data.get(field_name)
-        if not field_value or (
-            isinstance(field_value, dict) and not field_value.get("id")
-        ):
-            # No credentials configured — nullify so JSON schema validation
-            # doesn't choke on the empty default `{}`.
-            input_data[field_name] = None
-            continue  # Block runs without credentials
-
-        credentials_meta = input_type(**field_value)
-        # Write normalized values back so JSON schema validation also passes
-        # (model_validator may have fixed legacy formats like "ProviderName.MCP")
-        input_data[field_name] = credentials_meta.model_dump(mode="json")
-        try:
-            credentials, lock = await creds_manager.acquire(
-                user_id, credentials_meta.id
-            )
-        except ValueError:
-            # Credential was deleted or doesn't exist.
-            # If the field has a default, run without credentials.
-            if input_model.model_fields[field_name].default is not None:
-                log_metadata.warning(
-                    f"Credentials #{credentials_meta.id} not found, "
-                    "running without (field has default)"
-                )
-                input_data[field_name] = None
+    try:
+        # Handle regular credentials fields
+        credential_fields_info = input_model.get_credentials_fields_info()
+        for field_name, input_type in input_model.get_credentials_fields().items():
+            # Dry-run platform credentials bypass the credential store.
+            # Keep the existing credential metadata so _execute's input_schema(**...)
+            # doesn't fail on the required field.  If no metadata is present,
+            # synthesize a minimal placeholder from the platform credentials.
+            if _dry_run_creds is not None:
+                if input_data.get(field_name) is None:
+                    input_data[field_name] = {
+                        "id": _dry_run_creds.id,
+                        "provider": _dry_run_creds.provider,
+                        "type": _dry_run_creds.type,
+                        "title": _dry_run_creds.title,
+                    }
+                extra_exec_kwargs[field_name] = _dry_run_creds
                 continue
-            raise
-        creds_locks.append(lock)
-        extra_exec_kwargs[field_name] = credentials
 
-    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-    auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
-        input_model=input_model,
-        input_data=input_data,
-        creds_manager=creds_manager,
-        user_id=user_id,
-    )
-    extra_exec_kwargs.update(auto_extra_kwargs)
-    creds_locks.extend(auto_locks)
+            field_value = input_data.get(field_name)
+            if not field_value or (
+                isinstance(field_value, dict) and not field_value.get("id")
+            ):
+                # No credentials configured — nullify so JSON schema validation
+                # doesn't choke on the empty default `{}`.
+                input_data[field_name] = None
+                continue  # Block runs without credentials
+
+            credentials_meta = input_type(**field_value)
+            # Write normalized values back so JSON schema validation also passes
+            # (model_validator may have fixed legacy formats like "ProviderName.MCP")
+            input_data[field_name] = credentials_meta.model_dump(mode="json")
+            if credential_fields_info[field_name].credential_reference_only:
+                credentials = await creds_manager.get(
+                    user_id,
+                    credentials_meta.id,
+                )
+                if not (
+                    credentials is not None
+                    and provider_matches(
+                        credentials.provider,
+                        credentials_meta.provider,
+                    )
+                    and credentials.type == credentials_meta.type
+                ):
+                    raise ValueError(
+                        f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                    )
+                if provider_matches(credentials.provider, "codex"):
+                    await enforce_codex_access(user_id)
+                continue
+            try:
+                lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
+            except ValueError:
+                # Credential was deleted or doesn't exist.
+                # If the field has a default, run without credentials.
+                if input_model.model_fields[field_name].default is not None:
+                    log_metadata.warning(
+                        f"Credentials #{credentials_meta.id} not found, "
+                        "running without (field has default)"
+                    )
+                    input_data[field_name] = None
+                    continue
+                raise
+            credential_leases[field_name] = lease
+            credentials = lease.credentials
+            if not (
+                provider_matches(
+                    credentials.provider,
+                    credentials_meta.provider,
+                )
+                and credentials.type == credentials_meta.type
+            ):
+                raise ValueError(
+                    f"Credentials #{credentials_meta.id} for user #{user_id} not found"
+                )
+            if provider_matches(credentials.provider, "codex"):
+                await enforce_codex_access(user_id)
+            extra_exec_kwargs[field_name] = lease.credentials
+            if _uses_provider_runtime(lease):
+                runtime_credential_leases[field_name] = lease
+
+        # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+        auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=creds_manager,
+            user_id=user_id,
+        )
+        extra_exec_kwargs.update(auto_extra_kwargs)
+        creds_locks.extend(auto_locks)
+    except BaseException:
+        await _release_credential_leases(list(credential_leases.values()), log_metadata)
+        raise
+
+    if runtime_credential_leases:
+        extra_exec_kwargs["credential_leases"] = runtime_credential_leases
 
     output_size = 0
 
@@ -364,6 +467,7 @@ async def execute_node(
         raise
     finally:
         # Ensure all credentials are released even if execution fails
+        await _release_credential_leases(list(credential_leases.values()), log_metadata)
         for creds_lock in creds_locks:
             if (
                 creds_lock
@@ -384,6 +488,24 @@ async def execute_node(
         # Restore scope AFTER error has been captured
         scope._user = original_user
         scope._tags = original_tags
+
+
+async def _release_credential_leases(
+    leases: list[CredentialLease], log_metadata: LogMetadata
+) -> None:
+    for lease in leases:
+        try:
+            await lease.release()
+        except Exception as error:
+            log_metadata.error(f"Failed to release credentials lease: {error}")
+
+
+def _uses_provider_runtime(lease: CredentialLease) -> bool:
+    credentials = lease.credentials
+    return (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.refresh_strategy == "provider_runtime"
+    )
 
 
 async def _enqueue_next_nodes(
@@ -652,6 +774,7 @@ class ExecutionProcessor:
             )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
+                _propagate_node_failure(graph_stats, execution_stats.error)
 
         node_error = execution_stats.error
         node_stats = execution_stats.model_dump()
@@ -856,16 +979,6 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=ExecutionStatus.RUNNING,
             )
-        elif exec_meta.status == ExecutionStatus.FAILED:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was disturbed, continuing where it left off."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
         else:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
@@ -879,6 +992,12 @@ class ExecutionProcessor:
         else:
             exec_stats = exec_meta.stats.to_db()
             exec_stats.is_dry_run = graph_exec.execution_context.dry_run
+
+        # Analysis is terminal-only, so discard prior interpretation before continuing.
+        exec_stats.error = None
+        exec_stats.failure_reason = None
+        exec_stats.activity_status = None
+        exec_stats.correctness_score = None
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -978,14 +1097,20 @@ class ExecutionProcessor:
         try:
             if (
                 not graph_exec.execution_context.dry_run
-                and db_client.get_credits(graph_exec.user_id) <= 0
+                and settings.config.enable_credit
             ):
-                raise InsufficientBalanceError(
-                    user_id=graph_exec.user_id,
-                    message="You have no credits left to run an agent.",
-                    balance=0,
-                    amount=1,
-                )
+                credit_balance = _get_execution_credit_balance(db_client, graph_exec)
+                required_balance = 1
+                if credit_balance < required_balance:
+                    raise InsufficientBalanceError(
+                        user_id=graph_exec.user_id,
+                        message=(
+                            f"At least {required_balance} credit must be available to run "
+                            f"this agent. {INSUFFICIENT_BALANCE_GUIDANCE}"
+                        ),
+                        balance=credit_balance,
+                        amount=required_balance,
+                    )
 
             # Input moderation
             try:
@@ -1201,7 +1326,11 @@ class ExecutionProcessor:
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
                 execution_status = ExecutionStatus.TERMINATED
-            elif error is not None:
+            elif (
+                error is not None
+                or execution_stats.failure_reason
+                == ExecutionFailureReason.INSUFFICIENT_BALANCE
+            ):
                 execution_status = ExecutionStatus.FAILED
             else:
                 if db_client.has_pending_reviews_for_graph_exec(
@@ -1212,7 +1341,7 @@ class ExecutionProcessor:
                     execution_status = ExecutionStatus.COMPLETED
 
             if error:
-                execution_stats.error = str(error) or type(error).__name__
+                _record_execution_failure(execution_stats, error)
 
             return execution_status
 
@@ -1222,8 +1351,7 @@ class ExecutionProcessor:
                 if isinstance(e, Exception)
                 else Exception(f"{e.__class__.__name__}: {e}")
             )
-            if not execution_stats.error:
-                execution_stats.error = str(error)
+            _record_execution_failure(execution_stats, error)
 
             known_errors = (InsufficientBalanceError, ModerationError)
             if isinstance(error, known_errors):

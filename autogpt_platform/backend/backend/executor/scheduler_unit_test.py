@@ -5,6 +5,7 @@ the copilot-turn scheduling feature so they're exercised by the regular
 backend test job (and counted by codecov), not just the integration suite.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +16,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
+    _MAX_EXPERT_LOOKUP_RETRIES,
     CopilotTurnJobArgs,
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
@@ -25,11 +27,17 @@ from backend.executor.scheduler import (
     _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
     _execute_graph,
+    _expert_scope_status,
     _job_to_info,
     _next_run_time_iso,
     _reschedule_one_shot_after_cap,
+    _reschedule_one_shot_after_expert_unavailable,
     _self_delete_copilot_turn_schedule,
     reconcile_stripe_tiers,
+)
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -125,6 +133,7 @@ def test_job_to_info_copilot_turn_kind():
     info = _job_to_info(job)
     assert isinstance(info, CopilotTurnJobInfo)
     assert info.session_id == "s"
+    assert info.expert_id is None
 
 
 def test_job_to_info_legacy_rows_without_kind_default_to_graph():
@@ -152,6 +161,67 @@ def test_job_to_info_unparseable_returns_none():
     # graph kind but missing required fields
     job = _mock_job({"kind": "graph", "user_id": "u"})
     assert _job_to_info(job) is None
+
+
+# ---------------------------------------------------------------------------
+# _expert_scope_status
+# ---------------------------------------------------------------------------
+
+
+def _patched_experts_db(get_expert: AsyncMock):
+    accessor = MagicMock()
+    accessor.return_value.get_expert = get_expert
+    # The scope gate consults the visibility-blind existence probe before
+    # ruling "missing"; default it to False so get_expert=None means the
+    # row is truly gone.
+    accessor.return_value.expert_row_exists = AsyncMock(return_value=False)
+    return patch(f"{_SCHEDULER_PATH}.experts_db", new=accessor)
+
+
+def _expert_row(*, is_archived: bool = False, schedules_paused_at=None) -> MagicMock:
+    return MagicMock(is_archived=is_archived, schedules_paused_at=schedules_paused_at)
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_active():
+    get_expert = AsyncMock(return_value=_expert_row())
+    with _patched_experts_db(get_expert):
+        assert await _expert_scope_status("user-1", "expert-1") == "active"
+    # include_archived=True is load-bearing: without it an archived expert is
+    # indistinguishable from a deleted one and the schedule would be deleted.
+    get_expert.assert_awaited_once_with(
+        "user-1", "expert-1", include_workflows=False, include_archived=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_archived_is_not_missing():
+    get_expert = AsyncMock(return_value=_expert_row(is_archived=True))
+    with _patched_experts_db(get_expert):
+        assert await _expert_scope_status("user-1", "expert-1") == "archived"
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_paused_is_not_missing():
+    get_expert = AsyncMock(
+        return_value=_expert_row(schedules_paused_at=datetime.now(tz=timezone.utc))
+    )
+    with _patched_experts_db(get_expert):
+        assert await _expert_scope_status("user-1", "expert-1") == "paused"
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_missing_when_expert_does_not_exist():
+    get_expert = AsyncMock(return_value=None)
+    with _patched_experts_db(get_expert):
+        assert await _expert_scope_status("user-1", "expert-1") == "missing"
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_unavailable_on_lookup_failure():
+    get_expert = AsyncMock(side_effect=RuntimeError("db down"))
+    with _patched_experts_db(get_expert):
+        assert await _expert_scope_status("user-1", "expert-1") == "unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +296,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         dry_run=False,
         organization_id="org-sched",
         team_id="team-sched",
+        expert_id=None,
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
@@ -237,10 +308,264 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
 
 
 @pytest.mark.asyncio
+async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope():
+    args = _args(
+        session_id=None,
+        expert_id="expert-1",
+        organization_id="org-sched",
+        team_id="team-sched",
+    )
+    mock_schedule_turn = AsyncMock()
+    new_session = MagicMock(session_id="new-expert-session", expert_id="expert-1")
+    mock_create_session = AsyncMock(return_value=new_session)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id="org-sched",
+        team_id="team-sched",
+        expert_id="expert-1",
+    )
+    assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_rejects_missing_expert_before_fresh_session():
+    args = _args(session_id=None, expert_id="archived-expert")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="missing"),
+        ),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
+    mock_self_delete.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["archived", "paused"])
+async def test_execute_copilot_turn_skips_but_keeps_schedule_for_inactive_expert(
+    status,
+):
+    """Archive and pause are reversible, and copilot-turn schedules have no
+    persisted cadence to revive from — so the firing is skipped WITHOUT
+    deleting the schedule, and without burning the transient-lookup retry."""
+    args = _args(session_id=None, expert_id="expert-1")
+    mock_create_session = AsyncMock()
+    mock_self_delete = AsyncMock()
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value=status),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=mock_create_session,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_self_delete.assert_not_awaited()
+    mock_reschedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["archived", "paused"])
+async def test_explicit_session_skips_but_keeps_schedule_for_inactive_expert(status):
+    args = _args(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_self_delete = AsyncMock()
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value=status),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_self_delete.assert_not_awaited()
+    mock_reschedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creation():
+    """The scope pre-check can race an archive/delete, after which
+    ``create_chat_session`` drops the attribution and hands back a plain
+    session. Dispatching there would write an expert's follow-up into
+    AutoPilot memory scope, so the turn is skipped — but the schedule is
+    kept, because this window can't tell reversible archive from deletion;
+    the next firing's scope check deletes it iff the expert is truly gone."""
+    args = _args(session_id=None, expert_id="expert-1")
+    new_session = MagicMock(session_id="new-session-uuid", expert_id=None)
+    mock_create_session = AsyncMock(return_value=new_session)
+    mock_schedule_turn = AsyncMock()
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_self_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fresh_expert_one_shot_retries_when_lookup_is_unavailable():
+    args = _args(session_id=None, expert_id="expert-1")
+    mock_create_session = AsyncMock()
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=mock_create_session,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+async def test_fresh_expert_one_shot_retries_when_workspace_is_unavailable():
+    args = _args(session_id=None, expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(
+        side_effect=ExpertPrivateTenancyNotFoundError("expert-1")
+    )
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}.create_chat_session",
+            new=mock_create_session,
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
+    args = _args(session_id=None)
+    payload = args.model_dump(mode="json", exclude={"expert_id"})
+    mock_schedule_turn = AsyncMock()
+    new_session = MagicMock(session_id="new-legacy-session", expert_id=None)
+    mock_create_session = AsyncMock(return_value=new_session)
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**payload)
+
+    mock_create_session.assert_awaited_once_with(
+        "user-1",
+        dry_run=False,
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+    )
+    assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-legacy-session"
+    mock_self_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_dispatches_when_session_exists():
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -256,6 +581,124 @@ async def test_execute_copilot_turn_dispatches_when_session_exists():
 
 
 @pytest.mark.asyncio
+async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
+    args = _args(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_explicit_expert_one_shot_retries_when_lookup_is_unavailable():
+    args = _args(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", new=mock_schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_reschedule.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
+async def test_expert_cron_does_not_duplicate_retry_when_lookup_is_unavailable():
+    args = _args(
+        session_id=None,
+        expert_id="expert-1",
+        run_at=None,
+        cron="* * * * *",
+    )
+    mock_reschedule = AsyncMock()
+
+    with (
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="unavailable"),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._reschedule_one_shot_after_expert_unavailable",
+            new=mock_reschedule,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_reschedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_recovers_legacy_scope_from_owned_session():
+    args = _args()
+    payload = args.model_dump(mode="json", exclude={"expert_id"})
+    session = MagicMock(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=session)
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._expert_scope_status",
+            new=AsyncMock(return_value="active"),
+        ) as scope_status,
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**payload)
+
+    scope_status.assert_awaited_once_with("user-1", "expert-1")
+    mock_schedule_turn.assert_awaited_once()
+    mock_self_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
+    args = _args(expert_id="expert-1")
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-2"))
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_self_delete.assert_awaited_once_with(args)
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
     """When schedule_turn raises ConcurrentTurnLimitError on a one-shot
     schedule, the dispatcher reschedules instead of silently dropping."""
@@ -263,7 +706,7 @@ async def test_execute_copilot_turn_concurrency_cap_reschedules_one_shot():
 
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
     with (
@@ -284,7 +727,7 @@ async def test_execute_copilot_turn_concurrency_cap_does_not_reschedule_cron():
 
     args = _args(run_at=None, cron="* * * * *")  # recurring
     mock_schedule_turn = AsyncMock(side_effect=ConcurrentTurnLimitError("cap"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
     mock_reschedule = AsyncMock()
 
     with (
@@ -302,7 +745,7 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     """Non-concurrency errors should be logged but not crash the scheduler."""
     args = _args()
     mock_schedule_turn = AsyncMock(side_effect=RuntimeError("transient queue error"))
-    mock_get_session = AsyncMock(return_value=MagicMock())
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -436,6 +879,19 @@ async def test_reschedule_after_cap_preserves_user_timezone():
 
 
 @pytest.mark.asyncio
+async def test_reschedule_after_cap_preserves_expert_scope():
+    """The reschedule path must forward the original expert_id, otherwise a
+    capped expert follow-up retries into a plain session and its work escapes
+    the expert's thread, budget, and isolated memory scope."""
+    args = _args(cap_retry_count=0, expert_id="expert-1")
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
 async def test_reschedule_after_cap_drops_when_max_retries_reached():
     args = _args(cap_retry_count=_MAX_CAP_RETRIES)
     mock_client = AsyncMock()
@@ -452,6 +908,63 @@ async def test_reschedule_after_cap_swallows_errors():
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
         # Must not raise — best-effort retry.
         await _reschedule_one_shot_after_cap(args)
+
+
+@pytest.mark.asyncio
+async def test_expert_lookup_retry_preserves_scope_and_is_bounded():
+    args = _args(
+        cap_retry_count=0,
+        expert_id="expert-1",
+        organization_id="org-1",
+        team_id="team-1",
+    )
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(args)
+
+    kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert kwargs["cap_retry_count"] == 0
+    assert kwargs["expert_lookup_retry_count"] == 1
+    assert kwargs["expert_id"] == "expert-1"
+    assert kwargs["organization_id"] == "org-1"
+    assert kwargs["team_id"] == "team-1"
+
+    exhausted = args.model_copy(
+        update={"expert_lookup_retry_count": _MAX_EXPERT_LOOKUP_RETRIES}
+    )
+    mock_client.reset_mock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(exhausted)
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_lookup_and_cap_retries_have_independent_budgets():
+    mock_client = AsyncMock()
+    after_expert_retry = _args(
+        cap_retry_count=0,
+        expert_lookup_retry_count=_MAX_EXPERT_LOOKUP_RETRIES,
+        expert_id="expert-1",
+    )
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(after_expert_retry)
+
+    cap_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert cap_kwargs["cap_retry_count"] == 1
+    assert cap_kwargs["expert_lookup_retry_count"] == _MAX_EXPERT_LOOKUP_RETRIES
+
+    mock_client.reset_mock()
+    after_cap_retry = _args(
+        cap_retry_count=_MAX_CAP_RETRIES,
+        expert_lookup_retry_count=0,
+        expert_id="expert-1",
+    )
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_expert_unavailable(after_cap_retry)
+
+    expert_kwargs = mock_client.add_copilot_turn_schedule.await_args.kwargs
+    assert expert_kwargs["cap_retry_count"] == _MAX_CAP_RETRIES
+    assert expert_kwargs["expert_lookup_retry_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -517,6 +1030,133 @@ async def test_execute_graph_forwards_expert_id():
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
 
 
+@pytest.mark.asyncio
+async def test_execute_graph_quietly_skips_unavailable_expert(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(side_effect=ExpertNotFoundError("expert-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert "Skipping scheduled expert run" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_retries_missing_workspace_on_next_tick(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+        expert_id="expert-1",
+    )
+    mock_add = AsyncMock(side_effect=ExpertPrivateTenancyNotFoundError("expert-1"))
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.WARNING, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert "next schedule tick will retry" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# _expert_scope_status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_active_for_accessible_expert():
+    store = MagicMock()
+    store.get_expert = AsyncMock(
+        return_value=MagicMock(is_archived=False, schedules_paused_at=None)
+    )
+    store.expert_row_exists = AsyncMock()
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "active"
+
+    store.expert_row_exists.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_existing_but_inaccessible_is_unavailable():
+    """An expert that still EXISTS but is archived or no longer PRIVATE must
+    map to the non-deleting skip path — only a truly-gone row may trigger the
+    irreversible schedule self-delete."""
+    store = MagicMock()
+    store.get_expert = AsyncMock(return_value=None)
+    store.expert_row_exists = AsyncMock(return_value=True)
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "unavailable"
+
+    store.expert_row_exists.assert_awaited_once_with("user-1", "expert-1")
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_missing_only_when_row_is_gone():
+    store = MagicMock()
+    store.get_expert = AsyncMock(return_value=None)
+    store.expert_row_exists = AsyncMock(return_value=False)
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "missing"
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_status_lookup_failure_is_unavailable():
+    store = MagicMock()
+    store.get_expert = AsyncMock(side_effect=RuntimeError("db down"))
+
+    with patch(f"{_SCHEDULER_PATH}.experts_db", return_value=store):
+        assert await _expert_scope_status("user-1", "expert-1") == "unavailable"
+
+
+def test_copilot_turn_args_expert_id_defaults_to_none():
+    """Legacy persisted copilot-turn kwargs predate expert attribution; they
+    must deserialize with ``expert_id=None``."""
+    args = CopilotTurnJobArgs(
+        user_id="u",
+        session_id="s",
+        message="m",
+        run_at=datetime.now(tz=timezone.utc),
+    )
+    assert args.expert_id is None
+
+
 def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
     args = CopilotTurnJobArgs(
         user_id="u",
@@ -525,6 +1165,222 @@ def test_copilot_turn_args_cap_retry_count_defaults_to_zero():
         run_at=datetime.now(tz=timezone.utc),
     )
     assert args.cap_retry_count == 0
+    assert args.expert_lookup_retry_count == 0
+    assert args.expert_id is None
+
+
+def test_add_copilot_turn_schedule_persists_expert_scope():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(
+            f"{_SCHEDULER_PATH}.run_async",
+            side_effect=lambda coro, *a, **k: asyncio.run(coro),
+        ),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        info = scheduler.add_copilot_turn_schedule(
+            user_id="user-1",
+            session_id=None,
+            message="daily brief",
+            run_at=run_at,
+            user_timezone="UTC",
+            cap_retry_count=1,
+            expert_lookup_retry_count=1,
+            organization_id="shared-org",
+            team_id="shared-team",
+            expert_id="expert-1",
+        )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "user-1", "expert-1"
+    )
+    job_args = persist.call_args.kwargs["job_args"]
+
+    assert job_args.cap_retry_count == 1
+    assert job_args.expert_lookup_retry_count == 1
+    assert job_args.expert_id == "expert-1"
+    # Expert validation at creation also pins the job to personal tenancy,
+    # mirroring add_graph_execution_schedule.
+    assert job_args.organization_id == "personal-org"
+    assert job_args.team_id == "personal-team"
+    assert info.expert_id == "expert-1"
+
+
+def test_add_copilot_turn_schedule_rejects_invalid_expert_before_persisting():
+    scheduler = Scheduler(register_system_tasks=False)
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=ValueError("not found")
+    )
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(
+            f"{_SCHEDULER_PATH}.run_async",
+            side_effect=lambda coro, *a, **k: asyncio.run(coro),
+        ),
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="not found"),
+    ):
+        scheduler.add_copilot_turn_schedule(
+            user_id="attacker",
+            session_id=None,
+            message="daily brief",
+            run_at=run_at,
+            user_timezone="UTC",
+            expert_id="victim-expert",
+        )
+
+    persist.assert_not_called()
+
+
+def test_add_copilot_turn_schedule_skips_expert_lookup_for_autopilot():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        scheduler.add_copilot_turn_schedule(
+            user_id="user-1",
+            session_id=None,
+            message="daily brief",
+            run_at=run_at,
+            user_timezone="UTC",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.expert_id is None
+    assert job_args.organization_id == "org-1"
+    assert job_args.team_id == "team-1"
+
+
+def test_add_graph_schedule_pins_expert_to_personal_tenancy():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    call_count = 0
+
+    def fake_run_async(coro, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return asyncio.run(coro)
+        coro.close()
+        return None
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=fake_run_async),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        info = scheduler.add_graph_execution_schedule(
+            user_id="owner-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="shared-org",
+            team_id="shared-team",
+            expert_id="expert-1",
+        )
+
+    expert_store.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner-1", "expert-1"
+    )
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.organization_id == "personal-org"
+    assert job_args.team_id == "personal-team"
+    assert job_args.expert_id == "expert-1"
+    assert info.organization_id == "personal-org"
+    assert info.team_id == "personal-team"
+
+
+def test_add_graph_schedule_rejects_invalid_expert_before_persisting():
+    scheduler = Scheduler(register_system_tasks=False)
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=ValueError("not found")
+    )
+
+    def reject_run_async(coro, *args, **kwargs):
+        return asyncio.run(coro)
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=reject_run_async),
+        patch.object(scheduler, "_persist_schedule") as persist,
+        pytest.raises(ValueError, match="not found"),
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="attacker",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="victim-org",
+            team_id="victim-team",
+            expert_id="victim-expert",
+        )
+
+    persist.assert_not_called()
+
+
+def test_add_graph_schedule_keeps_autopilot_tenancy():
+    scheduler = Scheduler(register_system_tasks=False)
+    job = _mock_job({})
+    expert_store = MagicMock()
+    expert_store.resolve_private_expert_tenancy = AsyncMock()
+
+    def fake_run_async(coro, *args, **kwargs):
+        coro.close()
+        return None
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=expert_store),
+        patch(f"{_SCHEDULER_PATH}.run_async", side_effect=fake_run_async),
+        patch.object(scheduler, "_persist_schedule", return_value=job) as persist,
+    ):
+        scheduler.add_graph_execution_schedule(
+            user_id="owner-1",
+            graph_id="graph-1",
+            graph_version=1,
+            cron="0 9 * * *",
+            input_data={},
+            input_credentials={},
+            user_timezone="UTC",
+            organization_id="shared-org",
+            team_id="shared-team",
+        )
+
+    expert_store.resolve_private_expert_tenancy.assert_not_awaited()
+    job_args = persist.call_args.kwargs["job_args"]
+    assert job_args.organization_id == "shared-org"
+    assert job_args.team_id == "shared-team"
+    assert job_args.expert_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +1463,15 @@ class TestScheduleOrgVisibility:
 
         return sched, [j for j, _ in jobs], fake_job_to_info
 
-    def _graph_info(self, *, user_id, organization_id="", team_id=None, sid="s1"):
+    def _graph_info(
+        self,
+        *,
+        user_id,
+        organization_id="",
+        team_id=None,
+        expert_id=None,
+        sid="s1",
+    ):
         return GraphExecutionJobInfo(
             id=sid,
             name="n",
@@ -621,6 +1485,7 @@ class TestScheduleOrgVisibility:
             input_credentials={},
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
     def _run(self, infos, **kwargs):
@@ -676,6 +1541,38 @@ class TestScheduleOrgVisibility:
         ]
         result = self._run(infos, user_id="me", organization_id="org-1", team_ids=[])
         assert result == []
+
+    def test_expert_schedule_hidden_from_shared_team_members(self):
+        infos = [
+            self._graph_info(
+                user_id="expert-owner",
+                organization_id="shared-org",
+                team_id="shared-team",
+                expert_id="expert-1",
+                sid="legacy-shared-expert-job",
+            )
+        ]
+        result = self._run(
+            infos,
+            user_id="shared-team-member",
+            organization_id="shared-org",
+            team_ids=["shared-team"],
+        )
+        assert result == []
+
+    def test_global_no_filter_includes_expert_schedules(self):
+        infos = [
+            self._graph_info(
+                user_id="expert-owner",
+                organization_id="personal-org",
+                expert_id="expert-1",
+                sid="expert-job",
+            )
+        ]
+
+        result = self._run(infos)
+
+        assert [r.schedule_id for r in result] == ["expert-job"]
 
     def test_no_org_mode_is_strict_ownership(self):
         infos = [

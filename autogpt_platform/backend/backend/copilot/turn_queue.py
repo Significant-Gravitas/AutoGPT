@@ -32,8 +32,11 @@ import logging
 import uuid
 from typing import Any, Mapping
 
+from prisma.errors import UniqueViolationError
+
 from backend.copilot.active_turns import TurnSlot, count_running_turns
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
+from backend.copilot.db import is_duplicate_chat_message_id_error
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_QUEUED,
@@ -50,6 +53,7 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.data.db_accessors import chat_db
+from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
 
@@ -96,14 +100,17 @@ async def try_enqueue_turn(
     session_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: Mapping[str, Any] | None = None,
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
-) -> ChatMessage:
+) -> ChatMessage | None:
     """Admit a queued turn against the user's hard cap.
 
     Non-locked count-then-insert: under burst, two concurrent submits
@@ -119,11 +126,14 @@ async def try_enqueue_turn(
         session_id=session_id,
         message=message,
         message_id=message_id,
+        message_metadata=message_metadata,
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
         mode=mode,
         model=model,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
     )
@@ -135,14 +145,17 @@ async def enqueue_turn(
     session_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: Mapping[str, Any] | None = None,
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
     mode: str | None = None,
     model: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
-) -> ChatMessage:
+) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
     AND session-ownership check upstream — once the row is committed
@@ -152,7 +165,7 @@ async def enqueue_turn(
     The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
-    metadata: dict[str, Any] = {}
+    metadata = dict(message_metadata or {})
     if context is not None:
         metadata["context"] = dict(context)
     if file_ids is not None:
@@ -161,6 +174,9 @@ async def enqueue_turn(
         metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
+    metadata["llm_auth_provider"] = llm_auth_provider
+    if llm_credential_id is not None:
+        metadata["llm_credential_id"] = llm_credential_id
     if permissions is not None:
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
@@ -172,14 +188,19 @@ async def enqueue_turn(
     db = chat_db()
     async with _get_session_lock(session_id):
         live_sequence = await db.get_next_sequence(session_id)
-        row = await db.add_chat_message(
-            message_id=message_id or str(uuid.uuid4()),
-            session_id=session_id,
-            role="user" if is_user_message else "assistant",
-            content=message,
-            sequence=live_sequence,
-            metadata=metadata or None,
-        )
+        try:
+            row = await db.add_chat_message(
+                message_id=message_id or str(uuid.uuid4()),
+                session_id=session_id,
+                role="user" if is_user_message else "assistant",
+                content=message,
+                sequence=live_sequence,
+                metadata=metadata or None,
+            )
+        except UniqueViolationError as exc:
+            if message_id and is_duplicate_chat_message_id_error(exc):
+                return None
+            raise
     # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
     # double-submit (session already queued/running) leaves the state
     # alone; the second pending message persists as a normal ChatMessage
@@ -251,41 +272,52 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if await is_user_paywalled(user_id):
-        logger.info(
-            "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
-            user_id,
-            head.session_id,
-        )
-        return False
+    if head.metadata.llm_auth_provider == "codex":
+        if not await has_codex_access(user_id):
+            logger.info(
+                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
+                "leaving session=%s queued",
+                user_id,
+                head.session_id,
+            )
+            return False
+    else:
+        if await is_user_paywalled(user_id):
+            logger.info(
+                "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
+                user_id,
+                head.session_id,
+            )
+            return False
 
-    cfg = ChatConfig()
-    try:
-        daily_limit, weekly_limit, _ = await get_global_rate_limits(
-            user_id,
-            cfg.daily_cost_limit_microdollars,
-            cfg.weekly_cost_limit_microdollars,
-        )
-        await check_rate_limit(
-            user_id=user_id,
-            daily_cost_limit=daily_limit,
-            weekly_cost_limit=weekly_limit,
-        )
-    except RateLimitExceeded as exc:
-        logger.info(
-            "dispatch_next_for_user: user=%s rate-limited (%s), leaving session=%s queued",
-            user_id,
-            exc,
-            head.session_id,
-        )
-        return False
-    except RateLimitUnavailable:
-        logger.warning(
-            "dispatch_next_for_user: rate-limit service degraded for user=%s; "
-            "leaving queue intact for the next tick",
-            user_id,
-        )
-        return False
+        cfg = ChatConfig()
+        try:
+            daily_limit, weekly_limit, _ = await get_global_rate_limits(
+                user_id,
+                cfg.daily_cost_limit_microdollars,
+                cfg.weekly_cost_limit_microdollars,
+            )
+            await check_rate_limit(
+                user_id=user_id,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
+            )
+        except RateLimitExceeded as exc:
+            logger.info(
+                "dispatch_next_for_user: user=%s rate-limited (%s), "
+                "leaving session=%s queued",
+                user_id,
+                exc,
+                head.session_id,
+            )
+            return False
+        except RateLimitUnavailable:
+            logger.warning(
+                "dispatch_next_for_user: rate-limit service degraded for user=%s; "
+                "leaving queue intact for the next tick",
+                user_id,
+            )
+            return False
 
     # Claim by transitioning the session ``queued`` → ``running``.  A
     # parallel cancel between validation and claim rejects this
@@ -341,6 +373,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             team_id=head.team_id,
             mode=metadata.get("mode"),
             model=metadata.get("model"),
+            llm_auth_provider=head.metadata.llm_auth_provider,
+            llm_credential_id=head.metadata.llm_credential_id,
             permissions=metadata.get("permissions"),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
         )

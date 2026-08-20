@@ -100,6 +100,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
     )
+    codex_temp_root: str = Field(
+        default="",
+        description="Optional tmpfs root for isolated Codex runtime homes.",
+    )
+    codex_max_active_processes: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Maximum Codex App Server children per backend process.",
+    )
+    codex_capacity_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="Maximum wait for a free Codex App Server process slot.",
+    )
+    codex_startup_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Hard timeout for starting and initializing Codex App Server.",
+    )
+    codex_control_timeout_seconds: int = Field(
+        default=60,
+        ge=5,
+        le=300,
+        description="Hard timeout for Codex account and credential operations.",
+    )
+    codex_auth_checkpoint_interval_seconds: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=5,
+        description="Interval for checkpointing Codex-managed credential rotation.",
+    )
+    codex_invocation_timeout_seconds: int = Field(
+        default=180,
+        ge=10,
+        le=3600,
+        description="Hard timeout for one native Codex invocation.",
+    )
+    codex_copilot_turn_timeout_seconds: int = Field(
+        default=21600,
+        ge=60,
+        le=21600,
+        description="Hard timeout for one native Codex AutoPilot turn.",
+    )
+    codex_copilot_tool_timeout_seconds: int = Field(
+        default=900,
+        ge=10,
+        le=3600,
+        description="Maximum wait for one AutoPilot dynamic tool callback.",
+    )
+    codex_login_timeout_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=3600,
+        description="Lifetime of one ChatGPT device-code login attempt.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -573,6 +631,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    autopilot_bot_teams_allow_unverified: bool = Field(
+        default=False,
+        description="Local dev only: accept Teams activities that carry no Bot "
+        "Connector token, so the Microsoft 365 Agents Playground can drive the "
+        "bot without a Teams tenant. Ignored unless app_env is 'local' — it "
+        "disables inbound authentication and must never take effect on a "
+        "deployed environment.",
+    )
+
     execution_event_bus_name: str = Field(
         default="execution_event",
         description="Name of the event bus",
@@ -836,6 +903,23 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="The bot's public @username (without the @) — used to "
         "build the t.me add-to-group link on the Bots settings page.",
+    )
+    microsoft_client_id: str = Field(
+        default="",
+        description="Entra application (client) ID, shared by Microsoft "
+        "integrations. Set together with the client secret and tenant ID to "
+        "mount the Teams bot adapter on the main API.",
+    )
+    microsoft_client_secret: str = Field(
+        default="",
+        description="Entra client secret for the shared Microsoft app, used "
+        "by the Teams bot to mint outbound Bot Connector tokens.",
+    )
+    microsoft_tenant_id: str = Field(
+        default="",
+        description="Tenant the Entra app belongs to. Required for the Teams "
+        "bot: single-tenant bots mint tokens against their own tenant "
+        "authority, and new registrations can no longer be multi-tenant.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

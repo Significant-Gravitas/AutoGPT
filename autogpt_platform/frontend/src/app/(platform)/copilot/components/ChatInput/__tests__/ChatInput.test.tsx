@@ -2,7 +2,6 @@ import {
   render,
   screen,
   fireEvent,
-  cleanup,
   act,
   waitFor,
 } from "@/tests/integrations/test-utils";
@@ -11,6 +10,11 @@ import {
   NEW_SKILL_PROMPT,
 } from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
+import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProviderData,
+} from "@/providers/agent-credentials/credentials-provider";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
@@ -20,6 +24,24 @@ const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
+  useGetV2ListChatTransports: () => ({
+    data: {
+      status: 200,
+      data: {
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      },
+    },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 let mockCopilotMode = "extended_thinking";
@@ -32,6 +54,8 @@ let mockCopilotLlmModel = "standard";
 const mockSetCopilotLlmModel = vi.fn((model: string) => {
   mockCopilotLlmModel = model;
 });
+
+let mockCopilotLlmAuthProvider = "platform";
 
 let mockInitialPrompt: string | null = null;
 const mockSetInitialPrompt = vi.fn((value: string | null) => {
@@ -47,6 +71,11 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
+    copilotLlmAuth: {
+      authProvider: mockCopilotLlmAuthProvider,
+      credentialId: null,
+    },
+    setCopilotLlmAuth: vi.fn(),
     isDryRun: false,
     setIsDryRun: vi.fn(),
     initialPrompt: mockInitialPrompt,
@@ -195,12 +224,33 @@ vi.mock("../components/DryRunToggleButton", () => ({
 
 const mockOnSend = vi.fn();
 
+const codexCredential: CredentialsMetaResponse = {
+  id: "codex-credential-1",
+  provider: "codex",
+  type: "oauth2",
+  title: "Personal ChatGPT",
+  scopes: [],
+};
+
+const codexProvider: CredentialsProviderData = {
+  provider: "codex",
+  providerName: "Codex",
+  savedCredentials: [codexCredential],
+  isSystemProvider: false,
+  oAuthCallback: async () => codexCredential,
+  mcpOAuthCallback: async () => codexCredential,
+  createAPIKeyCredentials: async () => codexCredential,
+  createUserPasswordCredentials: async () => codexCredential,
+  createHostScopedCredentials: async () => codexCredential,
+  deleteCredentials: async () => ({ deleted: true, revoked: null }),
+};
+
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
   mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
+  mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
   mockInitialPrompt = null;
 });
@@ -216,6 +266,53 @@ describe("ChatInput mode toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
     expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
+  });
+
+  it("shows Codex mode and model controls backed by the model catalog", () => {
+    mockFlagValue = true;
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
+  });
+
+  it("keeps Claude SDK file attachments available for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByTestId("attachment-menu")).toBeTruthy();
+  });
+
+  it("does not report empty dropped files as consumed for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    const onDroppedFilesConsumed = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        droppedFiles={[]}
+        onDroppedFilesConsumed={onDroppedFilesConsumed}
+      />,
+    );
+
+    expect(onDroppedFilesConsumed).not.toHaveBeenCalled();
+  });
+
+  it("hides the route selector when only one subsidized transport is connected", () => {
+    mockFlagValue = true;
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
+
+    rerender(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} hasSession />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
   });
 
   it("shows Thinking label in extended_thinking mode", () => {

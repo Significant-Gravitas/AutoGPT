@@ -1,13 +1,14 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.blocks._base import BlockType
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
@@ -22,6 +23,8 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
+from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 
@@ -58,6 +61,13 @@ def _patch_workspace():
     mock_ws_db = MagicMock()
     mock_ws_db.get_or_create_workspace = AsyncMock(return_value=mock_workspace)
     return patch("backend.copilot.tools.helpers.workspace_db", return_value=mock_ws_db)
+
+
+def _patch_user_db():
+    user = MagicMock(timezone="UTC")
+    client = MagicMock()
+    client.get_user_by_id = AsyncMock(return_value=user)
+    return patch("backend.copilot.tools.helpers.user_db", return_value=client)
 
 
 def _patch_credit_db(
@@ -1469,6 +1479,225 @@ class TestExecuteBlockAutoCredentials:
         assert isinstance(result, ErrorResponse)
         assert "Insufficient credits" in result.message
         mock_lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+class TestExecuteBlockCredentialLeases:
+    async def test_regular_credentials_are_leased_and_released(self):
+        block = _make_block()
+        captured: dict[str, Any] = {}
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+
+        async def execute(_input_data: dict, **kwargs: Any):
+            captured.update(kwargs)
+            yield "result", "ok"
+
+        block.execute = execute
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-lease-1",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert captured["credentials"] is credentials
+        assert captured["credential_leases"] == {"credentials": lease}
+        manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
+        manager.get.assert_not_awaited()
+        lease.release.assert_awaited_once()
+
+    async def test_codex_entitlement_is_checked_against_acquired_credentials(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+        gate = AsyncMock(side_effect=UserPaywalledError("Max plan required"))
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-entitlement",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Max plan required" in result.message
+        gate.assert_awaited_once_with(_USER)
+        manager.acquire_lease.assert_awaited_once_with(_USER, "cred-1")
+        lease.release.assert_awaited_once()
+
+    async def test_credential_metadata_cannot_hide_authoritative_codex_provider(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        manager = MagicMock()
+        manager.get = AsyncMock(return_value=credentials)
+        manager.acquire_lease = AsyncMock()
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.OPENAI, ProviderName.CODEX],
+            Literal["api_key", "oauth2"],
+        ](id="cred-1", provider=ProviderName.OPENAI, type="oauth2")
+        gate = AsyncMock()
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.enforce_codex_access",
+                new=gate,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-disguised-codex",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Failed to retrieve credentials" in result.message
+        gate.assert_not_awaited()
+        manager.acquire_lease.assert_not_awaited()
+
+    async def test_ordinary_credentials_keep_nonlocking_lookup(self):
+        block = _make_block()
+        captured: dict[str, Any] = {}
+        credentials = MagicMock(id="cred-1", provider="openai", type="api_key")
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock()
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+
+        async def execute(_input_data: dict, **kwargs: Any):
+            captured.update(kwargs)
+            yield "result", "ok"
+
+        block.execute = execute
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.OPENAI], Literal["api_key"]
+        ](id="cred-1", provider=ProviderName.OPENAI, type="api_key")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-api-key",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert captured["credentials"] is credentials
+        assert "credential_leases" not in captured
+        manager.get.assert_awaited_once_with(_USER, "cred-1", lock=False)
+        manager.acquire_lease.assert_not_awaited()
+
+    async def test_regular_lease_is_released_when_input_coercion_fails(self):
+        block = _make_block()
+        credentials = MagicMock(id="cred-1", provider="codex", type="oauth2")
+        lease = MagicMock(credentials=credentials)
+        lease.release = AsyncMock()
+        manager = MagicMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.CODEX], Literal["oauth2"]
+        ](id="cred-1", provider=ProviderName.CODEX, type="oauth2")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.coerce_inputs_to_schema",
+                side_effect=RuntimeError("coercion failed"),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-lease-2",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        lease.release.assert_awaited_once()
 
 
 class TestRequireLibraryCheck:

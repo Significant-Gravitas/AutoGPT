@@ -41,6 +41,7 @@ import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchMo
 import { useRouter } from "next/navigation";
 import { ChatSessionRow } from "./components/ChatSessionRow/ChatSessionRow";
 import { ExpertSessionGroup } from "./components/ExpertSessionGroup/ExpertSessionGroup";
+import { HeaderAction } from "./components/HeaderAction";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsagePopover } from "../UsageLimits/UsagePopover/UsagePopover";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
@@ -374,34 +375,42 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="flex items-center">
+                <div className="flex items-center [&_button:hover]:!bg-zinc-100 [&_button]:!h-8 [&_button]:!w-8 [&_button]:!min-w-0 [&_button]:!rounded-full [&_button]:!p-0 [&_button]:!text-zinc-600 [&_svg]:!size-[1.125rem]">
                   {isChatSearchEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Search chats"
-                      onClick={() => openSearch()}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Search01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Search chats">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Search chats"
+                        onClick={() => openSearch()}
+                      >
+                        <Icon icon={Search01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
                   {isArtifactsEnabled ? (
-                    <ShadcnButton
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Files"
-                      onClick={() => router.push("/artifacts")}
-                      className="rounded-full text-zinc-600 hover:bg-zinc-100"
-                    >
-                      <Icon icon={Files01Icon} className="!size-5" />
-                    </ShadcnButton>
+                    <HeaderAction label="Files">
+                      <ShadcnButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Files"
+                        onClick={() => router.push("/artifacts")}
+                      >
+                        <Icon icon={Files01Icon} className="!size-5" />
+                      </ShadcnButton>
+                    </HeaderAction>
                   ) : null}
-                  <UsagePopover />
-                  <NotificationToggle />
-                  <SidebarTrigger />
+                  <HeaderAction label="Usage limits">
+                    <UsagePopover />
+                  </HeaderAction>
+                  <HeaderAction label="Notification settings">
+                    <NotificationToggle />
+                  </HeaderAction>
+                  <HeaderAction label="Collapse sidebar">
+                    <SidebarTrigger />
+                  </HeaderAction>
                 </div>
               </div>
               {sessionId ? (

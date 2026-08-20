@@ -12,7 +12,7 @@ import pytest
 
 from backend.copilot.model import ChatSession
 
-from .service import _ready_for_building_mode_restart
+from .service import _graphiti_ingest_allowed, _ready_for_building_mode_restart
 
 
 def _session(*, requested: bool = True, guide_loaded: bool = False) -> ChatSession:
@@ -139,3 +139,46 @@ class TestApplyBuildingModeRestart:
         _, state, _, _ = await self._run(mocker)
         assert state.adapter.thinking_only_reprompted is False
         assert state.adapter.prior_attempt_emitted_visible_content is False
+
+    @pytest.mark.asyncio
+    async def test_failed_expert_revalidation_keeps_ingest_gated(self, mocker):
+        from backend.copilot.expert_context import ExpertSessionUnavailableError
+        from backend.copilot.sdk.service import _apply_building_mode_restart
+
+        session = _session(requested=True, guide_loaded=False)
+        session.expert_id = "expert-1"
+        state = self._state(prior_emitted=False, thinking_reprompted=False)
+        mocker.patch(
+            "backend.copilot.sdk.service.build_builder_system_prompt_suffix",
+            new=mocker.AsyncMock(return_value="<building_guide>GUIDE</building_guide>"),
+        )
+        identity = mocker.patch(
+            "backend.copilot.sdk.service.build_expert_identity_suffix",
+            new=mocker.AsyncMock(
+                side_effect=ExpertSessionUnavailableError("expert unavailable")
+            ),
+        )
+
+        with pytest.raises(ExpertSessionUnavailableError):
+            await _apply_building_mode_restart(
+                session=session,
+                state=state,
+                sdk_options=MagicMock(),
+                base_system_prompt="BASE",
+                graphiti_supplement="",
+                use_e2b=False,
+                session_id="sess-1",
+                message_id="msg-1",
+                log_prefix="[test]",
+            )
+
+        identity.assert_awaited_once_with(
+            "user-1", "expert-1", organization_id=None, team_id=None
+        )
+        assert not _graphiti_ingest_allowed(
+            expert_identity_validated=False,
+            graphiti_enabled=True,
+            user_id="user-1",
+            message="private prompt",
+            is_user_message=True,
+        )

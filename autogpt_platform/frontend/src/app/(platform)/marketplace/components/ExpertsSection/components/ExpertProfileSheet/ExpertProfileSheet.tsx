@@ -2,6 +2,7 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { getExpertAccent } from "../../helpers";
 import { ExpertProfileContent } from "./ExpertProfileContent";
@@ -18,26 +19,42 @@ export function ExpertProfileSheet({
   onClose,
   presentation = "dialog",
 }: Props) {
-  const { isHired, isHiring, hire } = useExpertProfileSheet(expert, onClose);
+  const {
+    isHired,
+    isHiring,
+    hire,
+    hireResult,
+    pickVoice,
+    skipVoice,
+    isSavingVoice,
+    handleClose,
+  } = useExpertProfileSheet(expert, onClose);
   const accent = expert ? getExpertAccent(expert.role) : null;
 
-  const content =
-    expert && accent ? (
-      <ExpertProfileContent
-        expert={expert}
-        accent={accent}
-        isHired={isHired}
-        isHiring={isHiring}
-        onHire={hire}
-      />
-    ) : null;
+  const content = hireResult ? (
+    <VoicePicker
+      name={hireResult.expert.name}
+      samples={expert?.voice_samples ?? []}
+      onPick={pickVoice}
+      onSkip={skipVoice}
+      isSubmitting={isSavingVoice}
+    />
+  ) : expert && accent ? (
+    <ExpertProfileContent
+      expert={expert}
+      accent={accent}
+      isHired={isHired}
+      isHiring={isHiring}
+      onHire={hire}
+    />
+  ) : null;
 
   if (presentation === "drawer") {
     return (
       <Sheet
         open={expert !== null}
         onOpenChange={(open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         }}
       >
         <SheetContent
@@ -57,7 +74,7 @@ export function ExpertProfileSheet({
       controlled={{
         isOpen: expert !== null,
         set: (open) => {
-          if (!open) onClose();
+          if (!open) handleClose();
         },
       }}
     >

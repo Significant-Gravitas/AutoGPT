@@ -51,6 +51,12 @@ import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
+from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
+from backend.integrations.codex.transport import (
+    PooledCodexRuntimeLease,
+    get_codex_transport,
+)
+from backend.integrations.credential_lease import CredentialLease
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -59,8 +65,15 @@ settings = Settings()
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
+CodexRoutingSource = Literal[
+    "catalog",
+    "preferred",
+    "account_default",
+    "account_available",
+]
 
 ROUTE_SURFACE_COPILOT = "copilot"
+ROUTE_SURFACE_CODEX = "copilot_codex"
 
 
 class ResolvedModel(NamedTuple):
@@ -68,7 +81,28 @@ class ResolvedModel(NamedTuple):
     source: RoutingSource
 
 
-def _catalog_lookup(slug: str) -> "llm_registry.RegistryModel | None":
+class ResolvedCodexModel(NamedTuple):
+    model: str
+    effort: CodexReasoningEffort | None
+    source: CodexRoutingSource
+
+
+_CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
+    ("fast", "standard"): LLMModel.GPT5_6_LUNA.value,
+    ("fast", "advanced"): LLMModel.GPT5_6_TERRA.value,
+    ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
+    ("thinking", "advanced"): LLMModel.GPT5_6_SOL.value,
+}
+
+_CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
+    ("fast", "standard"): "low",
+    ("fast", "advanced"): "medium",
+    ("thinking", "standard"): "high",
+    ("thinking", "advanced"): "xhigh",
+}
+
+
+def _catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
@@ -291,3 +325,138 @@ async def resolve_model_route(
         return ResolvedModel(cell_slug, "catalog")
 
     return await _env_floor(config, mode, tier)
+
+
+async def resolve_codex_model_route(
+    mode: ModelMode,
+    tier: ModelTier,
+    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+) -> ResolvedCodexModel:
+    """Resolve a Codex model against both the catalog and the account."""
+    advertised = await _advertised_codex_models(credential_lease)
+
+    if catalog_route := _codex_catalog_route(advertised, mode, tier):
+        return catalog_route
+
+    if preferred_route := _codex_preferred_route(advertised, mode, tier):
+        return preferred_route
+
+    if account_route := _codex_account_route(advertised, mode, tier):
+        return account_route
+
+    raise RuntimeError("codex_model_unavailable")
+
+
+async def _advertised_codex_models(
+    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+) -> list[CodexModelInfo]:
+    if isinstance(credential_lease, PooledCodexRuntimeLease):
+        return await credential_lease.models()
+    return await get_codex_transport().models(credential_lease)
+
+
+def _codex_catalog_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    catalog_slug = llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
+    if not catalog_slug:
+        return None
+
+    model = next((item for item in advertised if item.model == catalog_slug), None)
+    if model is not None and _codex_catalog_allows(catalog_slug):
+        return _resolved_codex_model(model, mode, tier, "catalog")
+
+    logger.warning(
+        "[model_router] Codex catalog route %r is disabled or unavailable "
+        "for this account; falling through for (%s, %s)",
+        catalog_slug,
+        mode,
+        tier,
+    )
+    return None
+
+
+def _codex_preferred_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    preferred_slug = _CODEX_PREFERRED_MODELS[(mode, tier)]
+    preferred = next(
+        (model for model in advertised if model.model == preferred_slug),
+        None,
+    )
+    if preferred is None or not _codex_catalog_allows(preferred_slug):
+        return None
+    return _resolved_codex_model(preferred, mode, tier, "preferred")
+
+
+def _codex_account_route(
+    advertised: list[CodexModelInfo],
+    mode: ModelMode,
+    tier: ModelTier,
+) -> ResolvedCodexModel | None:
+    candidates: tuple[tuple[CodexRoutingSource, bool], ...] = (
+        ("account_default", True),
+        ("account_available", False),
+    )
+    for source, default_only in candidates:
+        model = next(
+            (
+                item
+                for item in advertised
+                if (not default_only or item.is_default)
+                and not item.hidden
+                and _codex_account_fallback_allowed(item.model)
+            ),
+            None,
+        )
+        if model is not None:
+            return _resolved_codex_model(model, mode, tier, source)
+    return None
+
+
+def _resolved_codex_model(
+    model: CodexModelInfo,
+    mode: ModelMode,
+    tier: ModelTier,
+    source: CodexRoutingSource,
+) -> ResolvedCodexModel:
+    return ResolvedCodexModel(
+        model.model,
+        _codex_effort(model, mode, tier),
+        source,
+    )
+
+
+def _codex_catalog_allows(slug: str) -> bool:
+    if not llm_registry.has_models():
+        return True
+    model = _catalog_lookup(slug)
+    return bool(
+        model is not None and model.is_enabled and model.metadata.provider == "openai"
+    )
+
+
+def _codex_account_fallback_allowed(slug: str) -> bool:
+    if not llm_registry.has_models():
+        return True
+    model = _catalog_lookup(slug)
+    if model is None:
+        return True
+    return model.is_enabled and model.metadata.provider == "openai"
+
+
+def _codex_effort(
+    model: CodexModelInfo,
+    mode: ModelMode,
+    tier: ModelTier,
+) -> CodexReasoningEffort | None:
+    preferred = _CODEX_PREFERRED_EFFORTS[(mode, tier)]
+    if preferred in model.supported_reasoning_efforts:
+        return preferred
+    if model.default_reasoning_effort in model.supported_reasoning_efforts:
+        return model.default_reasoning_effort
+    return None

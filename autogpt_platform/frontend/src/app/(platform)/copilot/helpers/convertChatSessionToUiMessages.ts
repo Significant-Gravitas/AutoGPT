@@ -23,6 +23,15 @@ interface SessionChatMessage {
   sequence: number | null;
   duration_ms: number | null;
   created_at: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
+  return metadata &&
+    typeof metadata === "object" &&
+    (metadata as Record<string, unknown>).kind === "expert_run"
+    ? (metadata as Record<string, unknown>)
+    : null;
 }
 
 function coerceSessionChatMessages(
@@ -63,6 +72,10 @@ function coerceSessionChatMessages(
             : msg.created_at instanceof Date
               ? msg.created_at.toISOString()
               : null,
+        metadata:
+          msg.metadata && typeof msg.metadata === "object"
+            ? (msg.metadata as Record<string, unknown>)
+            : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -217,7 +230,15 @@ export function concatWithAssistantMerge(
   if (b.length === 0) return a;
   const last = a[a.length - 1];
   const first = b[0];
-  if (last.role !== "assistant" || first.role !== "assistant") {
+  // Metadata-carrying bubbles (expert run posts → WorkCard) must keep their
+  // identity across page boundaries too: merging one into a plain assistant
+  // reply either drops the card or absorbs the reply into it.
+  if (
+    last.role !== "assistant" ||
+    first.role !== "assistant" ||
+    last.metadata ||
+    first.metadata
+  ) {
     return [...a, ...b];
   }
   // Both sides assistant — only merge when the underlying DB sequences are
@@ -445,8 +466,19 @@ export function convertChatSessionMessagesToUiMessages(
     // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
     // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
     // bubbles instead of joining the ongoing turn.
+    // A run-post carries structured ``metadata`` the thread renders as a
+    // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
+    // assistant turn (either direction), or the card loses its identity.
+    const runMetadata = getRunMetadata(msg.metadata);
+
     const prevUI = uiMessages[uiMessages.length - 1];
-    if (uiRole === "assistant" && prevUI && prevUI.role === "assistant") {
+    if (
+      uiRole === "assistant" &&
+      prevUI &&
+      prevUI.role === "assistant" &&
+      !getRunMetadata(prevUI.metadata) &&
+      !runMetadata
+    ) {
       prevUI.parts.push(...parts);
       const oldId = prevUI.id;
       const newId =
@@ -487,6 +519,7 @@ export function convertChatSessionMessagesToUiMessages(
       id: msgId,
       role: uiRole,
       parts,
+      ...(msg.metadata ? { metadata: msg.metadata } : {}),
     });
 
     const patch: Partial<TurnStats> = {};

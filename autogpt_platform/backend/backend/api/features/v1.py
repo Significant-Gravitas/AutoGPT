@@ -36,6 +36,10 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+    hide_activity_summary_if_disabled,
+)
 from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
@@ -2170,23 +2174,6 @@ async def list_graph_executions(
     )
 
 
-async def hide_activity_summaries_if_disabled(
-    executions: list[execution_db.GraphExecutionMeta], user_id: str
-) -> list[execution_db.GraphExecutionMeta]:
-    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return executions  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    filtered_executions = []
-    for execution in executions:
-        if execution.stats:
-            filtered_stats = execution.stats.without_activity_features()
-            execution = execution.model_copy(update={"stats": filtered_stats})
-        filtered_executions.append(execution)
-    return filtered_executions
-
-
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     summary="Get execution details",
@@ -2230,21 +2217,6 @@ async def get_graph_execution(
         await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
-
-
-async def hide_activity_summary_if_disabled(
-    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
-    user_id: str,
-) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return execution  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    if execution.stats:
-        filtered_stats = execution.stats.without_activity_features()
-        return execution.model_copy(update={"stats": filtered_stats})
-    return execution
 
 
 @v1_router.delete(
