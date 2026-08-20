@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import platform
@@ -55,6 +56,7 @@ import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
+import backend.data.autopilot_migrate
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -164,6 +166,19 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
+
+    # Guarded, unlike its neighbours above: this backfill only corrects what
+    # the builder displays for AutoPilot nodes saved before `transport`
+    # existed. The block honours the connection either way, so a failure here
+    # changes nothing about which account pays — and refusing to boot the
+    # platform over a cosmetic migration would be the worse outcome.
+    try:
+        await asyncio.wait_for(
+            backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
+            timeout=30,
+        )
+    except Exception:
+        logger.error("AutoPilot transport backfill failed", exc_info=True)
 
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()

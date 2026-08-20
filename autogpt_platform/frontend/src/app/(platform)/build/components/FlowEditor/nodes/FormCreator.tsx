@@ -7,6 +7,8 @@ import { BlockUIType } from "../../types";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { gateDiscriminatorOptions } from "@/components/renderers/InputRenderer/custom/CredentialField/gateDiscriminatorOptions";
+import { credentialNotApplicable } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
+import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 
 function isCredentialsProperty(schema: RJSFSchema, key: string): boolean {
   const property = schema.properties?.[key];
@@ -61,8 +63,23 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
       // `*_credentials` while being ordinary values; a name test deleted them.
       for (const key of Object.keys(formData)) {
         if (!isCredentialsProperty(jsonSchema, key)) continue;
-        const value = formData[key] as { id?: unknown } | undefined;
-        if (!value?.id) {
+        const value = formData[key] as
+          | { id?: unknown; provider?: unknown }
+          | undefined;
+        // Also drop a credential the current selection no longer needs, or a
+        // connection chosen under one transport survives a switch to another
+        // that uses none — invisible, because its row is hidden.
+        const property = jsonSchema.properties?.[key];
+        const stale =
+          !jsonSchema.required?.includes(key) &&
+          typeof property === "object" &&
+          property !== null &&
+          credentialNotApplicable(
+            formData,
+            property as unknown as BlockIOCredentialsSubSchema,
+            typeof value?.provider === "string" ? value.provider : undefined,
+          );
+        if (!value?.id || stale) {
           delete formData[key];
         }
       }

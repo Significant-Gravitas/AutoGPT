@@ -41,6 +41,24 @@ const autopilotSchema = {
   required: ["prompt"],
 } as unknown as RJSFSchema;
 
+const requiredUnmappedAutopilotSchema = {
+  ...autopilotSchema,
+  properties: {
+    ...autopilotSchema.properties,
+    transport: {
+      enum: ["platform", "codex_app_server"],
+      title: "Transport",
+      type: "string",
+    },
+    codex_credentials: {
+      ...(autopilotSchema.properties?.codex_credentials as RJSFSchema),
+      discriminator: "transport",
+      discriminator_mapping: { codex_app_server: "codex" },
+    },
+  },
+  required: ["prompt", "codex_credentials"],
+} as RJSFSchema;
+
 function makeNode(schema: RJSFSchema): CustomNode {
   return {
     id: "autopilot-node",
@@ -134,14 +152,15 @@ describe("FormCreator credential emission", () => {
   // Seeded as an initial value so the credential travels through FormCreator's
   // handleChange — the same path that strips id-less objects. Writing straight
   // to the store after render would bypass the code under test entirely.
-  it("keeps a credential field once it carries an id", async () => {
+  it("keeps a required credential when its discriminator is unmapped", async () => {
     useNodeStore.setState({
       nodes: [
         {
-          ...makeNode(autopilotSchema),
+          ...makeNode(requiredUnmappedAutopilotSchema),
           data: {
-            ...makeNode(autopilotSchema).data,
+            ...makeNode(requiredUnmappedAutopilotSchema).data,
             hardcodedValues: {
+              transport: "platform",
               codex_credentials: {
                 id: "codex-oauth-1",
                 provider: "codex",
@@ -171,7 +190,7 @@ describe("FormCreator credential emission", () => {
         })}
       >
         <FormCreator
-          jsonSchema={autopilotSchema}
+          jsonSchema={requiredUnmappedAutopilotSchema}
           nodeId="autopilot-node"
           uiType={BlockUIType.STANDARD}
           showHandles={false}

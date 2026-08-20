@@ -18,9 +18,14 @@ type Availability = "loading" | "available" | "unavailable";
 export function useCredentialAvailability(
   schema: BlockIOCredentialsSubSchema,
   formData: Record<string, unknown>,
+  selectedProvider?: string,
 ): Availability {
   const providers = useContext(CredentialsProvidersContext);
-  const provider = getCredentialProviderFromSchema(formData, schema);
+  const provider = getCredentialProviderFromSchema(
+    formData,
+    schema,
+    selectedProvider,
+  );
 
   if (providers === null) return "loading";
   // A multi-provider field with no discriminator value yet resolves to null;
