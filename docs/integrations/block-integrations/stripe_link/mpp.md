@@ -66,7 +66,7 @@ _Add technical explanation here._
 |--------|-------------|------|
 | error | Error message on failure | str |
 | status_code | HTTP status the merchant returned | int |
-| paid | True when the merchant accepted the payment (2xx) | bool |
+| paid | True when the merchant accepted the credential-bearing payment request (2xx) | bool |
 | response | Merchant's JSON response, e.g. an order or receipt | Dict[str, Any] |
 
 ### Possible use case
