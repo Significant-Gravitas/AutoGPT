@@ -89,22 +89,20 @@ export function ManageConnectionDialog({
                 Could not reach ChatGPT to confirm the plan on this account.
               </Text>
             ) : (
-              (snapshot?.plan_type || snapshot?.account_type) && (
+              snapshot?.plan_type && (
                 <span className="mt-1 flex flex-wrap gap-2">
-                  {snapshot.plan_type && (
-                    <span className="rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#4A25AD]">
-                      {snapshot.plan_type} plan
-                    </span>
-                  )}
-                  {snapshot.account_type && (
-                    <span className="rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]">
-                      {snapshot.account_type} workspace
-                    </span>
-                  )}
+                  <span className="rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#4A25AD]">
+                    {snapshot.plan_type} plan
+                  </span>
                 </span>
               )
             )}
           </div>
+
+          <Text variant="small" className="text-[#8A8A90]">
+            ChatGPT identifies the workspace behind this connection only by an
+            internal id, so it cannot be named here yet.
+          </Text>
 
           <Text variant="small" className="text-[#505057]">
             {connection?.default
