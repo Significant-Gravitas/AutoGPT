@@ -48,6 +48,7 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.segments import session_segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
@@ -5966,6 +5967,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
+            )
+            # What this turn ran on, recorded on the turn rather than read
+            # back off the session later, so a route change cannot rewrite it.
+            stamp_segment(
+                session.messages,
+                pre_turn_message_count,
+                session_segment(session),
             )
             try:
                 await asyncio.shield(upsert_chat_session(session))
