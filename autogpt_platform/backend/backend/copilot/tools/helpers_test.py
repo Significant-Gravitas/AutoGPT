@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_block_provider,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -23,13 +24,75 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    CredentialsType,
+)
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
+
+
+class TestGetBlockProvider:
+    def test_returns_only_provider(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) == "google"
+
+    def test_returns_none_for_multiple_providers(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE, ProviderName.GITHUB}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_without_providers(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {}
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_for_invalid_schema_info_shape(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = []
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_when_schema_introspection_fails(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.side_effect = RuntimeError
+
+        assert get_block_provider(block) is None
+
+    def test_retries_schema_introspection_after_transient_failure(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.side_effect = [
+            RuntimeError,
+            {"credentials": info},
+        ]
+
+        assert get_block_provider(block) is None
+        assert get_block_provider(block) == "google"
 
 
 def _make_block(
