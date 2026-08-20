@@ -1,28 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import {
   CheckmarkCircle02Icon,
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
+import { ManageConnectionDialog } from "./ManageConnectionDialog";
 import { describeTransport, transportKey } from "./helpers";
 import { useAIConnectionsSection } from "./useAIConnectionsSection";
 
 export function AIConnectionsSection() {
   const {
     connections,
+    accountFor,
     selectedKey,
     chooseDefault,
     isSaving,
     isLoading,
     isError,
   } = useAIConnectionsSection();
+  const [managing, setManaging] = useState<ChatTransportResponse | null>(null);
 
   // A failure here must not take the tool integrations below it down with it.
   if (isError) return null;
@@ -62,34 +67,52 @@ export function AIConnectionsSection() {
             <ConnectionRow
               key={transportKey(connection)}
               connection={connection}
+              account={accountFor(connection)}
               selectable={hasChoice}
               isSelected={transportKey(connection) === selectedKey}
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}
+              onManage={
+                connection.auth_provider === "codex"
+                  ? () => setManaging(connection)
+                  : undefined
+              }
             />
           ))}
         </div>
       )}
 
       <UpcomingConnections />
+
+      <ManageConnectionDialog
+        connection={managing}
+        account={managing ? accountFor(managing) : undefined}
+        onOpenChange={(open) => {
+          if (!open) setManaging(null);
+        }}
+      />
     </section>
   );
 }
 
 interface RowProps {
   connection: ChatTransportResponse;
+  account?: string;
   selectable: boolean;
   isSelected: boolean;
   isSaving: boolean;
   onSelect: () => void;
+  onManage?: () => void;
 }
 
 function ConnectionRow({
   connection,
+  account,
   selectable,
   isSelected,
   isSaving,
   onSelect,
+  onManage,
 }: RowProps) {
   const body = (
     <>
@@ -118,6 +141,11 @@ function ConnectionRow({
               Connected
             </span>
           )}
+          {account && (
+            <span className="max-w-full truncate rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]">
+              {account}
+            </span>
+          )}
           {isSelected && (
             <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#F1EBFF] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#4A25AD]">
               <Icon icon={SparklesIcon} size={13} />
@@ -132,32 +160,51 @@ function ConnectionRow({
     </>
   );
 
+  const manage = onManage ? (
+    <Button
+      variant="secondary"
+      size="small"
+      className="ml-auto flex-none self-center"
+      onClick={onManage}
+    >
+      Manage
+    </Button>
+  ) : null;
+
   if (!selectable) {
     return (
       <div className="flex w-full items-start gap-3 rounded-2xl border border-[#DADADC] bg-white p-4">
         {body}
+        {manage}
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={isSelected}
-      disabled={isSaving}
-      onClick={onSelect}
+    <div
       className={cn(
-        "flex w-full items-start gap-3 rounded-2xl border bg-white p-4 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7444E5] focus-visible:ring-offset-2",
+        "flex w-full items-start rounded-2xl border bg-white pr-4 transition-colors",
         isSelected
           ? "border-[#7444E5] ring-1 ring-[#7444E5]"
           : "border-[#DADADC] hover:bg-[#F9F9FA]",
-        isSaving && "cursor-progress opacity-70",
       )}
     >
-      {body}
-    </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={isSelected}
+        disabled={isSaving}
+        onClick={onSelect}
+        className={cn(
+          "flex min-w-0 flex-1 items-start gap-3 rounded-2xl p-4 text-left",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7444E5]",
+          isSaving && "cursor-progress opacity-70",
+        )}
+      >
+        {body}
+      </button>
+      {manage}
+    </div>
   );
 }
 

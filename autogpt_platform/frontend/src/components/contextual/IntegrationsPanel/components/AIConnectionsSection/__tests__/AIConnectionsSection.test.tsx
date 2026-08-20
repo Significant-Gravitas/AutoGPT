@@ -2,6 +2,7 @@ import {
   getGetV2ListChatTransportsMockHandler200,
   getPutV2SetDefaultChatTransportMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV1ListCredentialsMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -30,10 +31,23 @@ function chatgpt(isDefault: boolean, id = "cred-1"): ChatTransportResponse {
   };
 }
 
-function mockTransports(transports: ChatTransportResponse[]) {
+function mockTransports(
+  transports: ChatTransportResponse[],
+  credentials: { id: string; username: string }[] = [],
+) {
   server.use(
     getGetV2ListChatTransportsMockHandler200({ transports }),
     getPutV2SetDefaultChatTransportMockHandler200({ transports }),
+    getGetV1ListCredentialsMockHandler200(
+      credentials.map((credential) => ({
+        id: credential.id,
+        provider: "codex",
+        type: "oauth2" as const,
+        title: "ChatGPT for Codex",
+        scopes: [],
+        username: credential.username,
+      })),
+    ),
   );
 }
 
@@ -48,6 +62,17 @@ describe("AIConnectionsSection", () => {
     expect(
       screen.getByText(/backed by your ChatGPT plan, and spend no AutoGPT/i),
     ).toBeDefined();
+  });
+
+  it("names the account a connection runs as", async () => {
+    mockTransports(
+      [platform(false), chatgpt(true)],
+      [{ id: "cred-1", username: "nick@example.com" }],
+    );
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("nick@example.com")).toBeDefined();
   });
 
   it("marks the saved default, and only that one", async () => {
