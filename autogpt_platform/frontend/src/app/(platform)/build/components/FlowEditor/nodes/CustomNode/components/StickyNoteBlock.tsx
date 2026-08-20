@@ -33,6 +33,8 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
     };
   }, [nodeId]);
 
+  const preprocessedSchema = useMemo(() => preprocessInputSchema(data.inputSchema), [data.inputSchema]);
+
   return (
     <div
       className={cn(
@@ -45,7 +47,7 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
         Notes #{nodeId.split("-")[0]}
       </Text>
       <FormCreator
-        jsonSchema={preprocessInputSchema(data.inputSchema)}
+        jsonSchema={preprocessedSchema}
         nodeId={nodeId}
         uiType={data.uiType}
       />
