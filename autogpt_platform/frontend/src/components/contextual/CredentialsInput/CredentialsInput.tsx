@@ -207,7 +207,7 @@ export function CredentialsInput({
               provider={provider}
               providerName={providerName}
               onCredentialsCreate={(creds) => {
-                onSelectCredential(creds);
+                handleCredentialChange(creds);
                 setDeviceAuthModalOpen(false);
               }}
             />
