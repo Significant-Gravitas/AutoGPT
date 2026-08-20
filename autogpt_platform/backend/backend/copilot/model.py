@@ -1022,6 +1022,8 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                     "model": msg.model,
                     "routing_source": msg.routing_source,
+                    "llm_auth_provider": msg.llm_auth_provider,
+                    "llm_credential_id": msg.llm_credential_id,
                 }
             )
         logger.info(
