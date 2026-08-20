@@ -122,7 +122,7 @@ export function useCredentialsInput({
     const stillExists = credentials.allProviderCredentials.some(
       (credential) => credential.id === selectedCredential.id,
     );
-    if (stillExists) return;
+    if (stillExists && availableCreds.length === 0) return;
 
     const isDeletingSelected =
       isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
