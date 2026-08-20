@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
-import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotLlmModel } from "./store";
 
 export interface MutableValue<T> {
   current: T;
@@ -15,13 +15,9 @@ export interface MutableValue<T> {
 interface CreateTransportArgs {
   sessionId: string;
   /**
-   * Ref to the current autopilot mode. Kept as a ref (rather than captured
-   * value) so mid-session mode changes are picked up on the next send without
-   * recreating the transport — recreating would reset `useChat`'s internal
-   * `Chat` instance and break mid-session streaming.
+   * Ref to the current model tier, rather than a captured value, so a
+   * mid-session change is picked up on the next send.
    */
-  copilotModeRef: MutableValue<CopilotMode | undefined>;
-  /** Ref to the current model tier. See `copilotModeRef` for rationale. */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
 }
 
@@ -56,7 +52,6 @@ class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
  */
 export function createCopilotTransport({
   sessionId,
-  copilotModeRef,
   copilotModelRef,
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
@@ -96,7 +91,6 @@ export function createCopilotTransport({
           is_user_message: last.role === "user",
           context: null,
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-          mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
           // Supplying options forces uuid's
           // getRandomValues path. Unlike crypto.randomUUID,

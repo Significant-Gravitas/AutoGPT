@@ -26,7 +26,6 @@ from backend.copilot.config import (
     ChatConfig,
     CopilotLlmAuthProvider,
     CopilotLLMModel,
-    CopilotMode,
 )
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
@@ -263,11 +262,6 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
-    mode: CopilotMode | None = Field(
-        default=None,
-        description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
-        "If None, uses the server default (extended_thinking).",
-    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -1640,7 +1634,6 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             organization_id=turn_org_id,
             team_id=turn_team_id,
-            mode=request.mode,
             model=request.model,
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
@@ -1667,7 +1660,6 @@ async def stream_chat_post(
                 is_user_message=request.is_user_message,
                 context=request.context,
                 file_ids=sanitized_file_ids,
-                mode=request.mode,
                 model=request.model,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,

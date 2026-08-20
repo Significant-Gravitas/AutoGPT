@@ -64,7 +64,7 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
@@ -117,7 +117,7 @@ export function useCopilotPage() {
     setKickoffParam,
   ]);
 
-  const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const { copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -178,8 +178,7 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
-    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+    copilotModel: showAdvancedComposerControls ? copilotLlmModel : undefined,
   });
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
