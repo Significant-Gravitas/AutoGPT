@@ -7,10 +7,11 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 
 import { useCopilotUIStore } from "../../../../store";
 import {
+  isSelectable,
   matchesSelection,
   offerToSelection,
-  selectableOffers,
   tiersAreDistinct,
+  visibleOffers,
 } from "./helpers";
 
 export function useConnectionPicker() {
@@ -24,17 +25,20 @@ export function useConnectionPicker() {
     setCopilotLlmModel,
   } = useCopilotUIStore();
 
-  const offers = selectableOffers(
+  const offers = visibleOffers(
     query.data?.status === 200 ? query.data.data.offers : undefined,
   );
-  const selected = offers.find((offer) =>
+  // Only ever consider what can actually run: a locked offer is listed to
+  // explain itself, never to be landed on.
+  const choosable = offers.filter(isSelectable);
+  const selected = choosable.find((offer) =>
     matchesSelection(offer, copilotLlmAuth),
   );
 
   // Nothing chosen yet, or the chosen connection is gone: fall in behind the
   // one the server marks default. Deciding where a chat starts is the
   // server's job — this only reflects it.
-  const fallback = offers.find((offer) => offer.is_default) ?? offers[0];
+  const fallback = choosable.find((offer) => offer.is_default) ?? choosable[0];
   useEffect(() => {
     if (selected || !fallback) return;
     const selection = offerToSelection(fallback);
@@ -44,6 +48,7 @@ export function useConnectionPicker() {
   const active = selected ?? fallback;
 
   function chooseConnection(offer: AIConnectionOffer) {
+    if (!isSelectable(offer)) return;
     const selection = offerToSelection(offer);
     if (selection) setCopilotLlmAuth(selection);
   }

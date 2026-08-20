@@ -14275,6 +14275,14 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Limitations"
+          },
+          "lock_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lock Reason"
+          },
+          "unlock_href": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unlock Href"
           }
         },
         "type": "object",

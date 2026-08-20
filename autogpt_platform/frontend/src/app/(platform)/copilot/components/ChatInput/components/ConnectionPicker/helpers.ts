@@ -22,13 +22,26 @@ export function matchesSelection(
   return offer.credential_id === selection.credentialId;
 }
 
-export function selectableOffers(
+export function isSelectable(offer: AIConnectionOffer): boolean {
+  return (
+    offer.selectable &&
+    (offer.auth_method === "deployment" || offer.credential_id !== null)
+  );
+}
+
+/**
+ * Every offer worth showing, selectable or not.
+ *
+ * A locked offer earns its place by explaining an absence the user would
+ * otherwise have to guess at, so it is listed; {@link isSelectable} is what
+ * decides whether it can be chosen. An offer that is neither selectable nor
+ * able to say why is just a dead row, so it is dropped.
+ */
+export function visibleOffers(
   offers: AIConnectionOffer[] | undefined,
 ): AIConnectionOffer[] {
   return (offers ?? []).filter(
-    (offer) =>
-      offer.selectable &&
-      (offer.auth_method === "deployment" || offer.credential_id !== null),
+    (offer) => isSelectable(offer) || Boolean(offer.lock_reason),
   );
 }
 

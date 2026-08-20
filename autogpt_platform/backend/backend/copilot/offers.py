@@ -23,6 +23,11 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     settings,
 )
+from backend.integrations.codex.access import (
+    CODEX_MINIMUM_PLAN_ERROR,
+    has_codex_access_for_discovery,
+)
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
 logger = logging.getLogger(__name__)
@@ -67,6 +72,8 @@ class AIConnectionOffer(BaseModel):
     is_default: bool
     tiers: list[ConnectionTier]
     limitations: list[str]
+    lock_reason: str | None = None
+    unlock_href: str | None = None
 
 
 class AIConnectionOffersResponse(BaseModel):
@@ -82,9 +89,58 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     """
     config = ChatConfig()
     models = await _platform_tier_models(user_id, config)
-    return [
+    offers = [
         _offer(transport, models) for transport in await get_chat_transports(user_id)
     ]
+    locked = await _locked_codex_offer(user_id, offers)
+    return offers + ([locked] if locked else [])
+
+
+async def _locked_codex_offer(
+    user_id: str, offers: list[AIConnectionOffer]
+) -> AIConnectionOffer | None:
+    """The ChatGPT connection a plan does not include, shown rather than hidden.
+
+    ``get_chat_transports`` answers what may run, and it is right to omit a
+    transport the entitlement forbids -- anything that routes a turn reads
+    that list, and an unroutable entry there would be a bug waiting to
+    happen. What it cannot say is *why* the connection is missing, so a user
+    below the plan sees no ChatGPT at all and no way to learn one exists.
+
+    This offer says so, in the one place that exists to describe rather than
+    route. It is never selectable and carries no credential, so nothing can
+    accidentally send a turn down it.
+    """
+    if any(offer.provider_family == "openai" for offer in offers):
+        return None
+    if not _is_hosted():
+        # Self-host grants the entitlement outright; there is nothing to sell.
+        return None
+    if await has_codex_access_for_discovery(user_id):
+        # Entitled but unconnected: the settings page owns that invitation.
+        return None
+    if not await is_feature_enabled(Flag.CHAT_CONNECTION_UPSELL, user_id):
+        return None
+
+    return AIConnectionOffer(
+        offer_id="codex:locked",
+        provider_family="openai",
+        display_name="ChatGPT",
+        auth_method="chatgpt_oauth",
+        credential_id=None,
+        backed_by_label="Your ChatGPT plan",
+        description=(
+            "Run chats on a ChatGPT plan you already pay for, spending no "
+            "AutoGPT credits."
+        ),
+        state="locked",
+        selectable=False,
+        is_default=False,
+        tiers=[],
+        limitations=[],
+        lock_reason=CODEX_MINIMUM_PLAN_ERROR,
+        unlock_href="/settings/billing",
+    )
 
 
 async def _platform_tier_models(
