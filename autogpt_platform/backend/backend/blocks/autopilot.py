@@ -566,17 +566,23 @@ class AutoPilotBlock(Block):
                 llm_auth_provider=("codex" if use_codex else "platform"),
                 llm_credential_id=(codex_connection.id if use_codex else None),
             )
-        elif use_codex:
+        else:
+            # Validate on every resume, not just codex ones. Gating this on
+            # `use_codex` let an explicit `platform` node resume a session that
+            # was created against codex, which then billed the ChatGPT
+            # subscription the user had just opted out of.
             from backend.copilot.model import get_chat_session
 
             existing_session = await get_chat_session(
                 sid,
                 execution_context.user_id,
             )
+            expected_provider = "codex" if use_codex else "platform"
+            expected_credential = codex_connection.id if use_codex else None
             if not (
                 existing_session is not None
-                and existing_session.metadata.llm_auth_provider == "codex"
-                and existing_session.metadata.llm_credential_id == codex_connection.id
+                and existing_session.metadata.llm_auth_provider == expected_provider
+                and existing_session.metadata.llm_credential_id == expected_credential
             ):
                 yield "session_id", sid
                 yield "error", "codex_session_route_mismatch"
