@@ -21,7 +21,10 @@ docker run -d \
   significantgravitas/autogpt:latest
 ```
 
-The first boot can take several minutes. Wait until Docker reports the container
+The first boot can take several minutes, and it applies the database migrations.
+Let it finish: stopping the container during that window can interrupt a
+migration, and the next boot will refuse to start until you resolve it (the log
+names the migration and the command). Wait until Docker reports the container
 as `healthy`, then open [http://localhost:3000](http://localhost:3000).
 Registration starts open; the loopback-only port binding above keeps it local.
 If you expose the app to a network, anyone who can reach it can register until
@@ -36,6 +39,21 @@ docker exec autogpt autogpt-admin promote you@example.com
 Then recreate the container with `AUTH_ALLOW_NEW_ACCOUNTS=false` to close
 registration. Keep the same `autogpt-data` volume so accounts, agents, memory,
 and generated application secrets survive container replacement.
+
+## Stopping
+
+`docker stop` completes in well under Docker's stock 10-second timeout, so the
+appliance shuts down cleanly on a default host and needs no change to Docker's
+host-wide stop timeout. The bundled PostgreSQL, RabbitMQ, Valkey and FalkorDB
+are drained last and in full; everything stateless is stopped first, and is
+terminated rather than waited on once it has released what it holds.
+
+Agent runs that are still executing do not survive the stop. They are not
+resumed on the next boot, so re-run them.
+
+Supervisor's process names are group-qualified inside the container -- use
+`supervisorctl status` to see them (`runtime:rest`, `state:postgres`, and so
+on) rather than assuming a bare name.
 
 ## Configuration
 
