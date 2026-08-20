@@ -701,9 +701,14 @@ describe("CredentialsInput – a removed connection", () => {
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
   });
 
-  it("keeps an existing credential while its filtered list is empty", async () => {
+  it("keeps an existing credential when filtering excludes it", async () => {
     const onSelectionChange = vi.fn();
-    mockProvider([], [{ ...codexCredential }]);
+    const otherCredential = {
+      ...codexCredential,
+      id: "codex-2",
+      title: "Other ChatGPT connection",
+    };
+    mockProvider([otherCredential], [codexCredential, otherCredential]);
 
     render(
       <StatefulCredentialsInput
