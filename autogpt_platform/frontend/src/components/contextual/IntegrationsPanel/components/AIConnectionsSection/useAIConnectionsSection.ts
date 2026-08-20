@@ -7,6 +7,7 @@ import {
   useGetV2ListChatTransports,
   usePutV2SetDefaultChatTransport,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
@@ -23,6 +24,26 @@ export function useAIConnectionsSection() {
       ? transportsQuery.data.data.transports
       : [];
   const connections = transports.filter(isSelectable);
+
+  // The account a connection runs as. Read from the stored credential rather
+  // than asked of the provider: this is the identity the user linked, so it is
+  // true without a live call, and it cannot go stale the way a usage window
+  // can.
+  const credentialsQuery = useGetV1ListCredentials({
+    query: {
+      select: (response) => (response.status === 200 ? response.data : []),
+    },
+  });
+  const accountByCredentialId = new Map(
+    (credentialsQuery.data ?? [])
+      .filter((credential) => credential.username)
+      .map((credential) => [credential.id, credential.username as string]),
+  );
+
+  function accountFor(transport: ChatTransportResponse): string | undefined {
+    if (!transport.credential_id) return undefined;
+    return accountByCredentialId.get(transport.credential_id);
+  }
 
   const { mutateAsync: setDefault, isPending: isSaving } =
     usePutV2SetDefaultChatTransport({
@@ -61,6 +82,7 @@ export function useAIConnectionsSection() {
 
   return {
     connections,
+    accountFor,
     selectedKey,
     chooseDefault,
     isSaving,
