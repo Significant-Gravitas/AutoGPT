@@ -49,10 +49,32 @@ x-codex-tmpfs: &codex-tmpfs
   - /run/autogpt-codex:rw,nosuid,nodev,noexec,mode=0700,size=128m
 
 # Shared base for the three Redis Cluster shards + one-shot init sidecar.
-# The anchor absorbs image + network so each service body collapses to its
-# hostname + command + (for the seed) volume + healthcheck.
+# The anchor absorbs image + user + network so each service body collapses to
+# its hostname + command + (for the seed) healthcheck.
+#
+# ``REDIS_IMAGE`` selects the engine for all four containers at once.
+# ``redis:7`` is the default here and what backend CI covers on every leg; the
+# escape hatch exists because the shard command lines and healthchecks below
+# are engine-neutral — any Redis-compatible image that provides
+# ``redis-server``/``redis-cli`` and Redis 7.0 cluster semantics (sharded
+# pub/sub, ``EXPIRE NX``) drops in unchanged. Valkey qualifies, ships both
+# names as symlinks, and is already the engine inside the single-container
+# distribution:
+#   REDIS_IMAGE=valkey/valkey:8.1 docker compose up -d deps
+# Documented in ``.env.default`` alongside this file — note that is the file
+# compose interpolates from, not ``backend/.env(.default)``.
+#
+# ``user`` is pinned rather than left to the image entrypoint. Both images
+# gate their privilege drop on being invoked as their *own* server binary —
+# ``redis:7`` on ``redis-server``, Valkey on ``valkey-server`` — and the
+# commands below call ``redis-server``, which is a symlink under Valkey. So
+# Valkey would stay root here while ``redis:7`` does not. The numeric form
+# covers both: uid/gid 999 exists in each image (``redis`` and ``valkey``
+# respectively) and owns the ``/data`` workdir where ``nodes.conf`` is
+# written.
 x-redis-node: &redis-node
-  image: redis:7
+  image: ${REDIS_IMAGE:-redis:7}
+  user: "999:999"
   networks:
     - app-network
 
@@ -93,14 +115,14 @@ services:
       retries: 3
       start_period: 5s
 
-  # Three-container 3-master Redis Cluster for local dev. Stock ``redis:7``
-  # on each shard runs its default entrypoint; the one-shot ``redis-init``
-  # sidecar runs ``redis-cli --cluster create`` once and exits. No volumes
-  # — local dev treats the cluster as cache-only, so every ``docker compose
-  # up`` starts fresh. (Persisting only the seed volume across restarts is
-  # a trap: the other shards come back with new IDs and the seed's
-  # ``nodes.conf`` pins stale peers that cluster gossip can't heal.) Each
-  # shard announces its own compose hostname via
+  # Three-container 3-master Redis Cluster for local dev. Each shard runs the
+  # engine image's default entrypoint (see ``x-redis-node``); the one-shot
+  # ``redis-init`` sidecar runs ``redis-cli --cluster create`` once and exits.
+  # No volumes — local dev treats the cluster as cache-only, so every
+  # ``docker compose up`` starts fresh. (Persisting only the seed volume
+  # across restarts is a trap: the other shards come back with new IDs and
+  # the seed's ``nodes.conf`` pins stale peers that cluster gossip can't
+  # heal.) Each shard announces its own compose hostname via
   # ``--cluster-announce-hostname`` so both in-compose clients (Docker DNS)
   # and host-native clients (handled by the backend's ``address_remap``)
   # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002

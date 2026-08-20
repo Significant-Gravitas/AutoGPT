@@ -19,6 +19,10 @@ import pytest
 ISOLATED_PROJECT = "redis-restart-test"
 ISOLATED_PORTS = (27110, 27111, 27112)
 ISOLATED_BUS_PORTS = (37110, 37111, 37112)
+# Same knob as the compose stack, so a run against a non-default engine
+# exercises restart/reconnect on that engine too rather than silently
+# falling back to Redis. Any image providing redis-server/redis-cli works.
+ISOLATED_IMAGE = os.getenv("REDIS_IMAGE") or "redis:7"
 
 
 def _docker_available() -> bool:
@@ -79,7 +83,7 @@ def _start_isolated_cluster() -> None:
                 f"redis-{i}",
                 "-p",
                 f"{port}:{port}",
-                "redis:7",
+                ISOLATED_IMAGE,
                 "redis-server",
                 "--port",
                 str(port),
@@ -112,7 +116,7 @@ def _start_isolated_cluster() -> None:
             "--rm",
             "--network",
             network,
-            "redis:7",
+            ISOLATED_IMAGE,
             "redis-cli",
             "--cluster",
             "create",
