@@ -32,17 +32,20 @@ const PARENT_ID = "parent-agent-id";
 const PARENT_GRAPH_ID = "parent-graph-id";
 const TRIGGER_ID = "trigger-agent-id";
 const TRIGGER_GRAPH_ID = "trigger-graph-id";
+const mockRouter = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+}));
+const mockUseRouter = vi.hoisted(() => vi.fn());
+const mockRouterReplace = mockRouter.replace;
 
 vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
     ...actual,
     useParams: () => ({ id: PARENT_ID }),
-    useRouter: () => ({
-      push: vi.fn(),
-      replace: vi.fn(),
-      refresh: vi.fn(),
-    }),
+    useRouter: () => mockUseRouter(),
     usePathname: () => `/library/agents/${PARENT_ID}`,
     useSearchParams: () => new URLSearchParams(),
   };
@@ -169,8 +172,34 @@ function singlePresetListHandler(
 describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
+    mockUseRouter.mockReturnValue(mockRouter);
+    mockRouterReplace.mockReset();
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
+  });
+
+  test("redirects to the library when the requested agent does not exist", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    mockUseRouter.mockImplementation(() => ({ ...mockRouter }));
+    server.use(
+      http.get("/api/proxy/api/library/agents/:libraryAgentId", () =>
+        HttpResponse.json(
+          { detail: "Agent not found in library" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    renderWithInitialParams(<NewAgentLibraryView />);
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/library");
+    });
+    expect(
+      mockRouterReplace.mock.calls.filter(([href]) => href === "/library"),
+    ).toHaveLength(1);
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(screen.queryByText("Agent not found in library")).toBeNull();
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
@@ -905,6 +934,7 @@ describe("Library agent view — trigger agents", () => {
     // On the Templates tab the shared preset query's error must still
     // surface — the tab guard only suppresses it elsewhere.
     await screen.findByText(/when retrieving agent/i);
+    expect(mockRouterReplace).not.toHaveBeenCalledWith("/library");
   });
 
   test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
