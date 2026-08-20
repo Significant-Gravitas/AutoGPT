@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -230,3 +230,127 @@ def test_explicit_platform_is_distinguishable_from_unset():
     )
 
     assert chosen.transport == AutoPilotTransport.PLATFORM
+
+
+CODEX_META = {
+    "id": "cred-1",
+    "provider": "codex",
+    "type": "oauth2",
+    "title": "Personal ChatGPT",
+}
+
+
+def _context():
+    return ExecutionContext(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_exec_id="graph-exec-1",
+        node_id="node-1",
+        node_exec_id="node-exec-1",
+    )
+
+
+async def _run_block(input_data):
+    """Drive run() far enough to observe which account the session bills."""
+    block = AutoPilotBlock()
+    create_session = AsyncMock(return_value="session-1")
+    execute_copilot = AsyncMock(
+        return_value=(
+            "done",
+            [],
+            "[]",
+            "session-1",
+            {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+    )
+    with (
+        patch.object(block, "create_session", create_session),
+        patch.object(block, "execute_copilot", execute_copilot),
+    ):
+        outputs = {
+            name: value
+            async for name, value in block.run(input_data, execution_context=_context())
+        }
+    return outputs, create_session
+
+
+@pytest.mark.asyncio
+async def test_run_bills_the_connection_when_transport_is_unset():
+    """The legacy branch. Asserting pydantic defaults would pass even if run()
+    billed platform, so this drives the decision itself."""
+    outputs, create_session = await _run_block(
+        AutoPilotBlock.Input(prompt="go", codex_credentials=CODEX_META)
+    )
+
+    assert outputs["response"] == "done"
+    assert create_session.await_args.kwargs["llm_auth_provider"] == "codex"
+    assert create_session.await_args.kwargs["llm_credential_id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_run_honours_explicit_platform_over_an_attached_connection():
+    """Without this a user could never move a step back onto platform credits:
+    the leftover connection kept deciding."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    outputs, create_session = await _run_block(
+        AutoPilotBlock.Input(
+            prompt="go",
+            transport=AutoPilotTransport.PLATFORM,
+            codex_credentials=CODEX_META,
+        )
+    )
+
+    assert outputs["response"] == "done"
+    assert create_session.await_args.kwargs["llm_auth_provider"] == "platform"
+    assert create_session.await_args.kwargs["llm_credential_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_run_fails_closed_when_codex_is_chosen_without_a_connection():
+    """Falling back to platform would bill a different account than the one
+    asked for, without saying so."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    outputs, create_session = await _run_block(
+        AutoPilotBlock.Input(prompt="go", transport=AutoPilotTransport.CODEX_APP_SERVER)
+    )
+
+    assert "ChatGPT" in outputs["error"]
+    create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_rejects_resuming_a_codex_session_on_platform():
+    """Regression: gating the resume check on `use_codex` skipped it entirely
+    for a platform node, so it silently continued on the codex session and
+    billed the subscription the user had just opted out of."""
+    from backend.blocks.autopilot import AutoPilotTransport
+
+    block = AutoPilotBlock()
+    execute_copilot = AsyncMock()
+    session = MagicMock()
+    session.metadata.llm_auth_provider = "codex"
+    session.metadata.llm_credential_id = "cred-1"
+
+    input_data = AutoPilotBlock.Input(
+        prompt="continue",
+        session_id="session-1",
+        transport=AutoPilotTransport.PLATFORM,
+        codex_credentials=CODEX_META,
+    )
+
+    with (
+        patch.object(block, "execute_copilot", execute_copilot),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        outputs = {
+            name: value
+            async for name, value in block.run(input_data, execution_context=_context())
+        }
+
+    assert outputs["error"] == "codex_session_route_mismatch"
+    execute_copilot.assert_not_awaited()

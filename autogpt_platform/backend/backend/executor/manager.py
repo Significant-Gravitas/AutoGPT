@@ -369,7 +369,15 @@ async def execute_node(
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
-            if credential_fields_info[field_name].credential_reference_only:
+            field_info = credential_fields_info[field_name]
+            # A stale credential left on a node whose selection no longer uses
+            # it must not be resolved: enforcing entitlement here hard-fails a
+            # platform-funded run for a user who never asked to use codex.
+            if field_info.discriminator and not field_info.requires_credentials(
+                input_data.get(field_info.discriminator)
+            ):
+                continue
+            if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
                     user_id,
                     credentials_meta.id,
