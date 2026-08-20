@@ -20,20 +20,36 @@ import "katex/dist/katex.min.css";
 const markdownPatterns = [
   /```[\s\S]*?```/u, // Fenced code blocks (check first)
   /^#{1,6}\s+\S+/gmu, // ATX headers (require content)
-  /\*\*[^*\n]+?\*\*/u, // **bold**
-  /__(?!_)[^_\n]+?__(?!_)/u, // __bold__ (avoid ___/snake_case_)
-  /(?<!\*)\*(?!\*)(?:[^*\n]|(?<=\\)\*)+?(?<!\\)\*(?!\*)/u, // *italic* (try to avoid **)
-  /(?<!_)_(?!_)(?:[^_\n]|(?<=\\)_)+?(?<!\\)_(?!_)/u, // _italic_ with guards
-  /\[([^\]\n]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/u, // Links with optional title (simple)
+  /\*\*[^*
+]+?\*\*/u, // **bold**
+  /__(?!_)[^_
+]+?__(?!_)/u, // __bold__ (avoid ___/snake_case_)
+  // *italic* – rewritten without lookbehinds for Safari < 16.4 compatibility.
+  // Matches an optional non-* char before the opening *, then italic content.
+  /(?:^|[^*])\*(?!\*)(?:[^*
+\\]|\\.)+?\*(?![*])/u,
+  // _italic_ – rewritten without lookbehinds for Safari < 16.4 compatibility.
+  /(?:^|[^_])_(?!_)(?:[^_
+\\]|\\.)+?_(?![_])/u,
+  /\[([^\]
+]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/u, // Links with optional title (simple)
   /!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/u, // Images with optional title (simple)
-  /`[^`\n]+`/u, // Inline code
-  /^(?:\s*[-*+]\s+\S.*)(?:\n\s*[-*+]\s+\S.*)+$/gmu, // UL list (≥2 items)
-  /^(?:\s*\d+\.\s+\S.*)(?:\n\s*\d+\.\s+\S.*)+$/gmu, // OL list (≥2 items)
+  /`[^`
+]+`/u, // Inline code
+  /^(?:\s*[-*+]\s+\S.*)(?:
+\s*[-*+]\s+\S.*)+$/gmu, // UL list (>=2 items)
+  /^(?:\s*\d+\.\s+\S.*)(?:
+\s*\d+\.\s+\S.*)+$/gmu, // OL list (>=2 items)
   /^>\s+\S.*/gm, // Blockquotes
-  /^\|[^|\n]+(\|[^|\n]+)+\|\s*$/gm, // Table row (at least two cells)
+  /^\|[^|
+]+(\|[^|
+]+)+\|\s*$/gm, // Table row (at least two cells)
   /^\s*\|(?:\s*:?[-=]{3,}\s*\|)+\s*$/gm, // Table separator row
   /\$\$[\s\S]+?\$\$/u, // Display math
-  /(?<!\\)(?<!\w)\$[^$\n]+?\$(?!\w)/u, // Inline math: avoid prices/ids
+  // Inline math – rewritten without lookbehinds for Safari < 16.4 compatibility.
+  // Requires a non-word, non-backslash character (or start of string) before $.
+  /(?:^|[^\w\\])\$[^$
+]+?\$(?!\w)/u,
 ];
 
 const videoExtensions = [".mp4", ".webm", ".ogg", ".mov", ".avi"];
