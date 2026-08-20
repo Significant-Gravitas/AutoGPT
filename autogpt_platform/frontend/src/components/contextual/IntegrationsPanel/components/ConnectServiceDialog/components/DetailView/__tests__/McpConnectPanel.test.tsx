@@ -237,6 +237,71 @@ describe("McpConnectPanel", () => {
     expect(screen.getByRole("button", { name: /connect/i })).toBeDefined();
   });
 
+  it("discards manual credentials when the server URL changes", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
+      .mockResolvedValueOnce({
+        status: 400,
+        data: { detail: "OAuth not supported" },
+        headers: new Headers(),
+      } as never)
+      .mockResolvedValueOnce({
+        status: 400,
+        data: { detail: "OAuth not supported" },
+        headers: new Headers(),
+      } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+
+    const urlInput = screen.getByLabelText(/server url/i);
+    fireEvent.change(urlInput, {
+      target: { value: "https://server-a.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+    fireEvent.change(screen.getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "credential-for-server-a" },
+    });
+
+    fireEvent.change(urlInput, {
+      target: { value: "https://server-b.example.com" },
+    });
+
+    expect(screen.queryByLabelText("Authentication type")).toBeNull();
+    expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+    expect(
+      (screen.getByLabelText("Authentication type") as HTMLSelectElement).value,
+    ).toBe("bearer");
+    expect(
+      (screen.getByPlaceholderText(/paste api token/i) as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /save token/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+  });
+
   it("surfaces an error when bearer-token submission fails", async () => {
     const {
       postV2InitiateOauthLoginForAnMcpServer,

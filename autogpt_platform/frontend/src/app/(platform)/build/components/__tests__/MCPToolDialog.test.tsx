@@ -84,6 +84,10 @@ describe("MCPToolDialog credential binding", () => {
   });
 
   it("attaches a manually stored credential to a tool from the same server", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     const onConfirm = vi.fn();
     render(<MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />);
 
@@ -98,6 +102,49 @@ describe("MCPToolDialog credential binding", () => {
         credentials: CREDENTIAL,
       }),
     );
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).toHaveBeenNthCalledWith(
+      2,
+      {
+        server_url: PRIVATE_SERVER_URL,
+        auth_token: "private-secret",
+      },
+    );
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+      server_url: PRIVATE_SERVER_URL,
+      token: "private-secret",
+    });
+  });
+
+  it("does not store a manual credential rejected by discovery", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer)
+      .mockResolvedValueOnce(
+        apiResponse(401, { detail: "Authentication required" }),
+      )
+      .mockResolvedValueOnce(
+        apiResponse(401, { detail: "Invalid API credential" }),
+      );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, { detail: "OAuth not supported" }),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    const tokenInput = await screen.findByLabelText("API token");
+    fireEvent.change(tokenInput, { target: { value: "invalid-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect & Discover" }));
+
+    expect(await screen.findByText("Invalid API credential")).toBeDefined();
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("does not reuse a credential after changing to a public server", async () => {

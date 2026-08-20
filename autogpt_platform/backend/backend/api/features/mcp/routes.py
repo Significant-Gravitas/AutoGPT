@@ -80,7 +80,7 @@ async def discover_tools(
     Connect to an MCP server and return its available tools.
 
     If the user has a stored MCP credential for this server URL, it will be
-    used automatically — no need to pass an explicit auth token.
+    used automatically — no need to pass an explicit auth credential.
     """
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
@@ -219,7 +219,7 @@ async def mcp_oauth_login(
         raise fastapi.HTTPException(
             status_code=400,
             detail="This MCP server does not advertise OAuth support. "
-            "You may need to provide an auth token manually.",
+            "You may need to provide an auth credential manually.",
         )
 
     authorize_url = metadata["authorization_endpoint"]
@@ -404,13 +404,13 @@ async def mcp_oauth_callback(
 
 
 class MCPStoreTokenRequest(BaseModel):
-    """Request to store a bearer token for an MCP server that doesn't support OAuth."""
+    """Request to store a manual auth credential for an MCP server without OAuth."""
 
     server_url: str = Field(
-        description="MCP server URL the token authenticates against"
+        description="MCP server URL the credential authenticates against"
     )
     token: SecretStr = Field(
-        min_length=1, description="Bearer token / API key for the MCP server"
+        min_length=1, description="Basic or Bearer credential for the MCP server"
     )
 
 
@@ -424,11 +424,11 @@ async def mcp_store_token(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
     """
-    Store a manually provided bearer token as an MCP credential.
+    Store a manually provided Basic or Bearer credential for an MCP server.
 
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
-    ``run_mcp_tool`` calls will automatically pick up the token via
+    ``run_mcp_tool`` calls will automatically pick up the credential via
     ``_auto_lookup_credential``.
     """
     try:

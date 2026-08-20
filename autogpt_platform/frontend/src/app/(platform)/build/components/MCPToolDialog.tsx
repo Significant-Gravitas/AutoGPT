@@ -217,6 +217,17 @@ export function MCPToolDialog({
     setError(null);
     try {
       const authValue = prepareMCPAuthCredential(credential, manualAuthScheme);
+
+      // Validate the credential before persisting it so a rejected token never
+      // replaces a working credential for this server.
+      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: url,
+        auth_token: authValue,
+      });
+      if (toolsResponse.status !== 200) {
+        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      }
+
       const credentialResponse = await postV2StoreABearerTokenForAnMcpServer({
         server_url: url,
         token: authValue,
@@ -236,15 +247,6 @@ export function MCPToolDialog({
       });
       setCredentialServerUrl(url);
 
-      // Discover through the stored credential so the same credential ID is
-      // attached to the new block and used again when the graph executes.
-      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: url,
-        auth_token: null,
-      });
-      if (toolsResponse.status !== 200) {
-        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
-      }
       applyDiscoveredTools(toolsResponse);
     } catch (error: unknown) {
       setError(

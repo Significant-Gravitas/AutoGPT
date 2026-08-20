@@ -148,6 +148,18 @@ export function McpConnectPanel({ onSuccess }: Props) {
     setError(null);
   }
 
+  function handleServerUrlChange(nextUrl: string) {
+    const serverIdentityChanged = serverUrl.trim() !== nextUrl.trim();
+
+    setServerUrl(nextUrl);
+    if (!serverIdentityChanged) return;
+
+    setToken("");
+    setAuthScheme("bearer");
+    setPhase("form");
+    setError(null);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Text variant="body" className="text-zinc-600">
@@ -162,7 +174,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
         type="url"
         placeholder="https://mcp.example.com"
         value={serverUrl}
-        onChange={(e) => setServerUrl(e.target.value)}
+        onChange={(e) => handleServerUrlChange(e.target.value)}
         disabled={isSubmitting}
         autoFocus
       />
