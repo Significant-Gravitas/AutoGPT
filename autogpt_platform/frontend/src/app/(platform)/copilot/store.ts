@@ -53,13 +53,6 @@ export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 /** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
 export const PANEL_RESERVED_WIDTH = 440;
 
-/**
- * Execution engine the server chose for a turn. Internal: there is no control
- * for it and nothing displays it — the type survives only because the stream
- * still announces a switch, which widens the post-finish refetch window.
- */
-export type CopilotMode = "extended_thinking" | "fast";
-
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
