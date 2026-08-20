@@ -77,14 +77,14 @@ async def test_dry_run_nothing_pending_is_a_silent_no_op():
 @pytest.mark.asyncio
 async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
     """The predicate is the idempotency guarantee — it must exclude nodes that
-    already have a transport, and id-less credential metas (nothing selected)."""
+    have a concrete transport, and id-less credential metas (nothing selected)."""
     query = AsyncMock(return_value=[{"count": 0}])
     with patch("backend.data.autopilot_migrate.query_raw_with_schema", new=query):
         await migrate_autopilot_transport(apply=False)
 
     sql, block_id = query.await_args.args
     assert block_id == AUTOPILOT_BLOCK_ID
-    assert "NOT (\"constantInput\" ? 'transport')" in sql
+    assert "\"constantInput\"->>'transport' IS NULL" in sql
     assert "'codex_credentials'->>'id' IS NOT NULL" in sql
 
 
@@ -142,6 +142,13 @@ async def test_apply_is_idempotent_against_database(server):
                 "codex_credentials": {"id": "cred-2"},
             },
         )
+        null_transport = await seed(
+            AUTOPILOT_BLOCK_ID,
+            {
+                "transport": None,
+                "codex_credentials": {"id": "cred-null"},
+            },
+        )
         idless = await seed(
             AUTOPILOT_BLOCK_ID,
             {"codex_credentials": {"provider": "codex", "type": "oauth2"}},
@@ -151,7 +158,7 @@ async def test_apply_is_idempotent_against_database(server):
             {"codex_credentials": {"id": "cred-3"}},
         )
 
-        assert await migrate_autopilot_transport(apply=True) == 1
+        assert await migrate_autopilot_transport(apply=True) == 2
         assert await migrate_autopilot_transport(apply=True) == 0
 
         async def constant_input(node_id: str) -> dict:
@@ -162,6 +169,7 @@ async def test_apply_is_idempotent_against_database(server):
             return dict(node.constantInput or {})
 
         assert (await constant_input(matching))["transport"] == "codex_app_server"
+        assert (await constant_input(null_transport))["transport"] == "codex_app_server"
         assert (await constant_input(already_migrated))["transport"] == "platform"
         assert "transport" not in await constant_input(idless)
         assert "transport" not in await constant_input(other)

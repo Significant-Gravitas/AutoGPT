@@ -37,7 +37,7 @@ def _match(block_id_parameter: int) -> str:
     return f"""
     "agentBlockId" = ${block_id_parameter}
     AND "constantInput"->'codex_credentials'->>'id' IS NOT NULL
-    AND NOT ("constantInput" ? 'transport')
+    AND "constantInput"->>'transport' IS NULL
 """
 
 
