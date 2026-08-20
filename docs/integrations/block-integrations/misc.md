@@ -38,6 +38,43 @@ Input and output schemas define the expected data structure for communication be
 
 ---
 
+## Approve Reddit Post
+
+### What it is
+Approves a Reddit post or comment from the mod queue. Requires 'modposts' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block requires a prefixed Reddit thing ID — `t3_...` for a post or `t1_...` for a comment — and loads the matching PRAW object before calling the moderator `approve()` action with credentials that include the `modposts` scope. Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID could resolve to an unrelated object.
+
+On success, the block returns the original `post_id` and `success=True`. `Mod Queue` emits prefixed IDs on its `post_id` output, so the two blocks chain directly without losing whether the item started as a comment or a submission.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | Post or comment to approve. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| post_id | ID of the approved post (pass-through) | str |
+| success | Whether the approval succeeded | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**False Positive Cleanup**: Approve items from the mod queue after an external classifier determines they are safe.
+
+**Appeal Handling**: Restore a previously filtered post or comment after a moderator reviews a user appeal.
+
+**Hybrid Moderation**: Combine automated queue scoring with a final approval step for borderline content.
+<!-- END MANUAL -->
+
+---
+
 ## AutoPilot
 
 ### What it is
@@ -82,6 +119,50 @@ Tool and block identifiers provided in `tools` and `blocks` are validated at run
 **Multi-Step AI Workflows**: Chain autopilot blocks where one gathers data and another analyzes it, enabling complex AI pipelines within the graph editor.
 
 **Sub-Agent Delegation**: Delegate a research or formatting task to a sub-autopilot while the parent agent handles orchestration.
+<!-- END MANUAL -->
+
+---
+
+## Ban Subreddit User
+
+### What it is
+Bans a user from a subreddit. Requires 'modcontributors' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The input schema bounds the optional `duration` to 1–999 days (Reddit's cap for temporary bans) and caps the internal `reason`, `mod_note`, and user-facing `ban_message` fields at Reddit's moderation limits, so invalid values are rejected before any API call is made. The block then calls `sub.banned.add(...)`, optionally including a temporary duration and a `ban_message`.
+
+The outputs echo the target user and subreddit, plus `success` and a derived `permanent` flag so downstream steps can branch on temporary versus permanent bans. Use `reason` and `mod_note` for internal moderation context, and reserve `ban_message` for the explanation shown to the banned user.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit to ban the user from, excluding the /r/ prefix | str | Yes |
+| username | Reddit username to ban (without the u/ prefix) | str | Yes |
+| duration | Ban duration in days (1-999, Reddit's cap for temporary bans). Leave blank for a permanent ban. | int | No |
+| reason | Internal moderator-only ban reason (max 100 chars). Use ban_message to explain the ban to the user. | str | No |
+| mod_note | Internal moderator note (not shown to the user) | str | No |
+| ban_message | Optional custom message sent to the user explaining the ban | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| username | Banned username (pass-through) | str |
+| subreddit | Subreddit (pass-through) | str |
+| success | Whether the ban was applied | bool |
+| permanent | True if the ban is permanent | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Escalation Workflow**: Ban repeat offenders automatically after multiple confirmed moderation violations.
+
+**Temporary Cooldown**: Apply short bans during heated incidents while moderators review the situation.
+
+**Policy Enforcement**: Pair user reporting or detection blocks with standardized ban actions and messaging.
 <!-- END MANUAL -->
 
 ---
@@ -738,6 +819,88 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 
 ---
 
+## Lock Reddit Post
+
+### What it is
+Locks or unlocks a Reddit post or comment to prevent or allow replies. Requires 'modposts' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block resolves the target `post_id` to the correct Reddit object from its `t3_` (post) or `t1_` (comment) prefix, so both can be locked or unlocked from the same input field; bare, unprefixed IDs are rejected as ambiguous. It then calls `lock()` when `lock=True` or `unlock()` when `lock=False`, using moderator credentials with the `modposts` scope.
+
+The block returns the original `post_id` plus the resulting `locked` state, which makes it useful in review pipelines where the moderation decision and final state need to be recorded explicitly.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | Post or comment to lock or unlock. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
+| lock | True to lock (disable comments/replies), False to unlock | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| post_id | ID of the post (pass-through) | str |
+| locked | Current lock state after the action | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Thread Freeze**: Lock a post when discussion becomes abusive or starts attracting brigading.
+
+**Post-Resolution Cleanup**: Unlock a thread again after moderators have resolved the incident and want to reopen discussion.
+
+**Incident Playbooks**: Trigger lock or unlock actions automatically from moderation decision trees.
+<!-- END MANUAL -->
+
+---
+
+## Mod Queue
+
+### What it is
+Fetches the mod queue for a subreddit. Scalar outputs fan out once per queued post or comment; items emits the full batch once. Requires moderator access.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block calls `sub.mod.modqueue(...)` for the target subreddit, forwarding the optional `only` filter and the `limit` value (bounded to 1–100 so a single run can't fan out into an unbounded chain of paginated Reddit calls). Each returned PRAW item is normalized into a predictable dictionary with a fullname ID, detected item type, title fallback for comments, author, permalink, and moderator reason.
+
+The block emits every queue entry individually for fan-out workflows and also emits the full `items` list for batch processing. Because the `post_id` output keeps the Reddit fullname (`t1_...` or `t3_...`), downstream moderation blocks can safely act on comments and submissions without extra type checks.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit name, excluding the /r/ prefix | str | Yes |
+| limit | Maximum number of items to fetch from the mod queue (1-100) | int | No |
+| only | Filter to only submissions or only comments. Leave blank for both. | "submissions" \| "comments" | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| post_id | Full Reddit thing ID of a queued item, such as 't3_abc123' or 't1_xyz789' | str |
+| item_type | Whether the queued item is a comment or submission | "comment" \| "submission" |
+| post_title | Title of the queued item | str |
+| author | Username of the author | str |
+| permalink | Full Reddit permalink | str |
+| reason | Mod queue reason (if any) | str |
+| items | All queued items as a list. Emitted exactly once; an empty list signals that the queue was checked and had no items. | List[Dict[str, Any]] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Queue Triage**: Pull the latest subreddit queue and route each item into approve, remove, or lock actions.
+
+**Moderator Dashboards**: Feed queued items into summaries, alerts, or external review systems for human moderators.
+
+**Policy Automation**: Filter only comments or only submissions when building specialized moderation pipelines.
+<!-- END MANUAL -->
+
+---
+
 ## Post Reddit Comment
 
 ### What it is
@@ -886,6 +1049,45 @@ This block uses the Reddit API via PRAW to fetch posts you've submitted to Reddi
 **Content Management**: Review and manage your Reddit posting history.
 
 **Performance Tracking**: Analyze the engagement of your previous posts.
+<!-- END MANUAL -->
+
+---
+
+## Remove Reddit Post
+
+### What it is
+Removes a Reddit post or comment as a moderator. Requires 'modposts' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block requires a prefixed Reddit thing ID (`t3_...` for a post, `t1_...` for a comment) and resolves it to the matching submission or comment before moderation; bare IDs are rejected because posts and comments share an ID namespace. It then calls `thing.mod.remove(...)`, forwarding the `spam` flag and the optional `mod_note`, which is capped at Reddit's 250-character moderator-note limit by the input schema.
+
+The block returns the original `post_id` and a success flag so workflows can record or branch on the removal decision. Passing through the prefixed IDs emitted by `Mod Queue` lets the same flow moderate queued comments and submissions without extra conversion.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| post_id | Post or comment to remove. Full Reddit thing ID, prefixed with 't3_' for a post (e.g. 't3_abc123') or 't1_' for a comment (e.g. 't1_xyz789'). Bare IDs are rejected: posts and comments share an ID namespace, so an unprefixed ID cannot be resolved safely. | str | Yes |
+| spam | Mark as spam (True) or just remove (False). Spam trains the filter. | bool | No |
+| mod_note | Optional internal moderator note visible only to mods | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| post_id | ID of the removed post (pass-through) | str |
+| success | Whether the removal succeeded | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Spam Cleanup**: Remove obvious spam and optionally train Reddit's spam filter by marking it as spam.
+
+**Comment Moderation**: Use fullnames from `Mod Queue` to remove problematic comments without additional lookup steps.
+
+**Human-in-the-Loop Review**: Attach an internal moderator note when an automated rule removes borderline content.
 <!-- END MANUAL -->
 
 ---
@@ -1044,6 +1246,46 @@ The block handles connection, authentication, and message delivery, returning a 
 
 ---
 
+## Send Mod Mail
+
+### What it is
+Sends a modmail message from a subreddit to a user. Requires 'modmail' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block opens the target subreddit and creates a modmail conversation via `sub.modmail.create(...)` using the provided recipient, subject, and body. Because it uses the subreddit modmail endpoint, the credential must include the `modmail` scope and moderator access to that community.
+
+On success, the block returns the new conversation ID and `success=True`, which gives later steps a stable reference for logging or follow-up actions. Any Reddit API failure is surfaced through the standard `error` output.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit to send modmail from, excluding the /r/ prefix | str | Yes |
+| to_username | Username to send the modmail to (without u/ prefix) | str | Yes |
+| subject | Subject line of the modmail message | str | Yes |
+| body | Body of the modmail message | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| conversation_id | ID of the created modmail conversation | str |
+| success | Whether the modmail was sent | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Appeal Responses**: Send official moderator replies when a user asks why content was removed or locked.
+
+**Proactive Outreach**: Notify a user about rule issues before escalating to stronger moderation actions.
+
+**Case Management**: Create modmail threads that can be referenced by later audit or follow-up steps.
+<!-- END MANUAL -->
+
+---
+
 ## Send Reddit Message
 
 ### What it is
@@ -1156,6 +1398,45 @@ The transcript text is returned as a single string, suitable for summarization, 
 **Content Repurposing**: Convert YouTube content into written articles, social posts, or documentation.
 
 **Research Automation**: Transcribe educational or informational videos for analysis and note-taking.
+<!-- END MANUAL -->
+
+---
+
+## Unban Subreddit User
+
+### What it is
+Unbans a user from a subreddit. Requires 'modcontributors' scope.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block opens the target subreddit with moderator credentials and calls `sub.banned.remove(username)` to remove the user from the community ban list. It requires the `modcontributors` scope, and on success it returns the `username`, `subreddit`, and `success=True` so the unban can be audited or chained into follow-up actions such as notifications.
+
+Reddit is responsible for validating the username, subreddit, and moderator permissions. If the username is malformed, the subreddit is missing, or the credential does not have sufficient moderator access, the Reddit API error is surfaced through the block's standard `error` output. In practice, repeated unban attempts are typically safe to treat as idempotent workflow steps: if another moderator already removed the ban, the operation should be logged as a no-op for auditability, while transient API failures or rate limits should be retried with normal backoff before escalating to a human moderator.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| subreddit | Subreddit to unban the user from, excluding the /r/ prefix | str | Yes |
+| username | Reddit username to unban (without the u/ prefix) | str | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| username | Unbanned username (pass-through) | str |
+| subreddit | Subreddit (pass-through) | str |
+| success | Whether the unban succeeded | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Appeal Resolution**: Restore access after a moderator approves a user's ban appeal.
+
+**Temporary Ban Expiry**: Pair scheduled workflows with unban actions when a manual review confirms the restriction should end.
+
+**Moderator Remediation**: Correct mistaken bans and immediately hand the result to a notification step.
 <!-- END MANUAL -->
 
 ---

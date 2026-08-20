@@ -2025,6 +2025,9 @@ def _mock_add_graph_execution_create_path(
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
 
+    mock_odb = mocker.patch("backend.executor.utils.onboarding_db")
+    mock_odb.increment_onboarding_runs = mocker.AsyncMock()
+
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
 
     mock_user = mocker.MagicMock()
