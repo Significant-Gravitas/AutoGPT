@@ -33,7 +33,6 @@ import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ModelToggleButton } from "./components/ModelToggleButton";
-import { ModeToggleButton } from "./components/ModeToggleButton";
 import { LLMRouteSelector } from "./components/LlmRouteSelector";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
@@ -95,45 +94,18 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
 }: Props) {
-  const {
-    copilotChatMode,
-    copilotModePinned,
-    setCopilotChatMode,
-    copilotLlmModel,
-    setCopilotLlmModel,
-    isDryRun,
-    setIsDryRun,
-  } = useCopilotUIStore();
-  const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
-  const showDryRunToggle = showModeToggle;
+  const { copilotLlmModel, setCopilotLlmModel, isDryRun, setIsDryRun } =
+    useCopilotUIStore();
+  // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
+  // Fast/Thinking control it was created for is gone. Renaming it means an
+  // LaunchDarkly change, so it is left until the combined picker restructures
+  // these controls anyway. Splitting it now would need two new flags and would
+  // hide both survivors until someone created them.
+  const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
-
-  function handleToggleMode() {
-    if (copilotModePinned) {
-      toast({
-        title: "Mode is locked while building an agent",
-        description:
-          "This session switched to Extended Thinking for agent building — building sessions stay on that engine.",
-      });
-      return;
-    }
-    const next =
-      copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
-    setCopilotChatMode(next);
-    toast({
-      title:
-        next === "fast"
-          ? "Switched to Fast mode"
-          : "Switched to Extended Thinking mode",
-      description:
-        next === "fast"
-          ? "Optimized for speed — ideal for simpler tasks."
-          : "Responses may take longer.",
-    });
-  }
 
   function handleToggleModel() {
     const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
@@ -378,20 +350,13 @@ export function ChatInput({
             align="inline-end"
             className="order-none ml-auto gap-1 py-1 pr-1.5"
           >
-            {showModeToggle && !isStreaming && (
-              <>
-                <ModeToggleButton
-                  mode={copilotChatMode}
-                  onToggle={handleToggleMode}
-                  pinned={copilotModePinned}
-                />
-                <ModelToggleButton
-                  model={copilotLlmModel}
-                  onToggle={handleToggleModel}
-                />
-              </>
+            {showAdvancedComposerControls && !isStreaming && (
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
+              />
             )}
-            {showDryRunToggle && !hasSession && (
+            {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
