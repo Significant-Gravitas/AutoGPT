@@ -5941,6 +5941,69 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/pods": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Pods",
+        "operationId": "list_expert_pods",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertPod" },
+                  "type": "array",
+                  "title": "Response List Expert Pods"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Create Expert Pod",
+        "operationId": "create_expert_pod",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePodRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertPod" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Duplicate pod name, or the pod limit is reached"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/raise": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -5968,9 +6031,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": {
-            "description": "First job listing not found or unavailable"
-          },
+          "404": { "description": "Attachment not found or unavailable" },
           "409": { "description": "Active expert limit reached" },
           "422": {
             "description": "Validation Error",
@@ -6097,6 +6158,95 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ExpertDetachPreview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/pod": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Assign Expert Pod",
+        "operationId": "assign_expert_pod",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AssignPodRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or pod not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/runs": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Runs",
+        "description": "Recent executions attributed to this expert, with a classified output\ntype for the Work surface's typed viewer.",
+        "operationId": "list_expert_runs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertRun" },
+                  "title": "Response List Expert Runs"
+                }
               }
             }
           },
@@ -9340,6 +9490,348 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/memory": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Erase My Memory",
+        "description": "Permanently erase the caller's entire account memory.",
+        "operationId": "erase_my_memory",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EraseMemoryResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/memory/experts/{expert_id}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Erase My Expert Memory",
+        "description": "Permanently erase one expert's entire isolated memory.",
+        "operationId": "erase_my_expert_memory",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EraseMemoryResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/facts": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "List My Expert Memory Facts",
+        "description": "Live facts in one expert's isolated memory, newest first.",
+        "operationId": "list_my_expert_memory_facts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/facts/{fact_uuid}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Expert Memory Fact",
+        "description": "Forget one fact from an expert's isolated memory.",
+        "operationId": "forget_my_expert_memory_fact",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          },
+          {
+            "name": "fact_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Fact edge uuid",
+              "title": "Fact Uuid"
+            },
+            "description": "Fact edge uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ForgetFactResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/experts/{expert_id}/overview": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Expert Memory Overview",
+        "description": "Counts for one of the caller's experts' isolated memory.",
+        "operationId": "get_my_expert_memory_overview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryScopeOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/facts": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "List My Memory Facts",
+        "description": "Live facts in the caller's account memory, newest first.",
+        "operationId": "list_my_memory_facts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/facts/{fact_uuid}": {
+      "delete": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Forget My Memory Fact",
+        "description": "Forget one fact from the caller's account memory.",
+        "operationId": "forget_my_memory_fact",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "fact_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Fact edge uuid",
+              "title": "Fact Uuid"
+            },
+            "description": "Fact edge uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ForgetFactResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/overview": {
+      "get": {
+        "tags": ["v2", "memory", "memory", "private"],
+        "summary": "Get My Memory Overview",
+        "description": "Counts for the caller's account (AutoPilot) memory.",
+        "operationId": "get_my_memory_overview",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryScopeOverview" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -14947,6 +15439,17 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "AssignPodRequest": {
+        "properties": {
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id"],
+        "title": "AssignPodRequest"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -15413,6 +15916,11 @@
             "type": "array",
             "title": "Required Inputs",
             "description": "List of input fields for this block"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider",
+            "description": "Integration provider slug when the block uses exactly one provider (e.g. 'google', 'discord'); used for provider icons in the chat UI"
           }
         },
         "type": "object",
@@ -15487,6 +15995,10 @@
             "additionalProperties": { "items": {}, "type": "array" },
             "type": "object",
             "title": "Outputs"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
@@ -17008,6 +17520,19 @@
         "required": ["name", "slug"],
         "title": "CreateOrgRequest"
       },
+      "CreatePodRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreatePodRequest"
+      },
       "CreateRaisedExpertRequest": {
         "properties": {
           "name": {
@@ -17023,6 +17548,20 @@
             ],
             "title": "Role"
           },
+          "avatar_url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Avatar Url"
+          },
+          "color": {
+            "anyOf": [
+              { "type": "string", "maxLength": 32 },
+              { "type": "null" }
+            ],
+            "title": "Color"
+          },
           "voice_preferences": {
             "anyOf": [
               { "type": "string", "maxLength": 4000 },
@@ -17030,12 +17569,25 @@
             ],
             "title": "Voice Preferences"
           },
-          "first_job_store_listing_version_id": {
+          "about": {
             "anyOf": [
-              { "type": "string", "maxLength": 100 },
+              { "type": "string", "maxLength": 10000 },
               { "type": "null" }
             ],
-            "title": "First Job Store Listing Version Id"
+            "title": "About"
+          },
+          "weekly_budget": {
+            "anyOf": [
+              { "type": "integer", "maximum": 1000000.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Weekly Budget"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachment" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Attachments"
           }
         },
         "type": "object",
@@ -17938,6 +18490,20 @@
         "required": ["uuid", "name"],
         "title": "EntitySummary"
       },
+      "EraseMemoryResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "deleted_nodes": { "type": "integer", "title": "Deleted Nodes" },
+          "erased": { "type": "boolean", "title": "Erased" }
+        },
+        "type": "object",
+        "required": ["deleted_nodes", "erased"],
+        "title": "EraseMemoryResponse",
+        "description": "Result of a scope wipe. ``deleted_nodes`` counts every node removed —\nentities, episodes (raw text included), and communities."
+      },
       "ErrorResponse": {
         "properties": {
           "type": {
@@ -18355,6 +18921,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": { "type": "string", "title": "Color", "default": "" },
           "role": { "type": "string", "title": "Role" },
           "tagline": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18423,6 +18990,10 @@
               { "type": "null" }
             ],
             "title": "Schedules Paused At"
+          },
+          "pod_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pod Id"
           }
         },
         "type": "object",
@@ -18477,6 +19048,89 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertPod": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "created_at"],
+        "title": "ExpertPod",
+        "description": "A named group of hired experts, scoped to the owner."
+      },
+      "ExpertRun": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "incomplete",
+              "queued",
+              "running",
+              "completed",
+              "terminated",
+              "failed",
+              "review"
+            ],
+            "title": "Status"
+          },
+          "output_type": {
+            "type": "string",
+            "enum": ["table", "doc", "image", "unknown"],
+            "title": "Output Type"
+          },
+          "output_key": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Output Key"
+          },
+          "needs_review": { "type": "boolean", "title": "Needs Review" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "agent_name",
+          "library_agent_id",
+          "status",
+          "output_type",
+          "output_key",
+          "needs_review",
+          "started_at",
+          "ended_at",
+          "link"
+        ],
+        "title": "ExpertRun",
+        "description": "One expert-attributed execution, for the /team Work surface."
       },
       "ExpertSoulUpdate": {
         "properties": {
@@ -18840,6 +19494,15 @@
         "type": "object",
         "title": "FolderUpdateRequest",
         "description": "Request model for updating a folder."
+      },
+      "ForgetFactResponse": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "forgotten": { "type": "boolean", "title": "Forgotten" }
+        },
+        "type": "object",
+        "required": ["uuid", "forgotten"],
+        "title": "ForgetFactResponse"
       },
       "GlobalSearchResponse": {
         "properties": {
@@ -21203,6 +21866,45 @@
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
       },
+      "MemoryFact": {
+        "properties": {
+          "uuid": { "type": "string", "title": "Uuid" },
+          "fact": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Fact"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "source": { "type": "string", "title": "Source" },
+          "target": { "type": "string", "title": "Target" },
+          "created_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["uuid", "source", "target"],
+        "title": "MemoryFact",
+        "description": "One live fact edge, as shown in the recent-memories list."
+      },
+      "MemoryFactListResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/MemoryFact" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "MemoryFactListResponse"
+      },
       "MemoryForgetCandidatesResponse": {
         "properties": {
           "type": {
@@ -21306,6 +22008,21 @@
         ],
         "title": "MemoryOverview",
         "description": "Counts surfaced in the visualizer's header strip."
+      },
+      "MemoryScopeOverview": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "facts": { "type": "integer", "title": "Facts" },
+          "entities": { "type": "integer", "title": "Entities" },
+          "episodes": { "type": "integer", "title": "Episodes" }
+        },
+        "type": "object",
+        "required": ["facts", "entities", "episodes"],
+        "title": "MemoryScopeOverview",
+        "description": "Counts for one memory scope, shown on the settings page and in the\nerase-confirmation dialog."
       },
       "MemorySearchResponse": {
         "properties": {
@@ -23314,32 +24031,67 @@
         "title": "QueuePendingMessageResponse",
         "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
       },
-      "RaiseResult": {
+      "RaiseAttachment": {
         "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "first_job_installed": {
-            "type": "boolean",
-            "title": "First Job Installed"
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
           },
-          "first_job_failure_reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": ["unavailable", "installation_failed"]
-              },
-              { "type": "null" }
-            ],
-            "title": "First Job Failure Reason"
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Id"
           }
         },
         "type": "object",
-        "required": [
-          "expert",
-          "first_job_installed",
-          "first_job_failure_reason"
-        ],
+        "required": ["kind", "source", "id"],
+        "title": "RaiseAttachment",
+        "description": "One workflow or skill to attach while raising an expert.\n\n``id`` is a store listing version UUID (marketplace), a library agent\nUUID (library workflow), or a copilot skill slug (library skill).\nMarketplace skills use a store listing version UUID; the listing's\npublic name is stored on ``Expert.skills``."
+      },
+      "RaiseAttachmentFailure": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["workflow", "skill"],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["marketplace", "library"],
+            "title": "Source"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "reason": {
+            "type": "string",
+            "enum": ["unavailable", "installation_failed"],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "source", "id", "reason"],
+        "title": "RaiseAttachmentFailure"
+      },
+      "RaiseResult": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "failed_attachments": {
+            "items": { "$ref": "#/components/schemas/RaiseAttachmentFailure" },
+            "type": "array",
+            "title": "Failed Attachments",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["expert"],
         "title": "RaiseResult",
-        "description": "Result of raising a blank expert. ``first_job_installed`` is only\nTrue when a first job was requested and its install succeeded, so the\nclient can surface partial success instead of a silent no-op. The stable\nfailure reason distinguishes a listing withdrawn mid-flow from an install\nfailure."
+        "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
       },
       "RateLimitResetResponse": {
         "properties": {

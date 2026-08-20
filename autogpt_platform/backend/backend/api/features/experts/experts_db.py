@@ -1,37 +1,52 @@
 import asyncio
 import logging
-from typing import Literal
+from collections import defaultdict
+from typing import Literal, cast
 
+import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
 from prisma.enums import ResourceVisibility
+from pydantic import JsonValue, ValidationError
 
-from backend.api.features.experts import scheduling
+from backend.api.features.experts import raise_attachments, scheduling
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertPod,
+    ExpertRun,
+    ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
     RaiseResult,
     decode_voice_preferences,
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.orgs.db import get_user_default_team
+from backend.blocks import get_output_block_ids
+from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
     resolve_attributable_expert as resolve_attributable_expert_row,
 )
+from backend.data.expert_run_output import (
+    OutputType,
+    classify_run_output,
+    reconstruct_run_outputs,
+)
 from backend.data.expert_spend import get_weekly_spend
+from backend.data.model import NodeExecutionStats
 from backend.data.user import get_user_by_id
+from backend.util import type as type_utils
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
-    NotFoundError,
 )
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -51,6 +66,7 @@ LIFETIME_RAISED_EXPERT_LIMIT = 100
 
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_MAX_EXPERT_RUNS = 20
 
 
 class ExpertTemplateNotFoundError(Exception):
@@ -65,6 +81,24 @@ class ExpertHireUnavailableError(Exception):
         self.expert_id = expert_id
 
 
+class ExpertPodNotFoundError(Exception):
+    def __init__(self, pod_id: str):
+        super().__init__(f"Pod {pod_id} not found")
+        self.pod_id = pod_id
+
+
+class ExpertPodNameTakenError(Exception):
+    def __init__(self, name: str):
+        super().__init__(f"A pod named {name!r} already exists")
+        self.name = name
+
+
+class ExpertPodLimitReachedError(Exception):
+    def __init__(self, limit: int):
+        super().__init__(f"You can have at most {limit} pods")
+        self.limit = limit
+
+
 class ExpertLimitExceededError(Exception):
     def __init__(self, limit: int):
         super().__init__(f"Active expert limit of {limit} reached")
@@ -77,25 +111,28 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         self.limit = limit
 
 
-class FirstJobUnavailableError(Exception):
-    def __init__(self, store_listing_version_id: str):
-        super().__init__(
-            f"Store listing version {store_listing_version_id} "
-            "not found or unavailable"
-        )
-        self.store_listing_version_id = store_listing_version_id
+FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 
 
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
+    # A listing always carries both name and description (non-null columns), so
+    # the pair is taken from one source or the other — never mixed, which would
+    # pair a published title with the creator's private description.
+    if listing is not None:
+        name, description = listing.name, listing.description
+    elif library_agent is not None:
+        name, description = library_agent.name, library_agent.description
+    else:
+        name, description = None, None
     return ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
         library_agent_id=row.libraryAgentId,
         graph_id=library_agent.agentGraphId if library_agent else None,
-        name=listing.name if listing else None,
-        description=listing.description if listing else None,
+        name=name,
+        description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
     )
@@ -123,6 +160,7 @@ def _to_model(
         id=row.id,
         name=row.name,
         avatar_url=row.avatarUrl,
+        color=row.color,
         role=row.role,
         tagline=row.tagline,
         bio=row.bio,
@@ -141,6 +179,7 @@ def _to_model(
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
+        pod_id=row.podId,
     )
 
 
@@ -294,6 +333,172 @@ async def get_expert(
     return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
 
 
+async def list_expert_runs(
+    user_id: str, expert_id: str, limit: int = _MAX_EXPERT_RUNS
+) -> list[ExpertRun]:
+    """Recent expert-attributed executions with a classified output type.
+
+    Owner-scoped: the execution, review and workflow lookups all filter by
+    *user_id*, so one user's Work surface can never surface another's runs.
+    Raises :class:`ExpertNotFoundError` when the expert isn't a live hire of
+    this user.
+    """
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        include=_WORKFLOW_INCLUDE,
+    )
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+
+    workflow_by_graph = {
+        w.LibraryAgent.agentGraphId: w
+        for w in expert.Workflows or []
+        if w.LibraryAgent is not None
+    }
+
+    executions = await prisma.models.AgentGraphExecution.prisma().find_many(
+        where={"userId": user_id, "expertId": expert_id, "isDeleted": False},
+        order={"createdAt": "desc"},
+        take=limit,
+    )
+    if not executions:
+        return []
+    execution_ids = [execution.id for execution in executions]
+
+    # Exact per-execution review state (WAITING reviews for exactly these
+    # ids) — a page of the user's newest reviews could miss an older run
+    # that is still genuinely blocked.
+    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
+        where={
+            "userId": user_id,
+            "status": prisma.enums.ReviewStatus.WAITING,
+            "graphExecId": {"in": execution_ids},
+        }
+    )
+    reviewing = {review.graphExecId for review in waiting_reviews}
+    classified = await _classify_run_outputs(execution_ids)
+
+    return [
+        _to_expert_run(
+            execution,
+            workflow_by_graph.get(execution.agentGraphId),
+            *classified.get(execution.id, ("unknown", None)),
+            needs_review=execution.id in reviewing,
+        )
+        for execution in executions
+    ]
+
+
+async def _classify_run_outputs(
+    execution_ids: list[str],
+) -> dict[str, tuple[OutputType, str | None]]:
+    """Batch-classify run outputs: one bounded query for the OUTPUT-block
+    node executions (plus their small name/value input rows) of all listed
+    executions, instead of a full ``get_graph_execution`` per run.
+
+    ``execution_ids`` must already be user-scoped by the caller (they come
+    from the owner-filtered executions query). Any per-execution parse
+    failure degrades that run to ``("unknown", None)`` — one corrupt run
+    must never 500 the whole Work tab.
+    """
+    node_execs = await prisma.models.AgentNodeExecution.prisma().find_many(
+        where={
+            "agentGraphExecutionId": {"in": execution_ids},
+            "Node": {"is": {"agentBlockId": {"in": list(get_output_block_ids())}}},
+            "executionStatus": {"not": prisma.enums.AgentExecutionStatus.INCOMPLETE},
+        },
+        include={"Input": True},
+    )
+    by_execution: dict[str, list[prisma.models.AgentNodeExecution]] = defaultdict(list)
+    for node_exec in node_execs:
+        by_execution[node_exec.agentGraphExecutionId].append(node_exec)
+
+    classified: dict[str, tuple[OutputType, str | None]] = {}
+    for execution_id in execution_ids:
+        try:
+            classified[execution_id] = classify_run_output(
+                _outputs_from_node_execs(by_execution.get(execution_id, []))
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to classify outputs for run #{execution_id}: "
+                f"{type(e).__name__}: {e}"
+            )
+            classified[execution_id] = ("unknown", None)
+    return classified
+
+
+def _outputs_from_node_execs(
+    node_execs: list[prisma.models.AgentNodeExecution],
+) -> dict[str, list[JsonValue]]:
+    return reconstruct_run_outputs(
+        [
+            (node_exec.queuedTime, node_exec.addedTime, _node_exec_inputs(node_exec))
+            for node_exec in node_execs
+        ]
+    )
+
+
+def _node_exec_inputs(
+    node_exec: prisma.models.AgentNodeExecution,
+) -> dict[str, JsonValue]:
+    """Mirror ``NodeExecutionResult.from_db`` input precedence: moderation-cleared
+    inputs win over the denormalized ``executionData`` blob, which wins over the
+    Input rows. Skipping the cleared branch would drop the name/value pins of a
+    moderated OUTPUT node and misclassify the run as ``unknown``.
+    """
+    try:
+        stats = NodeExecutionStats.model_validate(node_exec.stats or {})
+    except (ValueError, ValidationError):
+        stats = NodeExecutionStats()
+
+    if stats.cleared_inputs:
+        return {
+            name: (messages[-1] if messages else "")
+            for name, messages in stats.cleared_inputs.items()
+        }
+    if node_exec.executionData is not None:
+        return cast(
+            dict[str, JsonValue],
+            type_utils.convert(node_exec.executionData, dict),
+        )
+    return {
+        row.name: type_utils.convert(row.data, JsonValue)
+        for row in node_exec.Input or []
+    }
+
+
+def _to_expert_run(
+    execution: prisma.models.AgentGraphExecution,
+    workflow: prisma.models.ExpertWorkflow | None,
+    output_type: OutputType,
+    output_key: str | None,
+    *,
+    needs_review: bool,
+) -> ExpertRun:
+    listing = workflow.StoreListingVersion if workflow else None
+    library_agent_id = workflow.libraryAgentId if workflow else None
+    return ExpertRun(
+        execution_id=execution.id,
+        graph_id=execution.agentGraphId,
+        agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
+        library_agent_id=library_agent_id,
+        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
+        output_type=output_type,
+        output_key=output_key,
+        needs_review=needs_review,
+        started_at=execution.startedAt,
+        ended_at=execution.endedAt,
+        link=run_link(library_agent_id, execution.id),
+    )
+
+
 async def expert_row_exists(user_id: str, expert_id: str) -> bool:
     """Lenient existence check for a hired expert row owned by *user_id*.
 
@@ -357,6 +562,7 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
         "ownerUserId": user_id,
         "name": name or template.name,
         "avatarUrl": template.avatarUrl,
+        "color": template.color,
         "role": template.role,
         "tagline": template.tagline,
         "bio": template.bio,
@@ -511,56 +717,42 @@ async def create_raised_expert(
     name: str,
     role: str | None,
     voice_preferences: str | None,
-    first_job_store_listing_version_id: str | None,
+    *,
+    avatar_url: str | None = None,
+    color: str | None = None,
+    about: str | None = None,
+    weekly_budget: int | None = None,
+    attachments: list[RaiseAttachment] | None = None,
 ) -> RaiseResult:
     """Raise a blank expert owned by *user_id*.
 
     A raised expert has no source template, so ``sourceTemplateId`` stays
-    NULL. Capacity checks and creation share a per-user advisory lock. A
-    requested first job is validated before creation, then its exact listing
-    rows are locked and revalidated through workflow association. Installation
-    failure remains non-fatal and is reported in the result.
+    NULL. Capacity checks and creation share a per-user advisory lock.
+    Attachments are validated before creation. Workflow install failure
+    remains non-fatal and is reported in the result.
     """
-    if first_job_store_listing_version_id is not None:
-        await _validate_first_job_listing(first_job_store_listing_version_id)
-
-    expert = await _create_raised_expert_row(user_id, name, role, voice_preferences)
-    first_job_installed = False
-    failure_reason: Literal["unavailable", "installation_failed"] | None = None
-    if first_job_store_listing_version_id is not None:
-        try:
-            await _install_first_job(
-                user_id, expert.id, first_job_store_listing_version_id
-            )
-            first_job_installed = True
-        except (FirstJobUnavailableError, NotFoundError):
-            # NotFoundError covers the listing version or its graph disappearing
-            # between the locked availability check and graph resolution, which
-            # is the same "no longer available" outcome for the client.
-            failure_reason = "unavailable"
-            logger.warning(
-                f"First job {first_job_store_listing_version_id} became "
-                f"unavailable while raising expert #{expert.id} for user #{user_id}"
-            )
-        except Exception:
-            failure_reason = "installation_failed"
-            logger.exception(
-                f"Failed to install first job "
-                f"{first_job_store_listing_version_id} on raised "
-                f"expert #{expert.id} for user #{user_id}"
-            )
-
-    if first_job_installed:
+    resolved = await raise_attachments.resolve_attachments(user_id, attachments or [])
+    expert = await _create_raised_expert_row(
+        user_id,
+        name,
+        role,
+        voice_preferences,
+        avatar_url=avatar_url,
+        color=color,
+        about=about,
+        weekly_budget=weekly_budget,
+        skills=resolved.skill_names,
+    )
+    failed_attachments = await raise_attachments.install_workflows(
+        user_id, expert.id, resolved.workflows
+    )
+    if resolved.workflows and len(failed_attachments) < len(resolved.workflows):
         hydrated = await get_expert(user_id, expert.id)
         if hydrated is None:
             raise ExpertNotFoundError(expert.id)
     else:
         hydrated = _to_model(expert)
-    return RaiseResult(
-        expert=hydrated,
-        first_job_installed=first_job_installed,
-        first_job_failure_reason=failure_reason,
-    )
+    return RaiseResult(expert=hydrated, failed_attachments=failed_attachments)
 
 
 async def _create_raised_expert_row(
@@ -568,6 +760,12 @@ async def _create_raised_expert_row(
     name: str,
     role: str | None,
     voice_preferences: str | None,
+    *,
+    avatar_url: str | None,
+    color: str | None,
+    about: str | None,
+    weekly_budget: int | None = None,
+    skills: list[str] | None = None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
         await _lock_expert_creation(tx, user_id)
@@ -585,9 +783,13 @@ async def _create_raised_expert_row(
             data={
                 "ownerUserId": user_id,
                 "name": name,
+                "avatarUrl": avatar_url,
+                "color": color or "",
                 "role": role or "",
-                "identity": _raised_identity(name),
+                "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
+                "weeklyBudget": weekly_budget,
+                "skills": skills or [],
             },
             include=_WORKFLOW_INCLUDE,
         )
@@ -598,51 +800,9 @@ async def _install_first_job(
     expert_id: str,
     store_listing_version_id: str,
 ) -> None:
-    async with transaction() as tx:
-        is_installable = (
-            await library_db.is_store_listing_version_available_for_install(
-                store_listing_version_id,
-                tx=tx,
-                lock_rows=True,
-            )
-        )
-        if not is_installable:
-            raise FirstJobUnavailableError(store_listing_version_id)
-
-        expert = await tx.expert.find_first(
-            where={
-                "id": expert_id,
-                "ownerUserId": user_id,
-                "isTemplate": False,
-                "isArchived": False,
-            }
-        )
-        if expert is None:
-            raise ExpertNotFoundError(expert_id)
-
-        library_agent = await library_db.add_store_agent_to_library_in_transaction(
-            store_listing_version_id, user_id, tx
-        )
-        await tx.expertworkflow.create(
-            data={
-                "expertId": expert_id,
-                "storeListingVersionId": store_listing_version_id,
-                "libraryAgentId": library_agent.id,
-            }
-        )
-
-
-async def _validate_first_job_listing(store_listing_version_id: str) -> None:
-    """Require the submitted listing-version row itself to be live.
-
-    The shared library install path authorizes by graph, which would let a
-    pending or deleted version UUID pointing at an approved graph slip
-    through and link the expert to an unapproved row."""
-    is_installable = await library_db.is_store_listing_version_available_for_install(
-        store_listing_version_id
+    await raise_attachments.install_marketplace_workflow(
+        user_id, expert_id, store_listing_version_id
     )
-    if not is_installable:
-        raise FirstJobUnavailableError(store_listing_version_id)
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
@@ -970,3 +1130,85 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
         logger.exception(
             f"Failed to detach triggers while archiving expert #{expert_id}"
         )
+
+
+# ─── Pods (owner-scoped named groups) ──────────────────────────────────
+
+# Pods are a personal organisation aid, not a modelling primitive: a roster
+# large enough to need more groups than this is not a roster any more. The cap
+# also bounds what a scripted client can create.
+MAX_PODS_PER_USER = 100
+
+
+async def create_pod(user_id: str, name: str) -> ExpertPod:
+    """Create a pod owned by *user_id*.
+
+    The count is deliberately not serialized against the insert. This cap is a
+    guardrail on a self-scoped resource, not a billed quota, so a burst of
+    concurrent creates may overshoot by the burst width before the next call is
+    rejected — the bound that matters (a scripted client cannot grow the table
+    without limit) still holds. Making it exact would mean an advisory lock or
+    row lock on every create, which is the treatment ``credit.py`` reserves for
+    balances and is not warranted here.
+    """
+    existing = await prisma.models.ExpertPod.prisma().count(where={"userId": user_id})
+    if existing >= MAX_PODS_PER_USER:
+        raise ExpertPodLimitReachedError(MAX_PODS_PER_USER)
+    try:
+        row = await prisma.models.ExpertPod.prisma().create(
+            data={"userId": user_id, "name": name}
+        )
+    except prisma.errors.UniqueViolationError:
+        raise ExpertPodNameTakenError(name)
+    return _to_pod(row)
+
+
+async def list_pods(user_id: str) -> list[ExpertPod]:
+    rows = await prisma.models.ExpertPod.prisma().find_many(
+        where={"userId": user_id},
+        order={"createdAt": "asc"},
+    )
+    return [_to_pod(row) for row in rows]
+
+
+async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert:
+    """Move a hired expert into *pod_id*, or clear it when ``None``.
+
+    Both the expert and the target pod must belong to *user_id*; a pod owned
+    by someone else is treated as not found rather than silently ignored.
+    """
+    if pod_id is not None:
+        pod = await prisma.models.ExpertPod.prisma().find_first(
+            where={"id": pod_id, "userId": user_id}
+        )
+        if pod is None:
+            raise ExpertPodNotFoundError(pod_id)
+
+    try:
+        updated = await prisma.models.Expert.prisma().update_many(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            },
+            data={"podId": pod_id},
+        )
+    except prisma.errors.ForeignKeyViolationError:
+        # Clearing the FK cannot violate it, so pod_id is set here: the pod was
+        # deleted between the ownership check above and this write. The None
+        # branch is unreachable; re-raise rather than name a pod that isn't.
+        if pod_id is None:
+            raise
+        raise ExpertPodNotFoundError(pod_id)
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
+    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)

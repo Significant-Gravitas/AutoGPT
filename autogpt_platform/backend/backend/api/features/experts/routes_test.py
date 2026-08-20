@@ -21,9 +21,13 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertPod,
+    ExpertRun,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
+    RaiseAttachment,
+    RaiseAttachmentFailure,
     RaiseResult,
 )
 from backend.api.features.experts.routes import router
@@ -226,8 +230,7 @@ def test_create_raised_expert_returns_expert(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=raised,
-            first_job_installed=False,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -237,15 +240,24 @@ def test_create_raised_expert_returns_expert(
     data = response.json()
     assert data["expert"]["id"] == "raised-1"
     assert data["expert"]["source_template_id"] is None
-    assert data["first_job_installed"] is False
-    assert data["first_job_failure_reason"] is None
-    mock_create.assert_awaited_once_with(test_user_id, "Otto", None, None, None)
+    assert data["failed_attachments"] == []
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Otto",
+        None,
+        None,
+        avatar_url=None,
+        color=None,
+        about=None,
+        weekly_budget=None,
+        attachments=[],
+    )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True), "expert_raise_default"
     )
 
 
-def test_create_raised_expert_passes_role_voice_and_first_job(
+def test_create_raised_expert_passes_role_voice_budget_and_attachments(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
     configured_snapshot: Snapshot,
@@ -261,8 +273,7 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
                 voice_preferences="Warm and detailed.",
                 workflows=[_make_workflow_ref()],
             ),
-            first_job_installed=True,
-            first_job_failure_reason=None,
+            failed_attachments=[],
         ),
     )
 
@@ -272,26 +283,73 @@ def test_create_raised_expert_passes_role_voice_and_first_job(
             "name": "Nova",
             "role": "Research Assistant",
             "voice_preferences": "Warm and detailed.",
-            "first_job_store_listing_version_id": "listing-version-1",
+            "weekly_budget": 250,
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-1",
+                }
+            ],
         },
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["first_job_installed"] is True
+    assert data["failed_attachments"] == []
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
         "Research Assistant",
         "Warm and detailed.",
-        "listing-version-1",
+        avatar_url=None,
+        color=None,
+        about=None,
+        weekly_budget=250,
+        attachments=[
+            RaiseAttachment(
+                kind="workflow", source="marketplace", id="listing-version-1"
+            )
+        ],
     )
     configured_snapshot.assert_match(
-        json.dumps(data, indent=2, sort_keys=True), "expert_raise_first_job"
+        json.dumps(data, indent=2, sort_keys=True), "expert_raise_attachments"
     )
 
 
-def test_create_raised_expert_reports_first_job_installation_failure(
+def test_create_raised_expert_forwards_about(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-4", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Nova", "about": "  Always cites a source.  "},
+    )
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        None,
+        None,
+        avatar_url=None,
+        color=None,
+        about="Always cites a source.",
+        weekly_budget=None,
+        attachments=[],
+    )
+
+
+def test_create_raised_expert_reports_attachment_installation_failure(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
     configured_snapshot: Snapshot,
@@ -301,8 +359,14 @@ def test_create_raised_expert_reports_first_job_installation_failure(
         new_callable=AsyncMock,
         return_value=RaiseResult(
             expert=_make_raised_expert(id="raised-3", name="Nova"),
-            first_job_installed=False,
-            first_job_failure_reason="installation_failed",
+            failed_attachments=[
+                RaiseAttachmentFailure(
+                    kind="workflow",
+                    source="marketplace",
+                    id="listing-version-1",
+                    reason="installation_failed",
+                )
+            ],
         ),
     )
 
@@ -310,24 +374,37 @@ def test_create_raised_expert_reports_first_job_installation_failure(
         "/experts/raise",
         json={
             "name": "Nova",
-            "first_job_store_listing_version_id": "listing-version-1",
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-1",
+                }
+            ],
         },
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["first_job_installed"] is False
-    assert data["first_job_failure_reason"] == "installation_failed"
+    assert data["failed_attachments"][0]["reason"] == "installation_failed"
     mock_create.assert_awaited_once_with(
         test_user_id,
         "Nova",
         None,
         None,
-        "listing-version-1",
+        avatar_url=None,
+        color=None,
+        about=None,
+        weekly_budget=None,
+        attachments=[
+            RaiseAttachment(
+                kind="workflow", source="marketplace", id="listing-version-1"
+            )
+        ],
     )
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True),
-        "expert_raise_first_job_installation_failure",
+        "expert_raise_attachment_installation_failure",
     )
 
 
@@ -350,6 +427,117 @@ def test_create_raised_expert_requires_name(
     )
 
 
+def test_create_raised_expert_passes_avatar_and_color(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-3", name="Nova"),
+            failed_attachments=[],
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={
+            "name": "Nova",
+            "avatar_url": "  https://storage.googleapis.com/bucket/nova.png  ",
+            "color": "  sky-300  ",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(
+        test_user_id,
+        "Nova",
+        None,
+        None,
+        avatar_url="https://storage.googleapis.com/bucket/nova.png",
+        color="sky-300",
+        about=None,
+        weekly_budget=None,
+        attachments=[],
+    )
+
+
+def test_create_raised_expert_accepts_relative_avatar_path(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-4", name="Otto"),
+            failed_attachments=[],
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": "/experts/maria.svg"},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs["avatar_url"] == "/experts/maria.svg"
+
+
+@pytest.mark.parametrize(
+    "avatar_url",
+    [
+        "javascript:alert(1)",
+        "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        "//evil.example.com/x.png",
+        "ftp://example.com/x.png",
+    ],
+)
+def test_create_raised_expert_rejects_unsafe_avatar_url(
+    mocker: pytest_mock.MockerFixture,
+    avatar_url: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": avatar_url},
+    )
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_create_raised_expert_treats_blank_avatar_and_color_as_unset(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        return_value=RaiseResult(
+            expert=_make_raised_expert(id="raised-5", name="Otto"),
+            failed_attachments=[],
+        ),
+    )
+
+    response = client.post(
+        "/experts/raise",
+        json={"name": "Otto", "avatar_url": "   ", "color": "   "},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.await_args.kwargs == {
+        "avatar_url": None,
+        "color": None,
+        "about": None,
+        "weekly_budget": None,
+        "attachments": [],
+    }
+
+
 @pytest.mark.parametrize(
     ("field", "value", "snapshot_name"),
     [
@@ -360,10 +548,13 @@ def test_create_raised_expert_requires_name(
             "v" * 4_001,
             "expert_raise_voice_preferences_too_long",
         ),
+        ("weekly_budget", -1, "expert_raise_weekly_budget_negative"),
+        ("color", "c" * 33, "expert_raise_color_too_long"),
+        ("about", "a" * 10_001, "expert_raise_about_too_long"),
         (
-            "first_job_store_listing_version_id",
-            "l" * 101,
-            "expert_raise_first_job_id_too_long",
+            "avatar_url",
+            f"https://cdn.example.com/{'a' * 2_001}.png",
+            "expert_raise_avatar_url_too_long",
         ),
     ],
 )
@@ -435,32 +626,42 @@ def test_create_raised_expert_at_lifetime_cap_returns_409(
     )
 
 
-def test_create_raised_expert_unavailable_first_job_returns_404(
+def test_create_raised_expert_unavailable_attachment_returns_404(
     mocker: pytest_mock.MockerFixture,
     configured_snapshot: Snapshot,
 ) -> None:
     mocker.patch(
         "backend.api.features.experts.routes.experts_db.create_raised_expert",
         new_callable=AsyncMock,
-        side_effect=experts_db.FirstJobUnavailableError("listing-version-9"),
+        side_effect=experts_db.FirstJobUnavailableError(
+            "workflow", "marketplace", "listing-version-9"
+        ),
     )
 
     response = client.post(
         "/experts/raise",
         json={
             "name": "Otto",
-            "first_job_store_listing_version_id": "listing-version-9",
+            "attachments": [
+                {
+                    "kind": "workflow",
+                    "source": "marketplace",
+                    "id": "listing-version-9",
+                }
+            ],
         },
     )
 
     assert response.status_code == 404
     assert response.json()["detail"] == {
-        "code": "first_job_unavailable",
-        "store_listing_version_id": "listing-version-9",
+        "code": "attachment_unavailable",
+        "kind": "workflow",
+        "source": "marketplace",
+        "id": "listing-version-9",
     }
     configured_snapshot.assert_match(
         json.dumps(response.json(), indent=2, sort_keys=True),
-        "expert_raise_first_job_unavailable",
+        "expert_raise_attachment_unavailable",
     )
 
 
@@ -532,6 +733,71 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)
+
+
+# ─── Runs ──────────────────────────────────────────────────────────────
+
+
+def _make_run(**overrides) -> ExpertRun:
+    values = {
+        "execution_id": "exec-1",
+        "graph_id": "graph-1",
+        "agent_name": "SEO Blog Writer",
+        "library_agent_id": "library-agent-1",
+        "status": "completed",
+        "output_type": "table",
+        "output_key": "result",
+        "needs_review": False,
+        "started_at": None,
+        "ended_at": None,
+    }
+    values.update(overrides)
+    values["link"] = overrides.get(
+        "link",
+        "/library/agents/"
+        f"{values['library_agent_id']}?activeTab=runs&activeItem="
+        f"{values['execution_id']}",
+    )
+    return ExpertRun(**values)
+
+
+def test_list_expert_runs_forwards_authenticated_user_and_serializes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    runs = [_make_run(), _make_run(execution_id="exec-2", output_type="doc")]
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_expert_runs",
+        new_callable=AsyncMock,
+        return_value=runs,
+    )
+
+    response = client.get("/experts/expert-1/runs")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [r["execution_id"] for r in data] == ["exec-1", "exec-2"]
+    assert data[0]["output_type"] == "table"
+    mock_list.assert_awaited_once_with(test_user_id, "expert-1")
+
+    configured_snapshot.assert_match(
+        f"{json.dumps(data, indent=2, sort_keys=True)}\n", "expert_runs_list"
+    )
+
+
+def test_list_expert_runs_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_expert_runs",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+
+    response = client.get("/experts/nope/runs")
+
+    assert response.status_code == 404
 
 
 # ─── Soul ──────────────────────────────────────────────────────────────
@@ -808,3 +1074,252 @@ def test_rehire_dependency_unavailable_returns_503(
     assert response.json() == {
         "detail": "Your expert is temporarily unavailable. Try again shortly."
     }
+
+
+# ─── Pods ──────────────────────────────────────────────────────────────
+
+
+def _make_pod(**overrides) -> ExpertPod:
+    values = {
+        "id": "pod-1",
+        "name": "Growth",
+        "created_at": "2026-08-14T00:00:00Z",
+    }
+    values.update(overrides)
+    return ExpertPod(**values)
+
+
+def test_create_pod_returns_pod(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Growth"
+    mock_create.assert_awaited_once_with(test_user_id, "Growth")
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_create"
+    )
+
+
+def test_create_pod_strips_name(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "  Growth  "})
+
+    assert response.status_code == 200
+    mock_create.assert_awaited_once_with(test_user_id, "Growth")
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_create_pod_rejects_blank_name(
+    name: str,
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": name})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+    if name == "   ":
+        configured_snapshot.assert_match(
+            json.dumps(response.json(), indent=2, sort_keys=True),
+            "expert_pod_create_blank_name",
+        )
+
+
+def test_create_pod_rejects_name_over_max_length(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.post("/experts/pods", json={"name": "x" * 101})
+
+    assert response.status_code == 422
+    mock_create.assert_not_awaited()
+
+
+def test_create_pod_at_limit_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodLimitReachedError(experts_db.MAX_PODS_PER_USER),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 409
+    assert str(experts_db.MAX_PODS_PER_USER) in response.json()["detail"]
+
+
+def test_create_pod_duplicate_name_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodNameTakenError("Growth"),
+    )
+
+    response = client.post("/experts/pods", json={"name": "Growth"})
+
+    assert response.status_code == 409
+
+
+def test_list_pods_returns_user_pods(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_pods",
+        new_callable=AsyncMock,
+        return_value=[_make_pod()],
+    )
+
+    response = client.get("/experts/pods")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["id"] == "pod-1"
+    # Membership is not embedded — clients group from Expert.pod_id, so the
+    # listing must not carry a members payload at all.
+    assert "members" not in data[0]
+    mock_list.assert_awaited_once_with(test_user_id)
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True), "expert_pods_list"
+    )
+
+
+def test_pods_route_is_not_shadowed_by_expert_detail(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """ "/pods" must win over "/{expert_id}", which only holds while the pod
+    routes stay declared first. Fails loudly if they are ever reordered."""
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.list_pods",
+        new_callable=AsyncMock,
+        return_value=[_make_pod()],
+    )
+    mock_get = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+
+    response = client.get("/experts/pods")
+
+    assert response.status_code == 200
+    mock_list.assert_awaited_once()
+    mock_get.assert_not_awaited()
+
+
+def test_assign_pod_returns_updated_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id="pod-1"),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": "pod-1"})
+
+    assert response.status_code == 200
+    assert response.json()["pod_id"] == "pod-1"
+    mock_assign.assert_awaited_once_with(test_user_id, "expert-1", "pod-1")
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_assign"
+    )
+
+
+def test_assign_pod_null_detaches(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id=None),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": None})
+
+    assert response.status_code == 200
+    assert response.json()["pod_id"] is None
+    mock_assign.assert_awaited_once_with(test_user_id, "expert-1", None)
+
+
+def test_assign_pod_requires_explicit_pod_id(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An empty body must not be interpreted as a detach."""
+    mock_assign = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        return_value=_make_expert(pod_id=None),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={})
+
+    assert response.status_code == 422
+    mock_assign.assert_not_awaited()
+
+
+def test_assign_pod_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+
+    response = client.patch("/experts/nope/pod", json={"pod_id": "pod-1"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Expert or pod not found"
+
+
+def test_assign_pod_unknown_pod_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.assign_pod",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodNotFoundError("nope"),
+    )
+
+    response = client.patch("/experts/expert-1/pod", json={"pod_id": "nope"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Expert or pod not found"

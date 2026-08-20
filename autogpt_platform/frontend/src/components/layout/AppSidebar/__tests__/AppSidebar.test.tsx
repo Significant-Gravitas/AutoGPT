@@ -32,6 +32,18 @@ function makeAgent(
   };
 }
 
+function waitForDashboardResponse() {
+  return new Promise<void>((resolve) => {
+    function onResponse({ request }: { request: Request }) {
+      if (new URL(request.url).pathname !== "/api/proxy/api/home") return;
+      server.events.removeListener("response:mocked", onResponse);
+      resolve();
+    }
+
+    server.events.on("response:mocked", onResponse);
+  });
+}
+
 // The global next/link mock only exports `default`; AppSidebar also imports
 // `useLinkStatus`, so re-mock here with a no-op pending status.
 vi.mock("next/link", () => ({
@@ -134,7 +146,7 @@ describe("AppSidebar", () => {
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
   });
 
-  it("nests hired experts under Team with a Your AI row and a Hire link", async () => {
+  it("nests hired experts under Team", async () => {
     useGetFlagMock.mockReturnValue(true);
     server.use(
       getGetHomeDashboardMockHandler200(
@@ -144,84 +156,59 @@ describe("AppSidebar", () => {
     renderSidebar();
 
     const memberLink = await screen.findByRole("link", { name: /Maria/i });
-    expect(memberLink.getAttribute("href")).toBe(
-      "/copilot?expertId=expert-maria",
-    );
-
-    const yourAi = screen.getByRole("link", { name: /your ai/i });
-    expect(yourAi.getAttribute("href")).toBe("/copilot");
-
-    const hire = screen.getByRole("link", { name: /^hire$/i });
-    expect(hire.getAttribute("href")).toBe("/marketplace#experts");
+    expect(memberLink.getAttribute("href")).toBe("/team/expert-maria");
+    expect(screen.queryByRole("link", { name: /your ai/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^hire$/i })).toBeNull();
   });
 
-  it("maps each member status to its presence colour", async () => {
+  // One member per case: the preview caps the list below the number of statuses.
+  it.each([
+    ["working" as const, "Working", "bg-amber-500"],
+    ["ready" as const, "Ready", "bg-emerald-500"],
+    ["paused" as const, "Paused", "bg-zinc-300"],
+    ["needs_setup" as const, "Needs setup", "bg-zinc-300"],
+    ["failed" as const, "Needs attention", "bg-red-500"],
+  ])(
+    "maps the %s status to its presence colour",
+    async (status, label, colour) => {
+      useGetFlagMock.mockReturnValue(true);
+      server.use(
+        getGetHomeDashboardMockHandler200(
+          dashboardWith([makeAgent(`e-${status}`, `${label} Expert`, status)]),
+        ),
+      );
+      renderSidebar();
+
+      expect(
+        (await screen.findByRole("img", { name: label })).className,
+      ).toContain(colour);
+    },
+  );
+
+  it("renders no roster rows when the user has no hired experts", async () => {
     useGetFlagMock.mockReturnValue(true);
-    server.use(
-      getGetHomeDashboardMockHandler200(
-        dashboardWith([
-          makeAgent("e-working", "Working Expert", "working"),
-          makeAgent("e-ready", "Ready Expert", "ready"),
-          makeAgent("e-paused", "Paused Expert", "paused"),
-          makeAgent("e-setup", "Setup Expert", "needs_setup"),
-          makeAgent("e-failed", "Failed Expert", "failed"),
-        ]),
-      ),
-    );
-    renderSidebar();
-
-    expect(
-      (await screen.findByRole("img", { name: "Working" })).className,
-    ).toContain("bg-amber-500");
-    expect(screen.getByRole("img", { name: "Ready" }).className).toContain(
-      "bg-emerald-500",
-    );
-    expect(screen.getByRole("img", { name: "Paused" }).className).toContain(
-      "bg-zinc-300",
-    );
-    expect(
-      screen.getByRole("img", { name: "Needs setup" }).className,
-    ).toContain("bg-zinc-300");
-    expect(
-      screen.getByRole("img", { name: "Needs attention" }).className,
-    ).toContain("bg-red-500");
-  });
-
-  it("keeps Your AI and Hire visible when the user has no hired experts", async () => {
-    useGetFlagMock.mockReturnValue(true);
-    renderSidebar();
-
-    const yourAi = await screen.findByRole("link", { name: /your ai/i });
-    expect(yourAi.getAttribute("href")).toBe("/copilot");
-    expect(
-      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
-    ).toBe("/marketplace#experts");
-  });
-
-  it("keeps Your AI and Hire visible when the dashboard request fails", async () => {
-    useGetFlagMock.mockReturnValue(true);
-    server.use(getGetHomeDashboardMockHandler401());
-    const dashboardRequestSettled = new Promise<void>((resolve) => {
-      function onResponse({ request }: { request: Request }) {
-        if (new URL(request.url).pathname !== "/api/proxy/api/home") return;
-        server.events.removeListener("response:mocked", onResponse);
-        resolve();
-      }
-
-      server.events.on("response:mocked", onResponse);
-    });
+    const dashboardRequestSettled = waitForDashboardResponse();
     renderSidebar();
 
     await dashboardRequestSettled;
 
-    const yourAi = screen.getByRole("link", { name: /your ai/i });
-    expect(yourAi.getAttribute("href")).toBe("/copilot");
-    expect(
-      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
-    ).toBe("/marketplace#experts");
+    expect(screen.queryByRole("link", { name: /your ai/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^hire$/i })).toBeNull();
   });
 
-  it("caps the member list and keeps Hire reachable via View all", async () => {
+  it("renders no roster rows when the dashboard request fails", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(getGetHomeDashboardMockHandler401());
+    const dashboardRequestSettled = waitForDashboardResponse();
+    renderSidebar();
+
+    await dashboardRequestSettled;
+
+    expect(screen.queryByRole("link", { name: /your ai/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^hire$/i })).toBeNull();
+  });
+
+  it("caps the member list and keeps the roster reachable via View all", async () => {
     useGetFlagMock.mockReturnValue(true);
     server.use(
       getGetHomeDashboardMockHandler200(
@@ -234,15 +221,19 @@ describe("AppSidebar", () => {
     );
     renderSidebar();
 
-    expect(await screen.findByRole("link", { name: /Expert 4/ })).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Expert 5/ })).toBeNull();
+    expect(
+      await screen.findByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT - 1}`),
+      }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", {
+        name: new RegExp(`Expert ${SIDEBAR_TEAM_PREVIEW_COUNT}`),
+      }),
+    ).toBeNull();
 
     const viewAll = screen.getByRole("link", { name: /view all \(8\)/i });
     expect(viewAll.getAttribute("href")).toBe("/team");
-
-    expect(
-      screen.getByRole("link", { name: /^hire$/i }).getAttribute("href"),
-    ).toBe("/marketplace#experts");
   });
 
   it("shows every member without View all at exactly the preview count", async () => {

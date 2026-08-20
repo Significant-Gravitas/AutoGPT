@@ -252,6 +252,22 @@ const config = {
           "0%": { transform: "translateX(-100%)" },
           "100%": { transform: "translateX(400%)" },
         },
+        "caret-blink": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
+        "shimmer-text": {
+          "0%": { backgroundPosition: "100% 0" },
+          "100%": { backgroundPosition: "0% 0" },
+        },
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "grow-line": {
+          from: { transform: "scaleY(0)" },
+          to: { transform: "scaleY(1)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -270,9 +286,18 @@ const config = {
         "marquee-x": "marquee-x 40s linear infinite",
         "progress-bar":
           "progress-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite",
+        "caret-blink": "caret-blink 1s step-end infinite",
+        "shimmer-text": "shimmer-text 2s linear infinite",
+        "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
       },
       transitionDuration: {
+        "400": "400ms",
         "2000": "2000ms",
+      },
+      transitionTimingFunction: {
+        // easeOutQuint — long, soft settle for accordion expand/collapse.
+        "out-quint": "cubic-bezier(0.23, 1, 0.32, 1)",
       },
     },
   },
