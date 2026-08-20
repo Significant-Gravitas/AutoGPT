@@ -112,10 +112,30 @@ class InsufficientBalanceError(ValueError):
         return self.message
 
 
+class UserPaywalledError(Exception):
+    """User has no entitlement to run a paywalled feature (NO_TIER tier
+    + ``ENABLE_PLATFORM_PAYMENT`` on).
+
+    Raised by ``add_graph_execution`` and other deep enqueue paths so
+    that *every* execution entry point (HTTP route, scheduled cron,
+    webhook trigger, external API, internal copilot tool) gets the same
+    gate without each one having to remember a route-level dependency.
+    Routes wrap this into HTTP 402; background tasks log and abandon
+    the run.
+    """
+
+    def __init__(
+        self,
+        message: str = "A subscription is required to run this feature.",
+    ) -> None:
+        super().__init__(message)
+
+
 class ExecutionFailureReason(str, Enum):
     """Structured reasons for terminal graph execution failures."""
 
     INSUFFICIENT_BALANCE = "insufficient_balance"
+    ENTITLEMENT_REQUIRED = "entitlement_required"
 
 
 # Keep this legacy-only fallback synchronized with the equivalent predicates in
@@ -143,6 +163,8 @@ def get_execution_failure_reason(
     """Classify trusted exceptions, with an opt-in fallback for persisted text."""
     if isinstance(error, InsufficientBalanceError):
         return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    if isinstance(error, UserPaywalledError):
+        return ExecutionFailureReason.ENTITLEMENT_REQUIRED
     if (
         allow_legacy_text
         and isinstance(error, str)

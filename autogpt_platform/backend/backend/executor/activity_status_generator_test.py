@@ -1112,6 +1112,20 @@ class TestDeterministicFailureResponse:
         assert "enough credits" in result["activity_status"].lower()
         assert "billing owner" not in result["activity_status"].lower()
 
+    def test_entitlement_failure_skips_llm_analysis(self):
+        """A plan-gated denial is as deterministic as an empty wallet. Without
+        a handler the run still reaches the LLM for a summary of something
+        already known — the exact cost this module exists to avoid."""
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.ENTITLEMENT_REQUIRED
+        )
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "plan" in result["activity_status"].lower()
+
     @pytest.mark.parametrize(
         "status",
         [ExecutionStatus.COMPLETED, ExecutionStatus.TERMINATED, None],
@@ -1234,3 +1248,15 @@ class TestDeterministicFailureResponse:
         else:
             assert result is None
             mock_get_openai_client.assert_called_once()
+
+
+def test_paywall_is_a_known_graph_execution_error():
+    """Anything outside this set pages via Discord as an unexpected failure.
+    A plan-gated denial is a known business outcome, so leaving it out produced
+    a spurious "Unknown Graph Execution Error" alert with a stack trace — the
+    same reasoning that keeps it out of Sentry in util/metrics."""
+    from backend.executor.manager import KNOWN_GRAPH_EXECUTION_ERRORS
+    from backend.util.exceptions import UserPaywalledError
+
+    assert issubclass(UserPaywalledError, Exception)
+    assert UserPaywalledError in KNOWN_GRAPH_EXECUTION_ERRORS

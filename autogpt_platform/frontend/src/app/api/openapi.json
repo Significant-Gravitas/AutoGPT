@@ -18802,7 +18802,7 @@
       },
       "ExecutionFailureReason": {
         "type": "string",
-        "enum": ["insufficient_balance"],
+        "enum": ["insufficient_balance", "entitlement_required"],
         "title": "ExecutionFailureReason",
         "description": "Structured reasons for terminal graph execution failures."
       },
