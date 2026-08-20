@@ -28,7 +28,7 @@ Sentry.init({
   ignoreErrors: [
     /Not allowed to access cross-origin stylesheet/,
     // Sentry SDK internal issue on some mobile browsers
-    /Error invoking postEvent: Method not found/,
+    /Error invoking post(?:Event)?: Method not found/,
   ],
 
   // Add optional integrations for additional features
