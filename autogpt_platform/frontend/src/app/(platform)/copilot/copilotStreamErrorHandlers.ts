@@ -1,5 +1,10 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 
+import {
+  describeProviderFailure,
+  type ProviderFailure,
+} from "./providerFailure";
+
 /**
  * Parses a backend-encoded error code from an `errorText` payload.
  *
@@ -97,6 +102,12 @@ interface HandleStreamErrorArgs {
   onRateLimit: (message: string) => void;
   onReconnect: () => void;
   isUserStoppingRef: React.MutableRefObject<boolean>;
+  /**
+   * The typed envelope, when this turn sent one. It is the only source here
+   * that actually knows what happened; every branch below it is inference
+   * from error text.
+   */
+  providerFailure?: ProviderFailure | null;
 }
 
 /**
@@ -104,6 +115,8 @@ interface HandleStreamErrorArgs {
  * (or rate-limit UI), and decides whether to retry via reconnect.
  *
  * Dispatch order (exclusive branches):
+ *  0. A typed provider-failure envelope → its own copy. Preferred over
+ *     everything below, which is guesswork from error text.
  *  1. `usage limit` substring → rate-limit UI via `onRateLimit`.
  *  2. 401 / auth failure → auth-error toast.
  *  3. `[code:<id>]` backend prefix → curated or generic backend toast.
@@ -117,8 +130,27 @@ export function handleStreamError({
   onRateLimit,
   onReconnect,
   isUserStoppingRef,
+  providerFailure,
 }: HandleStreamErrorArgs): void {
   const errorDetail = extractErrorDetail(error);
+
+  // 0. The server said what went wrong, so stop guessing.
+  if (providerFailure) {
+    const copy = describeProviderFailure(providerFailure);
+    if (providerFailure.kind === "usage_limit") {
+      // Still routed through the rate-limit path: it restores the composer
+      // text for a message the backend refused before persisting, which a
+      // toast alone would lose.
+      onRateLimit(`${copy.title}. ${copy.description}`);
+      return;
+    }
+    toast({
+      title: copy.title,
+      description: copy.description,
+      variant: "destructive",
+    });
+    return;
+  }
 
   // 1. Rate limit (FastAPI 429 body contains "usage limit")
   if (errorDetail.toLowerCase().includes("usage limit")) {

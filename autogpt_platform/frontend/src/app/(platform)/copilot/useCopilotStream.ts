@@ -33,6 +33,10 @@ import {
   hasVisibleAssistantContent,
   isEngineSwitchPart,
 } from "./helpers";
+import {
+  parseProviderFailurePart,
+  type ProviderFailure,
+} from "./providerFailure";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
@@ -113,6 +117,9 @@ export function useCopilotStream({
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
   const pendingEngineSwitchRef = useRef(false);
+  // Cleared once consumed, so a later failure without an envelope cannot
+  // inherit the explanation of an earlier one.
+  const providerFailureRef = useRef<ProviderFailure | null>(null);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
   // inside SDK callbacks, the state drives UI so a click on the stop button
   // immediately overrides ``isStreaming`` regardless of whether AI SDK has
@@ -178,6 +185,7 @@ export function useCopilotStream({
         ? FINISH_REFETCH_ATTEMPTS_PENDING_SWITCH
         : FINISH_REFETCH_ATTEMPTS_DEFAULT;
       pendingEngineSwitchRef.current = false;
+      providerFailureRef.current = null;
       setIsFinishProbing(true);
       try {
         for (let attempt = 0; attempt < attempts; attempt++) {
@@ -206,8 +214,11 @@ export function useCopilotStream({
           clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
         }).catch(() => undefined);
       }
+      const failureForThisTurn = providerFailureRef.current;
+      providerFailureRef.current = null;
       handleStreamError({
         error,
+        providerFailure: failureForThisTurn,
         onRateLimit: (message) => {
           // Backend raises 429 BEFORE persisting the user message, so the
           // optimistic user bubble added by useChat is a lie. Restore the text
@@ -281,6 +292,12 @@ export function useCopilotStream({
       // is kept to widen the post-finish refetch window below.
       if (isEngineSwitchPart(dataPart)) {
         pendingEngineSwitchRef.current = true;
+      }
+      // The envelope always precedes the error frame it explains, so
+      // stashing it here means handleError has it in hand.
+      const failure = parseProviderFailurePart(dataPart);
+      if (failure) {
+        providerFailureRef.current = failure;
       }
     }
 

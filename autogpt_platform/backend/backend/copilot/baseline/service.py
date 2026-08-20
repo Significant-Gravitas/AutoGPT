@@ -74,6 +74,7 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -81,6 +82,7 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamModeChanged,
+    StreamProviderFailure,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -2396,7 +2398,19 @@ async def stream_chat_completion_baseline(
             evt = state.pending_events.get_nowait()
             if evt is not None:
                 yield evt
-        yield StreamError(errorText=error_msg, code="baseline_error")
+        failure = classify_provider_failure(
+            e,
+            auth_provider=session.metadata.llm_auth_provider if session else None,
+            credential_id=session.metadata.llm_credential_id if session else None,
+            message=error_msg,
+        )
+        if failure is not None:
+            # Before the error, so a client that acts on the envelope has it
+            # in hand by the time the turn is reported failed.
+            yield StreamProviderFailure(failure=failure.as_part())
+            yield StreamError(errorText=error_msg, code=failure.kind.value)
+        else:
+            yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
         # Cancel the inner task if we're unwinding early (client disconnect,
