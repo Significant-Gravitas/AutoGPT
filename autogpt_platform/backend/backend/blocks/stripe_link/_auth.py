@@ -7,6 +7,7 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 ``backend/integrations/oauth/stripe_link.py``.
 """
 
+import logging
 from typing import Any, Literal
 
 import httpx
@@ -25,6 +26,11 @@ from backend.integrations.oauth.stripe_link import (  # noqa: E402
 from backend.integrations.providers import ProviderName
 
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
+
+logger = logging.getLogger(__name__)
+
+# Upstream error text reaches a block `error` output, which is persisted.
+MAX_ERROR_DETAIL_CHARS = 500
 
 StripeLinkCredentials = OAuth2Credentials
 
@@ -107,5 +113,44 @@ async def link_api_request(
             headers=headers,
             json=body,
         )
-        response.raise_for_status()
+        # `is_success`, not `not is_error`: the latter is 4xx/5xx only, so a
+        # 3xx would fall straight through to `.json()` — and redirects are not
+        # followed. A moved endpoint would read as an empty wallet, or raise a
+        # bare KeyError with the redirect invisible.
+        if not response.is_success:
+            # Link explains itself in a structured `error.message`; surface
+            # that rather than a bare "400 Bad Request" with the explanation
+            # discarded. That is how the SPT merchant-field constraint stayed
+            # hidden during development.
+            try:
+                detail = response.json().get("error", {}).get("message")
+            # ValueError: not JSON. AttributeError/TypeError: JSON, but not
+            # the object shape we index into. Anything else is our bug, and
+            # masking it as "API text" would hide it.
+            except (ValueError, AttributeError, TypeError):
+                detail = None
+
+            if detail:
+                # Bounded like the raw-body log below: this string becomes a
+                # persisted block output, and a multi-KB message from Link or
+                # an intercepting gateway has no business there either.
+                raise RuntimeError(
+                    f"Link API error ({response.status_code}): "
+                    f"{str(detail)[:MAX_ERROR_DETAIL_CHARS]}"
+                )
+
+            # No usable message. The raw body goes to the logs rather than
+            # into the exception, because that string becomes a block `error`
+            # output — persisted with the execution and surfaced in agent
+            # transcripts — and an arbitrary upstream body has no business
+            # there.
+            logger.error(
+                "Link API %s %s failed: %s %s",
+                method,
+                path,
+                response.status_code,
+                response.text[:500],
+            )
+            raise RuntimeError(f"Link API error ({response.status_code})")
+
         return response.json()

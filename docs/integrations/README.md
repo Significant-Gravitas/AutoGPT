@@ -186,6 +186,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 | [Stripe Link Create Card Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-card-spend-request) | Create a Stripe Link spend request for a one-time virtual card |
+| [Stripe Link Create Token Spend Request](block-integrations/stripe_link/spend_request.md#stripe-link-create-token-spend-request) | MPP step 2 of 3: create a Stripe Link spend request for a Shared Payment Token, using the network ID from the merchant's 402 challenge |
 | [Stripe Link Get Shipping Address](block-integrations/stripe_link/profile.md#stripe-link-get-shipping-address) | Get the delivery addresses saved on the user's Link wallet, with the default one resolved for you |
 | [Stripe Link Get Spend Request Status](block-integrations/stripe_link/spend_request.md#stripe-link-get-spend-request-status) | Check whether a Stripe Link spend request has been approved yet |
 | [Stripe Link Get User Info](block-integrations/stripe_link/profile.md#stripe-link-get-user-info) | Get the Link account holder's name, email and phone |
