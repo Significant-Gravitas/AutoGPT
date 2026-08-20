@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_mock
 
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
@@ -192,3 +194,46 @@ def test_two_segments_match_on_the_route_not_on_where_it_was_read(
     # not identity -- otherwise the first stamped turn of an unchanged chat
     # would read as a boundary.
     assert (a == b) is equal
+
+
+class TestTheRouteSurvivesTheSavePath:
+    """The stamp is worthless if it is dropped on the way to the database.
+
+    ``_save_session_to_db`` builds each row's dict field by field rather than
+    dumping the model, so a new field on ``ChatMessage`` reaches Postgres only
+    if it is named there too. Stamping worked and the column existed, and the
+    route still landed as NULL because that one list had not been updated.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_stamped_turn_reaches_the_database_layer_with_its_route(
+        self, mocker: pytest_mock.MockerFixture
+    ) -> None:
+        from backend.copilot import model as model_module
+
+        captured: dict[str, object] = {}
+
+        async def _capture(
+            session_id: str, messages: list, start_sequence: int
+        ) -> int:
+            captured["messages"] = messages
+            return start_sequence
+
+        fake_db = MagicMock()
+        fake_db.add_chat_messages_batch = AsyncMock(side_effect=_capture)
+        fake_db.get_chat_session_metadata = AsyncMock(return_value=None)
+        fake_db.create_chat_session = AsyncMock(return_value=None)
+        fake_db.update_chat_session = AsyncMock(return_value=None)
+        mocker.patch.object(model_module, "chat_db", return_value=fake_db)
+
+        session = _session("codex", "cred-1", [_assistant("codex", "cred-1")])
+        await model_module._save_session_to_db(
+            session, existing_message_count=0, skip_existence_check=True
+        )
+
+        rows = captured.get("messages")
+        assert rows, "no rows reached the database layer"
+        assistant_rows = [r for r in rows if r["role"] == "assistant"]
+        assert assistant_rows, "the assistant row never reached the database layer"
+        assert assistant_rows[0]["llm_auth_provider"] == "codex"
+        assert assistant_rows[0]["llm_credential_id"] == "cred-1"
