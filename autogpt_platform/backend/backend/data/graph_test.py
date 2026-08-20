@@ -11,6 +11,7 @@ from pytest_snapshot.plugin import Snapshot
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
@@ -2393,7 +2394,7 @@ async def test_get_graph_without_org_keeps_strict_ownership(mocker):
 # ============================================================================
 
 CODEX_CODEGEN_BLOCK_ID = "86a2a099-30df-47b4-b7e4-34ae5f83e0d5"
-AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+AI_STRUCTURED_RESPONSE_BLOCK_ID = "ed55ac19-356e-4243-a6cb-bc599e9b716f"
 
 
 def _graph_with(nodes: list[NodeModel]) -> GraphModel:
@@ -2621,6 +2622,29 @@ def test_unmapped_discriminator_value_contributes_no_credential():
     assert slots == {}
 
 
+def test_unmapped_discriminator_on_a_required_credential_still_raises():
+    """The skip above is scoped to optional credentials fields on purpose.
+
+    A node pinned to a model since removed from the catalog also lands on an
+    unmapped discriminator value, but there the credential is required and the
+    node is simply broken. `discriminate()` raising is what surfaces the
+    actionable "may have been deprecated" message; skipping would drop the
+    slot silently, and the run form would never ask for the key.
+    """
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AI_STRUCTURED_RESPONSE_BLOCK_ID,
+                {"prompt": "hi", "model": "a-model-that-was-retired"},
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="may have been deprecated"):
+        _slots(graph)
+
+
 def test_mapped_discriminator_value_still_yields_its_slot():
     graph = _graph_with(
         [
@@ -2635,3 +2659,75 @@ def test_mapped_discriminator_value_still_yields_its_slot():
     providers = {p for providers, _, _ in _slots(graph).values() for p in providers}
 
     assert providers == {"codex"}
+
+
+# ============================================================================
+# Tests for the credentials-discriminator dependency check
+# (a node saved before a block gained a discriminator carries a credential
+# and no discriminator value — that shape must stay valid)
+# ============================================================================
+
+
+_LEGACY_CODEX_META = {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "provider": "codex",
+    "type": "oauth2",
+    "title": "My ChatGPT",
+}
+
+
+def _autopilot_graph(input_default: dict) -> Graph:
+    """Build a 1-node AutoPilot graph with whatever input shape the test pins."""
+    node = Node(
+        id="00000000-0000-0000-0000-0000000000a1",
+        block_id=AUTOPILOT_BLOCK_ID,
+        input_default=input_default,
+    )
+    return Graph(
+        id="autopilot-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+
+@pytest.mark.parametrize("for_run", [False, True])
+def test_legacy_autopilot_node_without_transport_is_valid(for_run: bool):
+    """Every AutoPilot node saved before `transport` existed has a codex
+    connection and no transport. Making `codex_credentials` depend on
+    `transport` turned that shape into "Requires transport to be set" — a 400
+    on save *and* on execute, naming a field the user's exported JSON does not
+    contain. The startup backfill only repairs rows already in the database,
+    so imports and older API clients would have stayed broken permanently.
+
+    Both fields are optional, so "unset" is a legal state and the block
+    decides what it means (an attached connection is the choice).
+    """
+    graph = _autopilot_graph(
+        {"prompt": "do a thing", "codex_credentials": _LEGACY_CODEX_META}
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=for_run)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors
+
+
+@pytest.mark.parametrize(
+    "transport", [AutoPilotTransport.PLATFORM, AutoPilotTransport.CODEX_APP_SERVER]
+)
+def test_autopilot_node_with_an_explicit_transport_is_valid(
+    transport: AutoPilotTransport,
+):
+    """The migrated shape keeps validating, on both branches."""
+    graph = _autopilot_graph(
+        {
+            "prompt": "do a thing",
+            "transport": transport.value,
+            "codex_credentials": _LEGACY_CODEX_META,
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=True)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors

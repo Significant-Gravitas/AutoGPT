@@ -340,6 +340,7 @@ async def execute_node(
     try:
         # Handle regular credentials fields
         credential_fields_info = input_model.get_credentials_fields_info()
+        required_credential_fields = set(input_model.get_required_fields())
         for field_name, input_type in input_model.get_credentials_fields().items():
             # Dry-run platform credentials bypass the credential store.
             # Keep the existing credential metadata so _execute's input_schema(**...)
@@ -373,8 +374,17 @@ async def execute_node(
             # A stale credential left on a node whose selection no longer uses
             # it must not be resolved: enforcing entitlement here hard-fails a
             # platform-funded run for a user who never asked to use codex.
-            if field_info.discriminator and not field_info.requires_credentials(
-                input_data.get(field_info.discriminator)
+            #
+            # Scoped to optional fields, mirroring `credentials_input_schema`:
+            # for a required credential an unmapped discriminator means the
+            # node is broken (e.g. a deprecated LLM model), and resolving it is
+            # what surfaces that instead of running on into a worse error.
+            if (
+                field_info.discriminator
+                and field_name not in required_credential_fields
+                and not field_info.requires_credentials(
+                    input_data.get(field_info.discriminator)
+                )
             ):
                 continue
             if field_info.credential_reference_only:
