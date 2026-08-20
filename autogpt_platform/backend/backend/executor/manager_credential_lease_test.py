@@ -182,13 +182,22 @@ def _discriminated_reference_block(
 
 
 @pytest.mark.asyncio
-async def test_platform_transport_ignores_attached_codex_credential():
+@pytest.mark.parametrize("transport_in_defaults", [False, True])
+async def test_platform_transport_ignores_attached_codex_credential(
+    transport_in_defaults: bool,
+):
     manager = MagicMock()
     manager.get = AsyncMock()
     manager.acquire_lease = AsyncMock()
     captured: dict[str, Any] = {}
     block = _discriminated_reference_block(captured)
     gate = AsyncMock()
+    node = _node(block)
+    inputs: dict[str, object] = {"codex_credentials": _credential_metadata("cred-1")}
+    if transport_in_defaults:
+        node.input_default = {"transport": "platform"}
+    else:
+        inputs["transport"] = "platform"
 
     validation = MagicMock(side_effect=lambda _node, inputs, **_kwargs: (inputs, None))
     with (
@@ -198,13 +207,8 @@ async def test_platform_transport_ignores_attached_codex_credential():
         outputs = [
             item
             async for item in execute_node(
-                _node(block),
-                _entry(
-                    {
-                        "transport": "platform",
-                        "codex_credentials": _credential_metadata("cred-1"),
-                    }
-                ),
+                node,
+                _entry(inputs),
                 SimpleNamespace(creds_manager=manager),
             )
         ]
@@ -376,6 +380,7 @@ def _block_with_credentials(
 def _node(block: MagicMock) -> MagicMock:
     node = MagicMock()
     node.block = block
+    node.input_default = {}
     return node
 
 

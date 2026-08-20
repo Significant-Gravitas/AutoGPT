@@ -264,13 +264,13 @@ async def execute_node(
     # not use before schema validation. Empty or stale objects would otherwise
     # fail their nested credential schema before the executor can ignore them.
     for field_name, field_info in credential_fields_info.items():
-        if (
-            field_info.discriminator
-            and field_name not in required_credential_fields
-            and not field_info.requires_credentials(
-                data.inputs.get(field_info.discriminator)
-            )
-        ):
+        if not field_info.discriminator or field_name in required_credential_fields:
+            continue
+        discriminator_value = data.inputs.get(
+            field_info.discriminator,
+            node.input_default.get(field_info.discriminator),
+        )
+        if not field_info.requires_credentials(discriminator_value):
             data.inputs[field_name] = None
 
     # Sanity check: validate the execution input.
