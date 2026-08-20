@@ -86,7 +86,7 @@ def build_variable_injection(
             f"Variable value is not serializable for key(s): {', '.join(bad_keys)}"
         ) from e
 
-    if len(serialized.encode("utf-8", "surrogatepass")) > MAX_VARIABLES_PAYLOAD_BYTES:
+    if len(serialized.encode("utf-8")) > MAX_VARIABLES_PAYLOAD_BYTES:
         raise ValueError(
             "Variables payload is too large "
             f"(max {MAX_VARIABLES_PAYLOAD_BYTES // 1024} KB). "
