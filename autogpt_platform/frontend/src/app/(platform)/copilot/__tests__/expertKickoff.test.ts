@@ -13,8 +13,8 @@ import {
   markKickoffDone,
   markKickoffPending,
   parseLegacyKickoffExpertId,
+  revealKickoffMessages,
   shouldClearKickoffParam,
-  stripKickoffMessages,
   stripLegacyKickoffMarker,
   withKickoffLock,
 } from "../expertKickoff";
@@ -33,6 +33,11 @@ function userMessage(
     parts: [{ type: "text", text }],
     metadata,
   } as UIMessage;
+}
+
+function firstText(message: UIMessage): string | undefined {
+  const part = message.parts.find((candidate) => candidate.type === "text");
+  return part && "text" in part ? part.text : undefined;
 }
 
 function assistantMessage(
@@ -120,7 +125,7 @@ describe("kickoff message identification", () => {
     ).toBeNull();
   });
 
-  it("removes only kickoff messages from the transcript", () => {
+  it("keeps every message in the transcript, kickoff included", () => {
     const kickoff = buildKickoffMessage(EXPERT_ID);
     const messages = [
       userMessage("m1", kickoff.text, kickoff.metadata),
@@ -128,9 +133,40 @@ describe("kickoff message identification", () => {
       userMessage("m3", "Sounds good, go ahead."),
     ];
 
-    expect(stripKickoffMessages(messages).map((message) => message.id)).toEqual(
-      ["m2", "m3"],
-    );
+    const revealed = revealKickoffMessages(messages);
+
+    expect(revealed.map((message) => message.id)).toEqual(["m1", "m2", "m3"]);
+    expect(firstText(revealed[0])).toBe(kickoff.text);
+  });
+
+  it("carries non-text parts of a kickoff message through the reveal", () => {
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+    const filePart = {
+      type: "file",
+      mediaType: "application/json",
+      filename: "workflow.json",
+      url: "https://example.test/api/workspace/files/file-1",
+    };
+    const message = {
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: kickoff.text }, filePart],
+      metadata: kickoff.metadata,
+    } as UIMessage;
+
+    const [revealed] = revealKickoffMessages([message]);
+
+    expect(revealed.parts).toHaveLength(2);
+    expect(firstText(revealed)).toBe(kickoff.text);
+    expect(revealed.parts[1]).toEqual(filePart);
+  });
+
+  it("hides the legacy marker from a revealed kickoff message", () => {
+    const legacy = `[[EXPERT_KICKOFF:${EXPERT_ID}]]\n\nIntroduce yourself.`;
+
+    const revealed = revealKickoffMessages([userMessage("m1", legacy)]);
+
+    expect(firstText(revealed[0])).toBe("Introduce yourself.");
   });
 
   it("strictly recognizes legacy markers for backward compatibility", () => {

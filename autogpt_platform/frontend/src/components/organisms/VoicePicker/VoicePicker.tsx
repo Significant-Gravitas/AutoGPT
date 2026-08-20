@@ -6,6 +6,7 @@ import { useId } from "react";
 import { CustomVoiceOption } from "./components/CustomVoiceOption";
 import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
+import type { SelectableCardColors } from "./styles";
 import { useVoicePicker } from "./useVoicePicker";
 
 type Props = {
@@ -14,6 +15,12 @@ type Props = {
   onPick: (result: VoicePickResult) => void;
   onSkip: () => void;
   isSubmitting?: boolean;
+  // Set when the surrounding flow already asked the question in its own copy.
+  hideHeader?: boolean;
+  // Overrides the accent used on option labels (e.g. the expert's colour).
+  labelClassName?: string;
+  // Overrides the card's selected/hover/focus treatment to match that colour.
+  cardColors?: SelectableCardColors;
 };
 
 export function VoicePicker({
@@ -22,6 +29,9 @@ export function VoicePicker({
   onPick,
   onSkip,
   isSubmitting = false,
+  hideHeader = false,
+  labelClassName,
+  cardColors,
 }: Props) {
   const choiceGroupName = useId();
   const customTextareaId = useId();
@@ -37,15 +47,19 @@ export function VoicePicker({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1.5">
-        <h2 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">
-          {name ? `How should ${name} write?` : "How should this expert write?"}
-        </h2>
-        <p className="text-base text-muted-foreground">
-          Pick the voice that feels right. You can fine-tune it anytime in the
-          Soul editor.
-        </p>
-      </header>
+      {hideHeader ? null : (
+        <header className="flex flex-col gap-1.5">
+          <h2 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">
+            {name
+              ? `How should ${name} write?`
+              : "How should this expert write?"}
+          </h2>
+          <p className="text-base text-muted-foreground">
+            Pick the voice that feels right. You can fine-tune it anytime in the
+            Soul editor.
+          </p>
+        </header>
+      )}
 
       <fieldset className="flex flex-col gap-3">
         <legend className="sr-only">Writing voice</legend>
@@ -58,6 +72,8 @@ export function VoicePicker({
               choice={choice}
               choiceGroupName={choiceGroupName}
               isSelected={selected === choice}
+              labelClassName={labelClassName}
+              colors={cardColors}
               onSelect={() => selectSample(choice)}
             />
           );
@@ -68,6 +84,8 @@ export function VoicePicker({
           textareaId={customTextareaId}
           customText={customText}
           isSelected={selected === "custom"}
+          labelClassName={labelClassName}
+          colors={cardColors}
           onFocus={focusCustom}
           onChange={changeCustom}
         />

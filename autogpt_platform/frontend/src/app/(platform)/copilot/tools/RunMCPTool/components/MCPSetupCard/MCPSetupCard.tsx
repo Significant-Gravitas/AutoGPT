@@ -10,9 +10,10 @@ import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/s
 import { Button } from "@/components/atoms/Button/Button";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
+import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 
 function normalizeMcpUrl(url: string): string {
   // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
@@ -41,6 +42,8 @@ interface Props {
 export function MCPSetupCard({ output, retryInstruction }: Props) {
   const { onSend } = useCopilotChatActions();
   const allProviders = useContext(CredentialsProvidersContext);
+  const chainActions = useContext(ChainActionsContext);
+  const actionId = useId();
 
   // setup_info.agent_id is set to the server_url in the backend
   const serverUrl = output.setup_info.agent_id;
@@ -226,12 +229,12 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     }
   }
 
-  async function handleManualToken() {
+  async function handleManualToken(tokenArg?: string) {
     // Re-entrancy guard first — mirrors ``handleConnect`` so both flows
     // present the same shape to readers.  See the comment on
     // ``handleConnect``'s guard for the double-click race this prevents.
     if (loading) return;
-    const token = manualToken.trim();
+    const token = (tokenArg ?? manualToken).trim();
     if (!token) return;
     setLoading(true);
     setError(null);
@@ -265,6 +268,45 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       setLoading(false);
     }
   }
+
+  // Inside a tool chain the card renders nothing itself — it registers an
+  // MCP row with the chain's connectors table and stays mounted (hidden)
+  // as the state machine driving that row's callbacks.
+  useEffect(() => {
+    if (!chainActions) return;
+    chainActions.register({
+      id: actionId,
+      ready: connected,
+      buildMessage: () => null,
+      mcp: {
+        id: actionId,
+        service,
+        serverUrl,
+        connected,
+        loading,
+        error,
+        showManualToken,
+        onConnect: handleConnect,
+        onUseToken: (token) => {
+          setManualToken(token);
+          void handleManualToken(token);
+        },
+      },
+    });
+    return () => chainActions.unregister(actionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleConnect/handleManualToken capture latest state each registration
+  }, [
+    chainActions,
+    actionId,
+    connected,
+    loading,
+    error,
+    showManualToken,
+    serverUrl,
+    service,
+  ]);
+
+  if (chainActions) return null;
 
   // Already-connected state.  Shown when the backend reports
   // ``has_all_credentials=true`` (model called with
@@ -329,7 +371,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             <Button
               variant="secondary"
               size="small"
-              onClick={handleManualToken}
+              onClick={() => handleManualToken()}
               disabled={loading || !manualToken.trim()}
             >
               Use Token

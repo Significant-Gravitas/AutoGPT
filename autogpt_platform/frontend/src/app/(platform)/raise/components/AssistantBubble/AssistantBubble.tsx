@@ -17,7 +17,7 @@ export function AssistantBubble({ text, typingDelayMs = 350 }: Props) {
   }, [typingDelayMs]);
 
   return (
-    <div className="max-w-[80%] self-start rounded-3xl rounded-bl-lg bg-background px-5 py-3.5 text-[15px] leading-relaxed text-foreground shadow-sm">
+    <div className="max-w-[80%] self-start rounded-3xl rounded-bl-lg bg-background px-5 py-3.5 text-[15px] leading-relaxed text-foreground shadow-sm duration-500 animate-in fade-in slide-in-from-bottom-3 fill-mode-both motion-reduce:animate-none">
       {revealed ? (
         text
       ) : (

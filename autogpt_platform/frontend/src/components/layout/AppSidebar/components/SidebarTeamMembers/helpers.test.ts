@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HomeAgentStatusStatus } from "@/app/api/__generated__/models/homeAgentStatusStatus";
-import {
-  getExpertChatHref,
-  getPresenceColor,
-  getPresenceLabel,
-} from "./helpers";
+import { getExpertHref, getPresenceColor, getPresenceLabel } from "./helpers";
 
 describe("getPresenceColor", () => {
   it("shows working experts in amber", () => {
@@ -47,14 +43,12 @@ describe("getPresenceLabel", () => {
   });
 });
 
-describe("getExpertChatHref", () => {
-  it("deep-links into copilot by expert id", () => {
-    expect(getExpertChatHref("expert-123")).toBe(
-      "/copilot?expertId=expert-123",
-    );
+describe("getExpertHref", () => {
+  it("links to the expert's detail page", () => {
+    expect(getExpertHref("expert-123")).toBe("/team/expert-123");
   });
 
   it("url-encodes the expert id", () => {
-    expect(getExpertChatHref("a/b&c")).toBe("/copilot?expertId=a%2Fb%26c");
+    expect(getExpertHref("a/b&c")).toBe("/team/a%2Fb%26c");
   });
 });
