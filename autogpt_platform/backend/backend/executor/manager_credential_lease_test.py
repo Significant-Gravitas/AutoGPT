@@ -9,6 +9,7 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
+    CredentialsFieldInfo,
     CredentialsMetaInput,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -225,9 +226,15 @@ def _block_with_credentials(
     reference_only_fields = reference_only_fields or set()
     input_schema = MagicMock()
     input_schema.get_credentials_fields.return_value = credential_fields
+    # A real `CredentialsFieldInfo`, not a stand-in carrying only the one
+    # attribute the test happens to need: `execute_node` reads whatever the
+    # field declares, so a partial fake fails with an AttributeError the moment
+    # the executor consults another one.
     input_schema.get_credentials_fields_info.return_value = {
-        field_name: SimpleNamespace(
-            credential_reference_only=field_name in reference_only_fields
+        field_name: CredentialsFieldInfo(
+            credentials_provider=frozenset({ProviderName.CODEX}),
+            credentials_types=frozenset({"oauth2"}),
+            credential_reference_only=field_name in reference_only_fields,
         )
         for field_name in credential_fields
     }
