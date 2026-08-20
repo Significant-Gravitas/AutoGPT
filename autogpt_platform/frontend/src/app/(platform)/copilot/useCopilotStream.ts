@@ -30,7 +30,7 @@ import {
   hasActiveBackendStream,
   hasInProgressAssistantParts,
   hasVisibleAssistantContent,
-  resolveModeChangedMode,
+  isEngineSwitchPart,
 } from "./helpers";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
@@ -284,7 +284,7 @@ export function useCopilotStream({
       // The execution engine is an internal detail with no control and no
       // display — but a switch still takes longer to settle, so the signal
       // is kept to widen the post-finish refetch window below.
-      if (resolveModeChangedMode(dataPart)) {
+      if (isEngineSwitchPart(dataPart)) {
         pendingEngineSwitchRef.current = true;
       }
     }
