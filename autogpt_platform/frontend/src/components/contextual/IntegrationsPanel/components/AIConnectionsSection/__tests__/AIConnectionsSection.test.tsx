@@ -102,11 +102,23 @@ describe("AIConnectionsSection", () => {
     await waitFor(() => expect(saved).not.toHaveBeenCalled());
   });
 
-  it("stays out of the way when there is nothing to choose between", async () => {
+  it("presents no choice when there is only one connection", async () => {
     mockTransports([platform(true)]);
 
     render(<AIConnectionsSection />);
 
-    await waitFor(() => expect(screen.queryByRole("radiogroup")).toBeNull());
+    // The row still says what powers a chat — it just isn't a decision.
+    expect(await screen.findByText("Self-hosted chat")).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("names what is coming without claiming it works", async () => {
+    mockTransports([platform(true)]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("GitHub Copilot and Grok")).toBeDefined();
+    expect(screen.getByText("Coming soon")).toBeDefined();
   });
 });

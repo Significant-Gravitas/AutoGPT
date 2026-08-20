@@ -16,9 +16,12 @@ export function describeTransport(transport: ChatTransportResponse): string {
   if (transport.auth_provider === "codex") {
     return "New chats are backed by your ChatGPT plan, and spend no AutoGPT credits.";
   }
+  // The ChatGPT line promises "no AutoGPT credits", which only means anything
+  // if the row it contrasts with says credits are spent. Self-host has no
+  // credits at all, so it says what it actually has instead.
   return transport.label === SELF_HOSTED_LABEL
     ? "New chats are backed by the chat provider configured on this server."
-    : "New chats are backed by your AutoGPT plan.";
+    : "New chats are backed by your AutoGPT plan, and spend AutoGPT credits.";
 }
 
 export function isSelectable(transport: ChatTransportResponse): boolean {
