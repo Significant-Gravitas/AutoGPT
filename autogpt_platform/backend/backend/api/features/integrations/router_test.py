@@ -1297,7 +1297,7 @@ class TestDeviceAuthEndpoints:
             new=AsyncMock(side_effect=ConnectionError("redis down")),
         ):
             throttled = await router_module._throttle_upstream(
-                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll"
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="f"
             )
 
         assert throttled is False
@@ -1327,7 +1327,7 @@ class TestDeviceAuthEndpoints:
             new=AsyncMock(return_value=_Redis()),
         ):
             first_poll = await router_module._throttle_upstream(
-                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll"
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-a"
             )
             # A poll loop is live; starting a flow must still be allowed.
             initiate = await router_module._throttle_upstream(
@@ -1335,13 +1335,18 @@ class TestDeviceAuthEndpoints:
             )
             # And each scope still throttles itself.
             second_poll = await router_module._throttle_upstream(
-                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll"
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-a"
+            )
+            # A *different* flow must not be starved by the first one's window.
+            other_flow = await router_module._throttle_upstream(
+                TEST_USER_ID, ProviderName.STRIPE_LINK, 5, scope="poll", flow="flow-b"
             )
 
         assert first_poll is False
         assert initiate is False, "an active poll loop blocked initiate"
         assert second_poll is True
-        assert len(claimed) == 2, claimed
+        assert other_flow is False, "a second concurrent flow was starved"
+        assert len(claimed) == 3, claimed
 
     async def test_an_unstorable_grant_is_revoked_not_left_live(self):
         """The device code is spent by the time the store runs, so the state

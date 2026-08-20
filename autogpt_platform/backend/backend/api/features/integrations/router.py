@@ -412,7 +412,7 @@ class DeviceAuthPollResponse(BaseModel):
 
 
 async def _throttle_upstream(
-    user_id: str, provider: ProviderName, seconds: int, scope: str
+    user_id: str, provider: ProviderName, seconds: int, scope: str, flow: str = ""
 ) -> bool:
     """Rate-limit outbound device-auth calls per user and provider.
 
@@ -431,12 +431,19 @@ async def _throttle_upstream(
         from backend.data.redis_client import get_redis_async
 
         redis = await get_redis_async()
-        # Namespaced per endpoint. Sharing one key deadlocked the pair: a live
-        # poll loop re-claims its key every `interval` seconds with the same
-        # TTL, so the key never expires and `initiate` can never claim it —
-        # leaving a dialog open while approving on a phone, which is the
-        # intended behaviour, blocked every other surface from starting a flow.
+        # Namespaced per endpoint, and for polls per flow. Sharing one key
+        # across endpoints deadlocked the pair: a live poll loop re-claims its
+        # key every `interval` seconds with the same TTL, so it never expires
+        # and `initiate` could never claim it. Keying polls per user rather
+        # than per flow had the same shape one level down — a second
+        # concurrent flow lost every window and spun "waiting for approval"
+        # past the point the user approved. RFC 8628's interval is an
+        # obligation per device code, so that is what a poll is held to.
+        # `initiate` has no flow yet and stays per user, which is the point:
+        # it is what stops a loop minting device codes.
         key = f"device-auth-throttle:{scope}:{user_id}:{provider_key(provider)}"
+        if flow:
+            key = f"{key}:{flow}"
         # SET NX EX: the first caller in the window claims the key.
         claimed = await redis.set(key, "1", ex=max(seconds, 1), nx=True)
         return not claimed
@@ -598,7 +605,9 @@ async def device_auth_poll(
         )
 
     interval = int(valid_state.state_metadata.get("interval") or 5)
-    if await _throttle_upstream(user_id, provider, interval, scope="poll"):
+    if await _throttle_upstream(
+        user_id, provider, interval, scope="poll", flow=body.state_token
+    ):
         # Polling faster than the provider asked for. Say so in its own
         # vocabulary rather than spending an upstream call to be told.
         return DeviceAuthPollResponse(status="slow_down")
