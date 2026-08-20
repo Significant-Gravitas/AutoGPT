@@ -58,6 +58,24 @@ const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
     ...over,
   });
 
+const locked = (over: Partial<AIConnectionOffer> = {}) =>
+  offer({
+    offer_id: "codex:locked",
+    provider_family: "openai",
+    display_name: "ChatGPT",
+    auth_method: "chatgpt_oauth",
+    credential_id: null,
+    backed_by_label: "Your ChatGPT plan",
+    state: "locked",
+    selectable: false,
+    is_default: false,
+    tiers: [],
+    limitations: [],
+    lock_reason: "A Max plan or higher is required to use ChatGPT.",
+    unlock_href: "/settings/billing",
+    ...over,
+  });
+
 function mockOffers(offers: AIConnectionOffer[]) {
   server.use(getGetV2ListChatConnectionsMockHandler200({ offers }));
 }
@@ -313,6 +331,50 @@ describe("ConnectionPicker", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: /Model tier/ })).toBeNull(),
     );
+  });
+
+  it("says why a connection the plan excludes is unavailable", async () => {
+    mockOffers([offer(), locked()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(await screen.findByText("ChatGPT")).toBeDefined();
+    expect(
+      screen.getByText("A Max plan or higher is required to use ChatGPT."),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+  });
+
+  it("does not offer a locked connection as something to pick", async () => {
+    // Rendering it as a radio would invite a click that cannot take effect.
+    mockOffers([offer(), locked()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+    await screen.findByText("A Max plan or higher is required to use ChatGPT.");
+
+    expect(screen.queryByRole("radio", { name: /ChatGPT/ })).toBeNull();
+  });
+
+  it("never falls back onto a locked connection", async () => {
+    // is_default should never point at a locked offer, but the client is not
+    // the place to find out the hard way.
+    mockOffers([offer({ is_default: false }), locked({ is_default: true })]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", { name: /Runs on AutoGPT Platform/ }),
+    ).toBeDefined();
+    // What it lands on is what it shows: a locked offer is never the one the
+    // chip names. Nothing is written into the store either, because showing a
+    // default is not the user choosing it.
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
   });
 
   it("reports a failure rather than inventing a connection", async () => {
