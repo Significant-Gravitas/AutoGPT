@@ -52,6 +52,7 @@ from backend.copilot.model import (
     update_session_pinned,
     update_session_title,
 )
+from backend.copilot.offers import AIConnectionOffersResponse, get_connection_offers
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     StreamRegistryUnavailable,
@@ -552,6 +553,23 @@ async def list_chat_transports(
     Settings, or the server's own pick when they haven't chosen one.
     """
     return ChatTransportsResponse(transports=await get_chat_transports(user_id))
+
+
+@router.get(
+    "/connections",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_chat_connections(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> AIConnectionOffersResponse:
+    """Every AI connection the user can chat over, described by the server.
+
+    Additive alongside ``GET /transports``, which keeps its shape. This
+    carries what a client would otherwise have to infer — provider family,
+    what backs a run, the quality tiers, and the limitations that apply —
+    so product and billing statements come from the side that enforces them.
+    """
+    return AIConnectionOffersResponse(offers=await get_connection_offers(user_id))
 
 
 class SetDefaultTransportRequest(BaseModel):
