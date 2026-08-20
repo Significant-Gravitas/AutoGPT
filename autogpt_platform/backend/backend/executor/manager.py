@@ -256,6 +256,23 @@ async def execute_node(
     if node_block.disabled:
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
+    input_model = cast(type[BlockSchema], node_block.input_schema)
+    credential_fields_info = input_model.get_credentials_fields_info()
+    required_credential_fields = set(input_model.get_required_fields())
+
+    # Remove optional credential metadata that the selected discriminator does
+    # not use before schema validation. Empty or stale objects would otherwise
+    # fail their nested credential schema before the executor can ignore them.
+    for field_name, field_info in credential_fields_info.items():
+        if (
+            field_info.discriminator
+            and field_name not in required_credential_fields
+            and not field_info.requires_credentials(
+                data.inputs.get(field_info.discriminator)
+            )
+        ):
+            data.inputs[field_name] = None
+
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(
         node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
@@ -335,12 +352,8 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
-    input_model = cast(type[BlockSchema], node_block.input_schema)
-
     try:
         # Handle regular credentials fields
-        credential_fields_info = input_model.get_credentials_fields_info()
-        required_credential_fields = set(input_model.get_required_fields())
         for field_name, input_type in input_model.get_credentials_fields().items():
             # Dry-run platform credentials bypass the credential store.
             # Keep the existing credential metadata so _execute's input_schema(**...)
@@ -371,23 +384,6 @@ async def execute_node(
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
             field_info = credential_fields_info[field_name]
-            # A stale credential left on a node whose selection no longer uses
-            # it must not be resolved: enforcing entitlement here hard-fails a
-            # platform-funded run for a user who never asked to use codex.
-            #
-            # Scoped to optional fields, mirroring `credentials_input_schema`:
-            # for a required credential an unmapped discriminator means the
-            # node is broken (e.g. a deprecated LLM model), and resolving it is
-            # what surfaces that instead of running on into a worse error.
-            if (
-                field_info.discriminator
-                and field_name not in required_credential_fields
-                and not field_info.requires_credentials(
-                    input_data.get(field_info.discriminator)
-                )
-            ):
-                input_data[field_name] = None
-                continue
             if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
                     user_id,

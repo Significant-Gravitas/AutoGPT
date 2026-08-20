@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import prisma.models
 import pytest
 
-from backend.blocks.autopilot_migrate import (
+from backend.data.autopilot_migrate import (
     AUTOPILOT_BLOCK_ID,
     migrate_autopilot_transport,
 )
@@ -13,10 +13,10 @@ from backend.blocks.autopilot_migrate import (
 @pytest.mark.asyncio
 async def test_dry_run_counts_without_writing():
     with patch(
-        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        "backend.data.autopilot_migrate.query_raw_with_schema",
         new=AsyncMock(return_value=[{"count": 3}]),
     ), patch(
-        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        "backend.data.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(),
     ) as execute:
         assert await migrate_autopilot_transport(apply=False) == 3
@@ -27,10 +27,10 @@ async def test_dry_run_counts_without_writing():
 @pytest.mark.asyncio
 async def test_apply_writes_the_transport_value():
     with patch(
-        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        "backend.data.autopilot_migrate.query_raw_with_schema",
         new=AsyncMock(),
     ) as query, patch(
-        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        "backend.data.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(return_value=1),
     ) as execute:
         assert await migrate_autopilot_transport(apply=True) == 1
@@ -48,10 +48,10 @@ async def test_apply_writes_the_transport_value():
 @pytest.mark.asyncio
 async def test_apply_nothing_pending_is_a_silent_no_op():
     with patch(
-        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        "backend.data.autopilot_migrate.query_raw_with_schema",
         new=AsyncMock(),
     ) as query, patch(
-        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        "backend.data.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(return_value=0),
     ) as execute:
         assert await migrate_autopilot_transport(apply=True) == 0
@@ -63,10 +63,10 @@ async def test_apply_nothing_pending_is_a_silent_no_op():
 @pytest.mark.asyncio
 async def test_dry_run_nothing_pending_is_a_silent_no_op():
     with patch(
-        "backend.blocks.autopilot_migrate.query_raw_with_schema",
+        "backend.data.autopilot_migrate.query_raw_with_schema",
         new=AsyncMock(return_value=[{"count": 0}]),
     ), patch(
-        "backend.blocks.autopilot_migrate.execute_raw_with_schema",
+        "backend.data.autopilot_migrate.execute_raw_with_schema",
         new=AsyncMock(),
     ) as execute:
         assert await migrate_autopilot_transport(apply=False) == 0
@@ -79,7 +79,7 @@ async def test_predicate_scopes_to_autopilot_nodes_needing_the_backfill():
     """The predicate is the idempotency guarantee — it must exclude nodes that
     already have a transport, and id-less credential metas (nothing selected)."""
     query = AsyncMock(return_value=[{"count": 0}])
-    with patch("backend.blocks.autopilot_migrate.query_raw_with_schema", new=query):
+    with patch("backend.data.autopilot_migrate.query_raw_with_schema", new=query):
         await migrate_autopilot_transport(apply=False)
 
     sql, block_id = query.await_args.args
@@ -175,7 +175,7 @@ def test_query_templates_survive_schema_formatting():
     prefix, so any literal brace becomes a format field. A '{transport}'
     jsonb_set path raised KeyError at apply time — the second way this
     migration crashed only when actually run."""
-    from backend.blocks.autopilot_migrate import _COUNT_QUERY, _UPDATE_QUERY
+    from backend.data.autopilot_migrate import _COUNT_QUERY, _UPDATE_QUERY
 
     for template in (_COUNT_QUERY, _UPDATE_QUERY):
         template.format(schema_prefix="platform.", schema="platform")

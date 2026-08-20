@@ -107,6 +107,12 @@ class AutoPilotTransport(str, Enum):
     PLATFORM = "platform"
     CODEX_APP_SERVER = "codex_app_server"
 
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        json_schema["enumNames"] = ["AutoGPT Platform", "ChatGPT"]
+        return json_schema
+
 
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
@@ -540,7 +546,7 @@ class AutoPilotBlock(Block):
                 logger.warning(
                     "AutoPilot node has a ChatGPT connection but no transport "
                     "set — billing to the connection. Run "
-                    "`python -m backend.blocks.autopilot_migrate --apply`."
+                    "`python -m backend.data.autopilot_migrate --apply`."
                 )
         elif input_data.transport == AutoPilotTransport.CODEX_APP_SERVER:
             if codex_connection is None:

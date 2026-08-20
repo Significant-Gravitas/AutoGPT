@@ -42,6 +42,8 @@ export function gateDiscriminatorOptions(
     const fieldSchema = properties[fieldName];
     if (!isRecord(fieldSchema)) continue;
 
+    const saved = currentValues[fieldName];
+    const fallback = fieldSchema.default;
     const keep = (option: unknown) => {
       // Never drop the value a graph is already saved with; hiding it would
       // silently rewrite the node on the next change. Nor the schema's own
@@ -49,8 +51,6 @@ export function gateDiscriminatorOptions(
       // filtering it out leaves a select whose selection is not in its
       // options. Compared as strings to match `blocked`, so a numeric enum
       // and a string-typed saved value still line up.
-      const saved = currentValues[fieldName];
-      const fallback = fieldSchema.default;
       return (
         !blocked.has(String(option)) ||
         (saved !== undefined && String(option) === String(saved)) ||
@@ -104,12 +104,24 @@ function gateEnumNode(
   fieldSchema: Record<string, unknown>,
   keep: (option: unknown) => boolean,
 ): Record<string, unknown> | null {
-  if (Array.isArray(fieldSchema.enum)) {
-    const kept = fieldSchema.enum.filter(keep);
-    if (kept.length === fieldSchema.enum.length) return null;
+  const enumValues = fieldSchema.enum;
+  if (Array.isArray(enumValues)) {
+    const keptIndexes = enumValues.flatMap((option, index) =>
+      keep(option) ? [index] : [],
+    );
+    if (keptIndexes.length === enumValues.length) return null;
     // An empty dropdown is worse than an unusable option.
-    if (kept.length === 0) return null;
-    return { ...fieldSchema, enum: kept };
+    if (keptIndexes.length === 0) return null;
+
+    const originalEnumNames = fieldSchema.enumNames;
+    const enumNames = Array.isArray(originalEnumNames)
+      ? keptIndexes.map((index) => originalEnumNames[index])
+      : undefined;
+    return {
+      ...fieldSchema,
+      enum: keptIndexes.map((index) => enumValues[index]),
+      ...(enumNames ? { enumNames } : {}),
+    };
   }
 
   if (Array.isArray(fieldSchema.anyOf)) {

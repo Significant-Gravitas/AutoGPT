@@ -31,7 +31,15 @@ export function SelectWidget(props: WidgetProps) {
     placeholder,
   } = props;
   const rawEnumOptions: EnumOptionsType[] = options.enumOptions || [];
-  const enumOptions = rawEnumOptions.filter((option) => option.value !== "");
+  const enumNames = props.schema.enumNames;
+  const labelledEnumOptions = rawEnumOptions.map((option, index) =>
+    Array.isArray(enumNames) && typeof enumNames[index] === "string"
+      ? { ...option, label: enumNames[index] }
+      : option,
+  );
+  const enumOptions = labelledEnumOptions.filter(
+    (option) => option.value !== "",
+  );
   const droppedEmptyOptionCount = rawEnumOptions.length - enumOptions.length;
   if (process.env.NODE_ENV === "development" && droppedEmptyOptionCount > 0) {
     console.warn(

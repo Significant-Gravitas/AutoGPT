@@ -141,6 +141,33 @@ describe("SelectWidget", () => {
     });
   });
 
+  it("uses schema enum names as display labels", () => {
+    render(
+      <SelectWidget
+        {...createProps({
+          schema: {
+            type: "string",
+            enum: ["platform", "codex_app_server"],
+            enumNames: ["AutoGPT Platform", "ChatGPT"],
+          },
+          options: {
+            enumOptions: [
+              { value: "platform", label: "platform" },
+              { value: "codex_app_server", label: "codex_app_server" },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(selectSpy.mock.calls[0][0]).toMatchObject({
+      options: [
+        { value: "0", label: "AutoGPT Platform" },
+        { value: "1", label: "ChatGPT" },
+      ],
+    });
+  });
+
   it("preserves falsy non-empty values like 0", () => {
     render(
       <SelectWidget

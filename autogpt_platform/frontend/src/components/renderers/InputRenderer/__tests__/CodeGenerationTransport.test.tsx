@@ -390,7 +390,11 @@ describe("An optional discriminator is still gated", () => {
         default: null,
         title: "Transport",
         anyOf: [
-          { enum: ["platform", "codex_app_server"], type: "string" },
+          {
+            enum: ["platform", "codex_app_server"],
+            enumNames: ["AutoGPT Platform", "ChatGPT"],
+            type: "string",
+          },
           { type: "null" },
         ],
       },
@@ -442,7 +446,7 @@ describe("An optional discriminator is still gated", () => {
     const labels = Array.from(select.querySelectorAll("option")).map(
       (o) => o.textContent,
     );
-    expect(labels).not.toContain("codex_app_server");
+    expect(labels).toEqual(["AutoGPT Platform"]);
     expect(screen.queryByText("credential")).toBeNull();
   });
 
@@ -481,7 +485,7 @@ describe("An optional discriminator is still gated", () => {
 
     const select = screen.getByLabelText("agpt_%_transport");
     const platform = Array.from(select.querySelectorAll("option")).find(
-      (option) => option.textContent === "platform",
+      (option) => option.textContent === "AutoGPT Platform",
     );
     if (!platform) throw new Error("expected the platform transport option");
 

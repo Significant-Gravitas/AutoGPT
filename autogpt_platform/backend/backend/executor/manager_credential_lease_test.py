@@ -190,7 +190,11 @@ async def test_platform_transport_ignores_attached_codex_credential():
     block = _discriminated_reference_block(captured)
     gate = AsyncMock()
 
-    with patch("backend.executor.manager.enforce_codex_access", new=gate):
+    validation = MagicMock(side_effect=lambda _node, inputs, **_kwargs: (inputs, None))
+    with (
+        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        patch("backend.executor.manager.validate_exec", new=validation),
+    ):
         outputs = [
             item
             async for item in execute_node(
@@ -206,6 +210,7 @@ async def test_platform_transport_ignores_attached_codex_credential():
         ]
 
     assert outputs == [("response", "ok")]
+    assert validation.call_args.args[1]["codex_credentials"] is None
     manager.get.assert_not_awaited()
     manager.acquire_lease.assert_not_awaited()
     gate.assert_not_awaited()
