@@ -77,11 +77,18 @@ async def test_upload_media_invalid_type(mock_settings, mock_storage_client):
     mock_storage_client.upload.assert_not_called()
 
 
-async def test_upload_media_missing_credentials(monkeypatch):
+async def test_upload_media_falls_back_to_local_storage(
+    mock_storage_client, tmp_path, monkeypatch
+):
+    # When no GCS bucket is configured (e.g. self-hosted deployments), uploads
+    # should be stored on the local filesystem instead of failing outright.
     settings = Settings()
     settings.config.media_gcs_bucket_name = ""
     settings.config.google_application_credentials = ""
     monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.media.get_data_path", lambda: tmp_path
+    )
 
     test_file = fastapi.UploadFile(
         filename="laptop.jpeg",
@@ -89,8 +96,49 @@ async def test_upload_media_missing_credentials(monkeypatch):
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(store_exceptions.StorageConfigError):
-        await store_media.upload_media("test-user", test_file)
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.startswith("/api/store/media/test-user/images/")
+    assert result.endswith(".jpeg")
+    mock_storage_client.upload.assert_not_called()
+
+    stored_filename = result.rsplit("/", 1)[-1]
+    stored_path = (
+        tmp_path / "store_media" / "users" / "test-user" / "images" / stored_filename
+    )
+    assert stored_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "user_id,filename",
+    [
+        ("../../etc", "passwd"),
+        ("test-user", "../../etc/passwd"),
+        ("test/user", "file.png"),
+        ("test-user", "sub/dir/file.png"),
+    ],
+)
+def test_get_local_media_path_rejects_disallowed_characters(user_id, filename):
+    with pytest.raises(ValueError):
+        store_media.get_local_media_path(user_id, "images", filename)
+
+
+async def test_check_media_exists_local_storage(tmp_path, monkeypatch):
+    settings = Settings()
+    settings.config.media_gcs_bucket_name = ""
+    monkeypatch.setattr("backend.api.features.store.media.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.api.features.store.media.get_data_path", lambda: tmp_path
+    )
+
+    assert await store_media.check_media_exists("test-user", "missing.jpeg") is None
+
+    image_dir = tmp_path / "store_media" / "users" / "test-user" / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / "present.jpeg").write_bytes(b"data")
+
+    result = await store_media.check_media_exists("test-user", "present.jpeg")
+    assert result == "/api/store/media/test-user/images/present.jpeg"
 
 
 async def test_upload_media_video_type(mock_settings, mock_storage_client):
@@ -189,6 +237,25 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
         "https://storage.googleapis.com/test-bucket/users/test-user/videos/"
     )
     assert result.endswith(".webm")
+
+
+async def test_upload_media_extension_matches_validated_content_type(
+    mock_settings, mock_storage_client
+):
+    # An attacker can send a validated image with an arbitrary client-supplied
+    # filename extension. The stored/served extension must come from the
+    # validated content type, not from the untrusted filename, otherwise the
+    # file could later be served back as e.g. HTML on this origin.
+    test_file = fastapi.UploadFile(
+        filename="payload.html",
+        file=io.BytesIO(b"GIF89a"),  # Valid GIF signature
+        headers=starlette.datastructures.Headers({"content-type": "image/gif"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.endswith(".gif")
+    assert not result.endswith(".html")
 
 
 async def test_upload_media_mismatched_signature(mock_settings, mock_storage_client):
