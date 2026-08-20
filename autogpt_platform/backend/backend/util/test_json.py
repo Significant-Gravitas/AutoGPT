@@ -1,5 +1,6 @@
 import datetime
 import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
@@ -874,18 +875,7 @@ class TestValidateWithJsonschema:
 
     def test_concurrent_eviction_is_atomic(self, monkeypatch):
         """Two full-cache misses cannot evict the same entry concurrently."""
-        eviction_barrier = threading.Barrier(2)
-
-        class CoordinatedCache(dict[bytes, Any]):
-            def __iter__(self):
-                keys = tuple(super().keys())
-                try:
-                    eviction_barrier.wait(timeout=0.1)
-                except threading.BrokenBarrierError:
-                    pass
-                return iter(keys)
-
-        cache = CoordinatedCache({b"old": object()})
+        cache: OrderedDict[bytes, Any] = OrderedDict({b"old": object()})
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_ENTRIES", 1)
         values = (object(), object())
@@ -899,3 +889,164 @@ class TestValidateWithJsonschema:
 
         assert published == values
         assert len(cache) == 1
+
+    def test_cache_uses_lru_eviction(self, monkeypatch):
+        """A recently reused schema survives the next full-cache insertion."""
+        cache: OrderedDict[bytes, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_ENTRIES", 2)
+        schemas = [
+            {
+                "type": "object",
+                "properties": {"value": {"type": "integer", "minimum": minimum}},
+            }
+            for minimum in range(3)
+        ]
+
+        for schema in schemas[:2]:
+            assert validate_with_jsonschema(schema, {"value": 2}) is None
+        assert validate_with_jsonschema(schemas[0], {"value": 2}) is None
+        assert validate_with_jsonschema(schemas[2], {"value": 2}) is None
+
+        keys = [json_util._schema_cache_key(schema) for schema in schemas]
+        assert list(cache) == [keys[0], keys[2]]
+
+    @pytest.mark.parametrize(
+        (
+            "first_schema",
+            "first_data",
+            "second_schema",
+            "second_data",
+            "expected_entries",
+        ),
+        [
+            (
+                {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "number", "maximum": float("inf")}
+                    },
+                },
+                {"value": 5},
+                {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "number", "maximum": float("-inf")}
+                    },
+                },
+                {"value": 5},
+                0,
+            ),
+            (
+                {"type": "object", "properties": {"value": {"enum": [(1, 2)]}}},
+                {"value": [1, 2]},
+                {"type": "object", "properties": {"value": {"enum": [[1, 2]]}}},
+                {"value": [1, 2]},
+                1,
+            ),
+        ],
+    )
+    def test_lossy_serializations_bypass_cache(
+        self,
+        first_schema,
+        first_data,
+        second_schema,
+        second_data,
+        expected_entries,
+        monkeypatch,
+    ):
+        """Values that orjson conflates retain jsonschema's exact behavior."""
+        cache: OrderedDict[bytes, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+
+        assert validate_with_jsonschema(
+            first_schema, first_data
+        ) == self._baseline_outcome(first_schema, first_data)
+        assert not cache
+        assert validate_with_jsonschema(
+            second_schema, second_data
+        ) == self._baseline_outcome(second_schema, second_data)
+        assert len(cache) == expected_entries
+
+    def test_nonfinite_key_cannot_hide_malformed_schema(self, monkeypatch):
+        """A non-finite key cannot collide with an invalid null constraint."""
+        cache: OrderedDict[bytes, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        nonfinite = {
+            "type": "object",
+            "properties": {"value": {"type": "number", "maximum": float("inf")}},
+        }
+        malformed = {
+            "type": "object",
+            "properties": {"value": {"type": "number", "maximum": None}},
+        }
+
+        assert validate_with_jsonschema(nonfinite, {"value": 5}) is None
+        with pytest.raises(jsonschema.SchemaError):
+            validate_with_jsonschema(malformed, {"value": 5})
+        assert not cache
+
+    def test_oversized_schema_is_not_retained(self, monkeypatch):
+        """Caller-controlled schemas above the key budget compile uncached."""
+        cache: OrderedDict[bytes, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        schema = {
+            "type": "object",
+            "description": "x" * 20_000,
+            "properties": {"value": {"type": "string"}},
+        }
+
+        assert validate_with_jsonschema(schema, {"value": "text"}) is None
+        assert validate_with_jsonschema(schema, {"value": "text"}) is None
+        assert not cache
+
+    @pytest.mark.parametrize(
+        ("schema", "data"),
+        [
+            (
+                {
+                    "type": "object",
+                    "properties": {
+                        "value": {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+                    },
+                },
+                {"value": []},
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {
+                        "value": {"oneOf": [{"minimum": 5}, {"type": "string"}]}
+                    },
+                },
+                {"value": 3},
+            ),
+            (
+                {
+                    "type": "object",
+                    "properties": {
+                        "nested": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"anyOf": [{"type": "string"}, {"minimum": 5}]}
+                            },
+                        }
+                    },
+                },
+                {"nested": {"value": 3}},
+            ),
+        ],
+    )
+    def test_nested_error_message_matches_jsonschema_exactly(self, schema, data):
+        """best_match keeps byte-for-byte parity for combinator errors."""
+        assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
+            schema, data
+        )
+
+    @staticmethod
+    def _baseline_outcome(schema: dict[str, Any], data: dict[str, Any]) -> str | None:
+        try:
+            jsonschema.validate(data, schema)
+        except jsonschema.ValidationError as error:
+            return str(error)
+        return None

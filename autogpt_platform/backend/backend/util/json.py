@@ -1,6 +1,8 @@
 import itertools
 import logging
+import math
 import re
+from collections import OrderedDict
 from copy import deepcopy
 from threading import Lock
 from typing import Any, Type, TypeVar, overload
@@ -135,8 +137,11 @@ def loads(
     return parsed
 
 
-_VALIDATOR_CACHE: dict[bytes, Any] = {}
-_VALIDATOR_CACHE_MAX_ENTRIES = 512
+_VALIDATOR_CACHE: OrderedDict[bytes, Any] = OrderedDict()
+# The 565 built-in Block classes can each contribute a normal and dry-run
+# schema; 2,048 covers that working set while leaving room for user schemas.
+_VALIDATOR_CACHE_MAX_ENTRIES = 2048
+_VALIDATOR_CACHE_MAX_KEY_BYTES = 16 * 1024
 _VALIDATOR_CACHE_LOCK = Lock()
 
 
@@ -155,19 +160,57 @@ def _compiled_validator(schema: dict[str, Any]):
     keys would change them.
 
     """
-    try:
-        key = orjson.dumps(schema)
-    except TypeError:
-        # Not JSON-serializable, so it cannot be keyed; compile without caching.
-        validator_cls = jsonschema.validators.validator_for(schema)
-        validator_cls.check_schema(schema)
-        return validator_cls(schema)
+    key = _schema_cache_key(schema)
+    if key is None:
+        return _new_validator(schema)
 
     with _VALIDATOR_CACHE_LOCK:
         cached = _VALIDATOR_CACHE.get(key)
-    if cached is not None:
-        return cached
+        if cached is not None:
+            _VALIDATOR_CACHE.move_to_end(key)
+            return cached
 
+    return _remember(key, _new_validator(schema))
+
+
+def _schema_cache_key(schema: dict[str, Any]) -> bytes | None:
+    """Return an injective, size-bounded key for safely cacheable schemas."""
+    if not _is_json_native(schema):
+        return None
+    try:
+        key = orjson.dumps(schema)
+    except TypeError:
+        return None
+    if len(key) > _VALIDATOR_CACHE_MAX_KEY_BYTES:
+        return None
+    return key
+
+
+def _is_json_native(value: Any) -> bool:
+    """Check that orjson preserves every value's type and meaning."""
+    pending = [value]
+    while pending:
+        current = pending.pop()
+        current_type = type(current)
+        if current is None or current_type in (str, int, bool):
+            continue
+        if current_type is float:
+            if not math.isfinite(current):
+                return False
+            continue
+        if current_type is list:
+            pending.extend(current)
+            continue
+        if current_type is dict:
+            if any(type(key) is not str for key in current):
+                return False
+            pending.extend(current.values())
+            continue
+        return False
+    return True
+
+
+def _new_validator(schema: dict[str, Any]):
     # Compile against a private copy: a jsonschema validator memoises the
     # sub-schemas it walks, so a retained one must not alias a dict the caller
     # still holds and could mutate afterwards. deepcopy also preserves key
@@ -175,11 +218,11 @@ def _compiled_validator(schema: dict[str, Any]):
     schema_copy = deepcopy(schema)
     validator_cls = jsonschema.validators.validator_for(schema_copy)
     validator_cls.check_schema(schema_copy)
-    return _remember(key, validator_cls(schema_copy))
+    return validator_cls(schema_copy)
 
 
 def _remember(key: bytes, value: Any) -> Any:
-    """Publish and return one value, evicting an oldest entry if needed.
+    """Publish and return one value, evicting the least-recently used entry.
 
     The keys are caller-supplied schemas, which on this platform come from
     user-authored graphs, so the cache has to be bounded.
@@ -187,9 +230,10 @@ def _remember(key: bytes, value: Any) -> Any:
     with _VALIDATOR_CACHE_LOCK:
         cached = _VALIDATOR_CACHE.get(key)
         if cached is not None:
+            _VALIDATOR_CACHE.move_to_end(key)
             return cached
         if len(_VALIDATOR_CACHE) >= _VALIDATOR_CACHE_MAX_ENTRIES:
-            _VALIDATOR_CACHE.pop(next(iter(_VALIDATOR_CACHE)))
+            _VALIDATOR_CACHE.popitem(last=False)
         _VALIDATOR_CACHE[key] = value
         return value
 
