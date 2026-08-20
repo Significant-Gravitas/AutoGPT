@@ -469,9 +469,9 @@ class TestShutdown:
     def test_shutdown_does_not_rearm_lazy_initialization(
         self, mocker, ld_client, sdk_key
     ):
-        # A flag evaluation can land after teardown -- an in-flight request
-        # served during FastAPI's lifespan shutdown. Rebuilding the client
-        # there would start fresh streaming threads inside the shutdown window.
+        # `_is_initialized` is never cleared, which is what keeps a flag
+        # evaluation arriving after teardown from rebuilding the client. This
+        # pins that property; it is not a regression test for the gate swap.
         feature_flag_module._is_initialized = True
         feature_flag_module._init_attempted = True
         set_config = mocker.patch("backend.util.feature_flag.ldclient.set_config")

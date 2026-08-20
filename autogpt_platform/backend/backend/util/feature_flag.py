@@ -181,8 +181,6 @@ def get_client() -> LDClient:
     # `_is_initialized` never becomes True, so gating on it re-entered
     # `initialize_launchdarkly` on every flag evaluation -- a warning and a
     # raise per call on the unconfigured deployments this appliance ships as.
-    # It also re-armed after teardown, rebuilding a client with fresh streaming
-    # threads inside the shutdown window.
     if not _init_attempted:
         initialize_launchdarkly()
     return ldclient.get()
@@ -204,9 +202,15 @@ def initialize_launchdarkly() -> None:
     config = Config(sdk_key)
     ldclient.set_config(config)
 
+    # Read the client before recording that one exists: if constructing it
+    # raised, `shutdown_launchdarkly` would otherwise build a fresh one purely
+    # to close it. Being unreachable is not a construction failure -- that
+    # returns an uninitialized client rather than raising -- so this only
+    # covers the abnormal case.
     global _is_initialized
+    connected = ldclient.get().is_initialized()
     _is_initialized = True
-    if ldclient.get().is_initialized():
+    if connected:
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -224,10 +228,12 @@ def shutdown_launchdarkly() -> None:
         # leave the process alive instead of exiting.
         return
 
-    # Close whenever a client was constructed, not just when it connected. A
-    # configured client that never reached LaunchDarkly still has streaming and
-    # event threads running, and leaving those up is the exact thing that keeps
-    # a process alive past its stop deadline.
+    # Close whenever a client was constructed, not just when it connected, so
+    # buffered events are flushed and sockets are torn down in order. This is
+    # not about keeping the process alive: every SDK thread is a daemon, so
+    # they never blocked interpreter exit -- it was the escaping exception that
+    # did. Note `close()` flushes synchronously, so an unreachable
+    # LaunchDarkly can make it wait on the SDK's HTTP timeouts.
     #
     # `_is_initialized` is deliberately left set: `get_client` reads a false
     # value as "never started", and clearing it here would let a flag
