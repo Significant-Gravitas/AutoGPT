@@ -144,6 +144,14 @@ class ChatMessage(BaseModel):
     model: str | None = None
     routing_source: RoutingSource | None = Field(default=None, exclude=True)
 
+    # Which connection served this turn. Unlike routing_source this is the
+    # user's own choice, not an internal cohort, so it is safe to serialize
+    # and is what lets a chat show what each turn actually ran on.
+    # None on user/tool rows and on rows written before this existed --
+    # ``segment_of`` resolves those against the session's own route.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -207,6 +215,10 @@ class ChatMessage(BaseModel):
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
             routing_source=cast("RoutingSource | None", prisma_message.routingSource),
+            llm_auth_provider=cast(
+                "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
+            ),
+            llm_credential_id=prisma_message.llmCredentialId,
         )
 
 
@@ -1010,6 +1022,8 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                     "model": msg.model,
                     "routing_source": msg.routing_source,
+                    "llm_auth_provider": msg.llm_auth_provider,
+                    "llm_credential_id": msg.llm_credential_id,
                 }
             )
         logger.info(
@@ -1060,6 +1074,8 @@ async def _save_session_to_db(
                 sequence=msg.sequence,
                 model=msg.model,
                 routing_source=msg.routing_source,
+                llm_auth_provider=msg.llm_auth_provider,
+                llm_credential_id=msg.llm_credential_id,
             )
         except Exception as e:
             logger.error(
