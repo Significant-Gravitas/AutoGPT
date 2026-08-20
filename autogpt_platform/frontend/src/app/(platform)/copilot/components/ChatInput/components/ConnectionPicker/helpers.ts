@@ -49,13 +49,33 @@ export function tiersAreDistinct(
   return new Set(named.map((tier) => tier.display_model)).size > 1;
 }
 
+function tierOf(offer: AIConnectionOffer | undefined, tier: string) {
+  return offer?.tiers.find((candidate) => candidate.tier === tier);
+}
+
+export function tierName(
+  offer: AIConnectionOffer | undefined,
+  tier: string,
+): string {
+  return (
+    tierOf(offer, tier)?.label ??
+    (tier === "advanced" ? "Advanced" : "Balanced")
+  );
+}
+
+export function tierModel(
+  offer: AIConnectionOffer | undefined,
+  tier: string,
+): string | null {
+  return tierOf(offer, tier)?.display_model ?? null;
+}
+
+/** The whole choice in one string, for an accessible name. */
 export function tierLabel(
   offer: AIConnectionOffer | undefined,
   tier: string,
 ): string {
-  const match = offer?.tiers.find((candidate) => candidate.tier === tier);
-  if (!match) return tier === "advanced" ? "Advanced" : "Balanced";
-  return match.display_model
-    ? `${match.label} · ${match.display_model}`
-    : match.label;
+  const model = tierModel(offer, tier);
+  const name = tierName(offer, tier);
+  return model ? `${name} · ${model}` : name;
 }
