@@ -5,6 +5,7 @@ import {
   fileItemToArtifactRef,
   formatFileSize,
   formatFileTimestamp,
+  isInternalToolOutput,
   isUploadedFile,
 } from "./helpers";
 
@@ -40,6 +41,81 @@ describe("FilesTab helpers", () => {
   });
   test("formatFileTimestamp returns a non-empty string", () => {
     expect(formatFileTimestamp(baseItem.created_at).length).toBeGreaterThan(0);
+  });
+});
+
+describe("isInternalToolOutput", () => {
+  function generated(name: string, path?: string): WorkspaceFileItem {
+    return {
+      ...baseItem,
+      name,
+      path: path ?? `/sessions/s1/${name}`,
+      mime_type: "application/json",
+      metadata: {},
+      origin: "generated",
+    };
+  }
+
+  function toolOutput(name: string): WorkspaceFileItem {
+    return generated(name, `/sessions/s1/tool-outputs/${name}`);
+  }
+
+  test("matches SDK tool results parked in the session tool-output dir", () => {
+    expect(isInternalToolOutput(toolOutput("toolu_01ABCdef.json"))).toBe(true);
+    expect(isInternalToolOutput(toolOutput("mcp_a1b2-c3d4.json"))).toBe(true);
+    expect(isInternalToolOutput(toolOutput("TOOLU_01ABC.JSON"))).toBe(true);
+    expect(
+      isInternalToolOutput(
+        generated(
+          "toolu_01ABCdef.json",
+          "/sessions/s1/tool-results/toolu_01ABCdef.json",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("leaves user-facing files alone", () => {
+    expect(isInternalToolOutput(generated("report.json"))).toBe(false);
+    expect(isInternalToolOutput(generated("result.csv"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("toolu_notes.txt"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("toolusage.json"))).toBe(false);
+    expect(isInternalToolOutput(toolOutput("mcpserver.json"))).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated("notes.json", "/sessions/s1/my-tool-results-archive.json"),
+      ),
+    ).toBe(false);
+  });
+
+  // Both halves of the shape are load-bearing, exactly as in the backend
+  // classifier: an SDK id prefix on its own is a plausible deliverable name,
+  // and a `tool-outputs/` folder on its own may well be the user's.
+  test("needs the tool-output directory and the SDK id prefix together", () => {
+    expect(isInternalToolOutput(generated("mcp_config.json"))).toBe(false);
+    expect(isInternalToolOutput(generated("toolu_01ABCdef.json"))).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated(
+          "data.json",
+          "/sessions/s1/my-pipeline/tool-outputs/data.json",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated("data.json", "/sessions/s1/tool-results/data.json"),
+      ),
+    ).toBe(false);
+  });
+
+  test("never hides files the user uploaded themselves", () => {
+    expect(
+      isInternalToolOutput({
+        ...baseItem,
+        name: "toolu_01ABCdef.json",
+        path: "/sessions/s1/tool-outputs/toolu_01ABCdef.json",
+      }),
+    ).toBe(false);
   });
 });
 

@@ -2,15 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "../../store";
-import { fileItemToArtifactRef } from "./components/FilesTab/helpers";
+import {
+  fileItemToArtifactRef,
+  isInternalToolOutput,
+} from "./components/FilesTab/helpers";
 import {
   useSessionFiles,
   type SessionFile,
 } from "./components/FilesTab/useSessionFiles";
 
 function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
-  if (generated.length === 0) return null;
-  return generated.reduce((latest, file) =>
+  const userFacing = generated.filter(
+    (file) => !isInternalToolOutput(file.item),
+  );
+  if (userFacing.length === 0) return null;
+  return userFacing.reduce((latest, file) =>
     new Date(file.item.created_at).getTime() >
     new Date(latest.item.created_at).getTime()
       ? file
@@ -21,7 +27,8 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
 /**
  * The first time a session is found to have generated files, opens the Artifact
  * panel directly on the most recently generated file (unless the user has
- * explicitly closed the panel).
+ * explicitly closed the panel). Internal tool output is skipped, so a session
+ * that only produced tool scratch files leaves the panel collapsed.
  */
 export function useAutoOpenForFiles(sessionId: string | null) {
   const autoOpenArtifact = useCopilotUIStore((s) => s.autoOpenArtifact);
