@@ -321,7 +321,9 @@ export function ChatInput({
               disabled={isBusy}
             />
             {recipientPicker}
-            {!hasSession && <ConnectionPicker />}
+            {(!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
             {!isBrainDumpEnabled &&
               showAdvancedComposerControls &&
               !hasSession && (
@@ -393,7 +395,9 @@ export function ChatInput({
           with the banner in CopilotPage.tsx reflecting the actual state. */}
       {Boolean(isBrainDumpEnabled) && hasTrayItems && (
         <ComposerTray>
-          {!hasSession && <ConnectionPicker />}
+          {(!hasSession || !isStreaming) && (
+            <ConnectionPicker connectionLocked={hasSession} />
+          )}
           {showAdvancedComposerControls && !hasSession && (
             <DryRunToggleButton
               isDryRun={isDryRun}
