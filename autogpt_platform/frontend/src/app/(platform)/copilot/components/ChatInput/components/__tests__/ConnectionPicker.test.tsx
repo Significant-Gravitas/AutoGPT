@@ -108,6 +108,20 @@ describe("ConnectionPicker", () => {
     ).toBeDefined();
   });
 
+  it("gives the model its own line so a long name stays readable", async () => {
+    // The model is the reason the tier row exists; sharing one line with the
+    // label truncates it away on any realistic model id.
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(await screen.findByText("sonnet-5")).toBeDefined();
+    expect(screen.getByText("opus-5")).toBeDefined();
+  });
+
   it("offers no tier choice when both tiers are the same model", async () => {
     // A single-model self-host resolves both tiers identically; choosing
     // between two identical options is a decision with no consequence.
