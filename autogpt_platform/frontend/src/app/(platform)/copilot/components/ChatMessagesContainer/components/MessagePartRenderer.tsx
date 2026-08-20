@@ -88,9 +88,17 @@ function TextWithArtifactCards({
   const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
   const artifactCards = isArtifactsEnabled && artifacts.length > 0 && (
-    <div className={isNewToolUI ? "mt-2 flex flex-col gap-1" : "mb-2 flex flex-col gap-1"}>
+    <div
+      className={
+        isNewToolUI ? "mt-2 flex flex-col gap-1" : "mb-2 flex flex-col gap-1"
+      }
+    >
       {artifacts.map((artifact) => (
-        <ArtifactCard key={artifact.id} artifact={artifact} readOnly={readOnly} />
+        <ArtifactCard
+          key={artifact.id}
+          artifact={artifact}
+          readOnly={readOnly}
+        />
       ))}
     </div>
   );
