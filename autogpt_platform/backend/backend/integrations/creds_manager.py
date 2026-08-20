@@ -15,13 +15,18 @@ from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
 )
-from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth import (
+    CREDENTIALS_BY_PROVIDER,
+    DEVICE_HANDLERS_BY_NAME,
+    HANDLERS_BY_NAME,
+)
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
-    from backend.integrations.oauth import BaseOAuthHandler
+    from backend.integrations.oauth.base import BaseOAuthHandler
+    from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -221,23 +226,50 @@ class IntegrationCredentialsManager:
         # integration_creds module which runs across multiple threads with separate
         # event loops; acquiring a Redis lock whose asyncio.Lock() was created on
         # a different loop raises "Future attached to a different loop".
-        if lock:
-            return await self._refresh_locked(user_id, credentials)
-        return await self._refresh_unlocked(user_id, credentials)
+        # Resolve once: `_refresh_locked` needs the handler anyway, and
+        # building it twice per refresh just to read a class flag is wasteful.
+        # A construction failure is left to the refresh path to raise, rather
+        # than being turned into "take the lock" — `lock=False` exists because
+        # the copilot runs across threads with separate event loops, where
+        # entering a Redis lock raises "Future attached to a different loop".
+        handler = await self._get_oauth_handler(credentials)
+        if lock or getattr(handler, "ROTATES_REFRESH_TOKEN", False):
+            # A provider that rotates its refresh token cannot take the
+            # unlocked path: "last writer wins" is safe when the refresh token
+            # is static, but two workers replaying the same rotated token can
+            # have the grant revoked by a provider that treats reuse as
+            # compromise, and the loser can persist a token already
+            # invalidated upstream.
+            return await self._refresh_locked(user_id, credentials, handler=handler)
+        return await self._refresh_unlocked(user_id, credentials, handler=handler)
 
     async def _get_oauth_handler(
         self, credentials: OAuth2Credentials
-    ) -> "BaseOAuthHandler":
+    ) -> "BaseOAuthHandler | BaseDeviceAuthHandler":
         """Resolve the appropriate OAuth handler for the given credentials."""
         if provider_matches(credentials.provider, ProviderName.MCP.value):
             return create_mcp_oauth_handler(credentials)
+
+        # Try device handlers first (they don't need client_id/secret lookup)
+        # `provider` is typed `str` but carries a ProviderName at runtime; prefer the
+        # enum value so the registry lookup matches either form.
+        provider_key = getattr(credentials.provider, "value", None) or str(
+            credentials.provider
+        )
+        if provider_key in DEVICE_HANDLERS_BY_NAME:
+            handler_class = DEVICE_HANDLERS_BY_NAME[provider_key]
+            return handler_class()
+
         return await _get_provider_oauth_handler(credentials.provider)
 
     async def _refresh_locked(
-        self, user_id: str, credentials: OAuth2Credentials
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            oauth_handler = await self._get_oauth_handler(credentials)
+            oauth_handler = handler or await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
                     "Refreshing '%s' credentials #%s",
@@ -263,16 +295,20 @@ class IntegrationCredentialsManager:
         return credentials
 
     async def _refresh_unlocked(
-        self, user_id: str, credentials: OAuth2Credentials
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         """Best-effort token refresh without any Redis locking.
 
         Safe for use from multi-threaded contexts (e.g. copilot workers) where
         each thread has its own event loop and sharing Redis-backed asyncio locks
         is not possible.  Concurrent refreshes are tolerated: the last writer
-        wins, and stale tokens are overwritten.
+        wins, and stale tokens are overwritten — which holds only for a static
+        refresh token, so a rotating provider never reaches this path.
         """
-        oauth_handler = await self._get_oauth_handler(credentials)
+        oauth_handler = handler or await self._get_oauth_handler(credentials)
         if oauth_handler.needs_refresh(credentials):
             logger.debug(
                 "Refreshing '%s' credentials #%s (lock-free)",

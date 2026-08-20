@@ -25,10 +25,12 @@ vi.mock(
       provider,
       selectedMethod,
       onSelectMethod,
+      onDeviceAuthSuccess,
     }: {
       provider: { id: string; name: string; supportedAuthTypes: string[] };
       selectedMethod: string | null;
       onSelectMethod: (method: string) => void;
+      onDeviceAuthSuccess: () => void;
     }) => (
       <div data-testid="connect-method-view">
         <span>Connect AutoGPT to {provider.name}</span>
@@ -41,6 +43,9 @@ vi.mock(
             {`select-${method}`}
           </button>
         ))}
+        {provider.supportedAuthTypes.includes("device_code") && (
+          <button onClick={onDeviceAuthSuccess}>complete-device_code</button>
+        )}
       </div>
     ),
   }),
@@ -157,6 +162,25 @@ describe("ConnectCredentialDialog", () => {
     expect(screen.getByTestId("auth-methods").textContent).toBe(
       "api_key,oauth2",
     );
+  });
+
+  it("offers device auth instead of the stored OAuth credential shape", () => {
+    const apiKey = makeApiKeyReturn();
+    mockUseApiKeyConnectForm.mockReturnValue(apiKey);
+    const { onClose } = renderDialog({
+      schema: {
+        credentials_provider: ["stripe_link"],
+        credentials_types: ["oauth2", "device_code"],
+      } as BlockIOCredentialsSubSchema,
+    });
+
+    expect(screen.getByTestId("auth-methods").textContent).toBe("device_code");
+    expect(screen.queryByText("select-oauth2")).toBeNull();
+
+    fireEvent.click(screen.getByText("complete-device_code"));
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(apiKey.form.reset).toHaveBeenCalledOnce();
   });
 
   it("disables Continue until a method is selected", () => {

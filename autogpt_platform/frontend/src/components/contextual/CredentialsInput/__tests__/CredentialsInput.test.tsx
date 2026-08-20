@@ -476,3 +476,48 @@ describe("CredentialsInput – OAuth flow", () => {
     expect(abortB).toHaveBeenCalled();
   });
 });
+
+describe("CredentialsInput – device auth", () => {
+  const deviceSchema = {
+    credentials_provider: ["stripe_link"],
+    // Both: a device-code grant yields an oauth2-shaped credential, so the
+    // block accepts oauth2 while device_code is how it is obtained.
+    credentials_types: ["oauth2", "device_code"],
+    credentials_scopes: ["userinfo:read"],
+  } as unknown as BlockIOCredentialsSubSchema;
+
+  function renderDeviceInput() {
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "stripe_link",
+        providerName: "Stripe Link",
+        schema: deviceSchema,
+        savedCredentials: [],
+        supportsOAuth2: false,
+        supportsDeviceCode: true,
+      } as any),
+    );
+    return render(
+      <CredentialsInput
+        schema={deviceSchema}
+        selectedCredentials={undefined}
+        onSelectCredentials={vi.fn()}
+      />,
+    );
+  }
+
+  // The regression: this path had no device_code branch, so "Add account"
+  // fell through to OAuth and the backend answered "Provider 'stripe_link'
+  // does not support OAuth" — the blocks were unconnectable from the builder.
+  it("opens the device auth flow instead of an OAuth popup", async () => {
+    renderDeviceInput();
+
+    fireEvent.click(screen.getByText("Add account"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/device authorization/i)).toBeTruthy();
+    });
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
+    expect(mockPreOpenOAuthPopup).not.toHaveBeenCalled();
+  });
+});

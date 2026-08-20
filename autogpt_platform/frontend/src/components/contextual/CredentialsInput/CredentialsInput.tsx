@@ -14,6 +14,7 @@ import { ConnectCredentialDialog } from "./components/ConnectCredentialDialog/Co
 import { CredentialsFlatView } from "./components/CredentialsFlatView/CredentialsFlatView";
 import { CredentialTypeSelector } from "./components/CredentialTypeSelector/CredentialTypeSelector";
 import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
+import { DeviceAuthCredentialsModal } from "./components/DeviceAuthCredentialsModal/DeviceAuthCredentialsModal";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
@@ -78,6 +79,7 @@ export function CredentialsInput({
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     hasMultipleCredentialTypes,
@@ -88,6 +90,7 @@ export function CredentialsInput({
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isDeviceAuthModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
     oAuthPopupBlocked,
@@ -96,6 +99,7 @@ export function CredentialsInput({
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setDeviceAuthModalOpen,
     setCredentialTypeSelectorOpen,
     handleActionButtonClick,
     handleCredentialSelect,
@@ -191,6 +195,18 @@ export function CredentialsInput({
               onClose={cancelOAuthFlow}
               providerName={provider === "codex" ? "ChatGPT" : providerName}
               popupBlocked={oAuthPopupBlocked}
+            />
+          )}
+          {supportsDeviceCode && (
+            <DeviceAuthCredentialsModal
+              open={isDeviceAuthModalOpen}
+              onClose={() => setDeviceAuthModalOpen(false)}
+              provider={provider}
+              providerName={providerName}
+              onCredentialsCreate={(creds) => {
+                onSelectCredential(creds);
+                setDeviceAuthModalOpen(false);
+              }}
             />
           )}
           {supportsUserPassword && (

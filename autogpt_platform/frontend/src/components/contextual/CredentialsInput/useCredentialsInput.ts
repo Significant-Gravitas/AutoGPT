@@ -54,6 +54,7 @@ export function useCredentialsInput({
   ] = useState(false);
   const [isHostScopedCredentialsModalOpen, setHostScopedCredentialsModalOpen] =
     useState(false);
+  const [isDeviceAuthModalOpen, setDeviceAuthModalOpen] = useState(false);
   const [isCredentialTypeSelectorOpen, setCredentialTypeSelectorOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
@@ -172,6 +173,7 @@ export function useCredentialsInput({
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
@@ -361,6 +363,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     ) > 1;
 
   const supportedTypes = getSupportedTypes(
@@ -368,6 +371,7 @@ export function useCredentialsInput({
     supportsApiKey,
     supportsUserPassword,
     supportsHostScoped,
+    supportsDeviceCode,
   );
 
   function handleActionButtonClick() {
@@ -377,6 +381,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     );
     switch (target) {
       case "type_selector":
@@ -384,6 +389,9 @@ export function useCredentialsInput({
         break;
       case "oauth":
         handleOAuthLogin();
+        break;
+      case "device_code":
+        setDeviceAuthModalOpen(true);
         break;
       case "api_key":
         setAPICredentialsModalOpen(true);
@@ -459,6 +467,7 @@ export function useCredentialsInput({
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     hasMultipleCredentialTypes,
@@ -472,6 +481,7 @@ export function useCredentialsInput({
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isDeviceAuthModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
     oAuthPopupBlocked,
@@ -486,10 +496,12 @@ export function useCredentialsInput({
       supportsHostScoped,
       userCredentials.length > 0,
       provider,
+      supportsDeviceCode,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setDeviceAuthModalOpen,
     setCredentialTypeSelectorOpen,
     setCredentialToDelete,
     handleActionButtonClick,
