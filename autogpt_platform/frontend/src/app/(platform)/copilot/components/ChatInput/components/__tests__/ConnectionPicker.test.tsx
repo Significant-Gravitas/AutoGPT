@@ -211,6 +211,57 @@ describe("ConnectionPicker", () => {
     );
   });
 
+  it("still lets an underway chat change its model tier", async () => {
+    // The connection is fixed when a session is created, but the tier is a
+    // per-message setting -- it was changeable between turns before the two
+    // controls were merged, and must stay so.
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker connectionLocked />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Model tier/ }),
+    );
+
+    expect(
+      await screen.findByRole("radio", { name: "Advanced · opus-5" }),
+    ).toBeDefined();
+  });
+
+  it("does not offer to move an underway chat to another connection", async () => {
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker connectionLocked />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Model tier/ }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("radiogroup", {
+          name: "Connection this chat runs on",
+        }),
+      ).toBeNull(),
+    );
+  });
+
+  it("stays out of an underway chat that has no tier to choose", async () => {
+    mockOffers([
+      offer({
+        tiers: [
+          tier("standard", "Balanced", "one-model"),
+          tier("advanced", "Advanced", "one-model"),
+        ],
+      }),
+      chatgpt(),
+    ]);
+
+    render(<ConnectionPicker connectionLocked />);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Model tier/ })).toBeNull(),
+    );
+  });
+
   it("reports a failure rather than inventing a connection", async () => {
     server.use(getGetV2ListChatConnectionsMockHandler401());
 

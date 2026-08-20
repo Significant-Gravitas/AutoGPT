@@ -298,7 +298,11 @@ export function ChatInput({
               disabled={isBusy}
             />
             {recipientPicker}
-            {!hasSession && <ConnectionPicker />}
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. */}
+            {(!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}

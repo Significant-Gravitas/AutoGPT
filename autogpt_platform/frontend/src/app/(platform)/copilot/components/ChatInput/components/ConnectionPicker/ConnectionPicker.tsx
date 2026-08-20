@@ -18,12 +18,24 @@ import { useConnectionPicker } from "./useConnectionPicker";
 
 const TIERS = ["standard", "advanced"] as const;
 
+interface Props {
+  /**
+   * The connection is settled and only the tier is still open.
+   *
+   * A session's connection is chosen when it is created and fixed for its
+   * lifetime, but the tier is a per-message setting -- it can change between
+   * turns of a chat already underway. Hiding the whole control once a session
+   * exists would take that away.
+   */
+  connectionLocked?: boolean;
+}
+
 /**
  * One control for what a turn runs on: the connection, and the quality tier
  * within it. Both come from the server-owned connection offer, so the client
  * decides nothing about routing, billing copy, or which models a tier maps to.
  */
-export function ConnectionPicker() {
+export function ConnectionPicker({ connectionLocked = false }: Props) {
   const {
     offers,
     active,
@@ -62,17 +74,25 @@ export function ConnectionPicker() {
     );
   }
 
-  // One connection whose tiers are the same model is not a choice at all.
-  if (offers.length === 1 && !showTiers) return null;
+  // Nothing left to decide: either the tiers resolve to one model and the
+  // connection is settled, or there is a single connection and its tiers are
+  // the same model.
+  if (!showTiers && (connectionLocked || offers.length === 1)) return null;
 
-  const label = active?.display_name ?? "Choose connection";
+  const label = connectionLocked
+    ? tierName(active, tier)
+    : (active?.display_name ?? "Choose connection");
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Runs on ${label} — change`}
+          aria-label={
+            connectionLocked
+              ? `Model tier ${label} — change`
+              : `Runs on ${label} — change`
+          }
           className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
         >
           <KeyIcon size={14} />
@@ -82,19 +102,23 @@ export function ConnectionPicker() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-80 p-0">
-        <SectionLabel>Runs on</SectionLabel>
-        <div role="radiogroup" aria-label="Connection this chat runs on">
-          {offers.map((offer) => (
-            <ChoiceRow
-              key={offer.offer_id}
-              title={offer.display_name}
-              subtitle={offer.backed_by_label}
-              notes={offer.limitations}
-              isSelected={offer.offer_id === active?.offer_id}
-              onSelect={() => chooseConnection(offer)}
-            />
-          ))}
-        </div>
+        {!connectionLocked && (
+          <>
+            <SectionLabel>Runs on</SectionLabel>
+            <div role="radiogroup" aria-label="Connection this chat runs on">
+              {offers.map((offer) => (
+                <ChoiceRow
+                  key={offer.offer_id}
+                  title={offer.display_name}
+                  subtitle={offer.backed_by_label}
+                  notes={offer.limitations}
+                  isSelected={offer.offer_id === active?.offer_id}
+                  onSelect={() => chooseConnection(offer)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         {showTiers && (
           <>
