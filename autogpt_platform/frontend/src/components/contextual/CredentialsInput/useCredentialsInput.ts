@@ -329,6 +329,11 @@ export function useCredentialsInput({
         }
       }
 
+      // Completing OAuth is an explicit choice, same as picking from the
+      // dropdown, so the "was removed" notice has done its job. The automatic
+      // heal deliberately does not clear it — that swap is the one nobody
+      // asked for and the one worth reporting.
+      setRemovedCredentialTitle(null);
       onSelectCredential({
         id: credentialResult.id,
         type: "oauth2",
