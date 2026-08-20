@@ -48,7 +48,7 @@ _Add practical use case examples here._
 ## Stripe Link Create Token Spend Request
 
 ### What it is
-MPP step 2 of 3: create a Stripe Link spend request for a Shared Payment Token, using the network ID from the merchant's 402 challenge. Step 3 is MPP Pay.
+MPP step 2 of 3: ask the user to authorize a payment to a merchant that answers HTTP 402, and provision a Shared Payment Token for it. Takes the network ID from the Get Payment Challenge block; step 3 is MPP Pay. For an ordinary checkout form, use Create Card Spend Request instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -89,7 +89,7 @@ _Add practical use case examples here._
 ## Stripe Link Get Spend Request Status
 
 ### What it is
-Check whether a Stripe Link spend request has been approved yet. Poll this after creating a request and before spending.
+Check whether a Stripe Link spend request has been approved yet. Poll this after creating a request and before spending, for both the card and the Shared Payment Token flows. If the status is 'requires_action' the payment method needs attention first — keep polling when `auto_resumes` is true, otherwise resolve the action and create a new request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -123,7 +123,7 @@ _Add practical use case examples here._
 ## Stripe Link List Payment Methods
 
 ### What it is
-List payment methods from a Stripe Link wallet
+List the cards and bank accounts in the user's Link wallet. Use this first to pick a payment method ID for Create Spend Request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -147,7 +147,7 @@ _Add practical use case examples here._
 ## Stripe Link Retrieve Card
 
 ### What it is
-Get the one-time virtual card for an approved Stripe Link spend request. The card number and CVC are stored in clear text with the execution record — do not use this where PCI compliance matters. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
+Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form. Both are stored in clear text with the execution record — do not use this where PCI compliance matters. Self-hosted only; on AutoGPT Cloud use the Shared Payment Token flow with the MPP blocks instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

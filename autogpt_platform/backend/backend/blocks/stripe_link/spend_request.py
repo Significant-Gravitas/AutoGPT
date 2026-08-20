@@ -148,7 +148,11 @@ class StripeLinkListPaymentMethodsBlock(Block):
     def __init__(self):
         super().__init__(
             id="6eacc954-2218-4dc7-a485-5bf21549ecbe",
-            description="List payment methods from a Stripe Link wallet",
+            description=(
+                "List the cards and bank accounts in the user's Link wallet. "
+                "Use this first to pick a payment method ID for Create Spend "
+                "Request."
+            ),
             categories={BlockCategory.DATA},
             input_schema=self.Input,
             output_schema=self.Output,
@@ -531,9 +535,11 @@ class StripeLinkCreateTokenSpendRequestBlock(Block):
         super().__init__(
             id="b12877be-06cd-4a96-bf79-438bb4cb5517",
             description=(
-                "MPP step 2 of 3: create a Stripe Link spend request for a "
-                "Shared Payment Token, using the network ID from the "
-                "merchant's 402 challenge. Step 3 is MPP Pay."
+                "MPP step 2 of 3: ask the user to authorize a payment to a "
+                "merchant that answers HTTP 402, and provision a Shared "
+                "Payment Token for it. Takes the network ID from the Get "
+                "Payment Challenge block; step 3 is MPP Pay. For an ordinary "
+                "checkout form, use Create Card Spend Request instead."
             ),
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -654,7 +660,11 @@ class StripeLinkGetSpendRequestStatusBlock(Block):
             id="b5ef8aa2-f0bc-424f-b613-c1961ec0028d",
             description=(
                 "Check whether a Stripe Link spend request has been approved "
-                "yet. Poll this after creating a request and before spending."
+                "yet. Poll this after creating a request and before spending, "
+                "for both the card and the Shared Payment Token flows. If the "
+                "status is 'requires_action' the payment method needs "
+                "attention first — keep polling when `auto_resumes` is true, "
+                "otherwise resolve the action and create a new request."
             ),
             categories={BlockCategory.DATA},
             input_schema=self.Input,
@@ -791,11 +801,12 @@ class StripeLinkRetrieveCardBlock(Block):
         super().__init__(
             id="1aff59ef-e8a2-413e-9410-4ce7e4849337",
             description=(
-                "Get the one-time virtual card for an approved Stripe Link "
-                "spend request. The card number and CVC are stored in clear "
-                "text with the execution record — do not use this where PCI "
-                "compliance matters. Self-hosted only; on AutoGPT Cloud use "
-                "the Shared Payment Token flow with the MPP blocks instead."
+                "Get the one-time virtual card number and CVC for an approved "
+                "spend request, to type into a normal checkout form. Both are "
+                "stored in clear text with the execution record — do not use "
+                "this where PCI compliance matters. Self-hosted only; on "
+                "AutoGPT Cloud use the Shared Payment Token flow with the MPP "
+                "blocks instead."
             ),
             categories={BlockCategory.DATA},
             disabled=CARD_FLOW_DISABLED,

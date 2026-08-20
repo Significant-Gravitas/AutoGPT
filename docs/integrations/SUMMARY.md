@@ -122,6 +122,7 @@
 * [Smartlead Campaign](block-integrations/smartlead/campaign.md)
 * [Stagehand Blocks](block-integrations/stagehand/blocks.md)
 * [Stripe Triggers](block-integrations/stripe/triggers.md)
+* [Stripe Link MPP](block-integrations/stripe_link/mpp.md)
 * [Stripe Link Profile](block-integrations/stripe_link/profile.md)
 * [Stripe Link Spend Request](block-integrations/stripe_link/spend_request.md)
 * [System Library Operations](block-integrations/system/library_operations.md)
