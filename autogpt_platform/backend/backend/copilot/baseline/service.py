@@ -42,7 +42,7 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
@@ -1598,7 +1598,6 @@ async def stream_chat_completion_baseline(
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
@@ -2632,13 +2631,16 @@ async def stream_chat_completion_baseline(
 def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
     """Terminal events for a turn that registered an engine switch.
 
-    Emitted right before StreamFinish so the frontend flips its mode picker
-    (StreamModeChanged) and narrates the handoff (StreamStatus) exactly once,
-    at the turn boundary where the baseline loop stopped.
+    Emitted right before StreamFinish so the frontend learns the engine
+    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
+    exactly once, at the turn boundary where the baseline loop stopped.
+    There is no mode picker to flip any more — the client uses this only to
+    widen its post-finish refetch window, since a switch takes longer to
+    settle.
     """
     if not engine_switch.is_pending(session_id):
         return []
     return [
         StreamModeChanged(mode="extended_thinking"),
-        StreamStatus(message="Switching to Thinking mode for agent building…"),
+        StreamStatus(message="Switching engines for agent building…"),
     ]

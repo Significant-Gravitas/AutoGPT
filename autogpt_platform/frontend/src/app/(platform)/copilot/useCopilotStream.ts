@@ -34,7 +34,7 @@ import {
   resolveModeChangedMode,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
-import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotLlmModel } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
 import { useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
@@ -72,8 +72,6 @@ interface UseCopilotStreamArgs {
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
-  /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
-  copilotMode: CopilotMode | undefined;
   /** Model tier override. `undefined` = let backend decide. */
   copilotModel: CopilotLlmModel | undefined;
 }
@@ -84,7 +82,6 @@ export function useCopilotStream({
   hydratedMessages,
   hasActiveStream,
   refetchSession,
-  copilotMode,
   copilotModel,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
@@ -101,7 +98,6 @@ export function useCopilotStream({
     return getOrCreateCopilotChatRuntime(sessionId);
   }, [sessionId]);
   if (chatRuntime) {
-    chatRuntime.copilotModeRef.current = copilotMode;
     chatRuntime.copilotModelRef.current = copilotModel;
   }
 
@@ -280,14 +276,11 @@ export function useCopilotStream({
     }
 
     function handleData(dataPart: { type: string; data?: unknown }) {
-      const mode = resolveModeChangedMode(dataPart);
-      if (mode) {
+      // The execution engine is an internal detail with no control and no
+      // display — but a switch still takes longer to settle, so the signal
+      // is kept to widen the post-finish refetch window below.
+      if (resolveModeChangedMode(dataPart)) {
         pendingEngineSwitchRef.current = true;
-        // Server-forced switch: session-scoped UI state only — must not
-        // persist to localStorage and rewrite the user's global default.
-        // The pin locks the toggle for the rest of this session (the
-        // backend overrides a manual flip anyway).
-        useCopilotUIStore.getState().applyServerModeChange(mode);
       }
     }
 
@@ -301,7 +294,6 @@ export function useCopilotStream({
       }
       if (chatRuntime.onData === handleData) {
         chatRuntime.onData = undefined;
-        useCopilotUIStore.getState().clearCopilotModePin();
       }
       if (chatRuntime.onError === handleError) {
         chatRuntime.onError = undefined;

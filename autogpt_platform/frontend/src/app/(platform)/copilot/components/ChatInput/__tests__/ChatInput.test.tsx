@@ -44,12 +44,6 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   }),
 }));
 
-let mockCopilotMode = "extended_thinking";
-let mockCopilotModePinned = false;
-const mockSetCopilotChatMode = vi.fn((mode: string) => {
-  mockCopilotMode = mode;
-});
-
 let mockCopilotLlmModel = "standard";
 const mockSetCopilotLlmModel = vi.fn((model: string) => {
   mockCopilotLlmModel = model;
@@ -64,11 +58,6 @@ const mockSetInitialPrompt = vi.fn((value: string | null) => {
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
-    copilotMode: mockCopilotMode,
-    setCopilotMode: mockSetCopilotChatMode,
-    copilotChatMode: mockCopilotMode,
-    setCopilotChatMode: mockSetCopilotChatMode,
-    copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
     copilotLlmAuth: {
@@ -248,164 +237,12 @@ const codexProvider: CredentialsProviderData = {
 afterEach(() => {
   vi.clearAllMocks();
   mockCancel.mockReset();
-  mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
   mockInitialPrompt = null;
 });
 
-describe("ChatInput mode toggle", () => {
-  it("does not render mode toggle when flag is disabled", () => {
-    mockFlagValue = false;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.queryByLabelText(/switch to/i)).toBeNull();
-  });
-
-  it("renders mode toggle when flag is enabled", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
-  });
-
-  it("shows Codex mode and model controls backed by the model catalog", () => {
-    mockFlagValue = true;
-    mockCopilotLlmAuthProvider = "codex";
-    render(<ChatInput onSend={mockOnSend} />);
-
-    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
-    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
-  });
-
-  it("keeps Claude SDK file attachments available for the Codex route", () => {
-    mockCopilotLlmAuthProvider = "codex";
-    render(<ChatInput onSend={mockOnSend} />);
-
-    expect(screen.getByTestId("attachment-menu")).toBeTruthy();
-  });
-
-  it("does not report empty dropped files as consumed for the Codex route", () => {
-    mockCopilotLlmAuthProvider = "codex";
-    const onDroppedFilesConsumed = vi.fn();
-    render(
-      <ChatInput
-        onSend={mockOnSend}
-        droppedFiles={[]}
-        onDroppedFilesConsumed={onDroppedFilesConsumed}
-      />,
-    );
-
-    expect(onDroppedFilesConsumed).not.toHaveBeenCalled();
-  });
-
-  it("hides the route selector when only one subsidized transport is connected", () => {
-    mockFlagValue = true;
-    const { rerender } = render(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} />
-      </CredentialsProvidersContext.Provider>,
-    );
-    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
-
-    rerender(
-      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
-        <ChatInput onSend={mockOnSend} hasSession />
-      </CredentialsProvidersContext.Provider>,
-    );
-    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
-  });
-
-  it("shows Thinking label in extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Thinking")).toBeDefined();
-  });
-
-  it("shows Fast label in fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Fast")).toBeDefined();
-  });
-
-  it("keeps the mode locked while pinned (building mode)", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    mockCopilotModePinned = true;
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/mode locked to extended thinking/i);
-    expect(button.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(button);
-    expect(mockSetCopilotChatMode).not.toHaveBeenCalled();
-    mockCopilotModePinned = false;
-  });
-
-  it("toggles from extended_thinking to fast on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("fast");
-  });
-
-  it("toggles from fast to extended_thinking on click", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to extended thinking/i));
-    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("extended_thinking");
-  });
-
-  it("hides toggle buttons when streaming", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).toBeNull();
-    expect(
-      screen.queryByLabelText(/switch to (advanced|balanced|standard) model/i),
-    ).toBeNull();
-  });
-
-  it("shows mode toggle when hasSession is true and not streaming", () => {
-    // Mode is per-message — can be changed between turns even in an existing session.
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(
-      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
-    ).not.toBeNull();
-  });
-
-  it("exposes aria-pressed=true in extended_thinking mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to fast mode/i);
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("sets aria-pressed=false in fast mode", () => {
-    mockFlagValue = true;
-    mockCopilotMode = "fast";
-    render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByLabelText(/switch to extended thinking/i);
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("shows a toast when the user toggles mode", async () => {
-    const { toast } = await import("@/components/molecules/Toast/use-toast");
-    mockFlagValue = true;
-    mockCopilotMode = "extended_thinking";
-    render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: expect.stringMatching(/switched to fast mode/i),
-      }),
-    );
-  });
-});
 
 describe("ChatInput queue button", () => {
   it("does not render queue button when not streaming", () => {

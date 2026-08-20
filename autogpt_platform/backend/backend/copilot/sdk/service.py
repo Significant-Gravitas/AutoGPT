@@ -59,7 +59,7 @@ from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLLMModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -114,7 +114,6 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
-    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -3991,7 +3990,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
@@ -4321,13 +4319,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast" and not is_codex_transport:
-            # The request asked for Fast but this turn runs on the SDK
-            # engine (building-mode pin or engine-switch continuation).
-            # Tell stale pickers — a client that missed the original
-            # data-mode-changed (reload, second tab) re-syncs here.
-            yield StreamModeChanged(mode="extended_thinking")
-
         set_execution_context(
             user_id,
             session,
@@ -4381,7 +4372,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            route_mode = "fast" if mode == "fast" else "thinking"
+            route_mode = "thinking"
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
                 route_mode,
                 tier_name,
@@ -4485,11 +4476,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
-            effort=(
-                "medium"
-                if mode == "fast"
-                else (config.claude_agent_thinking_effort or "high")
-            ),
+            effort=config.claude_agent_thinking_effort or "high",
         )
         if not is_codex_transport:
             # The Claude/OpenRouter paths use provider-USD controls. A Codex
@@ -5719,7 +5706,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
-                    mode=mode,
                     model=model,
                     organization_id=organization_id,
                     team_id=team_id,
