@@ -579,6 +579,11 @@ class GraphModel(Graph, GraphMeta):
         node_required_map: dict[str, bool] = {}  # node_id -> is_required
 
         for graph in [self] + self.sub_graphs:
+            linked_inputs = {
+                (link.sink_id, sanitize_pin_name(link.sink_name))
+                for link in graph.links
+            }
+
             for node in graph.nodes:
                 # A node's credentials are optional if either:
                 # 1. The node metadata says so (credentials_optional=True), or
@@ -601,10 +606,21 @@ class GraphModel(Graph, GraphMeta):
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
-                    discriminator_value = node.input_default.get(discriminator)
+                    discriminator_is_linked = (
+                        node.id,
+                        sanitize_pin_name(discriminator),
+                    ) in linked_inputs
+                    # An upstream link overrides the saved/default value at
+                    # runtime, so its value is unknown during aggregation.
+                    discriminator_value = (
+                        None
+                        if discriminator_is_linked
+                        else node.input_default.get(discriminator)
+                    )
                     if (
                         discriminator_value is None
                         and field_info.discriminator_type_mapping
+                        and not discriminator_is_linked
                     ):
                         # The node hasn't pinned the discriminator, but the
                         # executor will: it builds `input_schema(**input_default)`,

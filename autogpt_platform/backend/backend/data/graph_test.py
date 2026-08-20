@@ -2445,6 +2445,26 @@ def test_codegen_without_transport_resolves_to_schema_default():
     }
 
 
+def test_codegen_with_linked_transport_does_not_assume_schema_default():
+    graph = _graph_with([_node("n1", CODEX_CODEGEN_BLOCK_ID, {"prompt": "hi"})])
+    graph.links = [
+        Link(
+            source_id="source",
+            sink_id="n1",
+            source_name="value",
+            sink_name="transport",
+        )
+    ]
+
+    assert _slots(graph) == {
+        "codex-openai_api_key-oauth2_credentials": (
+            {"codex", "openai"},
+            {"api_key", "oauth2"},
+            True,
+        )
+    }
+
+
 def test_codegen_with_explicit_openai_transport_matches_default_case():
     graph = _graph_with(
         [
