@@ -7,6 +7,8 @@ from backend.blocks.github._auth import (
 )
 from backend.util.request import URL, Requests
 
+GITHUB_API_URL = "https://api.github.com"
+
 
 @overload
 def _convert_to_api_url(url: str) -> str: ...
@@ -28,7 +30,7 @@ def _convert_to_api_url(url: str | URL) -> str | URL:
 
     if len(path_parts) >= 2:
         owner, repo = path_parts[0], path_parts[1]
-        api_base = f"https://api.github.com/repos/{owner}/{repo}"
+        api_base = f"{GITHUB_API_URL}/repos/{owner}/{repo}"
 
         if len(path_parts) > 2:
             additional_path = "/".join(path_parts[2:])
@@ -79,9 +81,7 @@ def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
         owner, repo = path_parts[0], path_parts[1]
 
         # Construct API URL for issue comments
-        return (
-            f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}"
-        )
+        return f"{GITHUB_API_URL}/repos/{owner}/{repo}/issues/comments/{comment_id}"
 
     # Handle PR review comments (#discussion_r)
     elif "#discussion_r" in comment_url:
@@ -94,9 +94,7 @@ def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
         owner, repo = path_parts[0], path_parts[1]
 
         # Construct API URL for PR review comments
-        return (
-            f"https://api.github.com/repos/{owner}/{repo}/pulls/comments/{comment_id}"
-        )
+        return f"{GITHUB_API_URL}/repos/{owner}/{repo}/pulls/comments/{comment_id}"
 
     # If no specific comment identifiers are found, use the general URL conversion
     return _convert_to_api_url(comment_url)
@@ -107,7 +105,7 @@ def get_api(
     convert_urls: bool = True,
 ) -> Requests:
     return Requests(
-        trusted_origins=["https://api.github.com", "https://github.com"],
+        trusted_origins=[GITHUB_API_URL, "https://github.com"],
         extra_url_validator=_convert_to_api_url if convert_urls else None,
         extra_headers=_get_headers(credentials),
     )
