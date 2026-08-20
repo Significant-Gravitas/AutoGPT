@@ -1,0 +1,219 @@
+{#- ============================================================
+    briefing.html.j2 — the Agent Briefing digest (weekly or daily)
+    One template covers busy, clean, rough, and quiet periods.
+    See README.md for the full context schema.
+    Render briefing.subject.j2 first and pass `subject` and
+    `preheader` in; both fall back safely if omitted.
+    ============================================================ -#}
+{%- import "_ui.j2" as ui with context -%}
+
+{#- ---------- derived values ---------- -#}
+{%- set runs = totals.runs -%}
+{%- set failed = totals.failed | default(0) -%}
+{%- set attn = attention | default([]) -%}
+{%- set attn_count = attn | length -%}
+{%- set agents_total = totals.agents_active + (totals.agents_idle | default(0)) -%}
+{%- set runs_fmt = '{:,}'.format(runs) -%}
+{%- set run_word = 'run' if runs == 1 else 'runs' -%}
+{%- set times_phrase = 'once' if runs == 1 else runs_fmt ~ ' times' -%}
+{%- set nw = {1:'one', 2:'two', 3:'three', 4:'four', 5:'five', 6:'six', 7:'seven', 8:'eight', 9:'nine'} -%}
+{%- set quiet = (mode | default('standard')) == 'quiet' -%}
+{%- set bad_period = (not quiet) and runs > 0 and failed >= 3 and failed * 3 >= runs -%}
+
+{#- ---------- headline ---------- -#}
+{%- if quiet -%}
+  {%- set headline = 'A quiet ' ~ period.adjective ~ ' — in a good way' -%}
+{%- elif bad_period -%}
+  {%- set headline = 'A rough ' ~ period.adjective ~ ': ' ~ failed ~ ' of ' ~ runs_fmt ~ ' runs failed' -%}
+{%- elif attn_count == 1 -%}
+  {%- set headline = runs_fmt ~ ' ' ~ run_word ~ ', and only one thing needs you' -%}
+{%- elif attn_count > 0 and attn_count <= 3 -%}
+  {%- set headline = runs_fmt ~ ' ' ~ run_word ~ ', and only ' ~ nw[attn_count] ~ ' things need you' -%}
+{%- elif attn_count > 3 -%}
+  {%- set headline = runs_fmt ~ ' ' ~ run_word ~ ' — ' ~ attn_count ~ ' things need you' -%}
+{%- elif failed > 0 -%}
+  {%- set headline = runs_fmt ~ ' ' ~ run_word ~ ', ' ~ failed ~ ' failed — nothing blocked on you' -%}
+{%- else -%}
+  {%- set headline = 'All clear: ' ~ runs_fmt ~ ' ' ~ run_word ~ ', nothing needed you' -%}
+{%- endif -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject | default(headline)) }}
+</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; -webkit-text-size-adjust:100%; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader | default('Your agents’ ' ~ period.adjective ~ ' at a glance.')) }}
+{{ ui.page_open() }}
+{{ ui.header() }}
+{{ ui.hero_briefing('quiet' if quiet else ('rough' if bad_period else ('attention' if attn_count > 0 else 'clean'))) }}
+
+    <!-- Body card -->
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+        <tr><td class="gutter" style="padding:30px 48px 0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:#6d28d9;">YOUR {{ {'daily':'DAY','weekly':'WEEK','monthly':'MONTH'}.get(period.frequency, 'WEEK') }} IN AGENTS &middot; {{ period.label | upper }}</div>
+          <div class="headline" style="padding-top:10px; font-size:26px; line-height:34px; font-weight:800; color:#17123b;">
+            {{ headline }}
+          </div>
+        </td></tr>
+
+        <tr><td class="gutter" style="padding:16px 48px 0;">
+          <div style="font-size:15px; line-height:24px; color:#494566;">
+            {%- if quiet %}
+            {%- if only_agent %}
+            {{ only_agent }} was your only agent at work {{ period.noun }}.
+            {{ quiet_summary | default('It ran ' ~ times_phrase ~ ', and nothing needed your attention.') }}
+            {%- else %}
+            A light {{ period.adjective }}: {{ totals.agents_active }} agents ran <strong>{{ times_phrase }}</strong>, and nothing needed your attention.
+            {%- endif %}
+            {%- else %}
+            {#- the lede counts agents that actually ran; ledger lists exactly those -#}
+            {%- if totals.agents_active == 1 %}
+            Your agent ran <strong>{{ times_phrase }}</strong> {{ period.noun }}
+            {%- else %}
+            Your {{ nw.get(totals.agents_active, '{:,}'.format(totals.agents_active)) }} agents ran <strong>{{ times_phrase }}</strong> {{ period.noun }}
+            {%- endif %}
+            {%- if failed == 0 %}{{ ', and it finished clean.' if runs == 1 else ', and every run finished clean.' }}
+            {%- elif failed == runs %}{{ ', and it failed.' if runs == 1 else ', and none of them finished clean.' }}
+            {%- elif failed == 1 %} &mdash; all but one finished clean.
+            {%- else %} &mdash; all but {{ failed }} finished clean.
+            {%- endif %}
+            {%- if standout %} {{ standout }}{% endif %}
+            {%- if attn_count == 1 %} One agent is waiting on you before it can carry on.
+            {%- elif attn_count in [2, 3] %} {{ nw[attn_count] | capitalize }} agents are waiting on you before they can carry on.
+            {%- elif attn_count > 3 %} You have {{ attn_count }} things waiting on you before they can carry on.
+            {%- endif %}
+            {%- endif %}
+          </div>
+        </td></tr>
+
+        {%- for item in attn[:3] %}
+        <tr><td class="gutter" style="padding:{{ '22px' if loop.first else '12px' }} 48px 0;">
+          {{ ui.attention_card(item, primary=loop.first) }}
+        </td></tr>
+        {%- endfor %}
+        {%- if attn_count > 3 %}
+        <tr><td class="gutter" style="padding:12px 48px 0;">
+          <div style="font-size:13px; line-height:20px; color:#8a5800;">
+            &#9650;&nbsp; + {{ attn_count - 3 }} more {{ 'thing needs' if attn_count - 3 == 1 else 'things need' }} you &mdash;
+            <a href="{{ urls.attention | default(urls.dashboard) }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">see everything waiting</a>
+          </div>
+        </td></tr>
+        {%- endif %}
+
+        {%- if highlights %}
+        <tr><td class="gutter" style="padding:30px 48px 0;">
+          {{ ui.section_label('WORTH A LOOK') }}
+        </td></tr>
+        {%- for h in highlights[:3] %}
+        <tr><td class="gutter" style="padding:{{ '14px' if loop.first else '12px' }} 48px 0;">
+          <div style="font-size:15px; line-height:23px; color:#494566;">
+            <strong style="color:#17123b;">{{ ui.trunc(h.agent, 44) }}</strong> {{ h.gist }}
+            <a href="{{ h.url }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">{{ h.link_label | default('See the run') }}</a>
+          </div>
+        </td></tr>
+        {%- endfor %}
+        {%- endif %}
+
+        {%- if not quiet %}
+        <tr><td class="gutter" style="padding:30px 48px 0;">
+          {{ ui.section_label('THE LEDGER') }}
+        </td></tr>
+        <tr><td class="gutter" style="padding:12px 48px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f6fc" style="border-radius:10px;">
+            <tr><td style="padding:6px 18px 12px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:9px 0 6px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">AGENT</td>
+                  <td align="right" style="padding:9px 0 6px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">RUNS</td>
+                  <td align="right" style="padding:9px 0 6px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">ISSUES</td>
+                  <td align="right" style="padding:9px 0 6px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">CREDITS</td>
+                </tr>
+                {%- for row in ledger[:6] %}
+                <tr>
+                  <td style="padding:8px 8px 8px 0; font-size:14px; color:#17123b; border-top:1px solid #e7e4f4; overflow-wrap:anywhere;">{{ ui.trunc(row.agent, 34) }}</td>
+                  <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#17123b; border-top:1px solid #e7e4f4;">{{ '{:,}'.format(row.runs) }}</td>
+                  {%- if row.issues_label %}
+                  <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:{{ '#b91c1c' if row.issues_kind == 'fail' else '#b45309' }}; border-top:1px solid #e7e4f4;">{{ row.issues_label }}</td>
+                  {%- else %}
+                  <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#b5b1c9; border-top:1px solid #e7e4f4;">&mdash;</td>
+                  {%- endif %}
+                  <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#17123b; border-top:1px solid #e7e4f4;">{{ '%.2f' | format(row.credits) }}</td>
+                </tr>
+                {%- endfor %}
+                {%- set rest = ledger[6:] %}
+                {%- if rest %}
+                {%- set rest_runs = rest | map(attribute='runs') | sum %}
+                {%- set rest_issues = rest | selectattr('issues_label') | list | length %}
+                <tr>
+                  <td colspan="4" style="padding:8px 0; font-size:13px; color:#8a86a3; border-top:1px solid #e7e4f4;">
+                    + {{ rest | length }} quieter {{ 'agent' if rest | length == 1 else 'agents' }} ran {{ '{:,}'.format(rest_runs) }} {{ 'time' if rest_runs == 1 else 'times' }}{{ ', clean' if rest_issues == 0 else ', ' ~ rest_issues ~ ' with issues' }} &mdash;
+                    <a href="{{ urls.dashboard }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">see the full ledger</a>
+                  </td>
+                </tr>
+                {%- endif %}
+                <tr>
+                  <td colspan="2" class="sum" style="padding:9px 0 2px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; letter-spacing:0.5px; font-weight:bold; color:#5d5872; border-top:1px solid #d9d5ec;">
+                    {{ '{:,.2f}'.format(totals.credits_used) }}&nbsp;CREDITS&nbsp;USED{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %}
+                  </td>
+                  <td colspan="2" align="right" class="sum" style="padding:9px 0 2px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; letter-spacing:0.5px; font-weight:bold; color:#5d5872; border-top:1px solid #d9d5ec;">
+                    BALANCE&nbsp;{{ '{:,.2f}'.format(totals.credits_balance) }}
+                  </td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        {#- when attention cards already carry the real actions, this button would
+            compete with them; the ledger's own link is enough of a way through -#}
+        {%- if attn_count == 0 %}
+        <tr><td class="gutter" style="padding:24px 48px 0;">
+          {{ ui.btn('Open your dashboard', urls.dashboard) }}
+        </td></tr>
+        {%- endif %}
+        {%- else %}
+        <tr><td class="gutter" style="padding:18px 48px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#edf4ee" style="border-radius:8px;">
+            <tr><td style="padding:10px 16px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; letter-spacing:0.5px; font-weight:bold; color:#3f6549;">
+              {{ runs_fmt }}&nbsp;{{ run_word | upper }} &middot; {{ totals.agents_active }}&nbsp;ACTIVE{% if totals.agents_idle %} &middot; {{ totals.agents_idle }}&nbsp;ON&nbsp;STANDBY{% endif %} &middot; {{ failed }}&nbsp;ISSUES &middot; {{ '{:,.2f}'.format(totals.credits_used) }}&nbsp;CREDITS
+            </td></tr>
+          </table>
+        </td></tr>
+        {%- if attn_count == 0 %}
+        <tr><td class="gutter" style="padding:18px 48px 0;">
+          <div style="font-size:14px; font-weight:700;">
+            <a href="{{ urls.dashboard }}" style="color:#6d28d9; text-decoration:underline;">Open your dashboard</a>
+          </div>
+        </td></tr>
+        {%- endif %}
+        {%- endif %}
+
+        <tr><td align="center" class="gutter" style="padding:26px 48px 30px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td height="1" bgcolor="#eeecf5" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+            <tr><td align="center" style="padding-top:14px; font-size:12px; line-height:19px; color:#8a86a3;">
+              You get this briefing <strong style="color:#5d5872;">{{ period.frequency }}</strong>, and only when your agents actually ran.<br>
+              {%- for f in ['daily', 'weekly', 'monthly'] if f != period.frequency %}
+              <a href="{{ urls.settings }}?f={{ f }}" style="color:#6d28d9; text-decoration:underline;">Switch to {{ f }}</a> &nbsp;&middot;&nbsp;
+              {%- endfor %}
+              <a href="{{ urls.settings }}?f=alerts" style="color:#6d28d9; text-decoration:underline;">Alerts only</a> &nbsp;&middot;&nbsp;
+              <a href="{{ urls.settings }}?f=off" style="color:#6d28d9; text-decoration:underline;">Pause</a>
+            </td></tr>
+          </table>
+        </td></tr>
+
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{%- if quiet %}
+{{ ui.legal_footer('This is your agent briefing for ' ~ user_email ~ ' — if truly nothing runs, we simply don’t send one.', urls.unsubscribe) }}
+{%- else %}
+{{ ui.legal_footer('This is your agent briefing for ' ~ user_email ~ ' — sent because your agents ran ' ~ period.noun ~ '. They insisted.', urls.unsubscribe) }}
+{%- endif %}
+
+</td></tr>
+</table>
+</body>
+</html>

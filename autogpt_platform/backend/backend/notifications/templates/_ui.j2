@@ -1,0 +1,228 @@
+{# ============================================================
+   _ui.j2 — shared components for AutoGPT notification emails
+   All macros emit table-based, inline-styled, email-safe HTML.
+   Hero art is hosted images (see hero_img). Pass `assets` in the
+   render context as the base URL those images are served from.
+   ============================================================ #}
+
+{%- macro page_open() -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f1efe9">
+<tr><td align="center" style="padding:32px 12px 44px;">
+  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" class="sheet" style="width:560px; max-width:560px;">
+{%- endmacro -%}
+
+{%- macro page_close() -%}
+  </table>
+{%- endmacro -%}
+
+{%- macro head_block(title_text) -%}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{ title_text }}</title>
+<style>
+  html, body { margin:0 !important; padding:0 !important; width:100% !important; }
+  table { border-collapse:collapse; }
+  a { text-decoration:none; }
+  @media only screen and (max-width: 600px) {
+    .sheet { width:100% !important; }
+    .gutter { padding-left:22px !important; padding-right:22px !important; }
+    .headline { font-size:23px !important; line-height:31px !important; }
+    .sum { font-size:10px !important; letter-spacing:0 !important; }
+    .mobile-hide { display:none !important; }
+    .kvl { display:block !important; width:100% !important; padding:10px 0 2px !important; border-top:1px solid #e7e4f4 !important; }
+    .kvv { display:block !important; width:100% !important; text-align:left !important; padding:0 0 10px !important; border-top:0 !important; font-size:11px !important; }
+    .kvfirst { border-top:0 !important; padding-top:0 !important; }
+  }
+</style>
+{%- endmacro -%}
+
+{%- macro preheader(text) -%}
+<div style="display:none; font-size:1px; color:#f1efe9; line-height:1px; max-height:0; overflow:hidden;">
+  {{ text }}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+</div>
+{%- endmacro -%}
+
+{%- macro header() -%}
+    <tr><td bgcolor="#0b0a14" align="center" style="border-radius:14px 14px 0 0; padding:19px 0 17px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="padding-right:9px; line-height:0;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 20 L12 3 L19 20" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <circle cx="12" cy="3.4" r="2.6" fill="#8b5cf6"/>
+            <circle cx="5" cy="20" r="2.6" fill="#ffffff"/>
+            <circle cx="19" cy="20" r="2.6" fill="#ffffff"/>
+          </svg>
+        </td>
+        <td style="font-size:19px; font-weight:800; color:#ffffff; letter-spacing:-0.2px; line-height:24px; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">AutoGPT</td>
+      </tr></table>
+    </td></tr>
+{%- endmacro -%}
+
+{# ---------------------------------------------------------------
+   Hero art. Hosted images, not inline SVG: Outlook does not render
+   inline SVG at all. `assets` comes from the render context (see
+   README); the td keeps a bgcolor matching the art so a blocked
+   image still leaves the right colour band behind the card.
+   --------------------------------------------------------------- #}
+{%- macro hero_img(name, bgc, alt) -%}
+    <tr><td bgcolor="{{ bgc }}" align="center" style="padding:0; line-height:0; font-size:0;">
+      <img src="{{ assets | default('https://cdn.agpt.co/email', true) }}/{{ name }}.jpg"
+           width="560" height="184" alt="{{ alt }}"
+           style="display:block; width:100%; max-width:560px; height:auto; border:0; outline:none; text-decoration:none;">
+    </td></tr>
+{%- endmacro -%}
+
+{# Briefing hero. state: 'clean' | 'attention' | 'rough' | 'quiet' #}
+{%- macro hero_briefing(state) -%}
+{%- if state == 'quiet' -%}
+{{ hero_img('hero-briefing-quiet', '#f0f0ee', 'Otto asleep beside a mug and a crescent moon') }}
+{%- elif state == 'rough' -%}
+{{ hero_img('hero-briefing-rough', '#eae1f5', 'Otto looking unhappy between a flagged and a failed document') }}
+{%- elif state == 'attention' -%}
+{{ hero_img('hero-briefing-attention', '#e6def7', 'Otto beside one flagged document and one completed one') }}
+{%- else -%}
+{{ hero_img('hero-briefing-clean', '#e7e0f8', 'Otto smiling between two completed documents') }}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Verdict hero. state: 'approved' | 'changes' #}
+{%- macro hero_verdict(state) -%}
+{%- if state == 'approved' -%}
+{{ hero_img('hero-verdict-approved', '#fcf9f6', 'Otto celebrating beside an approval rosette') }}
+{%- else -%}
+{{ hero_img('hero-verdict-changes', '#f9f4f5', 'Otto considering a clipboard of review notes') }}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hero_alert() -%}
+{{ hero_img('hero-alert', '#f7f4fb', 'Otto looking startled above an unplugged cable') }}
+{%- endmacro -%}
+
+{%- macro btn(label, url) -%}
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr><td bgcolor="#5d23bb" style="border-radius:8px;">
+              <a href="{{ url }}" style="display:inline-block; padding:13px 28px; font-size:15px; font-weight:700; color:#ffffff;">{{ label }}</a>
+            </td></tr>
+          </table>
+{%- endmacro -%}
+
+{%- macro btn_small(label, url) -%}
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#5d23bb" style="border-radius:6px;">
+                  <a href="{{ url }}" style="display:inline-block; padding:8px 14px; font-size:13px; font-weight:700; color:#ffffff;">{{ label }}</a>
+                </td></tr></table>
+{%- endmacro -%}
+
+{%- macro trunc(s, n=40) -%}
+{%- if s | length <= n -%}{{ s }}
+{%- else -%}
+{%- set cut = s[:n-1] -%}
+{%- set sp = cut.rfind(' ') -%}
+{%- set base = cut[:sp] if sp > ((n * 6) // 10) else cut -%}
+{%- set base = base | trim(' (&–—-·:,;') -%}
+{#- never leave an unmatched opening bracket dangling before the ellipsis -#}
+{%- if base.count('(') > base.count(')') -%}
+{%- set base = base[:base.rfind('(')] | trim(' (&–—-·:,;') -%}
+{%- endif -%}
+{%- if base.count('“') > base.count('”') -%}
+{%- set base = base[:base.rfind('“')] | trim(' (&“"–—-·:,;') -%}
+{%- endif -%}
+{{- base ~ '…' -}}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro attention_card(item, primary=true) -%}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fff6e8" style="border:1px solid #f2dcb0; border-left:4px solid {{ '#e8940a' if primary else '#f0cf9a' }}; border-radius:10px;">
+            <tr><td style="padding:16px 18px;">
+              <div style="font-size:15px; font-weight:700; color:#17123b;">
+                <span style="color:#b45309;">&#9650;</span>&nbsp; {{ trunc(item.title, 52) }}{% if item.tag %} &nbsp;<span style="font-size:11px; font-weight:800; letter-spacing:1px; color:#b45309; white-space:nowrap;">{{ item.tag|upper }}</span>{% endif %}
+              </div>
+              <div style="padding-top:5px; font-size:14px; line-height:21px; color:#5d5872;">
+                {{ item.body }}
+              </div>
+              <div style="padding-top:11px;">
+                {{ btn_small(item.cta_label, item.cta_url) }}
+              </div>
+            </td></tr>
+          </table>
+{%- endmacro -%}
+
+{%- macro section_label(text, color='#8a86a3') -%}
+          <div style="font-size:12px; font-weight:800; letter-spacing:2.2px; color:{{ color }};">{{ text }}</div>
+{%- endmacro -%}
+
+{%- macro legal_footer(first_line, unsubscribe_url, discord=true) -%}
+  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" class="sheet" style="width:560px; max-width:560px;">
+    <tr><td align="center" style="padding:18px 24px 0; font-size:11px; line-height:18px; color:#9b97ad;">
+      {{ first_line }}<br>
+      Legally, we have to tell you where we live: <a href="https://agpt.co" style="color:#6d28d9; text-decoration:underline;">AutoGPT</a>, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK &nbsp;&middot;&nbsp;
+      <a href="{{ unsubscribe_url }}" style="color:#9b97ad; text-decoration:underline;">Unsubscribe</a>{% if discord %} &nbsp;&middot;&nbsp;
+      <a href="https://discord.gg/autogpt" style="color:#9b97ad; text-decoration:underline;">Discord</a>{% endif %}
+    </td></tr>
+  </table>
+{%- endmacro -%}
+
+
+
+{# Quoted note / feedback card. tone: 'amber' | 'neutral' #}
+{%- macro note_card(label, body, tone='neutral') -%}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{{ '#fff6e8' if tone == 'amber' else '#f7f6fc' }}" style="border:1px solid {{ '#f2dcb0' if tone == 'amber' else '#e7e4f4' }}; border-left:4px solid {{ '#e8940a' if tone == 'amber' else '#8b5cf6' }}; border-radius:10px;">
+            <tr><td style="padding:16px 18px;">
+              <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:{{ '#8a5800' if tone == 'amber' else '#6f6b8a' }}; padding-bottom:7px;">{{ label|upper }}</div>
+              <div style="font-size:15px; line-height:24px; color:#3b3757; overflow-wrap:anywhere;">{{ body }}</div>
+            </td></tr>
+          </table>
+{%- endmacro -%}
+
+{# Numbered step, used for "how to resubmit" / "how to reject" #}
+{%- macro step(n, text) -%}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td width="26" valign="top" style="font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; line-height:22px; font-weight:bold; color:#8b5cf6;">{{ n }}</td>
+              <td style="font-size:14px; line-height:22px; color:#494566;">{{ text }}</td>
+            </tr>
+          </table>
+{%- endmacro -%}
+
+{# Compact ops band: big amount + status chip + small mascot. Internal emails
+   don't get a 184px hero — the number is the hero. #}
+{%- macro ops_band(eyebrow, amount_text, sub_text, status_label, status_bg) -%}
+    <tr><td bgcolor="#1c1a2e" style="padding:20px 30px 22px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="middle">
+            <div style="font-size:11px; font-weight:800; letter-spacing:2px; color:#9a95b8;">{{ eyebrow }}</div>
+            <div style="padding-top:6px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:32px; font-weight:bold; color:#ffffff; letter-spacing:-0.5px;">{{ amount_text }}</div>
+            <div style="padding-top:5px; font-size:13px; line-height:19px; color:#b8b3d1; overflow-wrap:anywhere;">{{ sub_text }}</div>
+            <div style="padding-top:11px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td bgcolor="{{ status_bg }}" style="border-radius:4px; padding:5px 10px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; font-weight:bold; letter-spacing:1.4px; color:#1c1a2e;">{{ status_label|upper }}</td>
+              </tr></table>
+            </div>
+          </td>
+          <td width="118" align="right" valign="middle" class="mobile-hide" style="line-height:0; font-size:0;">
+            <img src="{{ assets | default('https://cdn.agpt.co/email', true) }}/mark-otto.png"
+                 width="118" height="80" alt=""
+                 style="display:block; border:0; outline:none; text-decoration:none;">
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+{%- endmacro -%}
+
+{# Key/value ledger row for ops emails #}
+{%- macro kv(label, value, mono=true, first=false) -%}
+                <tr>
+                  <td width="150" valign="top" class="kvl{{ ' kvfirst' if first }}" style="padding:{{ '0' if first else '9px' }} 12px 9px 0; font-size:13px; color:#8a86a3; border-top:{{ '0' if first else '1px solid #e7e4f4' }};">{{ label }}</td>
+                  <td valign="top" align="right" class="kvv" style="padding:{{ '0' if first else '9px' }} 0 9px; {% if mono %}font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;{% else %}font-size:13px;{% endif %} color:#17123b; border-top:{{ '0' if first else '1px solid #e7e4f4' }}; overflow-wrap:anywhere;">{{ value }}</td>
+                </tr>
+{%- endmacro -%}
+
+{# Internal footer — no marketing chrome, no unsubscribe (ops mail is not opt-in) #}
+{%- macro internal_footer(line) -%}
+  <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" class="sheet" style="width:560px; max-width:560px;">
+    <tr><td align="center" style="padding:18px 24px 0; font-size:11px; line-height:18px; color:#9b97ad;">
+      {{ line }}
+    </td></tr>
+  </table>
+{%- endmacro -%}
