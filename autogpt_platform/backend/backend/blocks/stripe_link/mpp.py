@@ -77,6 +77,8 @@ MAX_TRUNCATED_BODY_CHARS = 1000
 # may mean the merchant already processed it, so it gets a single attempt.
 PROBE_MAX_ATTEMPTS = 3
 PAY_MAX_ATTEMPTS = 1
+# A JSON number literal — no leading zeros, so identifiers survive as strings.
+JSON_NUMBER_PATTERN = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$")
 # Fields `mppx` keeps on the wire challenge; anything else the server sends is
 # dropped rather than echoed back.
 CHALLENGE_FIELDS = frozenset(
@@ -419,7 +421,7 @@ class StripeLinkMPPPayBlock(Block):
                 spt,
                 input_data.url,
                 input_data.method,
-                input_data.body,
+                _coerce_numeric_strings(input_data.body),
                 input_data.headers,
             )
             yield "status_code", status_code
@@ -485,6 +487,23 @@ class StripeLinkMPPPayBlock(Block):
             headers={**base_headers, "Authorization": build_credential(challenge, spt)},
         )
         return retry.status, _json_or_text(retry)
+
+
+def _coerce_numeric_strings(body: dict[str, Any]) -> dict[str, Any]:
+    """Restore numbers the builder's key/value editor turned into strings.
+
+    Only valid JSON number literals convert, so `"0012345"` stays a string.
+    """
+    return {
+        key: _as_json_number(value) if isinstance(value, str) else value
+        for key, value in body.items()
+    }
+
+
+def _as_json_number(value: str) -> int | float | str:
+    if not JSON_NUMBER_PATTERN.match(value):
+        return value
+    return float(value) if {".", "e", "E"} & set(value) else int(value)
 
 
 def _json_or_text(response: Response) -> dict[str, Any]:

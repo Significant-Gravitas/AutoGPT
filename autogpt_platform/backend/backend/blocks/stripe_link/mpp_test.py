@@ -614,3 +614,61 @@ def test_an_oversized_body_is_not_parsed():
 
     assert out["truncated"] is True
     assert len(out["body"]) <= 1000
+
+
+# ---------------------------------------------------------------------------
+# Body values reach the merchant with their JSON types intact
+# ---------------------------------------------------------------------------
+async def run_pay_against(
+    responses: list[dict],
+    *,
+    body: dict | None = None,
+) -> tuple[dict, list[dict], dict]:
+    """Run the pay block against a scripted sequence of Link responses.
+
+    Returns the block's outputs, what it sent to the merchant, and the call
+    log, so a test can assert on the wire rather than on internals.
+    """
+    from backend.blocks.stripe_link.mpp import StripeLinkMPPPayBlock
+
+    calls: list[dict] = []
+    sent: dict = {}
+
+    async def _fake_link(credentials, method, path, body=None):
+        calls.append({"path": path})
+        return responses[min(len(calls) - 1, len(responses) - 1)]
+
+    async def _fake_pay(spt, url, method, body, headers):
+        sent.update({"spt": spt, "body": body})
+        return 200, {"ok": True}
+
+    block = StripeLinkMPPPayBlock()
+    object.__setattr__(block, "_link_api_request", _fake_link)
+    object.__setattr__(block, "_pay_with_token", _fake_pay)
+
+    payload = {
+        "credentials": TEST_CREDENTIALS_INPUT,
+        "spend_request_id": "lsrq_test",
+        "url": "https://merchant.example/api/buy",
+    }
+    if body is not None:
+        payload["body"] = body
+    inp = block.Input.model_validate(payload)
+
+    outputs = {n: v async for n, v in block.run(inp, credentials=TEST_CREDENTIALS)}
+    return outputs, calls, sent
+
+
+@pytest.mark.asyncio
+async def test_number_shaped_body_values_are_sent_as_numbers():
+    """The builder's key/value editor stringifies every value; merchants 400."""
+    _, _, sent = await run_pay_against(
+        [{"status": "approved", "shared_payment_token": {"id": "spt_x"}}],
+        body={"amount": "100", "rate": "1.5", "sku": "0012345", "name": "board"},
+    )
+
+    assert sent["body"]["amount"] == 100
+    assert isinstance(sent["body"]["amount"], int)
+    assert sent["body"]["rate"] == 1.5
+    assert sent["body"]["sku"] == "0012345", "leading zeros are not a number"
+    assert sent["body"]["name"] == "board"
