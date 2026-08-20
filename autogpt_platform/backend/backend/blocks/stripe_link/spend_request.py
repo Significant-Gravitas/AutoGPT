@@ -721,6 +721,10 @@ class StripeLinkRetrieveCardBlock(Block):
     There is no opt-in flag: emitting the card is the entire purpose of this
     block, so its availability is the control. Self-hosted only — see
     CARD_FLOW_DISABLED.
+
+    The card number and CVC are written to the execution record in clear text
+    and are readable through the execution-results API. Nothing redacts them.
+    Do not enable this block in an environment where PCI compliance matters.
     """
 
     # Exposed as a class attribute so `test_mock` can patch it; the harness
@@ -735,25 +739,32 @@ class StripeLinkRetrieveCardBlock(Block):
 
         _check_id = field_validator("spend_request_id")(_validate_spend_request_id)
 
+    # if you use this block note the card number will be logged. Do not use
+    # this in environments where PCI compliance matters.
+    #
+    # Deliberately no `secret=True` on the card fields: that flag reaches only
+    # `json_schema_extra`, whose sole consumer strips `input_default` on graph
+    # export, so it does nothing for outputs. Marking them would advertise a
+    # redaction that does not exist.
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Current status of the spend request")
         card_number: str = SchemaField(
             description=(
                 "Virtual card number. Single-use, capped at the approved "
-                "amount, and expires at `valid_until`. Block outputs are "
-                "persisted with the execution, so avoid wiring this anywhere "
-                "that logs, exports, or reaches a model prompt."
+                "amount, and expires at `valid_until`. Stored in clear text "
+                "with the execution record and readable through the "
+                "execution-results API — do not enable this block where PCI "
+                "compliance matters."
             ),
             default="",
-            secret=True,
         )
         card_cvc: str = SchemaField(
             description=(
-                "Virtual card CVC. See the note on `card_number`: this is "
-                "persisted with the execution record."
+                "Virtual card CVC. Stored in clear text with the execution "
+                "record, same as `card_number`. Retaining a CVC after "
+                "authorization is prohibited under PCI DSS 3.2."
             ),
             default="",
-            secret=True,
         )
         card_exp_month: int = SchemaField(
             description="Card expiry month",
@@ -781,8 +792,10 @@ class StripeLinkRetrieveCardBlock(Block):
             id="1aff59ef-e8a2-413e-9410-4ce7e4849337",
             description=(
                 "Get the one-time virtual card for an approved Stripe Link "
-                "spend request. Self-hosted only; on AutoGPT Cloud use the "
-                "Shared Payment Token flow with the MPP blocks instead."
+                "spend request. The card number and CVC are stored in clear "
+                "text with the execution record — do not use this where PCI "
+                "compliance matters. Self-hosted only; on AutoGPT Cloud use "
+                "the Shared Payment Token flow with the MPP blocks instead."
             ),
             categories={BlockCategory.DATA},
             disabled=CARD_FLOW_DISABLED,
