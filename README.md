@@ -125,6 +125,23 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 
 [Read the self-hosting guide →](https://docs.agpt.co/platform/getting-started)
 
+**Docker (experimental single-container):**
+
+```bash
+docker run -d \
+  --name autogpt \
+  --restart unless-stopped \
+  --stop-timeout 360 \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  -p 127.0.0.1:3000:3000 \
+  -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
+  -v autogpt-data:/data \
+  significantgravitas/autogpt:latest
+```
+
+[Follow the single-container guide →](https://docs.agpt.co/platform/self-hosting/single-container)
+
 ---
 
 ## Managed Platform vs. self-hosting
