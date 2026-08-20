@@ -1,5 +1,5 @@
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { renderHook } from "-library/react";
+import { renderHook } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
