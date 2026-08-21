@@ -145,6 +145,7 @@ vi.mock(
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: () => ({ markerType: null }),
   shouldShowTaskListNotice: () => false,
   splitReasoningAndResponse: (parts: unknown[]) => ({
