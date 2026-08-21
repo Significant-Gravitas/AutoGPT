@@ -20,7 +20,6 @@ def test_spinner_initializes_with_custom_values():
         assert spinner.delay == 0.2
 
 
-#
 def test_spinner_stops_spinning():
     """Tests that the spinner starts spinning and stops spinning without errors."""
     with Spinner() as spinner:
