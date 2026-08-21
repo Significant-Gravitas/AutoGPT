@@ -1,6 +1,8 @@
 "use client";
 
+import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { normalizeOrg } from "@/services/org-team/normalize";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
@@ -51,14 +53,15 @@ export default function OrgTeamProvider({ children }: Props) {
           return;
         }
         const data = await res.json();
-        const orgs = data.data || data;
+        // The API responds in snake_case; normalize to the camelCase
+        // shape the store and its consumers expect.
+        const rawOrgs: OrgResponse[] = data.data || data;
+        const orgs = rawOrgs.map(normalizeOrg);
         setOrgs(orgs);
 
         // If no active org, set the personal org as default
         if (!activeOrgID && orgs.length > 0) {
-          const personal = orgs.find(
-            (o: { isPersonal: boolean }) => o.isPersonal,
-          );
+          const personal = orgs.find((o) => o.isPersonal);
           if (personal) {
             setActiveOrg(personal.id);
           } else {
