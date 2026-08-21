@@ -425,3 +425,28 @@ async def test_an_unresolvable_entitlement_leaves_advanced_open(
 
     assert tiers["advanced"].selectable is True
     assert tiers["advanced"].lock_reason is None
+
+
+@pytest.mark.asyncio
+async def test_a_locked_chatgpt_offer_still_names_the_models(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # "What you get" is the argument for connecting; a locked row that
+    # cannot name the models asks the user to take it on faith.
+    mocker.patch.object(
+        offers.llm_registry, "get_route", side_effect=lambda s, m, t: f"{m}-{t}"
+    )
+    mocker.patch.object(offers.llm_registry, "get_model", return_value=None)
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker)
+
+    locked = _locked(await get_connection_offers("user"))[0]
+
+    # The fixture pins the engine to the baseline, so the cells are "fast".
+    assert [t.display_model for t in locked.tiers] == [
+        "fast-standard",
+        "fast-advanced",
+    ]
+    # Naming them must not read as offering them.
+    assert all(t.selectable is False for t in locked.tiers)
+    assert locked.selectable is False
