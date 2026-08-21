@@ -48,6 +48,8 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.markers import append_error_marker
+from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import session_segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
@@ -113,6 +115,7 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
     StreamReasoningDelta,
@@ -727,6 +730,13 @@ async def _consume_sdk_until_done(
                     ),
                 ):
                     continue
+                # The envelope goes out just ahead of the error it explains,
+                # so a client acting on it has it in hand before the turn is
+                # reported failed. Same contract as the baseline path.
+                if isinstance(dispatched, StreamError):
+                    codex_failure = _provider_failure_for(ctx)
+                    if codex_failure is not None:
+                        yield StreamProviderFailure(failure=codex_failure.as_part())
                 yield dispatched
 
             # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -1282,6 +1292,11 @@ class _StreamContext:
     attachments: "PreparedAttachments"
     compaction: CompactionTracker
     lock: AsyncClusterLock
+    # The Codex gateway for this turn, when the route is a ChatGPT
+    # subscription. Carried here so the error path can ask it what actually
+    # failed: by the time a provider failure reaches this layer it is CLI
+    # text, and the gateway holds the last point at which it was typed.
+    codex_gateway: "CodexAnthropicGateway | None" = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1427,14 +1442,30 @@ def _append_error_marker(
     display_msg: str,
     *,
     retryable: bool = False,
+    failure: dict[str, Any] | None = None,
 ) -> None:
-    """Append a copilot error marker to *session* so it persists across refresh."""
-    if session is None:
-        return
-    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
-    session.messages.append(
-        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
-    )
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Delegates to the shared writer so both engines produce the same row: the
+    frontend's rendering contract lives in one place, and a failure recorded
+    on a Codex turn carries the same envelope a baseline turn would.
+    """
+    append_error_marker(session, display_msg, retryable=retryable, failure=failure)
+
+
+def _provider_failure_for(ctx: "_StreamContext") -> ProviderFailure | None:
+    """What the Codex gateway last named, if it named anything.
+
+    The gateway is the last point where a provider failure is still a typed
+    exception; downstream it is an HTTP status, then CLI text. Reading it
+    here is what lets a Codex turn say "your ChatGPT login expired" rather
+    than "the assistant ran into an error".
+
+    ``None`` on the platform route, and on a Codex turn whose failure the
+    gateway declined to name -- the caller keeps its existing behaviour.
+    """
+    gateway = ctx.codex_gateway
+    return gateway.last_failure if gateway is not None else None
 
 
 def _is_error_marker(msg: ChatMessage) -> bool:
@@ -3235,10 +3266,16 @@ def _dispatch_response(
             response.errorText,
             response.code,
         )
+        failure = _provider_failure_for(ctx)
         _append_error_marker(
             ctx.session,
-            response.errorText,
-            retryable=response.code in _RETRYABLE_STREAM_ERROR_CODES,
+            failure.message if failure else response.errorText,
+            retryable=(
+                failure.retryable
+                if failure
+                else response.code in _RETRYABLE_STREAM_ERROR_CODES
+            ),
+            failure=failure.as_part() if failure else None,
         )
 
     if isinstance(response, StreamReasoningStart):
@@ -4792,6 +4829,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             attachments=attachments,
             compaction=compaction,
             lock=lock,
+            codex_gateway=codex_gateway,
         )
 
         # ---------------------------------------------------------------

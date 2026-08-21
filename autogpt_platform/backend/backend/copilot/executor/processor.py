@@ -538,7 +538,14 @@ class CoPilotProcessor:
                         )
                     )
                 except CodexCredentialBusyError:
-                    raise RuntimeError("codex_credential_busy") from None
+                    # Re-raised as-is rather than flattened into a bare
+                    # RuntimeError: a ChatGPT connection serves one chat at a
+                    # time, so this is the single most likely thing a user
+                    # with two chats open will hit. Keeping the type is what
+                    # lets the failure say so, and say that waiting works --
+                    # ``RuntimeError("codex_credential_busy")`` reaches the
+                    # chat as an unexplained error with no advice attached.
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception:
