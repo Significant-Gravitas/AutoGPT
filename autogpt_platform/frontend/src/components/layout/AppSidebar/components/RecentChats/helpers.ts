@@ -12,27 +12,12 @@ function diffInDays(iso: string): number {
   return Math.round((startOfDay(new Date()) - startOfDay(date)) / dayMs);
 }
 
-function ordinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return "th";
-  switch (day % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-}
-
-// e.g. "26th June" (current year) or "26th June 2024" (older).
 function formatDayLabel(date: Date): string {
-  const day = date.getDate();
-  const month = date.toLocaleDateString(undefined, { month: "long" });
-  const label = `${day}${ordinalSuffix(day)} ${month}`;
   const sameYear = date.getFullYear() === new Date().getFullYear();
-  return sameYear ? label : `${label} ${date.getFullYear()}`;
+  const options: Intl.DateTimeFormatOptions = sameYear
+    ? { month: "long", day: "numeric" }
+    : { month: "long", day: "numeric", year: "numeric" };
+  return new Intl.DateTimeFormat(undefined, options).format(date);
 }
 
 export function getDateGroupLabel(iso: string): string {
