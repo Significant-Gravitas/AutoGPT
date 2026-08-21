@@ -459,7 +459,9 @@ Credentials = Annotated[
 CREDENTIALS_ADAPTER: TypeAdapter[Credentials] = TypeAdapter(Credentials)
 
 
-CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
+CredentialsType = Literal[
+    "api_key", "oauth2", "user_password", "host_scoped", "device_code"
+]
 
 
 class OAuthState(BaseModel):
@@ -734,6 +736,24 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             )
 
         return result
+
+    def requires_credentials(self, discriminator_value: Any) -> bool:
+        """Whether this selection needs a credential at all.
+
+        A field may declare a discriminator value that maps to no provider,
+        meaning that choice is credential-free — AutoPilot's `platform`
+        transport runs on platform credits and needs nothing connected.
+
+        Callers must consult this before resolving, discriminating, or
+        enforcing entitlement on a field: `discriminate()` raises on an
+        unmapped value, and resolving a credential the selection will never
+        use can fail a run that was not going to touch that provider.
+        """
+        if not (self.discriminator and self.discriminator_mapping):
+            return True
+        if discriminator_value is None:
+            return True
+        return discriminator_value in self.discriminator_mapping
 
     def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
         if not (self.discriminator and self.discriminator_mapping):
