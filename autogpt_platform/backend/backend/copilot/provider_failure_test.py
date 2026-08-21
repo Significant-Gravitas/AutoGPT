@@ -138,3 +138,47 @@ class TestWhichConnectionFailed:
         )
         assert failure is not None
         assert "local LLM backend" in failure.message
+
+
+class TestCodexFailuresSpeakToThePerson:
+    """Codex failures carry an internal code as their message.
+
+    ``codex_credential_busy`` is a log line. Shown to a user it explains
+    nothing and suggests nothing.
+    """
+
+    def test_a_busy_connection_says_so_and_says_waiting_works(self) -> None:
+        from backend.integrations.codex.transport import CodexCredentialBusyError
+
+        failure = classify(
+            CodexCredentialBusyError("codex_credential_busy"), auth_provider="codex"
+        )
+        assert failure is not None
+        assert "codex_credential_busy" not in failure.message
+        assert "in use by another chat" in failure.message
+        # Waiting is what clears it, so the retry affordance is honest.
+        assert failure.retryable is True
+
+    def test_the_message_does_not_enshrine_the_single_chat_limit(self) -> None:
+        # The lock is held for every chat but is only needed for sign-in and
+        # refresh; wording it as a rule would outlive the bug.
+        from backend.integrations.codex.transport import CodexCredentialBusyError
+
+        message = classify(CodexCredentialBusyError("x"), auth_provider="codex").message
+        assert "only one" not in message.lower()
+
+    def test_an_unusable_credential_points_at_reconnecting(self) -> None:
+        from backend.integrations.codex.transport import CodexCredentialIntegrityError
+
+        failure = classify(CodexCredentialIntegrityError("bad"), auth_provider="codex")
+        assert failure is not None
+        assert "Reconnect" in failure.message
+        assert failure.reconnect_fixes_it is True
+
+    def test_an_explicit_message_still_wins(self) -> None:
+        from backend.integrations.codex.transport import CodexCredentialBusyError
+
+        failure = classify(
+            CodexCredentialBusyError("x"), auth_provider="codex", message="caller says"
+        )
+        assert failure.message == "caller says"
