@@ -488,11 +488,16 @@ class TelegramAdapter(WebhookAdapter):
     ) -> Optional[PostedRef]:
         chat_id, thread_id = _decode_target(channel_id)
         first_id: Optional[str] = None
-        for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
+        # Chunk the canonical markdown (the splitter balances ``` fences), then
+        # localize each chunk, so a cut never lands inside a <pre> block. The
+        # 4096 cap is "characters after entities parsing" (Bot API,
+        # sendMessage.text): tags count for nothing and an entity for one char,
+        # so the canonical length is the one that matters.
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             result = await self._client.call(
                 "sendMessage",
                 chat_id=chat_id,
-                text=chunk,
+                text=self.localize_markup(chunk),
                 parse_mode="HTML",
                 message_thread_id=thread_id,
             )

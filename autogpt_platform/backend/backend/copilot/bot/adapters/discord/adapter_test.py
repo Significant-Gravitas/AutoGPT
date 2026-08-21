@@ -415,6 +415,42 @@ class TestSendMethods:
         assert kwargs["tts"] is False
         assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
 
+    @pytest.mark.asyncio
+    async def test_send_reply_falls_back_to_send_without_read_history(self):
+        # fetch_message needs Read Message History; gateway delivery doesn't.
+        # Forbidden must fall back to a plain send, not swallow the reply.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        channel.fetch_message = AsyncMock(
+            side_effect=discord.Forbidden(MagicMock(status=403), "no read history")
+        )
+        client.get_channel.return_value = channel
+
+        await adapter.send_reply("123", "hello", "999")
+
+        channel.send.assert_awaited_once()
+        assert channel.send.await_args.args == ("hello",)
+
+    @pytest.mark.asyncio
+    async def test_send_reply_does_not_retry_a_failed_reply_as_plain_send(self):
+        # Only FETCH failures fall back — a failed reply() may have been
+        # accepted by Discord, so retrying it as a send could double-post.
+        adapter, client = _bare_adapter()
+        msg = MagicMock()
+        msg.reply = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=500), "boom")
+        )
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=msg)
+        client.get_channel.return_value = channel
+
+        with pytest.raises(discord.HTTPException):
+            await adapter.send_reply("123", "hello", "999")
+
+        channel.send.assert_not_awaited()
+
 
 class TestRenameThread:
     @pytest.mark.asyncio
