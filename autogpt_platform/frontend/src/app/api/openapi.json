@@ -9337,7 +9337,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth credential.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -9459,7 +9459,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Store a bearer token for an MCP server",
-        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "description": "Store a Basic/Bearer credential or complete Authorization header for an MCP server.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the credential via\n``_auto_lookup_credential``.",
         "operationId": "postV2Store a bearer token for an mcp server",
         "requestBody": {
           "content": {
@@ -18075,9 +18075,9 @@
             "description": "URL of the MCP server"
           },
           "auth_token": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
             "title": "Auth Token",
-            "description": "Optional Bearer token for authenticated MCP servers"
+            "description": "Optional bare Bearer token, Basic/Bearer value, or complete Authorization header"
           }
         },
         "type": "object",
@@ -21743,21 +21743,21 @@
           "server_url": {
             "type": "string",
             "title": "Server Url",
-            "description": "MCP server URL the token authenticates against"
+            "description": "MCP server URL the credential authenticates against"
           },
           "token": {
             "type": "string",
             "minLength": 1,
             "format": "password",
             "title": "Token",
-            "description": "Bearer token / API key for the MCP server",
+            "description": "Bare Bearer token, Basic/Bearer value, or complete Authorization header",
             "writeOnly": true
           }
         },
         "type": "object",
         "required": ["server_url", "token"],
         "title": "MCPStoreTokenRequest",
-        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+        "description": "Request to store a manual Basic/Bearer credential or Authorization header."
       },
       "MCPToolInfo": {
         "properties": {

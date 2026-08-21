@@ -320,6 +320,23 @@ describe("ChainActionCard", () => {
 
       expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
     });
+
+    it("prefixes a Basic credential selected in the chain row", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "basic" } },
+      );
+      fireEvent.change(
+        screen.getByLabelText("Basic authentication token for Notion"),
+        { target: { value: "  cGstbGYtYWJjZA==  " } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Basic cGstbGYtYWJjZA==");
+    });
   });
 
   describe("inputs cards", () => {

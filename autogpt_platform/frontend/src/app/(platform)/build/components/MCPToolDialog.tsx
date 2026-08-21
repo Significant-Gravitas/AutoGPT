@@ -27,9 +27,15 @@ import {
   postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2InitiateOauthLoginForAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  detectMCPAuthScheme,
+  prepareMCPAuthCredential,
+  type MCPAuthScheme,
+} from "@/lib/mcp-auth";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -39,7 +45,7 @@ export type MCPToolDialogResult = {
   selectedTool: string;
   toolInputSchema: Record<string, any>;
   availableTools: Record<string, any>;
-  /** Credentials meta from OAuth flow, null for public servers. */
+  /** Credentials meta from the completed authentication flow, null for public servers. */
   credentials: CredentialsMetaInput | null;
 };
 
@@ -50,6 +56,45 @@ interface MCPToolDialogProps {
 }
 
 type DialogStep = "url" | "tool";
+
+type MCPApiError = {
+  status?: unknown;
+  message?: unknown;
+  detail?: unknown;
+};
+
+/** Extract an HTTP status from an unknown generated-client error payload. */
+function getErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const status = (error as MCPApiError).status;
+  return typeof status === "number" ? status : null;
+}
+
+/** Extract a readable message from an unknown generated-client error payload. */
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error !== "object" || error === null) return fallback;
+
+  const { message, detail } = error as MCPApiError;
+  const value =
+    message !== undefined && message !== null && message !== ""
+      ? message
+      : detail;
+  if (typeof value === "string") return value;
+  if (value !== undefined && value !== null) {
+    return JSON.stringify(value) || fallback;
+  }
+  return fallback;
+}
+
+function getAPIResponseError(status: number, data: unknown) {
+  if (typeof data !== "object" || data === null) {
+    return { status, detail: data };
+  }
+  const detail = "detail" in data ? data.detail : data;
+  const message = "message" in data ? data.message : undefined;
+  return { status, detail, message };
+}
 
 export function MCPToolDialog({
   open,
@@ -68,10 +113,15 @@ export function MCPToolDialog({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
+  const [manualAuthScheme, setManualAuthScheme] =
+    useState<MCPAuthScheme>("bearer");
   const [selectedTool, setSelectedTool] = useState<MCPToolResponse | null>(
     null,
   );
   const [credentials, setCredentials] = useState<CredentialsMetaInput | null>(
+    null,
+  );
+  const [credentialServerUrl, setCredentialServerUrl] = useState<string | null>(
     null,
   );
 
@@ -91,6 +141,7 @@ export function MCPToolDialog({
     setStep("url");
     setServerUrl("");
     setManualToken("");
+    setManualAuthScheme("bearer");
     setTools([]);
     setServerName(null);
     setLoading(false);
@@ -100,6 +151,7 @@ export function MCPToolDialog({
     setShowManualToken(false);
     setSelectedTool(null);
     setCredentials(null);
+    setCredentialServerUrl(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -107,44 +159,112 @@ export function MCPToolDialog({
     onClose();
   }, [reset, onClose]);
 
-  const discoverTools = useCallback(async (url: string, authToken?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: url,
-        auth_token: authToken || null,
-      });
-      if (response.status !== 200) throw response.data;
+  const applyDiscoveredTools = useCallback(
+    (response: {
+      data: {
+        tools: MCPToolResponse[];
+        server_name?: string | null;
+      };
+    }) => {
       setTools(response.data.tools);
       setServerName(response.data.server_name ?? null);
       setAuthRequired(false);
       setShowManualToken(false);
+      setManualToken("");
+      setManualAuthScheme("bearer");
       setStep("tool");
-    } catch (e: any) {
-      if (e?.status === 401 || e?.status === 403) {
-        setAuthRequired(true);
-        setError(null);
-        // Automatically start OAuth sign-in instead of requiring a second click
+    },
+    [],
+  );
+
+  const discoverTools = useCallback(
+    async (url: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
+          server_url: url,
+          auth_token: null,
+        });
+        if (response.status !== 200) {
+          throw getAPIResponseError(response.status, response.data);
+        }
+        applyDiscoveredTools(response);
+      } catch (error: unknown) {
+        const status = getErrorStatus(error);
+        if (status === 401 || status === 403) {
+          setAuthRequired(true);
+          setError(null);
+          // Automatically start OAuth sign-in instead of requiring a second click
+          setLoading(false);
+          startOAuthRef.current = true;
+          return;
+        }
+        setError(getErrorMessage(error, "Failed to connect to MCP server"));
+      } finally {
         setLoading(false);
-        startOAuthRef.current = true;
-        return;
-      } else {
-        const message =
-          e?.message || e?.detail || "Failed to connect to MCP server";
-        setError(
-          typeof message === "string" ? message : JSON.stringify(message),
+      }
+    },
+    [applyDiscoveredTools],
+  );
+
+  const connectWithManualCredential = useCallback(async () => {
+    const url = serverUrl.trim();
+    const credential = manualToken.trim();
+    if (!url || !credential) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const authValue = prepareMCPAuthCredential(credential, manualAuthScheme);
+
+      // Validate the credential before persisting it so a rejected token never
+      // replaces a working credential for this server.
+      const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: url,
+        auth_token: authValue,
+      });
+      if (toolsResponse.status !== 200) {
+        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      }
+
+      const credentialResponse = await postV2StoreABearerTokenForAnMcpServer({
+        server_url: url,
+        token: authValue,
+      });
+      if (credentialResponse.status !== 200) {
+        throw getAPIResponseError(
+          credentialResponse.status,
+          credentialResponse.data,
         );
       }
+
+      setCredentials({
+        id: credentialResponse.data.id,
+        provider: credentialResponse.data.provider,
+        type: credentialResponse.data.type,
+        title: credentialResponse.data.title,
+      });
+      setCredentialServerUrl(url);
+
+      applyDiscoveredTools(toolsResponse);
+    } catch (error: unknown) {
+      setError(
+        getErrorMessage(error, "Failed to connect with this credential"),
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyDiscoveredTools, manualAuthScheme, manualToken, serverUrl]);
 
   const handleDiscoverTools = useCallback(() => {
     if (!serverUrl.trim()) return;
-    discoverTools(serverUrl.trim(), manualToken.trim() || undefined);
-  }, [serverUrl, manualToken, discoverTools]);
+    if (showManualToken) {
+      void connectWithManualCredential();
+      return;
+    }
+    void discoverTools(serverUrl.trim());
+  }, [connectWithManualCredential, discoverTools, serverUrl, showManualToken]);
 
   const handleOAuthSignIn = useCallback(async () => {
     if (!serverUrl.trim()) return;
@@ -159,7 +279,9 @@ export function MCPToolDialog({
       const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
         server_url: serverUrl.trim(),
       });
-      if (loginResponse.status !== 200) throw loginResponse.data;
+      if (loginResponse.status !== 200) {
+        throw getAPIResponseError(loginResponse.status, loginResponse.data);
+      }
       const { login_url, state_token } = loginResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
@@ -186,7 +308,9 @@ export function MCPToolDialog({
           code: result.code,
           state_token,
         });
-        if (cbResponse.status !== 200) throw cbResponse.data;
+        if (cbResponse.status !== 200) {
+          throw getAPIResponseError(cbResponse.status, cbResponse.data);
+        }
         callbackResult = cbResponse.data;
       }
 
@@ -196,51 +320,48 @@ export function MCPToolDialog({
         type: callbackResult.type,
         title: callbackResult.title,
       });
+      setCredentialServerUrl(serverUrl.trim());
       setAuthRequired(false);
 
       // Discover tools now that we're authenticated
       const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: serverUrl.trim(),
       });
-      if (toolsResponse.status !== 200) throw toolsResponse.data;
-      setTools(toolsResponse.data.tools);
-      setServerName(toolsResponse.data.server_name ?? null);
-      setStep("tool");
-    } catch (e: any) {
+      if (toolsResponse.status !== 200) {
+        throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
+      }
+      applyDiscoveredTools(toolsResponse);
+    } catch (error: unknown) {
+      const status = getErrorStatus(error);
+      const message = getErrorMessage(error, "Failed to complete sign-in");
       // If server doesn't support OAuth → show manual token entry
-      if (e?.status === 400) {
+      if (status === 400) {
         setShowManualToken(true);
         setError(
-          "This server does not support OAuth sign-in. Please enter a token manually.",
+          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
         );
-      } else if (e?.message === "OAuth flow timed out") {
+      } else if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");
-      } else {
-        const status = e?.status;
-        let message: string;
-        if (status === 401 || status === 403) {
-          message =
-            "Authentication succeeded but the server still rejected the request. " +
-            "The token audience may not match. Please try again.";
-        } else {
-          message = e?.message || e?.detail || "Failed to complete sign-in";
-        }
+      } else if (status === 401 || status === 403) {
         setError(
-          typeof message === "string" ? message : JSON.stringify(message),
+          "Authentication succeeded but the server still rejected the request. " +
+            "The token audience may not match. Please try again.",
         );
+      } else {
+        setError(message);
       }
     } finally {
       setOauthLoading(false);
       setLoading(false);
       oauthAbortRef.current = null;
     }
-  }, [serverUrl, allProviders]);
+  }, [serverUrl, allProviders, applyDiscoveredTools]);
 
   // Auto-start OAuth sign-in when server returns 401/403
   useEffect(() => {
     if (authRequired && startOAuthRef.current) {
       startOAuthRef.current = false;
-      handleOAuthSignIn();
+      void handleOAuthSignIn();
     }
   }, [authRequired, handleOAuthSignIn]);
 
@@ -261,7 +382,8 @@ export function MCPToolDialog({
       selectedTool: selectedTool.name,
       toolInputSchema: selectedTool.input_schema,
       availableTools,
-      credentials,
+      credentials:
+        credentialServerUrl === serverUrl.trim() ? credentials : null,
     });
     reset();
   }, [
@@ -270,6 +392,7 @@ export function MCPToolDialog({
     serverUrl,
     serverName,
     credentials,
+    credentialServerUrl,
     onConfirm,
     reset,
   ]);
@@ -299,8 +422,22 @@ export function MCPToolDialog({
                 type="url"
                 placeholder="https://mcp.example.com/mcp"
                 value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
+                onChange={(e) => {
+                  const nextUrl = e.target.value;
+                  setServerUrl(nextUrl);
+                  if (credentialServerUrl !== nextUrl.trim()) {
+                    setCredentials(null);
+                    setCredentialServerUrl(null);
+                  }
+                  setManualToken("");
+                  setManualAuthScheme("bearer");
+                  setAuthRequired(false);
+                  setShowManualToken(false);
+                  setError(null);
+                  startOAuthRef.current = false;
+                }}
                 onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                disabled={loading || oauthLoading}
                 autoFocus
               />
             </div>
@@ -309,27 +446,56 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                className="text-xs text-gray-500 underline hover:text-gray-700"
               >
-                or enter a token manually
+                or enter an API credential manually
               </button>
             )}
 
-            {/* Manual token entry — only visible when expanded */}
+            {/* Manual credential entry — only visible when expanded */}
             {showManualToken && (
               <div className="flex flex-col gap-2">
+                <Label htmlFor="mcp-auth-type" className="text-sm">
+                  Authentication type
+                </Label>
+                <select
+                  id="mcp-auth-type"
+                  value={manualAuthScheme}
+                  onChange={(e) =>
+                    setManualAuthScheme(e.target.value as MCPAuthScheme)
+                  }
+                  disabled={loading || oauthLoading}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="bearer">API token (Bearer)</option>
+                  <option value="basic">Basic authentication</option>
+                </select>
+
                 <Label htmlFor="mcp-auth-token" className="text-sm">
-                  Bearer Token
+                  {manualAuthScheme === "basic"
+                    ? "Basic authentication token"
+                    : "API token"}
                 </Label>
                 <Input
                   id="mcp-auth-token"
                   type="password"
-                  placeholder="Paste your auth token here"
+                  placeholder="Paste your auth credential here"
                   value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setManualToken(value);
+                    const detected = detectMCPAuthScheme(value);
+                    if (detected) setManualAuthScheme(detected);
+                  }}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  disabled={loading || oauthLoading}
                   autoFocus
                 />
+                <p className="text-xs text-gray-500">
+                  {manualAuthScheme === "basic"
+                    ? 'Paste the value after "Basic", or paste the complete Authorization line.'
+                    : "Paste the token itself. AutoGPT will send it as Bearer authentication."}
+                </p>
               </div>
             )}
 
@@ -374,7 +540,12 @@ export function MCPToolDialog({
                   ? handleOAuthSignIn
                   : handleDiscoverTools
               }
-              disabled={!serverUrl.trim() || loading || oauthLoading}
+              disabled={
+                !serverUrl.trim() ||
+                loading ||
+                oauthLoading ||
+                (showManualToken && !manualToken.trim())
+              }
             >
               {loading || oauthLoading ? (
                 <span className="flex items-center gap-2">
@@ -383,6 +554,8 @@ export function MCPToolDialog({
                 </span>
               ) : authRequired && !showManualToken ? (
                 "Sign in & Connect"
+              ) : showManualToken ? (
+                "Connect & Discover"
               ) : (
                 "Discover Tools"
               )}
