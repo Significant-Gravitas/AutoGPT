@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { deriveAuthMethods } from "@/hooks/useCredentials";
+import type { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
   coerceCredentialFields,
   buildSiblingInputsFromCredentials,
@@ -73,6 +75,29 @@ describe("coerceCredentialFields", () => {
     expect(result.credentialFields[0][1]).toMatchObject({
       credentials_types: allTypes,
     });
+  });
+
+  it("hands the card a payload that resolves to device auth, not OAuth", async () => {
+    // The seam the bug lived in. Each end was covered — this filter, and
+    // deriveAuthMethods' shadowing rule — but nothing asserted that what this
+    // produces is what that consumes. Composed with the real functions, no
+    // mocks: a device-code provider must come out as device auth, because
+    // offering OAuth for a public client with no secret can only 404.
+    const { credentialFields } = coerceCredentialFields({
+      stripe_link_credentials: {
+        provider: "stripe_link",
+        type: "device_code",
+        types: ["device_code", "oauth2"],
+      },
+    });
+
+    const schema = credentialFields[0][1] as {
+      credentials_types: CredentialsType[];
+    };
+    const methods = deriveAuthMethods(schema.credentials_types);
+
+    expect(methods.supportsDeviceCode).toBe(true);
+    expect(methods.supportsOAuth2).toBe(false);
   });
 
   it("filters out invalid credential types", () => {
