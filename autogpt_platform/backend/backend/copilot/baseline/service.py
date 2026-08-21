@@ -107,7 +107,12 @@ from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
     persist_and_record_usage,
 )
-from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tools import (
+    ToolGroup,
+    execute_tool,
+    expert_tool_disabled_groups,
+    get_available_tools,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -2075,19 +2080,16 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
-    if not (
-        user_id and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
-    ):
-        # The whole expert-team surface rides the hire-experts flag: without
-        # it (fail closed for anonymous turns), no session gets the team
-        # tools on either side of expert_id.
-        disabled_tool_groups.extend(["experts", "expert_admin", "delegation"])
-    elif not session.expert_id:
-        disabled_tool_groups.append("experts")
-    else:
-        # Staffing is the user's call in the Autopilot chat, so the inverse
-        # gate to "experts": an expert session never sees hire/raise/confirm.
-        disabled_tool_groups.append("expert_admin")
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns; the role split lives in the shared helper.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    disabled_tool_groups.extend(
+        expert_tool_disabled_groups(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+    )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---

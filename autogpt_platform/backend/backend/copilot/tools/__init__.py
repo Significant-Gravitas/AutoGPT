@@ -213,6 +213,21 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
 }
 
 
+def expert_tool_disabled_groups(
+    *, experts_enabled: bool, expert_id: str | None
+) -> list[ToolGroup]:
+    """Expert-team groups to disable for a turn — shared by both engines.
+
+    Without the hire-experts flag every team tool is hidden. With it, the
+    split follows the session role: an expert session loses the staffing
+    tools (``expert_admin``), a plain Autopilot session loses the
+    expert-session tools (``experts``).
+    """
+    if not experts_enabled:
+        return ["experts", "expert_admin", "delegation"]
+    return ["expert_admin"] if expert_id else ["experts"]
+
+
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
     """Return the set of tool short-names belonging to any of *groups*."""
     group_set = frozenset(groups)

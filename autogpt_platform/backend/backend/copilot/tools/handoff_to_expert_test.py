@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.sdk.session_waiter import SessionResult
-from backend.copilot.tools import TOOL_GROUPS, get_available_tools
+from backend.copilot.tools import (
+    TOOL_GROUPS,
+    expert_tool_disabled_groups,
+    get_available_tools,
+)
 
 from .get_sub_session_result import _in_caller_scope
 from .handoff_to_expert import HandoffToExpertTool
@@ -250,3 +254,29 @@ class TestHandoffPolling:
         sub.metadata.handed_off_from_expert_id = None
         source = _session(session_id="s1", expert_id="expert-a")
         assert _in_caller_scope(sub, source) is True
+
+
+class TestExpertToolGate:
+    """The shared engine gate: flag off hides everything, flag on splits by
+    session role. Anonymous turns never reach the flag (engines pass
+    experts_enabled=False for user_id=None)."""
+
+    def test_flag_off_disables_every_team_group(self) -> None:
+        assert expert_tool_disabled_groups(experts_enabled=False, expert_id=None) == [
+            "experts",
+            "expert_admin",
+            "delegation",
+        ]
+        assert expert_tool_disabled_groups(
+            experts_enabled=False, expert_id="expert-a"
+        ) == ["experts", "expert_admin", "delegation"]
+
+    def test_plain_session_loses_expert_session_tools(self) -> None:
+        assert expert_tool_disabled_groups(experts_enabled=True, expert_id=None) == [
+            "experts"
+        ]
+
+    def test_expert_session_loses_staffing_tools(self) -> None:
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, expert_id="expert-a"
+        ) == ["expert_admin"]

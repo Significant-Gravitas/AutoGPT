@@ -145,7 +145,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, tool_names_in_groups
+from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -4372,20 +4372,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
-        if not (
-            user_id
-            and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
-        ):
-            # The whole expert-team surface rides the hire-experts flag:
-            # without it (fail closed for anonymous turns), no session gets
-            # the team tools on either side of expert_id.
-            disabled_tool_groups.extend(["experts", "expert_admin", "delegation"])
-        elif not session.expert_id:
-            disabled_tool_groups.append("experts")
-        else:
-            # Staffing is the user's call in the Autopilot chat, so the inverse
-            # gate to "experts": an expert session never sees hire/raise/confirm.
-            disabled_tool_groups.append("expert_admin")
+        # The whole expert-team surface rides the hire-experts flag, failing
+        # closed for anonymous turns; the role split lives in the shared
+        # helper.
+        experts_enabled = bool(user_id) and await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        )
+        disabled_tool_groups.extend(
+            expert_tool_disabled_groups(
+                experts_enabled=experts_enabled, expert_id=session.expert_id
+            )
+        )
 
         # Hide both permission-denied tools AND group-disabled tools at
         # registration. ``allowed_tools`` filtering alone routes group-
