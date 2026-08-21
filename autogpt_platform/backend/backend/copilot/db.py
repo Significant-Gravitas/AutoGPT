@@ -643,6 +643,12 @@ async def add_chat_messages_batch(
                     if msg.get("llm_credential_id") is not None:
                         data["llmCredentialId"] = msg["llm_credential_id"]
 
+                    # Per-row bag. The single-message path already persisted
+                    # this; the batch path silently dropped it, so anything
+                    # written here by a turn never survived the insert.
+                    if msg.get("metadata") is not None:
+                        data["metadata"] = SafeJson(msg["metadata"])
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
