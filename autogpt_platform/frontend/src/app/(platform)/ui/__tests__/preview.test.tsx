@@ -1,9 +1,9 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import { expect, test } from "vitest";
-import { ToolUIPreviewPage } from "../page";
+import { ToolUIPreview } from "../components/ToolUIPreview/ToolUIPreview";
 
 test("previews every expert tool card and the question item", async () => {
-  render(<ToolUIPreviewPage />);
+  render(<ToolUIPreview />);
 
   expect(screen.getByText("hire_expert · preview")).toBeDefined();
   expect(screen.getByText("Ready to hire")).toBeDefined();
