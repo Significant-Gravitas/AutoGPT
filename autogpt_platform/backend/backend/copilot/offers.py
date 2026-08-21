@@ -112,12 +112,14 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
         _offer(transport, models, codex_models, advanced_allowed)
         for transport in await get_chat_transports(user_id)
     ]
-    locked = await _locked_codex_offer(user_id, offers)
+    locked = await _locked_codex_offer(user_id, offers, codex_models)
     return offers + ([locked] if locked else [])
 
 
 async def _locked_codex_offer(
-    user_id: str, offers: list[AIConnectionOffer]
+    user_id: str,
+    offers: list[AIConnectionOffer],
+    codex_models: dict[CopilotLLMModel, str | None],
 ) -> AIConnectionOffer | None:
     """The ChatGPT connection a plan does not include, shown rather than hidden.
 
@@ -156,7 +158,19 @@ async def _locked_codex_offer(
         state="locked",
         selectable=False,
         is_default=False,
-        tiers=[],
+        # Named even though nothing here can be picked: "what you get" is the
+        # whole argument for connecting, and a surface that cannot say which
+        # models is asking the user to take it on faith. Not selectable, so
+        # naming them cannot be mistaken for offering them.
+        tiers=[
+            ConnectionTier(
+                tier=tier,
+                label=label,
+                selectable=False,
+                display_model=codex_models.get(tier),
+            )
+            for tier, label in TIER_LABELS.items()
+        ],
         limitations=[],
         lock_reason=CODEX_MINIMUM_PLAN_ERROR,
         unlock_href="/settings/billing",
