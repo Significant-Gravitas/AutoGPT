@@ -115,6 +115,51 @@ async def test_offer_ids_are_stable_and_per_account(
 
 
 @pytest.mark.asyncio
+async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # A registry read, not a call to the account: the router validates the
+    # pinned slug against what the account advertises when the turn runs.
+    mocker.patch.object(
+        offers.llm_registry,
+        "get_route",
+        side_effect=lambda surface, mode, tier: f"{surface}:{mode}:{tier}",
+    )
+    _mock_transports(
+        mocker, [_transport("platform", None), _transport("codex", "cred-1")]
+    )
+
+    codex = [
+        o
+        for o in await get_connection_offers("user")
+        if o.auth_method == "chatgpt_oauth"
+    ][0]
+
+    assert [t.display_model for t in codex.tiers] == [
+        "copilot_codex:fast:standard",
+        "copilot_codex:fast:advanced",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_chatgpt_tier_the_catalog_pins_nothing_for_stays_unnamed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(offers.llm_registry, "get_route", return_value=None)
+    _mock_transports(
+        mocker, [_transport("platform", None), _transport("codex", "cred-1")]
+    )
+
+    codex = [
+        o
+        for o in await get_connection_offers("user")
+        if o.auth_method == "chatgpt_oauth"
+    ][0]
+
+    assert all(t.display_model is None for t in codex.tiers)
+
+
+@pytest.mark.asyncio
 async def test_tiers_name_the_model_they_resolve_to(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
