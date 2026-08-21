@@ -22,7 +22,6 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from backend.data.bot_analytics import record_guild_joined
 from backend.data.bot_installs import upsert_bot_install
@@ -166,10 +165,13 @@ def _exchange_failed(error: str | None) -> Response:
 
 
 def _slack_error_code(e: SlackApiError) -> str | None:
-    # ``response`` is a parsed Slack response for an ok:false body, but a raw
-    # aiohttp response (or a str body) for a malformed / non-JSON one.
-    data = e.response.data if isinstance(e.response, AsyncSlackResponse) else e.response
-    return data.get("error") if isinstance(data, dict) else None
+    # ``response`` indexes like a dict for a parsed ok:false body, but is a raw
+    # aiohttp response (or wraps a str body) for a malformed / non-JSON one.
+    try:
+        error = e.response["error"]
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return None
+    return str(error) if error else None
 
 
 class _Install(BaseModel):

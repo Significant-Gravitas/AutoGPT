@@ -60,16 +60,24 @@ async def test_follows_the_cursor_to_the_tail_and_returns_chronological():
 
 
 @pytest.mark.asyncio
-async def test_bot_posts_are_skipped():
+async def test_only_our_own_posts_are_skipped():
+    # Other bots' posts stay (an alert thread is what the user wants
+    # summarized); a legacy webhook post has no user and names itself.
     page = {
         "messages": [
             _msg("1.0", "U1", "human"),
             _msg("1.5", "UBOT", "ours", bot_id="B1"),
             _msg("1.7", "UOTHER", "other bot", bot_id="B2"),
-            _msg("1.8", "UBOT", "ours again"),
+            {"ts": "1.8", "bot_id": "B3", "username": "PagerDuty", "text": "alert"},
+            _msg("1.9", "UBOT", "ours again"),
         ]
     }
-    assert [e.text for e in await _fetch(_client(page))] == ["human"]
+    entries = await _fetch(_client(page))
+    assert [(e.username, e.text) for e in entries] == [
+        ("name-U1", "human"),
+        ("name-UOTHER", "other bot"),
+        ("PagerDuty", "alert"),
+    ]
 
 
 @pytest.mark.asyncio

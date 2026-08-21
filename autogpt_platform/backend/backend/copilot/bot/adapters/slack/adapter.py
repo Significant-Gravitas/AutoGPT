@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from typing import Any, Optional
 
 import httpx
@@ -76,6 +77,10 @@ _CLIENT_CACHE_TTL_SECONDS = 15 * 60
 # then swapped for live <@Uid> tokens (see _render). Input NULs are stripped
 # first, so every NUL pair is a placeholder whatever the id alphabet.
 _MENTION_STASH_RE = re.compile(r"\x00([^\x00]+)\x00")
+
+# Floor for the canonical chunk size when escaping expands a chunk past the
+# message cap (worst case ~5x, so this keeps the wire text well under it).
+_MIN_FLUSH_AT = 200
 
 
 class SlackAdapter(WebhookAdapter):
@@ -289,7 +294,11 @@ class SlackAdapter(WebhookAdapter):
         thread_history: tuple[MessageHistoryEntry, ...] = ()
         if bot_mentioned and thread_ts and not is_dm:
             thread_history = await self._thread_history(
-                team, channel, thread_ts, target_channel_id, exclude_ts=ts
+                team=team,
+                channel=channel,
+                thread_ts=thread_ts,
+                target_id=target_channel_id,
+                exclude_ts=ts,
             )
 
         attachments, skipped = await self._extract_attachments(team, event)
@@ -312,11 +321,11 @@ class SlackAdapter(WebhookAdapter):
 
     async def _thread_history(
         self,
+        *,
         team: str,
         channel: str,
         thread_ts: str,
         target_id: str,
-        *,
         exclude_ts: str,
     ) -> tuple[MessageHistoryEntry, ...]:
         # The handler only folds history in for a thread the bot doesn't own
@@ -571,17 +580,25 @@ class SlackAdapter(WebhookAdapter):
         if client is None:
             return None
         first_ts = thread_ts
-        # Chunk the canonical markdown, then localize each chunk: a cut through
-        # escaped text could bisect an entity or a <url|label> link.
-        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
+        for rendered in self._localized_chunks(text, config.CHUNK_FLUSH_AT):
             resp = await client.chat_postMessage(
-                channel=channel,
-                text=self.localize_markup(chunk),
-                thread_ts=first_ts,
+                channel=channel, text=rendered, thread_ts=first_ts
             )
             if first_ts is None:
                 first_ts = resp.get("ts")
         return first_ts
+
+    def _localized_chunks(self, text: str, flush_at: int) -> Iterator[str]:
+        """Chunk the canonical markdown, then localize each chunk, so a cut
+        never bisects an escaped entity or a <url|label> link. Slack counts the
+        escaped wire text, so a chunk that expands past the cap is re-split
+        smaller instead of being cut after escaping."""
+        for chunk in iter_chunks(text, flush_at):
+            rendered = self.localize_markup(chunk)
+            if len(rendered) <= config.MAX_MESSAGE_LENGTH or flush_at <= _MIN_FLUSH_AT:
+                yield rendered
+            else:
+                yield from self._localized_chunks(chunk, flush_at // 2)
 
     async def _permalink(self, team_id: str, channel: str, ts: str) -> Optional[str]:
         client = await self._client_for(team_id)

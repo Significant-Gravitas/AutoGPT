@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from backend.copilot.bot.adapters.slack import oauth
 
@@ -388,3 +389,35 @@ async def test_callback_handles_a_non_json_slack_response():
     assert resp.headers["location"] == (
         "https://f.example/settings/bots?slack_install_error=1"
     )
+
+
+@pytest.mark.asyncio
+async def test_callback_failure_reads_the_code_from_a_real_sdk_response():
+    # The SDK hands SlackApiError an AsyncSlackResponse, not a dict; the error
+    # code must still reach the plain-text landing.
+    response = AsyncSlackResponse(
+        client=None,
+        http_verb="POST",
+        api_url="https://slack.com/api/oauth.v2.access",
+        req_args={},
+        data={"ok": False, "error": "invalid_code"},
+        headers={},
+        status_code=200,
+    )
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = ""
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError("bad code", response=response)
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    assert resp.status_code == 400
+    assert b"invalid_code" in resp.body

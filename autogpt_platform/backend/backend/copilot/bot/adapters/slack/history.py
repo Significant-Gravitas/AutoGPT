@@ -9,7 +9,8 @@ tail, which the shared char budget then trims newest-first.
 import asyncio
 import logging
 from collections import deque
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any, Optional
 
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -24,6 +25,8 @@ PAGE_SIZE = 200
 TAIL_SIZE = 200
 MAX_PAGES = 10
 CHAR_BUDGET = 24000
+# users.info is rate-limited workspace-wide; don't fan out unbounded.
+NAME_LOOKUP_CONCURRENCY = 8
 
 
 async def fetch_thread_history(
@@ -37,49 +40,74 @@ async def fetch_thread_history(
     strip_mentions: Callable[[str], Awaitable[str]],
 ) -> tuple[MessageHistoryEntry, ...]:
     """Budgeted, chronological history of ``thread_ts``, minus the triggering
-    message and every bot post (the bot's own turns already live in the
-    session). ``display_name`` / ``strip_mentions`` are the adapter's
+    message and the bot's own posts (those turns already live in the session).
+    Other bots' posts stay: an alert thread is often exactly what the user wants
+    summarized. ``display_name`` / ``strip_mentions`` are the adapter's
     workspace-bound helpers."""
     tail = await _fetch_tail(client, channel, thread_ts)
     # Newest-first: budget_history keeps the recent end.
     recent = [
         m
         for m in reversed(tail)
-        if m.get("ts") != exclude_ts
-        and m.get("user")
-        and not m.get("bot_id")
-        and m.get("user") != bot_user_id
+        if _author(m) and m.get("ts") != exclude_ts and m.get("user") != bot_user_id
     ]
     if not recent:
         return ()
+    # Integration bots (subtype bot_message) have no users.info entry; their
+    # name rides on the message itself.
+    preset = {
+        m["bot_id"]: m.get("username")
+        or (m.get("bot_profile") or {}).get("name")
+        or m["bot_id"]
+        for m in recent
+        if not m.get("user")
+    }
 
     async def _entries():
         for m in recent:
             text = await strip_mentions(m.get("text") or "")
             if text:
-                # The user id stands in for the name until the budget has
-                # decided which entries are worth a users.info lookup.
+                author = _author(m)
+                # The id stands in for the name until the budget has decided
+                # which entries are worth a users.info lookup.
                 yield MessageHistoryEntry(
-                    username=m["user"], user_id=m["user"], text=text
+                    username=preset.get(author, author), user_id=author, text=text
                 )
 
     kept = await budget_history(_entries(), char_budget=CHAR_BUDGET)
-    names = await _resolve_names({e.user_id for e in kept}, display_name)
+    names = await _resolve_names(
+        {e.user_id for e in kept if e.user_id and e.user_id not in preset},
+        display_name,
+    )
     return tuple(
-        MessageHistoryEntry(username=names[e.user_id], user_id=e.user_id, text=e.text)
+        MessageHistoryEntry(
+            username=names.get(e.user_id or "", e.username),
+            user_id=e.user_id,
+            text=e.text,
+        )
         for e in kept
     )
+
+
+def _author(message: dict[str, Any]) -> str:
+    return message.get("user") or message.get("bot_id") or ""
 
 
 async def _resolve_names(
     user_ids: set[str], display_name: Callable[[str], Awaitable[str]]
 ) -> dict[str, str]:
-    ids = sorted(user_ids)
-    results = await asyncio.gather(
-        *(display_name(u) for u in ids), return_exceptions=True
-    )
-    # A failed lookup falls back to the raw id rather than losing the history.
-    return {u: r if isinstance(r, str) else u for u, r in zip(ids, results)}
+    gate = asyncio.Semaphore(NAME_LOOKUP_CONCURRENCY)
+
+    async def _lookup(uid: str) -> tuple[str, str]:
+        async with gate:
+            try:
+                return uid, await display_name(uid)
+            except Exception:
+                # A failed lookup keeps the raw id rather than losing history.
+                logger.debug("Slack name lookup failed for %s", uid, exc_info=True)
+                return uid, uid
+
+    return dict(await asyncio.gather(*(_lookup(u) for u in sorted(user_ids))))
 
 
 async def _fetch_tail(

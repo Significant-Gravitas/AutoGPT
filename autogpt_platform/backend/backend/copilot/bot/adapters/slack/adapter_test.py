@@ -9,6 +9,7 @@ import pytest
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.data.bot_installs import BotInstallCredentials
 
+from . import config
 from .adapter import SlackAdapter, _decode_target, _encode_target
 
 _SIGN = "backend.copilot.bot.adapters.slack.adapter.signing.verify"
@@ -409,6 +410,18 @@ class TestOutbound:
             sent = c.kwargs["text"]
             assert re.search(r"&(?!amp;)", sent) is None
             assert not sent.startswith(";")
+            # Slack counts the escaped wire text, so expansion must re-split
+            # rather than blow through the cap.
+            assert len(sent) <= config.MAX_MESSAGE_LENGTH
+        assert "".join(c.kwargs["text"] for c in calls) == "ab&amp;" * 2000
+
+    @pytest.mark.asyncio
+    async def test_forged_nul_placeholder_cannot_ping(self, adapter):
+        # NULs in model output are stripped before the stash, so a forged
+        # placeholder can never be unwrapped into a live mention.
+        await adapter.send_message("T1|C1|", "\x00U9\x00 hi", ())
+        text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert "<@U9>" not in text and "\x00" not in text
 
     @pytest.mark.asyncio
     async def test_send_file_uploads_into_thread(self, adapter):
