@@ -155,13 +155,14 @@ class TestCodexFailuresSpeakToThePerson:
         )
         assert failure is not None
         assert "codex_credential_busy" not in failure.message
-        assert "in use by another chat" in failure.message
+        assert "briefly unavailable" in failure.message
         # Waiting is what clears it, so the retry affordance is honest.
         assert failure.retryable is True
 
-    def test_the_message_does_not_enshrine_the_single_chat_limit(self) -> None:
-        # The lock is held for every chat but is only needed for sign-in and
-        # refresh; wording it as a rule would outlive the bug.
+    def test_the_message_does_not_blame_concurrent_chats(self) -> None:
+        # Measured: concurrent chats on one credential do not contend. The
+        # lease is contended by credential writes (token refresh), so telling
+        # the user to close another chat would point at the wrong thing.
         from backend.integrations.codex.transport import CodexCredentialBusyError
 
         message = classify(CodexCredentialBusyError("x"), auth_provider="codex").message
