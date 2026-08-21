@@ -5,7 +5,12 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import type { ConnectionTier } from "@/app/api/__generated__/models/connectionTier";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -342,6 +347,69 @@ describe("ConnectionPicker", () => {
         credentialId: null,
       }),
     );
+  });
+
+  it("names both models on a connection before you switch to it", async () => {
+    // Otherwise you have to select a connection to discover what it runs,
+    // which is the wrong order.
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(
+      await screen.findByText("Balanced: sonnet-5 · Advanced: opus-5"),
+    ).toBeDefined();
+  });
+
+  it("badges a connection the user linked themselves", async () => {
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    // The deployment route is not something anyone connected.
+    expect(screen.getAllByText("Connected")).toHaveLength(1);
+  });
+
+  it("shows a tier the plan excludes as locked rather than hiding it", async () => {
+    // The row is the upgrade reason; hiding it removes what it exists for.
+    mockOffers([
+      offer({
+        tiers: [
+          tier("standard", "Balanced", "sonnet-5"),
+          {
+            ...tier("advanced", "Advanced", "opus-5"),
+            selectable: false,
+            lock_reason: "A Max plan or higher is required for Advanced.",
+          },
+        ],
+      }),
+      chatgpt(),
+    ]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(
+      await screen.findByText("A Max plan or higher is required for Advanced."),
+    ).toBeDefined();
+    // Still named, so the user sees what they would get.
+    expect(screen.getByText("opus-5")).toBeDefined();
+    // Scoped to the tier group: the connection row's own name now contains
+    // "Advanced: opus-5" from its tier summary, so a page-wide query matches it.
+    const tierGroup = screen.getByRole("radiogroup", { name: "Model tier" });
+    expect(
+      within(tierGroup).queryByRole("radio", { name: /Advanced/ }),
+    ).toBeNull();
+    expect(within(tierGroup).getAllByRole("radio")).toHaveLength(1);
   });
 
   it("reports a failure rather than inventing a connection", async () => {

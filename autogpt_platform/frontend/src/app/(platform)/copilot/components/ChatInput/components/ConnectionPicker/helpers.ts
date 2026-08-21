@@ -105,3 +105,45 @@ export function tierLabel(
 export function offerSubtitle(offer: AIConnectionOffer): string {
   return offer.lock_reason ? offer.description : offer.backed_by_label;
 }
+
+/**
+ * "Balanced: Sonnet 5 · Advanced: Opus 5" for a connection row.
+ *
+ * The PRD's mock puts both models under each route so the choice can be made
+ * before switching to it -- otherwise you have to select a connection to
+ * discover what it runs, which is the wrong order.
+ *
+ * Empty when the server named no models, so the row simply omits the line
+ * rather than rendering "Balanced: · Advanced:".
+ */
+export function tierSummary(offer: AIConnectionOffer): string {
+  const named = offer.tiers
+    .filter((tier) => tier.display_model)
+    .map((tier) => `${tier.label}: ${tier.display_model}`);
+  return named.join(" · ");
+}
+
+/**
+ * Whether this connection is one the user linked themselves.
+ *
+ * Drives the "Connected" badge: a deployment route is not something anyone
+ * connected, so badging it would be meaningless.
+ */
+export function isLinkedAccount(offer: AIConnectionOffer): boolean {
+  return offer.auth_method !== "deployment" && Boolean(offer.credential_id);
+}
+
+/**
+ * The lock on a tier, when the plan does not include it.
+ *
+ * Advanced stays visible and locked rather than hidden: the row is the
+ * upgrade reason, and hiding it would remove the thing it exists to create.
+ */
+export function tierLock(
+  offer: AIConnectionOffer | undefined,
+  tier: string,
+): { reason: string; href: string | null } | undefined {
+  const match = tierOf(offer, tier);
+  if (!match?.lock_reason) return undefined;
+  return { reason: match.lock_reason, href: "/settings/billing" };
+}

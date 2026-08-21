@@ -31,6 +31,14 @@ def _transport(
 
 
 @pytest.fixture(autouse=True)
+def advanced_allowed(mocker: pytest_mock.MockerFixture):
+    """Advanced is open unless a test says otherwise."""
+    return mocker.patch.object(
+        offers, "has_entitlement", new=AsyncMock(return_value=True)
+    )
+
+
+@pytest.fixture(autouse=True)
 def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
@@ -112,6 +120,51 @@ async def test_offer_ids_are_stable_and_per_account(
 
     assert ids == ["platform:deployment", "codex:cred-1", "codex:cred-2"]
     assert offer_id_for(first) == offer_id_for(first)
+
+
+@pytest.mark.asyncio
+async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # A registry read, not a call to the account: the router validates the
+    # pinned slug against what the account advertises when the turn runs.
+    mocker.patch.object(
+        offers.llm_registry,
+        "get_route",
+        side_effect=lambda surface, mode, tier: f"{surface}:{mode}:{tier}",
+    )
+    _mock_transports(
+        mocker, [_transport("platform", None), _transport("codex", "cred-1")]
+    )
+
+    codex = [
+        o
+        for o in await get_connection_offers("user")
+        if o.auth_method == "chatgpt_oauth"
+    ][0]
+
+    assert [t.display_model for t in codex.tiers] == [
+        "copilot_codex:fast:standard",
+        "copilot_codex:fast:advanced",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_chatgpt_tier_the_catalog_pins_nothing_for_stays_unnamed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(offers.llm_registry, "get_route", return_value=None)
+    _mock_transports(
+        mocker, [_transport("platform", None), _transport("codex", "cred-1")]
+    )
+
+    codex = [
+        o
+        for o in await get_connection_offers("user")
+        if o.auth_method == "chatgpt_oauth"
+    ][0]
+
+    assert all(t.display_model is None for t in codex.tiers)
 
 
 @pytest.mark.asyncio
@@ -315,3 +368,71 @@ async def test_self_host_sells_nothing_because_it_grants_everything(
     _upsell(mocker)
 
     assert _locked(await get_connection_offers("user")) == []
+
+
+@pytest.mark.asyncio
+async def test_advanced_is_locked_for_a_plan_that_does_not_include_it(
+    mocker: pytest_mock.MockerFixture, advanced_allowed
+) -> None:
+    # Visible and locked, not hidden: the row is the upgrade reason.
+    advanced_allowed.return_value = False
+    _mock_transports(mocker, [_transport("platform", None)])
+
+    tiers = {t.tier: t for t in (await get_connection_offers("user"))[0].tiers}
+
+    assert tiers["standard"].selectable is True
+    assert tiers["advanced"].selectable is False
+    assert tiers["advanced"].lock_reason
+    # Still named, so the user can see what they would be getting.
+    assert "advanced" in tiers
+
+
+@pytest.mark.asyncio
+async def test_advanced_is_open_when_the_plan_includes_it(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(mocker, [_transport("platform", None)])
+
+    tiers = {t.tier: t for t in (await get_connection_offers("user"))[0].tiers}
+
+    assert all(t.selectable for t in tiers.values())
+    assert all(t.lock_reason is None for t in tiers.values())
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_entitlement_leaves_advanced_open(
+    mocker: pytest_mock.MockerFixture, advanced_allowed
+) -> None:
+    # A billing hiccup must not silently downgrade someone's model.
+    advanced_allowed.side_effect = RuntimeError("billing down")
+    _mock_transports(mocker, [_transport("platform", None)])
+
+    tiers = {t.tier: t for t in (await get_connection_offers("user"))[0].tiers}
+
+    assert tiers["advanced"].selectable is True
+    assert tiers["advanced"].lock_reason is None
+
+
+@pytest.mark.asyncio
+async def test_a_locked_chatgpt_offer_still_names_the_models(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # "What you get" is the argument for connecting; a locked row that
+    # cannot name the models asks the user to take it on faith.
+    mocker.patch.object(
+        offers.llm_registry, "get_route", side_effect=lambda s, m, t: f"{m}-{t}"
+    )
+    mocker.patch.object(offers.llm_registry, "get_model", return_value=None)
+    _mock_transports(mocker, [_transport("platform", None)])
+    _upsell(mocker)
+
+    locked = _locked(await get_connection_offers("user"))[0]
+
+    # The fixture pins the engine to the baseline, so the cells are "fast".
+    assert [t.display_model for t in locked.tiers] == [
+        "fast-standard",
+        "fast-advanced",
+    ]
+    # Naming them must not read as offering them.
+    assert all(t.selectable is False for t in locked.tiers)
+    assert locked.selectable is False

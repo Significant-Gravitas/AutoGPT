@@ -16,17 +16,19 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.engine import resolve_use_sdk
-from backend.copilot.model_router import resolve_model_route
+from backend.copilot.model_router import ROUTE_SURFACE_CODEX, resolve_model_route
 from backend.copilot.transports import (
     ChatTransportResponse,
     get_chat_transports,
     is_deployment_chat_available,
     settings,
 )
+from backend.data import llm_registry
 from backend.integrations.codex.access import (
     CODEX_MINIMUM_PLAN_ERROR,
     has_codex_access_for_discovery,
 )
+from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
@@ -47,16 +49,22 @@ class ConnectionTier(BaseModel):
     same router the turn will use — LaunchDarkly cell, then registry, then
     config — so it cannot drift from what actually answers.
 
-    It is ``None`` on a ChatGPT connection. Naming that model means asking
-    the account what it advertises, which takes a runtime lease against the
-    provider; doing that once per credential to render a list is the cost
-    this endpoint exists to avoid.
+    On a ChatGPT connection it is the model the catalog pins for that cell,
+    read straight from the registry -- no lease, no call to the account.
+    What a lease would add is confirmation that this particular account still
+    advertises it; the router checks that when the turn runs and falls back
+    if not, so the name here is the routed model rather than a guarantee.
+    ``None`` only when the catalog pins nothing for the cell.
     """
 
     tier: CopilotLLMModel
     label: str
     selectable: bool
     display_model: str | None = None
+    # Why this tier cannot be picked, when it cannot. Advanced is a paid
+    # tier on hosted, so the row stays visible and says what unlocks it --
+    # hiding it would remove the upgrade reason it exists to create.
+    lock_reason: str | None = None
 
 
 class AIConnectionOffer(BaseModel):
@@ -88,16 +96,30 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     pick.
     """
     config = ChatConfig()
-    models = await _platform_tier_models(user_id, config)
+    # One engine decision for the whole response: it is a property of the
+    # deployment and the user, not of which connection they pick.
+    use_sdk = await resolve_use_sdk(
+        user_id,
+        use_claude_code_subscription=config.use_claude_code_subscription,
+        config_default=config.use_claude_agent_sdk,
+        thinking_available=config.thinking_available,
+    )
+    mode = "thinking" if use_sdk else "fast"
+    models = await _platform_tier_models(mode, user_id, config)
+    codex_models = _codex_tier_models(mode)
+    advanced_allowed = await _advanced_tier_allowed(user_id)
     offers = [
-        _offer(transport, models) for transport in await get_chat_transports(user_id)
+        _offer(transport, models, codex_models, advanced_allowed)
+        for transport in await get_chat_transports(user_id)
     ]
-    locked = await _locked_codex_offer(user_id, offers)
+    locked = await _locked_codex_offer(user_id, offers, codex_models)
     return offers + ([locked] if locked else [])
 
 
 async def _locked_codex_offer(
-    user_id: str, offers: list[AIConnectionOffer]
+    user_id: str,
+    offers: list[AIConnectionOffer],
+    codex_models: dict[CopilotLLMModel, str | None],
 ) -> AIConnectionOffer | None:
     """The ChatGPT connection a plan does not include, shown rather than hidden.
 
@@ -136,7 +158,19 @@ async def _locked_codex_offer(
         state="locked",
         selectable=False,
         is_default=False,
-        tiers=[],
+        # Named even though nothing here can be picked: "what you get" is the
+        # whole argument for connecting, and a surface that cannot say which
+        # models is asking the user to take it on faith. Not selectable, so
+        # naming them cannot be mistaken for offering them.
+        tiers=[
+            ConnectionTier(
+                tier=tier,
+                label=label,
+                selectable=False,
+                display_model=codex_models.get(tier),
+            )
+            for tier, label in TIER_LABELS.items()
+        ],
         limitations=[],
         lock_reason=CODEX_MINIMUM_PLAN_ERROR,
         unlock_href="/settings/billing",
@@ -144,7 +178,7 @@ async def _locked_codex_offer(
 
 
 async def _platform_tier_models(
-    user_id: str, config: ChatConfig
+    mode: str, user_id: str, config: ChatConfig
 ) -> dict[CopilotLLMModel, str | None]:
     """Resolve each tier against the engine this user's turns will run on.
 
@@ -152,18 +186,11 @@ async def _platform_tier_models(
     any more — the decision is the server's, so it can be made before a turn
     exists rather than during one.
     """
-    use_sdk = await resolve_use_sdk(
-        user_id,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    mode = "thinking" if use_sdk else "fast"
     resolved: dict[CopilotLLMModel, str | None] = {}
     for tier in TIER_LABELS:
         try:
             route = await resolve_model_route(mode, tier, user_id, config=config)
-            resolved[tier] = route.model
+            resolved[tier] = _display_name(route.model)
         except Exception:
             # A tier that cannot be resolved is described without a name
             # rather than failing the whole list.
@@ -185,9 +212,58 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
     return f"{transport.auth_provider}:{transport.credential_id or 'deployment'}"
 
 
+ADVANCED_TIER_LOCK_REASON = "A Max plan or higher is required for Advanced."
+
+
+async def _advanced_tier_allowed(user_id: str) -> bool:
+    """Whether this user may pick the Advanced tier.
+
+    A failure to resolve the entitlement leaves the tier open rather than
+    locked: a billing hiccup should not silently downgrade someone's model.
+    """
+    try:
+        return await has_entitlement(user_id, Entitlement.ADVANCED_MODEL_TIER)
+    except Exception:
+        logger.warning(
+            "Could not resolve the Advanced tier entitlement; leaving it open",
+            exc_info=True,
+        )
+        return True
+
+
+def _display_name(slug: str | None) -> str | None:
+    """What the catalog calls this model, rather than its slug.
+
+    The PRD labels tiers "Balanced · 5.6 Terra", not
+    "Balanced · gpt-5.6-terra": the slug is a routing key and reads as one.
+    Falls back to the slug when the registry has no entry, which is better
+    than showing nothing.
+    """
+    if not slug:
+        return None
+    model = llm_registry.get_model(slug)
+    return model.display_name if model else slug
+
+
+def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
+    """The models the catalog pins for the Codex cells of this engine.
+
+    A registry read, so it costs nothing and needs no credential. The router
+    validates the pinned slug against what the account actually advertises
+    when the turn runs, and falls back if it is gone -- so this names the
+    routed model, not a promise about the account.
+    """
+    return {
+        tier: _display_name(llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier))
+        for tier in TIER_LABELS
+    }
+
+
 def _offer(
     transport: ChatTransportResponse,
     platform_models: dict[CopilotLLMModel, str | None],
+    codex_models: dict[CopilotLLMModel, str | None],
+    advanced_allowed: bool,
 ) -> AIConnectionOffer:
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
@@ -204,11 +280,18 @@ def _offer(
             ConnectionTier(
                 tier=tier,
                 label=label,
-                selectable=transport.available,
+                selectable=(
+                    transport.available and (advanced_allowed or tier != "advanced")
+                ),
                 display_model=(
                     platform_models.get(tier)
                     if transport.auth_provider == "platform"
-                    else None
+                    else codex_models.get(tier)
+                ),
+                lock_reason=(
+                    None
+                    if advanced_allowed or tier != "advanced"
+                    else ADVANCED_TIER_LOCK_REASON
                 ),
             )
             for tier, label in TIER_LABELS.items()

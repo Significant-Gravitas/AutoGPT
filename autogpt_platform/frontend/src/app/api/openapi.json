@@ -16654,12 +16654,16 @@
           "display_model": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Display Model"
+          },
+          "lock_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lock Reason"
           }
         },
         "type": "object",
         "required": ["tier", "label", "selectable"],
         "title": "ConnectionTier",
-        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nIt is ``None`` on a ChatGPT connection. Naming that model means asking\nthe account what it advertises, which takes a runtime lease against the\nprovider; doing that once per credential to render a list is the cost\nthis endpoint exists to avoid."
+        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nOn a ChatGPT connection it is the model the catalog pins for that cell,\nread straight from the registry -- no lease, no call to the account.\nWhat a lease would add is confirmation that this particular account still\nadvertises it; the router checks that when the turn runs and falls back\nif not, so the name here is the routed model rather than a guarantee.\n``None`` only when the catalog pins nothing for the cell."
       },
       "ContentType": {
         "type": "string",
