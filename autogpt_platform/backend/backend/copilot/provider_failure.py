@@ -127,13 +127,18 @@ class ProviderFailure(BaseModel):
 # ("codex_credential_busy"), which is a log line, not something to show a
 # person. These say the same thing in the user's terms, and say what to do.
 _CODEX_MESSAGES: dict[type[BaseException], str] = {
-    # Deliberately does not say "only one chat at a time": the credential
-    # lock is currently held for the whole of every chat, but it is only
-    # needed for sign-in and refresh. Wording this as a rule would enshrine
-    # a limitation that is meant to go away.
+    # Deliberately does not say "only one chat at a time". Measured against a
+    # live ChatGPT connection, concurrent chats do NOT contend: three
+    # simultaneous turns all completed in ~8s, and a short turn fired six
+    # seconds into a 42s one answered in 4s, with no busy error in either
+    # case. The five-second timeout is on the *credential* lease, which is
+    # contended when something needs to write the credential -- a token
+    # refresh -- not by ordinary turns sharing it.
+    #
+    # So this is rarer than "you have two chats open", and wording it that
+    # way would send the user to close a chat that is not the problem.
     CodexCredentialBusyError: (
-        "This ChatGPT connection is in use by another chat right now. "
-        "Try again in a moment."
+        "This ChatGPT connection is briefly unavailable. " "Try again in a moment."
     ),
     CodexCredentialIntegrityError: (
         "This ChatGPT connection can't be used. Reconnect the account in "
