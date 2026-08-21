@@ -134,6 +134,46 @@ class TestEmptyMessage:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_skipped_attachments_only_dm_gets_problem_report(self):
+        # A DM whose only content was a too-large file must not be silently
+        # dropped — the user gets the problem note instead.
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        await handler.handle(
+            _ctx(
+                channel_type="dm",
+                server_id=None,
+                channel_id="dm-1",
+                text="",
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
+            adapter,
+        )
+        note = adapter.send_message.await_args.args[1]
+        assert "huge.zip" in note
+
+    @pytest.mark.asyncio
+    async def test_skipped_only_channel_mention_reports_instead_of_nudge(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        with (
+            patch("backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()),
+            patch(
+                "backend.copilot.bot.handler.threads.unsubscribe", new=AsyncMock()
+            ) as unsub,
+        ):
+            await handler.handle(
+                _ctx(text="", skipped_attachments=(("huge.zip", "is too large"),)),
+                adapter,
+            )
+        # The problem note replaces the misleading "didn't say anything" nudge,
+        # and the thread created for it doesn't linger subscribed.
+        adapter.send_reply.assert_not_awaited()
+        note = adapter.send_message.await_args.args[1]
+        assert "huge.zip" in note
+        unsub.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_empty_dm_is_silently_dropped(self):
         handler = MessageHandler(_api())
         adapter = _adapter()

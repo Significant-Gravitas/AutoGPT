@@ -283,3 +283,35 @@ async def test_callback_falls_back_to_slack_redirect_without_a_frontend_url():
         )
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://slack.com/app_redirect?app=A1&team=T1"
+
+
+@pytest.mark.asyncio
+async def test_callback_exchange_failure_redirects_gracefully():
+    # slack_sdk raises SlackApiError on ok:false (expired/reused code, wrong
+    # secret) — the callback must land the browser back on settings with the
+    # error flag, not surface a raw 500.
+    from slack_sdk.errors import SlackApiError
+
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError(
+                "bad code", response={"ok": False, "error": "invalid_code"}
+            )
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    upsert.assert_not_awaited()
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )

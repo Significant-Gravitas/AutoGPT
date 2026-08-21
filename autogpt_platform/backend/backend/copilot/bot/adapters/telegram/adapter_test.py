@@ -396,3 +396,20 @@ class TestStreamDrafts:
             await a.send_stream_draft("42", 7, "x" * 5000) is StreamDraftOutcome.SKIPPED
         )
         a._client.call.assert_not_awaited()
+
+
+class TestProactiveChunking:
+    @pytest.mark.asyncio
+    async def test_post_channel_message_chunks_canonical_before_html(self):
+        # Chunking must happen on the canonical markdown (where the splitter
+        # balances ``` fences), THEN localize per chunk — the old order cut
+        # inside <pre> blocks and Telegram 400s on unbalanced tags.
+        a = _adapter()
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        await a.post_channel_message("123", f"```python\n{code}\n```")
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2  # long enough to actually split
+        for c in calls:
+            sent = c.kwargs["text"]
+            assert sent.count("<pre>") == sent.count("</pre>") == 1

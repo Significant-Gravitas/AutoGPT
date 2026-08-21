@@ -65,7 +65,10 @@ class MessageHandler:
         self._session_locks: dict[str, asyncio.Lock] = {}
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        if not ctx.text.strip() and not ctx.attachments:
+        # A message whose only content was attachments the adapter had to skip
+        # (too large / failed download) falls through: the problem report below
+        # tells the user instead of silence or a misleading nudge.
+        if not ctx.text.strip() and not ctx.attachments and not ctx.skipped_attachments:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,

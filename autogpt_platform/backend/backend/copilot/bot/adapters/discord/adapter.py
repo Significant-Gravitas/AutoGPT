@@ -200,7 +200,9 @@ class DiscordAdapter(SocketAdapter):
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
             await msg.reply(rendered, tts=False, allowed_mentions=allowed)
-        except discord.NotFound:
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            # fetch_message needs Read Message History, which gateway delivery
+            # doesn't — a plain send needs neither, so don't lose the reply.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:

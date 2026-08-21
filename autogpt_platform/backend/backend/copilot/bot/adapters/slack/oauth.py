@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.data.bot_analytics import record_guild_joined
@@ -45,6 +46,7 @@ _SCOPES = (
     "commands",
     "files:read",
     "files:write",
+    "groups:history",
     "im:history",
     "im:read",
     "im:write",
@@ -119,12 +121,18 @@ async def _handle_callback(
     if not code:
         return PlainTextResponse("missing code", status_code=400)
 
-    resp = await AsyncWebClient().oauth_v2_access(
-        client_id=config.get_client_id(),
-        client_secret=config.get_client_secret(),
-        code=code,
-        redirect_uri=_redirect_uri(),
-    )
+    try:
+        resp = await AsyncWebClient().oauth_v2_access(
+            client_id=config.get_client_id(),
+            client_secret=config.get_client_secret(),
+            code=code,
+            redirect_uri=_redirect_uri(),
+        )
+    except SlackApiError as e:
+        # The SDK raises on ok:false (expired/reused code, bad secret) — route
+        # it to the graceful redirect instead of a raw 500 in the browser.
+        logger.warning("Slack oauth.v2.access failed: %s", e)
+        return _done(ok=False, detail="exchange failed")
     if not resp.get("ok"):
         logger.warning("Slack oauth.v2.access failed: %s", resp.get("error"))
         return _done(ok=False, detail=resp.get("error") or "exchange failed")

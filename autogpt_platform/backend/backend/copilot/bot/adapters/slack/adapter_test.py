@@ -21,6 +21,7 @@ def _mock_client() -> MagicMock:
     client.chat_getPermalink = AsyncMock(return_value={"permalink": "https://x/p"})
     client.files_upload_v2 = AsyncMock()
     client.conversations_info = AsyncMock(return_value={"ok": True})
+    client.conversations_replies = AsyncMock(return_value={"messages": []})
     client.users_info = AsyncMock(
         return_value={"user": {"profile": {"display_name": "Bently"}}}
     )
@@ -110,6 +111,66 @@ class TestInboundRouting:
         assert ctx.channel_type == "thread"
         assert ctx.bot_mentioned is False
         assert ctx.channel_id == "T1|C1|1.0"
+
+    @pytest.mark.asyncio
+    async def test_private_channel_thread_reply_is_forwarded(self, adapter):
+        # Slack delivers private-channel messages as channel_type "group" —
+        # dropping them killed every thread follow-up in private channels.
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "message",
+                "channel_type": "group",
+                "channel": "G1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "follow up",
+                "team": "T1",
+            }
+        )
+        ctx = captured["ctx"]
+        assert ctx.channel_type == "thread"
+        assert ctx.bot_mentioned is False
+        assert ctx.channel_id == "T1|G1|1.0"
+
+    @pytest.mark.asyncio
+    async def test_mention_in_thread_pulls_budgeted_history(self, adapter):
+        client = adapter._clients["T1"]
+        client.conversations_replies = AsyncMock(
+            return_value={
+                "messages": [
+                    {"ts": "1.0", "user": "U2", "text": "the parent"},
+                    {"ts": "1.5", "user": "UBOT", "text": "bot noise"},
+                    {"ts": "2.0", "user": "U1", "text": "<@UBOT> summarize"},
+                ]
+            }
+        )
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "app_mention",
+                "channel": "C1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "<@UBOT> summarize",
+                "team": "T1",
+            }
+        )
+        client.conversations_replies.assert_awaited_once()
+        # Bot's own message and the triggering mention are excluded.
+        assert [e.text for e in captured["ctx"].thread_history] == ["the parent"]
 
     @pytest.mark.asyncio
     async def test_channel_uses_top_level_team_id_for_server(self, adapter):
@@ -255,6 +316,16 @@ class TestOutbound:
             adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
             == "hi @Ghost"
         )
+
+    @pytest.mark.asyncio
+    async def test_raw_control_sequences_are_escaped_but_allowlist_pings(self, adapter):
+        # A model-output <!channel> or raw <@Uid> must be neutralized; only
+        # the allowlisted @Bently comes back as a live mention token.
+        await adapter.send_message(
+            "T1|C1|", "<!channel> <@U9> @Bently", (("Bently", "U9"),)
+        )
+        text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert text == "&lt;!channel&gt; &lt;@U9&gt; <@U9>"
 
     @pytest.mark.asyncio
     async def test_send_file_uploads_into_thread(self, adapter):

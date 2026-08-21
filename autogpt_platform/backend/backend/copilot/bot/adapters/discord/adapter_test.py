@@ -415,6 +415,23 @@ class TestSendMethods:
         assert kwargs["tts"] is False
         assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
 
+    @pytest.mark.asyncio
+    async def test_send_reply_falls_back_to_send_without_read_history(self):
+        # fetch_message needs Read Message History; gateway delivery doesn't.
+        # Forbidden must fall back to a plain send, not swallow the reply.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        channel.fetch_message = AsyncMock(
+            side_effect=discord.Forbidden(MagicMock(status=403), "no read history")
+        )
+        client.get_channel.return_value = channel
+
+        await adapter.send_reply("123", "hello", "999")
+
+        channel.send.assert_awaited_once()
+        assert channel.send.await_args.args == ("hello",)
+
 
 class TestRenameThread:
     @pytest.mark.asyncio

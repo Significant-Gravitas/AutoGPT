@@ -488,11 +488,15 @@ class TelegramAdapter(WebhookAdapter):
     ) -> Optional[PostedRef]:
         chat_id, thread_id = _decode_target(channel_id)
         first_id: Optional[str] = None
-        for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
+        # Chunk the canonical markdown FIRST (the splitter balances ``` fences),
+        # then localize each chunk — chunking the converted HTML would cut
+        # inside <pre> blocks and Telegram 400s on unbalanced tags. Same order
+        # as the streaming path.
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             result = await self._client.call(
                 "sendMessage",
                 chat_id=chat_id,
-                text=chunk,
+                text=self.localize_markup(chunk),
                 parse_mode="HTML",
                 message_thread_id=thread_id,
             )
