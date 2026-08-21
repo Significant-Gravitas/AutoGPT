@@ -27,6 +27,7 @@ import {
 } from "@/app/api/__generated__/endpoints/invitations/invitations.msw";
 import type { InvitationResponse } from "@/app/api/__generated__/models/invitationResponse";
 import type { OrgMemberResponse } from "@/app/api/__generated__/models/orgMemberResponse";
+import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import type { UserInvitationResponse } from "@/app/api/__generated__/models/userInvitationResponse";
 
 import OrganizationSettingsPage from "../page";
@@ -87,6 +88,34 @@ const PLAIN_MEMBER = {
   name: "Bob",
   is_owner: false,
   is_admin: false,
+};
+
+const DEFAULT_TEAM: TeamResponse = {
+  id: "team-default",
+  name: "General",
+  slug: "general",
+  description: null,
+  is_default: true,
+  join_policy: "OPEN",
+  org_id: TEAM_ORG.id,
+  member_count: 2,
+  created_at: new Date("2026-01-01T00:00:00Z"),
+};
+
+const MARKETING_TEAM: TeamResponse = {
+  ...DEFAULT_TEAM,
+  id: "team-marketing",
+  name: "Marketing",
+  slug: "marketing",
+  is_default: false,
+};
+
+const ENGINEERING_TEAM: TeamResponse = {
+  ...DEFAULT_TEAM,
+  id: "team-engineering",
+  name: "Engineering",
+  slug: "engineering",
+  is_default: false,
 };
 
 function seedActiveOrg(orgID: string) {
@@ -209,6 +238,109 @@ describe("OrganizationSettingsPage", () => {
     await waitFor(() => {
       expect(createSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("pre-assigns the selected teams when sending an invitation", async () => {
+    let sentTeamIds: string[] | undefined;
+    mockTeamOrg();
+    server.use(
+      getGetV2ListWorkspacesMockHandler([
+        DEFAULT_TEAM,
+        MARKETING_TEAM,
+        ENGINEERING_TEAM,
+      ]),
+      getPostV2CreateInvitationMockHandler(async (info) => {
+        const body = (await info.request.json()) as { team_ids?: string[] };
+        sentTeamIds = body.team_ids;
+        return {
+          id: "inv-2",
+          email: "new@acme.test",
+          is_admin: false,
+          is_billing_manager: false,
+          token: "tok-2",
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [MARKETING_TEAM.id, ENGINEERING_TEAM.id],
+        };
+      }),
+    );
+    render(<OrganizationSettingsPage />);
+
+    // The pre-assign selector renders once the workspaces query resolves with
+    // non-default teams; awaiting the checkbox is the settle signal.
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "Marketing" }),
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Engineering" }),
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText("teammate@example.com"),
+      "new@acme.test",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Invite" }));
+
+    await waitFor(() => {
+      expect(sentTeamIds).toBeDefined();
+    });
+    expect(sentTeamIds).toEqual(
+      expect.arrayContaining([MARKETING_TEAM.id, ENGINEERING_TEAM.id]),
+    );
+    expect(sentTeamIds).toHaveLength(2);
+    expect(sentTeamIds).not.toContain(DEFAULT_TEAM.id);
+  });
+
+  it("hides the team selector when the org has only the default team", async () => {
+    mockTeamOrg();
+    server.use(getGetV2ListWorkspacesMockHandler([DEFAULT_TEAM]));
+    render(<OrganizationSettingsPage />);
+
+    // Wait for the teams query to settle (the teams section lists the default
+    // team) so the invite form reads a resolved, default-only team list.
+    await within(await screen.findByTestId("org-teams-section")).findByText(
+      "General",
+    );
+    await screen.findByRole("button", { name: "Invite" });
+    // The default team is auto-joined, so with no other teams there is nothing
+    // to pre-assign — the selector must not render.
+    expect(screen.queryByText("Pre-assign to teams")).toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Pre-assign to teams" }),
+    ).toBeNull();
+  });
+
+  it("spells out assigned team names on a pending invitation", async () => {
+    mockTeamOrg({
+      orgInvitations: [
+        {
+          id: "inv-teams",
+          email: "new@acme.test",
+          is_admin: false,
+          is_billing_manager: false,
+          expires_at: new Date("2026-08-01T00:00:00Z"),
+          created_at: new Date("2026-07-01T00:00:00Z"),
+          team_ids: [MARKETING_TEAM.id, ENGINEERING_TEAM.id],
+        },
+      ],
+    });
+    server.use(
+      getGetV2ListWorkspacesMockHandler([
+        DEFAULT_TEAM,
+        MARKETING_TEAM,
+        ENGINEERING_TEAM,
+      ]),
+    );
+    render(<OrganizationSettingsPage />);
+
+    const row = await screen.findByTestId("org-invitation-row");
+    // Each pre-assigned team renders as its own pill, visually distinct from
+    // the muted expiry line — not blended into it as text.
+    expect(within(row).getByText("Marketing")).toBeDefined();
+    expect(within(row).getByText("Engineering")).toBeDefined();
+    expect(within(row).queryByText(/\+\d+ teams?/)).toBeNull();
+    expect(within(row).getByText(/Expires/).textContent).not.toContain(
+      "Marketing",
+    );
   });
 
   it("accepts a pending invitation and switches to the inviting org", async () => {
