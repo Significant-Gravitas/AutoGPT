@@ -12,6 +12,8 @@ Choosing between them is a claim about whether trying again can work, so it
 is made from the typed failure rather than assumed.
 """
 
+from typing import Any
+
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -49,22 +51,52 @@ def has_trailing_marker(session: ChatSession | None) -> bool:
     )
 
 
+# Key under which the typed failure rides on the marker row's metadata bag.
+# Namespaced because the bag is shared with the dispatcher's submit-time
+# payload and anything else that lands there later.
+PROVIDER_FAILURE_KEY = "provider_failure"
+
+
 def append_error_marker(
     session: ChatSession | None,
     display_message: str,
     *,
     retryable: bool,
+    failure: dict[str, Any] | None = None,
 ) -> bool:
     """Record a failure in the chat itself. Returns whether a row was added.
 
     ``retryable`` decides which card the user sees, so it must come from
     something that actually knows -- offering Try Again on an expired login
     or a spent quota costs the user a retry to learn it cannot work.
+
+    ``failure`` is the typed envelope, stored on the row so a chat reopened
+    tomorrow can still say *which* connection failed and what would fix it.
+    Without it the prefix is all that survives, which distinguishes only
+    "retry" from "do not retry" -- enough for a button, not enough to offer
+    the switch-connection or reconnect the failure actually calls for.
     """
     if session is None or has_trailing_marker(session):
         return False
     prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
     session.messages.append(
-        ChatMessage(role="assistant", content=f"{prefix} {display_message}")
+        ChatMessage(
+            role="assistant",
+            content=f"{prefix} {display_message}",
+            metadata={PROVIDER_FAILURE_KEY: failure} if failure else None,
+        )
     )
     return True
+
+
+def provider_failure_of(message: ChatMessage) -> dict[str, Any] | None:
+    """The typed failure recorded on a marker row, if it carries one.
+
+    ``None`` for every marker written before this existed, and for a failure
+    the classifier declined to name. Callers fall back to the prefix, which
+    is what they had before.
+    """
+    if not is_error_marker(message) or not message.metadata:
+        return None
+    failure = message.metadata.get(PROVIDER_FAILURE_KEY)
+    return failure if isinstance(failure, dict) else None
