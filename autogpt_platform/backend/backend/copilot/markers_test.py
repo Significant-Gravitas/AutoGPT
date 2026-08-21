@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_mock
 
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
@@ -11,6 +13,7 @@ from backend.copilot.markers import (
     append_error_marker,
     has_trailing_marker,
     is_error_marker,
+    provider_failure_of,
 )
 from backend.copilot.model import ChatMessage, ChatSession
 
@@ -166,3 +169,89 @@ class TestTheMarkerReachesTheDatabase:
             "the marker moved into finally, where generator teardown cuts it "
             "short at the first await"
         )
+
+
+class TestTheMarkerCarriesTheFailure:
+    """The prefix says retry-or-not. The envelope says what would fix it.
+
+    A chat reopened tomorrow has only the row: without the failure on it,
+    the most a card can offer is Try Again, which is the wrong advice for
+    an expired login, a spent quota or a plan that excludes the connection.
+    """
+
+    def test_the_failure_rides_on_the_row(self) -> None:
+        session = _session()
+        append_error_marker(
+            session,
+            "You've hit this connection's limit",
+            retryable=False,
+            failure={"kind": "usage_limit", "authProvider": "codex", "resetsAt": None},
+        )
+
+        recorded = provider_failure_of(session.messages[-1])
+        assert recorded is not None
+        assert recorded["kind"] == "usage_limit"
+        assert recorded["authProvider"] == "codex"
+
+    def test_a_marker_without_one_reads_as_none(self) -> None:
+        # Every marker written before this existed, and every failure the
+        # classifier declined to name. Callers fall back to the prefix.
+        session = _session()
+        append_error_marker(session, "boom", retryable=True)
+        assert provider_failure_of(session.messages[-1]) is None
+
+    def test_an_ordinary_reply_is_never_read_as_a_failure(self) -> None:
+        assert (
+            provider_failure_of(ChatMessage(role="assistant", content="Here you go."))
+            is None
+        )
+
+    def test_a_non_dict_payload_is_refused(self) -> None:
+        # The bag is shared; a collision on the key must not crash a render.
+        msg = ChatMessage(
+            role="assistant",
+            content=f"{COPILOT_ERROR_PREFIX} boom",
+            metadata={"provider_failure": "not-a-dict"},
+        )
+        assert provider_failure_of(msg) is None
+
+
+class TestTheFailureReachesTheDatabase:
+    """Setting metadata on the row is not the same as saving it.
+
+    ``_save_session_to_db`` builds each row field by field and
+    ``add_chat_messages_batch`` maps them one by one, so a field is only
+    persisted if it is named in both. ``metadata`` was named in neither --
+    the single-message path persisted it, the batch path silently dropped it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_marker_reaches_the_database_layer_with_its_failure(
+        self, mocker: pytest_mock.MockerFixture
+    ) -> None:
+        from backend.copilot import model as model_module
+
+        captured: dict[str, object] = {}
+
+        async def _capture(session_id: str, messages: list, start_sequence: int) -> int:
+            captured["messages"] = messages
+            return start_sequence
+
+        fake_db = MagicMock()
+        fake_db.add_chat_messages_batch = AsyncMock(side_effect=_capture)
+        fake_db.get_chat_session_metadata = AsyncMock(return_value=None)
+        fake_db.create_chat_session = AsyncMock(return_value=None)
+        fake_db.update_chat_session = AsyncMock(return_value=None)
+        mocker.patch.object(model_module, "chat_db", return_value=fake_db)
+
+        session = _session()
+        append_error_marker(
+            session, "boom", retryable=False, failure={"kind": "auth_expired"}
+        )
+        await model_module._save_session_to_db(
+            session, existing_message_count=0, skip_existence_check=True
+        )
+
+        rows = captured.get("messages")
+        assert rows, "no rows reached the database layer"
+        assert rows[0]["metadata"] == {"provider_failure": {"kind": "auth_expired"}}
