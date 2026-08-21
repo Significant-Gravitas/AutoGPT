@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { getGetV2ListChatTransportsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
+import { getGetV2ListChatConnectionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useGetV1CodexAccount } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -15,7 +15,7 @@ import { DeleteConfirmDialog } from "../DeleteConfirmDialog/DeleteConfirmDialog"
 import { useDeleteIntegration } from "../hooks/useDeleteIntegration";
 
 interface Props {
-  connection: ChatTransportResponse | null;
+  connection: AIConnectionOffer | null;
   account?: string;
   onOpenChange: (open: boolean) => void;
 }
@@ -65,7 +65,7 @@ export function ManageConnectionDialog({
     provider: "codex",
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: getGetV2ListChatTransportsQueryKey(),
+        queryKey: getGetV2ListChatConnectionsQueryKey(),
       });
       setManageOpen(false);
     },
@@ -90,7 +90,7 @@ export function ManageConnectionDialog({
 
     setForceMessage(null);
     await queryClient.invalidateQueries({
-      queryKey: getGetV2ListChatTransportsQueryKey(),
+      queryKey: getGetV2ListChatConnectionsQueryKey(),
     });
     setManageOpen(false);
   }
@@ -149,7 +149,7 @@ export function ManageConnectionDialog({
             </Text>
 
             <Text variant="small" className="text-[#505057]">
-              {connection?.default
+              {connection?.is_default
                 ? "New chats start on this connection and run on your ChatGPT plan."
                 : "Chats you route here run on your ChatGPT plan instead of AutoGPT credits."}
             </Text>

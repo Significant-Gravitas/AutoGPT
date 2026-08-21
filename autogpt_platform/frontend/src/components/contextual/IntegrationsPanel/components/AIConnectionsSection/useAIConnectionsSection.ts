@@ -3,27 +3,34 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
+  getGetV2ListChatConnectionsQueryKey,
   getGetV2ListChatTransportsQueryKey,
-  useGetV2ListChatTransports,
+  useGetV2ListChatConnections,
   usePutV2SetDefaultChatTransport,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import { isSelectable, transportKey } from "./helpers";
+import { routeOf, visibleOffers } from "./helpers";
 
 export function useAIConnectionsSection() {
   const queryClient = useQueryClient();
-  const transportsQuery = useGetV2ListChatTransports({
+
+  // The offers endpoint rather than transports: transports answers "what may
+  // run", which is enough to route a turn and not enough to render one. What
+  // a connection is called, what backs it, and which models each tier uses
+  // are product statements, and a client that derives them drifts from the
+  // server that enforces them.
+  const connectionsQuery = useGetV2ListChatConnections({
     query: { refetchOnWindowFocus: true },
   });
 
-  const transports: ChatTransportResponse[] =
-    transportsQuery.data?.status === 200
-      ? transportsQuery.data.data.transports
-      : [];
-  const connections = transports.filter(isSelectable);
+  const offers: AIConnectionOffer[] = visibleOffers(
+    connectionsQuery.data?.status === 200
+      ? connectionsQuery.data.data.offers
+      : undefined,
+  );
 
   // The account a connection runs as. Read from the stored credential rather
   // than asked of the provider: this is the identity the user linked, so it is
@@ -40,15 +47,21 @@ export function useAIConnectionsSection() {
       .map((credential) => [credential.id, credential.username as string]),
   );
 
-  function accountFor(transport: ChatTransportResponse): string | undefined {
-    if (!transport.credential_id) return undefined;
-    return accountByCredentialId.get(transport.credential_id);
+  function accountFor(offer: AIConnectionOffer): string | undefined {
+    if (!offer.credential_id) return undefined;
+    return accountByCredentialId.get(offer.credential_id);
   }
 
   const { mutate: setDefault, isPending: isSaving } =
     usePutV2SetDefaultChatTransport({
       mutation: {
         onSuccess: () => {
+          // Both lists carry the default: offers renders it, transports
+          // routes it. Refreshing one and not the other leaves the screen
+          // disagreeing with what a new chat will actually do.
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListChatConnectionsQueryKey(),
+          });
           queryClient.invalidateQueries({
             queryKey: getGetV2ListChatTransportsQueryKey(),
           });
@@ -66,28 +79,22 @@ export function useAIConnectionsSection() {
 
   // Tracked separately from the query so the row the user clicked shows the
   // pending state, rather than every row going busy at once.
-  const selectedKey = connections.find((t) => t.default)
-    ? transportKey(connections.find((t) => t.default)!)
-    : null;
+  const selectedKey =
+    offers.find((offer) => offer.is_default)?.offer_id ?? null;
 
-  function chooseDefault(transport: ChatTransportResponse) {
-    if (transport.default) return;
-    setDefault({
-      data: {
-        auth_provider: transport.auth_provider,
-        credential_id: transport.credential_id,
-      },
-    });
+  function chooseDefault(offer: AIConnectionOffer) {
+    if (offer.is_default) return;
+    setDefault({ data: routeOf(offer) });
   }
 
   return {
-    connections,
+    connections: offers,
     accountFor,
     selectedKey,
     chooseDefault,
     isSaving,
-    isLoading: transportsQuery.isLoading,
-    isError: transportsQuery.isError,
-    refetch: transportsQuery.refetch,
+    isLoading: connectionsQuery.isLoading,
+    isError: connectionsQuery.isError,
+    refetch: connectionsQuery.refetch,
   };
 }

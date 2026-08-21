@@ -1,40 +1,60 @@
-import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import type { SetDefaultTransportRequest } from "@/app/api/__generated__/models/setDefaultTransportRequest";
+import type { SetDefaultTransportRequestAuthProvider } from "@/app/api/__generated__/models/setDefaultTransportRequestAuthProvider";
 
 /**
- * The label the server sends for the platform transport on a self-hosted
- * install. It sends "AutoGPT Platform" on the hosted product instead.
+ * The route to send when making a connection the default.
+ *
+ * The offer describes a connection; the default is set on the transport that
+ * runs it, which is keyed by provider and credential. ``offer_id`` is built
+ * server-side as ``{auth_provider}:{credential_id or "deployment"}``, so the
+ * provider is recoverable from it without the client deciding anything.
  */
-export const SELF_HOSTED_LABEL = "Self-hosted chat";
-
-/**
- * Says what backs a run, which is the thing that actually differs between
- * connections. Copy lives here only until the server-owned connection offer
- * carries it — the client should not be deciding how a provider describes
- * its own billing.
- */
-export function describeTransport(transport: ChatTransportResponse): string {
-  if (transport.auth_provider === "codex") {
-    return "New chats are backed by your ChatGPT plan, and spend no AutoGPT credits.";
-  }
-  // The ChatGPT line promises "no AutoGPT credits", which only means anything
-  // if the row it contrasts with says credits are spent. Self-host has no
-  // credits at all, so it says what it actually has instead.
-  return transport.label === SELF_HOSTED_LABEL
-    ? "New chats are backed by the chat provider configured on this server."
-    : "New chats are backed by your AutoGPT plan, and spend AutoGPT credits.";
+export function routeOf(offer: AIConnectionOffer): SetDefaultTransportRequest {
+  return {
+    auth_provider: offer.offer_id.split(
+      ":",
+    )[0] as SetDefaultTransportRequestAuthProvider,
+    credential_id: offer.credential_id ?? null,
+  };
 }
 
-export function isSelectable(transport: ChatTransportResponse): boolean {
+/**
+ * Whether this connection can be chosen as the default.
+ *
+ * A locked offer is listed so the user can see it exists and what unlocks it,
+ * but it cannot be routed to, so it cannot be a default either.
+ */
+export function isSelectable(offer: AIConnectionOffer): boolean {
   return (
-    transport.available &&
-    (transport.auth_provider === "platform" || transport.credential_id !== null)
+    offer.selectable &&
+    (offer.auth_method === "deployment" || offer.credential_id !== null)
   );
 }
 
 /**
- * A stable key. The platform transport carries no credential id, and a user
- * can hold several ChatGPT accounts, so neither half identifies a row alone.
+ * Every connection worth showing, selectable or not.
+ *
+ * A locked one earns its place by explaining an absence the user would
+ * otherwise have to guess at.
  */
-export function transportKey(transport: ChatTransportResponse): string {
-  return `${transport.auth_provider}:${transport.credential_id ?? "deployment"}`;
+export function visibleOffers(
+  offers: AIConnectionOffer[] | undefined,
+): AIConnectionOffer[] {
+  return (offers ?? []).filter(
+    (offer) => isSelectable(offer) || Boolean(offer.lock_reason),
+  );
+}
+
+/**
+ * "Balanced: Sonnet 5 · Advanced: Opus 5".
+ *
+ * Empty when the server named no models, so the row omits the line rather
+ * than rendering half of one.
+ */
+export function tierSummary(offer: AIConnectionOffer): string {
+  const named = offer.tiers
+    .filter((tier) => tier.display_model)
+    .map((tier) => `${tier.label}: ${tier.display_model}`);
+  return named.join(" · ");
 }

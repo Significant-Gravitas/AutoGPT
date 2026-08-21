@@ -6,7 +6,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 
-import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -14,7 +14,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 import { ManageConnectionDialog } from "./ManageConnectionDialog";
-import { describeTransport, transportKey } from "./helpers";
+import { isSelectable, tierSummary } from "./helpers";
 import { useAIConnectionsSection } from "./useAIConnectionsSection";
 
 export function AIConnectionsSection() {
@@ -27,7 +27,7 @@ export function AIConnectionsSection() {
     isLoading,
     isError,
   } = useAIConnectionsSection();
-  const [managing, setManaging] = useState<ChatTransportResponse | null>(null);
+  const [managing, setManaging] = useState<AIConnectionOffer | null>(null);
 
   // A failure here must not take the tool integrations below it down with it.
   if (isError) return null;
@@ -65,15 +65,15 @@ export function AIConnectionsSection() {
         >
           {connections.map((connection) => (
             <ConnectionRow
-              key={transportKey(connection)}
+              key={connection.offer_id}
               connection={connection}
               account={accountFor(connection)}
               selectable={hasChoice}
-              isSelected={transportKey(connection) === selectedKey}
+              isSelected={connection.offer_id === selectedKey}
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}
               onManage={
-                connection.auth_provider === "codex"
+                connection.auth_method === "chatgpt_oauth"
                   ? () => setManaging(connection)
                   : undefined
               }
@@ -96,7 +96,7 @@ export function AIConnectionsSection() {
 }
 
 interface RowProps {
-  connection: ChatTransportResponse;
+  connection: AIConnectionOffer;
   account?: string;
   selectable: boolean;
   isSelected: boolean;
@@ -133,14 +133,15 @@ function ConnectionRow({
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
           <Text variant="body-medium" as="span" className="text-black">
-            {connection.label}
+            {connection.display_name}
           </Text>
-          {connection.auth_provider === "codex" && (
-            <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
-              <Icon icon={CheckmarkCircle02Icon} size={13} />
-              Connected
-            </span>
-          )}
+          {connection.auth_method === "chatgpt_oauth" &&
+            isSelectable(connection) && (
+              <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
+                <Icon icon={CheckmarkCircle02Icon} size={13} />
+                Connected
+              </span>
+            )}
           {account && (
             <span className="max-w-full truncate rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]">
               {account}
@@ -154,8 +155,18 @@ function ConnectionRow({
           )}
         </span>
         <Text variant="small" as="span" className="text-[#505057]">
-          {describeTransport(connection)}
+          {connection.description}
         </Text>
+        {tierSummary(connection) && (
+          <Text variant="small" as="span" className="text-[#7A7A80]">
+            {tierSummary(connection)}
+          </Text>
+        )}
+        {connection.lock_reason && (
+          <Text variant="small" as="span" className="text-[#7A7A80]">
+            {connection.lock_reason}
+          </Text>
+        )}
       </span>
     </>
   );
