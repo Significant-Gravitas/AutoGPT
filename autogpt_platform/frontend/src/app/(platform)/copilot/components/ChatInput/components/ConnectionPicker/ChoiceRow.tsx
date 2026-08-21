@@ -2,7 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { PiLockSimple as LockIcon } from "react-icons/pi";
+import { LockIcon } from "@hugeicons/core-free-icons";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   title: string;
@@ -104,7 +106,8 @@ interface LockedProps {
 function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
   return (
     <div className="flex items-start gap-2.5 px-3 py-2">
-      <LockIcon
+      <Icon
+        icon={LockIcon}
         size={14}
         aria-hidden
         className="mt-[3px] flex-none text-muted-foreground/70"

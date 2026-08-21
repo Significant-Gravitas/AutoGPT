@@ -133,9 +133,11 @@ describe("ConnectionPicker", () => {
     ).toBeDefined();
   });
 
-  it("gives the model its own line so a long name stays readable", async () => {
-    // The model is the reason the tier row exists; sharing one line with the
-    // label truncates it away on any realistic model id.
+  it("names the model inside each tier segment", async () => {
+    // The model is the reason the tier control exists, so it is on the control
+    // rather than a line under it. This fits only because the model arrives as
+    // a display name; while it arrived as "anthropic/claude-sonnet-5" the label
+    // had to wrap, which is why this once asserted a separate line.
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
@@ -143,8 +145,13 @@ describe("ConnectionPicker", () => {
       await screen.findByRole("button", { name: /Runs on/ }),
     );
 
-    expect(await screen.findByText("sonnet-5")).toBeDefined();
-    expect(screen.getByText("opus-5")).toBeDefined();
+    const tiers = await screen.findByRole("radiogroup", { name: "Model tier" });
+    expect(
+      within(tiers).getByRole("radio", { name: "Balanced · sonnet-5" }),
+    ).toBeDefined();
+    expect(
+      within(tiers).getByRole("radio", { name: "Advanced · opus-5" }),
+    ).toBeDefined();
   });
 
   it("puts the chosen tier in the store", async () => {
@@ -505,13 +512,13 @@ describe("ConnectionPicker", () => {
     );
 
     expect(
-      await screen.findByText("A Max plan or higher is required for Advanced."),
+      await screen.findByText(/A Max plan or higher is required for Advanced/),
     ).toBeDefined();
-    // Still named, so the user sees what they would get.
-    expect(screen.getByText("opus-5")).toBeDefined();
-    // Scoped to the tier group: the connection row's own name now contains
-    // "Advanced: opus-5" from its tier summary, so a page-wide query matches it.
+    // Still named, so the user sees what they would get. Scoped to the tier
+    // control: the connection row's own summary also mentions Advanced.
     const tierGroup = screen.getByRole("radiogroup", { name: "Model tier" });
+    expect(within(tierGroup).getByText(/opus-5/)).toBeDefined();
+    // Named, but not offered as a choice that cannot happen.
     expect(
       within(tierGroup).queryByRole("radio", { name: /Advanced/ }),
     ).toBeNull();
@@ -526,5 +533,28 @@ describe("ConnectionPicker", () => {
     expect(
       await screen.findByLabelText("AI connections unavailable"),
     ).toBeDefined();
+  });
+
+  it("says whose plan pays when the answer is the user's own", async () => {
+    // The point of labelling by payer is that spending your own subscription
+    // is worth noticing before you send, not after.
+    mockOffers([offer({ is_default: false }), chatgpt({ is_default: true })]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", {
+        name: /Runs on ChatGPT . your plan/,
+      }),
+    ).toBeDefined();
+  });
+
+  it("does not claim a platform connection is the user's own plan", async () => {
+    mockOffers([offer({ is_default: true }), chatgpt({ is_default: false })]);
+
+    render(<ConnectionPicker />);
+
+    const trigger = await screen.findByRole("button", { name: /Runs on/ });
+    expect(trigger.getAttribute("aria-label")).not.toMatch(/your plan/);
   });
 });
