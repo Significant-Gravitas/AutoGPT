@@ -508,14 +508,15 @@ async def test_a_model_the_catalog_does_not_know_is_named_by_its_slug(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """A deployment may point a tier at anything. Showing the slug is worse than
-    showing a name and better than showing nothing."""
+    showing a name and better than showing nothing -- without the vendor
+    prefix, which is addressing rather than identity."""
     _mock_transports(mocker, [_transport(default=True)])
     mocker.patch.object(
         offers,
         "resolve_model_route",
         new=AsyncMock(
             side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
-                model="a-model-nobody-has-heard-of", source="config"
+                model="acme/a-model-nobody-has-heard-of", source="config"
             )
         ),
     )
