@@ -1,19 +1,29 @@
 import {
+  act,
   render,
   screen,
   fireEvent,
   waitFor,
   cleanup,
 } from "@/tests/integrations/test-utils";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ChainActionsContext,
+  type ChainActionEntry,
+} from "../../../../../components/ToolChain/chainActions";
 import { MCPSetupCard } from "../MCPSetupCard";
 
 // Mock the copilot chat actions used by MCPSetupCard
 const mockOnSend = vi.fn();
+let currentOnSend = mockOnSend;
 vi.mock(
   "../../../../../components/CopilotChatActionsProvider/useCopilotChatActions",
   () => ({
-    useCopilotChatActions: () => ({ onSend: mockOnSend }),
+    useCopilotChatActions: () => ({ onSend: currentOnSend }),
   }),
 );
 
@@ -78,6 +88,7 @@ describe("MCPSetupCard", () => {
   afterEach(() => {
     cleanup();
     setMockLiveCreds([]);
+    currentOnSend = mockOnSend;
   });
 
   it("renders setup message and connect button", () => {
@@ -499,5 +510,86 @@ describe("MCPSetupCard", () => {
     // Crucial: live creds say "connected" but the failed token attempt
     // must keep the not-connected branch rendered so the user can retry.
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
+
+  it("uses current provider and chat actions from a previously registered chain callback", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://example.com/oauth",
+        state_token: "latest-state",
+      },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "latest-code", state: "latest-state" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    const initialProviderCallback = vi.fn().mockResolvedValue({});
+    const latestProviderCallback = vi.fn().mockResolvedValue({});
+    const initialOnSend = vi.fn();
+    const latestOnSend = vi.fn();
+    currentOnSend = initialOnSend;
+
+    const initialProviders = {
+      mcp: { mcpOAuthCallback: initialProviderCallback },
+    } as unknown as CredentialsProvidersContextType;
+    const latestProviders = {
+      mcp: { mcpOAuthCallback: latestProviderCallback },
+    } as unknown as CredentialsProvidersContextType;
+    let registeredEntry: ChainActionEntry | null = null;
+    const chainActions = {
+      register: vi.fn((entry: ChainActionEntry) => {
+        registeredEntry = entry;
+      }),
+      unregister: vi.fn((_id: string) => {}),
+    };
+
+    function setupCard(
+      providers: CredentialsProvidersContextType,
+      retryInstruction: string,
+    ) {
+      return (
+        <CredentialsProvidersContext.Provider value={providers}>
+          <ChainActionsContext.Provider value={chainActions}>
+            <MCPSetupCard
+              output={makeSetupOutput()}
+              retryInstruction={retryInstruction}
+            />
+          </ChainActionsContext.Provider>
+        </CredentialsProvidersContext.Provider>
+      );
+    }
+
+    const { rerender } = render(
+      setupCard(initialProviders, "Initial retry instruction"),
+    );
+    await waitFor(() => expect(registeredEntry?.mcp).toBeDefined());
+    const previouslyRegisteredOnConnect = registeredEntry!.mcp!.onConnect;
+
+    currentOnSend = latestOnSend;
+    rerender(setupCard(latestProviders, "Latest retry instruction"));
+    expect(chainActions.register).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      previouslyRegisteredOnConnect();
+    });
+
+    await waitFor(() => {
+      expect(latestProviderCallback).toHaveBeenCalledWith(
+        "latest-code",
+        "latest-state",
+      );
+      expect(latestOnSend).toHaveBeenCalledWith("Latest retry instruction");
+    });
+    expect(initialProviderCallback).not.toHaveBeenCalled();
+    expect(initialOnSend).not.toHaveBeenCalled();
   });
 });

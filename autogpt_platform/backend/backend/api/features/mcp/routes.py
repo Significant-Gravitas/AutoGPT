@@ -47,7 +47,11 @@ class DiscoverToolsRequest(BaseModel):
     server_url: str = Field(description="URL of the MCP server")
     auth_token: str | None = Field(
         default=None,
-        description="Optional Basic or Bearer credential for authenticated MCP servers",
+        min_length=1,
+        description=(
+            "Optional bare Bearer token, Basic/Bearer value, or complete "
+            "Authorization header"
+        ),
     )
 
 
@@ -404,13 +408,16 @@ async def mcp_oauth_callback(
 
 
 class MCPStoreTokenRequest(BaseModel):
-    """Request to store a manual auth credential for an MCP server without OAuth."""
+    """Request to store a manual Basic/Bearer credential or Authorization header."""
 
     server_url: str = Field(
         description="MCP server URL the credential authenticates against"
     )
     token: SecretStr = Field(
-        min_length=1, description="Basic or Bearer credential for the MCP server"
+        min_length=1,
+        description=(
+            "Bare Bearer token, Basic/Bearer value, or complete Authorization header"
+        ),
     )
 
 
@@ -424,7 +431,7 @@ async def mcp_store_token(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
     """
-    Store a manually provided Basic or Bearer credential for an MCP server.
+    Store a Basic/Bearer credential or complete Authorization header for an MCP server.
 
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent

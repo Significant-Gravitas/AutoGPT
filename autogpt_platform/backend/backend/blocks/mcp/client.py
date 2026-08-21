@@ -52,6 +52,12 @@ def normalize_mcp_authorization(value: str) -> str:
     if len(parts) == 2 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
         scheme = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         credential = parts[1].strip()
+    elif len(parts) == 2:
+        if included_header_name:
+            raise ValueError(
+                "Authorization header must use Basic or Bearer authentication."
+            )
+        raise ValueError("Authentication scheme must be Basic or Bearer.")
     elif len(parts) == 1 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
         scheme_name = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         raise ValueError(f"{scheme_name} authentication requires a credential.")

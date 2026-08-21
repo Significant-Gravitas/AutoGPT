@@ -279,6 +279,14 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     }
   }
 
+  const handleConnectRef = useRef(handleConnect);
+  const handleManualTokenRef = useRef(handleManualToken);
+
+  useEffect(() => {
+    handleConnectRef.current = handleConnect;
+    handleManualTokenRef.current = handleManualToken;
+  });
+
   // Inside a tool chain the card renders nothing itself — it registers an
   // MCP row with the chain's connectors table and stays mounted (hidden)
   // as the state machine driving that row's callbacks.
@@ -296,15 +304,14 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         loading,
         error,
         showManualToken,
-        onConnect: handleConnect,
+        onConnect: () => void handleConnectRef.current(),
         onUseToken: (token) => {
           setManualToken(token);
-          void handleManualToken(token);
+          void handleManualTokenRef.current(token);
         },
       },
     });
     return () => chainActions.unregister(actionId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleConnect/handleManualToken capture latest state each registration
   }, [
     chainActions,
     actionId,

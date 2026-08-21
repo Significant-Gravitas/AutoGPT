@@ -56,6 +56,11 @@ def test_normalize_mcp_authorization_rejects_invalid_values(value: str) -> None:
         normalize_mcp_authorization(value)
 
 
+def test_normalize_mcp_authorization_rejects_unprefixed_unsupported_scheme() -> None:
+    with pytest.raises(ValueError, match="Basic or Bearer"):
+        normalize_mcp_authorization("Digest abc")
+
+
 @pytest.mark.parametrize(
     "control_character", ["\x00", "\t", "\n", "\r", "\x1f", "\x7f"]
 )
@@ -100,6 +105,26 @@ async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_discover_rejects_empty_explicit_auth_token(
+    client: httpx.AsyncClient,
+) -> None:
+    with patch(
+        "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
+        new_callable=AsyncMock,
+    ) as lookup_credential:
+        response = await client.post(
+            "/discover-tools",
+            json={
+                "server_url": "https://mcp.example.com/mcp",
+                "auth_token": "",
+            },
+        )
+
+    assert response.status_code == 422
+    lookup_credential.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
