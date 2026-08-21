@@ -52,7 +52,7 @@ x-codex-tmpfs: &codex-tmpfs
 # The anchor absorbs image + network so each service body collapses to its
 # hostname + command + (for the seed) volume + healthcheck.
 x-redis-node: &redis-node
-  image: redis:7
+  image: ${REDIS_IMAGE:-redis:7}
   networks:
     - app-network
 
