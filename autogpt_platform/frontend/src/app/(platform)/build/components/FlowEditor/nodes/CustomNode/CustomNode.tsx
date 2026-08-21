@@ -95,6 +95,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         (v: unknown) => v !== "" && v !== null && v !== undefined,
       );
 
+    const preprocessedSchema = React.useMemo(() => preprocessInputSchema(inputSchema), [inputSchema]);
     const hasErrors = hasConfigErrors || hasOutputError;
 
     const node = (
@@ -104,7 +105,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
           <FormCreator
-            jsonSchema={preprocessInputSchema(inputSchema)}
+            jsonSchema={preprocessedSchema}
             nodeId={nodeId}
             uiType={data.uiType}
             isMCPWithTool={isMCPWithTool}
