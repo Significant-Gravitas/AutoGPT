@@ -248,12 +248,18 @@ def _display_name(slug: str | None) -> str | None:
     direct read misses on exactly the setup most deployments run.
 
     Falls back to the slug when nothing resolves, which is better than
-    showing nothing for a model the catalog has never heard of.
+    showing nothing for a model the catalog has never heard of -- minus the
+    vendor prefix, which is how the transport addresses the model and carries
+    nothing for the reader. Keeping it costs ten characters in a control that
+    has to fit two of these side by side, and spends them on the one part of
+    the string that cannot tell anyone anything.
     """
     if not slug:
         return None
     model = catalog_lookup(slug)
-    return model.display_name if model else slug
+    if model:
+        return model.display_name
+    return slug.split("/", 1)[1] if "/" in slug else slug
 
 
 def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
