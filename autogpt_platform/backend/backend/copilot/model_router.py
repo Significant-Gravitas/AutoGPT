@@ -102,7 +102,7 @@ _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort
 }
 
 
-def _catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
+def catalog_lookup(slug: str) -> llm_registry.RegistryModel | None:
     """Look up *slug* in the catalog, tolerating transport spellings.
 
     The catalog registers Claude models under bare canonical enum slugs
@@ -161,7 +161,7 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
                 "gating are inactive"
             )
         return None
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     if model is None:
         reason = "unknown to the model registry"
     elif not model.is_enabled:
@@ -434,7 +434,7 @@ def _resolved_codex_model(
 def _codex_catalog_allows(slug: str) -> bool:
     if not llm_registry.has_models():
         return True
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     return bool(
         model is not None and model.is_enabled and model.metadata.provider == "openai"
     )
@@ -443,7 +443,7 @@ def _codex_catalog_allows(slug: str) -> bool:
 def _codex_account_fallback_allowed(slug: str) -> bool:
     if not llm_registry.has_models():
         return True
-    model = _catalog_lookup(slug)
+    model = catalog_lookup(slug)
     if model is None:
         return True
     return model.is_enabled and model.metadata.provider == "openai"
