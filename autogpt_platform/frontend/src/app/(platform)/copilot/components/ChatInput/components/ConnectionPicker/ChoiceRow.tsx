@@ -16,6 +16,8 @@ interface Props {
    * its own line, so the name a screen reader announces stays complete.
    */
   label?: string;
+  /** Shown beside the title, e.g. "Connected". */
+  badge?: string;
   /** Why this cannot be chosen, and where to go to change that. */
   lock?: { reason: string; href: string | null };
 }
@@ -28,6 +30,7 @@ export function ChoiceRow({
   onSelect,
   label,
   lock,
+  badge,
 }: Props) {
   if (lock) {
     return <LockedRow title={title} subtitle={subtitle} lock={lock} />;
@@ -58,7 +61,14 @@ export function ChoiceRow({
         )}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="text-xs font-medium text-foreground">{title}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-foreground">{title}</span>
+          {badge && (
+            <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
+              {badge}
+            </span>
+          )}
+        </span>
         {subtitle && (
           <span className="break-words text-[11px] leading-snug text-muted-foreground">
             {subtitle}
