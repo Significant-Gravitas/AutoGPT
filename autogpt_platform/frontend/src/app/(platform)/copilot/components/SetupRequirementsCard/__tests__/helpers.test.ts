@@ -38,6 +38,43 @@ describe("coerceCredentialFields", () => {
     expect(result.requiredCredentials.has("cred1")).toBe(true);
   });
 
+  it("keeps device_code so device-auth providers are connectable", () => {
+    // The regression: this filter dropped `device_code`, so a provider
+    // advertising both arrived as oauth2-only. `deriveAuthMethods` can only
+    // shadow oauth2 when device_code is present, so the card offered an
+    // authorization-code redirect for a public client with no secret and the
+    // connect attempt died on "Provider 'stripe_link' does not support OAuth".
+    const input = {
+      stripe_link_credentials: {
+        provider: "stripe_link",
+        types: ["device_code", "oauth2"],
+      },
+    };
+    const result = coerceCredentialFields(input);
+    expect(result.credentialFields).toHaveLength(1);
+    expect(result.credentialFields[0][1]).toMatchObject({
+      credentials_types: ["device_code", "oauth2"],
+    });
+  });
+
+  it("preserves every credential type the platform can store", () => {
+    // A filter, not an ordering — anything missing here is silently
+    // unconnectable from the copilot card. Keep in step with CredentialsType.
+    const allTypes = [
+      "api_key",
+      "device_code",
+      "host_scoped",
+      "oauth2",
+      "user_password",
+    ];
+    const result = coerceCredentialFields({
+      cred1: { provider: "github", types: allTypes },
+    });
+    expect(result.credentialFields[0][1]).toMatchObject({
+      credentials_types: allTypes,
+    });
+  });
+
   it("filters out invalid credential types", () => {
     const input = {
       cred1: {
