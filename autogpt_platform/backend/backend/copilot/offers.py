@@ -181,7 +181,7 @@ async def _platform_tier_models(
     for tier in TIER_LABELS:
         try:
             route = await resolve_model_route(mode, tier, user_id, config=config)
-            resolved[tier] = route.model
+            resolved[tier] = _display_name(route.model)
         except Exception:
             # A tier that cannot be resolved is described without a name
             # rather than failing the whole list.
@@ -203,6 +203,20 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
     return f"{transport.auth_provider}:{transport.credential_id or 'deployment'}"
 
 
+def _display_name(slug: str | None) -> str | None:
+    """What the catalog calls this model, rather than its slug.
+
+    The PRD labels tiers "Balanced · 5.6 Terra", not
+    "Balanced · gpt-5.6-terra": the slug is a routing key and reads as one.
+    Falls back to the slug when the registry has no entry, which is better
+    than showing nothing.
+    """
+    if not slug:
+        return None
+    model = llm_registry.get_model(slug)
+    return model.display_name if model else slug
+
+
 def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
     """The models the catalog pins for the Codex cells of this engine.
 
@@ -212,7 +226,7 @@ def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
     routed model, not a promise about the account.
     """
     return {
-        tier: llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier)
+        tier: _display_name(llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier))
         for tier in TIER_LABELS
     }
 
