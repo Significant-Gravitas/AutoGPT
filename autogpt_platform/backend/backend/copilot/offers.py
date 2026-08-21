@@ -16,7 +16,11 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.engine import resolve_use_sdk
-from backend.copilot.model_router import ROUTE_SURFACE_CODEX, resolve_model_route
+from backend.copilot.model_router import (
+    ROUTE_SURFACE_CODEX,
+    catalog_lookup,
+    resolve_model_route,
+)
 from backend.copilot.transports import (
     ChatTransportResponse,
     get_chat_transports,
@@ -236,12 +240,19 @@ def _display_name(slug: str | None) -> str | None:
 
     The PRD labels tiers "Balanced · 5.6 Terra", not
     "Balanced · gpt-5.6-terra": the slug is a routing key and reads as one.
-    Falls back to the slug when the registry has no entry, which is better
-    than showing nothing.
+
+    Goes through the router's lookup rather than the catalog directly,
+    because the slug arrives in whatever spelling configured it. The default
+    configuration routes through OpenRouter, whose provider-prefixed forms
+    (``anthropic/claude-sonnet-5``) the catalog does not use as keys -- so a
+    direct read misses on exactly the setup most deployments run.
+
+    Falls back to the slug when nothing resolves, which is better than
+    showing nothing for a model the catalog has never heard of.
     """
     if not slug:
         return None
-    model = llm_registry.get_model(slug)
+    model = catalog_lookup(slug)
     return model.display_name if model else slug
 
 
