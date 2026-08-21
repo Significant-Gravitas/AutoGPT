@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from slack_sdk.errors import SlackApiError
 
 from backend.copilot.bot.adapters.slack import oauth
 
@@ -290,8 +291,6 @@ async def test_callback_exchange_failure_redirects_gracefully():
     # slack_sdk raises SlackApiError on ok:false (expired/reused code, wrong
     # secret) — the callback must land the browser back on settings with the
     # error flag, not surface a raw 500.
-    from slack_sdk.errors import SlackApiError
-
     cid, secret = _creds()
     with (
         cid,
