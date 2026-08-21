@@ -839,30 +839,35 @@ PENDING_QUESTION_LIMIT = 10
 
 
 async def set_session_pending_question(
-    session_id: str, text: str, asked_at: datetime
+    session_id: str, user_id: str, text: str, asked_at: datetime
 ) -> None:
     """Record the question this session is waiting on the user to answer.
 
     Writes the one key rather than the whole ``metadata`` blob: session
     metadata is otherwise immutable after creation, and a concurrent turn
     must not be able to clobber unrelated flags by round-tripping a stale
-    copy of it.
+    copy of it. Scoped to *user_id* so a caller can never mark another
+    user's session.
     """
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
         "COALESCE(\"metadata\", '{{}}'::jsonb) || "
-        "jsonb_build_object('pending_question', $2::jsonb) WHERE \"id\" = $1",
+        "jsonb_build_object('pending_question', $3::jsonb) "
+        'WHERE "id" = $1 AND "userId" = $2',
         session_id,
+        user_id,
         dumps({"text": text, "asked_at": asked_at.isoformat()}),
     )
 
 
-async def clear_session_pending_question(session_id: str) -> None:
+async def clear_session_pending_question(session_id: str, user_id: str) -> None:
     """Drop the pending question — the user answered, so it needs nobody."""
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
-        '"metadata" - \'pending_question\' WHERE "id" = $1',
+        "\"metadata\" - 'pending_question' "
+        'WHERE "id" = $1 AND "userId" = $2',
         session_id,
+        user_id,
     )
 
 

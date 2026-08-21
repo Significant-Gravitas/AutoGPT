@@ -128,8 +128,13 @@ class UpdateExpertTool(BaseTool):
             merged = ExpertSoulUpdate(
                 name=name if name is not None else expert.name,
                 identity=about if about is not None else expert.identity,
+                # Blank keeps the stored value: unlike voice_preferences,
+                # boundaries has no documented empty-string clearing, and a
+                # raise requires them — an update must not silently drop them.
                 boundaries=(
-                    boundaries if boundaries is not None else expert.boundaries
+                    boundaries
+                    if boundaries is not None and boundaries.strip()
+                    else expert.boundaries
                 ),
                 voice_preferences=(
                     voice_preferences

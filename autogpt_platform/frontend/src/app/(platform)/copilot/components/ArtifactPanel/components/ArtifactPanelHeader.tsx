@@ -33,6 +33,10 @@ interface Props {
   onDownload: () => void;
   onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
+  /** True when a control outside the panel (the chat's sidebar-right
+   *  toggle) already closes it — standalone hosts (share viewer, tour,
+   *  mobile drawer) have no such control and keep the header Close. */
+  hasExternalClose?: boolean;
 }
 
 function HeaderButton({
@@ -74,6 +78,7 @@ export function ArtifactPanelHeader({
   onDownload,
   onOpenFiles,
   onSourceToggle,
+  hasExternalClose = false,
 }: Props) {
   // The new tool UI closes the panel from the chat's sidebar-right toggle,
   // so the header drops its own Close button there.
@@ -133,7 +138,7 @@ export function ArtifactPanelHeader({
         <HeaderButton onClick={onOpenFiles} title="All files">
           <Icon icon={Folder01Icon} size={16} />
         </HeaderButton>
-        {!isNewToolUI && (
+        {(!isNewToolUI || !hasExternalClose) && (
           <HeaderButton onClick={onClose} title="Close">
             <Icon icon={Cancel01Icon} size={16} />
           </HeaderButton>

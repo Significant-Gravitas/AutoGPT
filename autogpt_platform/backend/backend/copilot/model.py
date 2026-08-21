@@ -266,7 +266,9 @@ async def clear_pending_question(session: "ChatSession") -> None:
         return
     session.metadata.pending_question = None
     try:
-        await chat_db().clear_session_pending_question(session.session_id)
+        await chat_db().clear_session_pending_question(
+            session.session_id, session.user_id
+        )
     except Exception as e:
         logger.warning(
             f"Could not clear pending question for {session.session_id}: {e}"

@@ -161,11 +161,20 @@ class RaiseExpertTool(BaseTool):
             return error
         assert user_id is not None
 
+        color = color.strip()
+        if color and color not in COLOR_TOKENS:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — color must be one of: "
+                    + ", ".join(COLOR_TOKENS)
+                ),
+                session_id=session_id,
+            )
         try:
             params = _RaiseParams(
-                name=name,
-                role=role,
-                color=color if color in COLOR_TOKENS else "",
+                name=name.strip(),
+                role=role.strip(),
+                color=color,
                 weekly_budget=weekly_budget,
             )
             soul = ExpertSoulFieldsPatch(

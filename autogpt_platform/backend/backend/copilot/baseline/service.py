@@ -1650,7 +1650,7 @@ async def stream_chat_completion_baseline(
     # A reply is the only thing that clears a Home "Needs You" question.
     # Unconditional on the append result: the HTTP path pre-saves the user
     # message, so the append is a no-op dedup there.
-    if is_user_message and message:
+    if is_user_message and message and message.strip():
         await clear_pending_question(session)
 
     if maybe_append_user_message(session, message, is_user_message):

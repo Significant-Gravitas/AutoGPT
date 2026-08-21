@@ -177,7 +177,9 @@ function MainArea({
       {!isMobile && isArtifactsEnabled && sessionId && (
         <ContextPanel sessionId={sessionId} />
       )}
-      {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
+      {!isMobile && isArtifactsEnabled && sessionId && (
+        <ArtifactPanel hasExternalClose />
+      )}
       {/* Under the new tool UI the trigger lives inside the chat column,
           beside the workspace-files card it opens. */}
       {!isMobile && isArtifactsEnabled && sessionId && !isNewToolUI && (

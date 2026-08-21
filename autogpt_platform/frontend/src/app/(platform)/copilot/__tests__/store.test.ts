@@ -547,3 +547,30 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
   });
 });
+
+describe("lastArtifact session scoping", () => {
+  beforeEach(resetStore);
+
+  it("closeArtifactPanel remembers the preview for the in-session toggle", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact?.id).toBe(
+      "a",
+    );
+  });
+
+  it("clearLastArtifact drops the memory so a new chat cannot restore the previous chat's artifact", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().clearLastArtifact();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+
+  it("closing the artifacts tab forgets the remembered preview", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+});

@@ -253,14 +253,17 @@ def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
 
     Same-scope subs (``run_sub_session``) are readable by their own expert.
     A ``delegate_to_expert`` sub lives in the *target's* scope, so scope
-    equality would lock the delegator out of its own hand-off; the recorded
+    equality would lock the delegator out of its own delegation; the recorded
     delegating session id is the capability that lets exactly that caller —
-    and nobody else — poll across the boundary.
+    and nobody else — poll across the boundary. A hand-off transfers
+    ownership for good (the caller gets no result back), so it grants no
+    such capability: only the receiving expert's own scope can read it.
     """
     if sub.expert_id == session.expert_id:
         return True
     return (
-        session.session_id is not None
+        sub.metadata.handed_off_from_expert_id is None
+        and session.session_id is not None
         and sub.metadata.delegated_by_session_id == session.session_id
     )
 

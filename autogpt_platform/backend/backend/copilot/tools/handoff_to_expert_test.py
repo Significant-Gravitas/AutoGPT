@@ -15,6 +15,7 @@ import pytest
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import TOOL_GROUPS, get_available_tools
 
+from .get_sub_session_result import _in_caller_scope
 from .handoff_to_expert import HandoffToExpertTool
 from .models import ErrorResponse, SubSessionStatusResponse
 
@@ -224,3 +225,28 @@ class TestGating:
             }
             & remaining
         )
+
+
+class TestHandoffPolling:
+    """A handoff transfers ownership — the source keeps no poll capability."""
+
+    def _sub(self) -> MagicMock:
+        sub = _session(session_id="inner-1", expert_id="expert-b")
+        sub.metadata.delegated_by_session_id = "s1"
+        sub.metadata.handed_off_from_expert_id = "expert-a"
+        return sub
+
+    def test_source_session_cannot_poll_a_handed_off_sub(self) -> None:
+        source = _session(session_id="s1", expert_id="expert-a")
+        assert _in_caller_scope(self._sub(), source) is False
+
+    def test_receiving_expert_scope_still_reads_its_own_task(self) -> None:
+        target = _session(session_id="s2", expert_id="expert-b")
+        assert _in_caller_scope(self._sub(), target) is True
+
+    def test_delegation_without_handoff_keeps_the_capability(self) -> None:
+        sub = _session(session_id="inner-1", expert_id="expert-b")
+        sub.metadata.delegated_by_session_id = "s1"
+        sub.metadata.handed_off_from_expert_id = None
+        source = _session(session_id="s1", expert_id="expert-a")
+        assert _in_caller_scope(sub, source) is True

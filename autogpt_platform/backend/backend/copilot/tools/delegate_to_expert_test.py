@@ -96,6 +96,9 @@ def mock_sessions(monkeypatch):
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
+        sess.metadata.handed_off_from_expert_id = kwargs.get(
+            "handed_off_from_expert_id"
+        )
         sess.messages = []
         created.append(sess)
         return sess

@@ -140,8 +140,8 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
   },
   get_sub_session_result: {
     category: "agent",
-    running: "Checking what the teammate is saying",
-    done: "Caught up with the teammate",
+    running: "Checking the sub-session's progress",
+    done: "Caught up with the sub-session",
   },
   delegate_to_expert: {
     category: "agent",

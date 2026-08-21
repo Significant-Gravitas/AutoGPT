@@ -191,6 +191,9 @@ interface CopilotUIState {
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  /** Forget the remembered preview — called on session entry so a new chat
+   *  can never restore the previous chat's artifact. */
+  clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
   openContextPanelForProgress: () => void;
   autoOpenArtifact: (ref: ArtifactRef) => void;
@@ -435,6 +438,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
+  clearLastArtifact: () =>
+    set((state) => ({
+      artifactPanel: { ...state.artifactPanel, lastArtifact: null },
+    })),
   toggleContextPanelTab: (tab) =>
     set((state) => {
       const { isOpen, activeTab, activeArtifact } = state.artifactPanel;
@@ -453,6 +460,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           activeTab: tab,
           activeArtifact: null,
           history: [],
+          // Closing from the tab view forgets the remembered preview, so the
+          // next sidebar click reopens the tab rather than an older artifact.
+          lastArtifact: nextOpen ? state.artifactPanel.lastArtifact : null,
         },
       };
     }),

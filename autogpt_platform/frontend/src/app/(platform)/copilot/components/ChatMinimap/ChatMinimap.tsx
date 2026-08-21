@@ -41,6 +41,12 @@ export function ChatMinimap({ messages }: Props) {
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
             onClick={() => scrollToMessage(entry.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                scrollToMessage(entry.id);
+              }
+            }}
             role="button"
             tabIndex={0}
             aria-label={`Jump to: ${entry.title}`}

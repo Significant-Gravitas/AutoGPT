@@ -275,6 +275,7 @@ async def test_asking_parks_the_question_on_the_session(
     assert session.metadata.pending_question.text == "Monday or Friday?"
     db.set_session_pending_question.assert_awaited_once()
     assert db.set_session_pending_question.await_args.args[0] == session.session_id
+    assert db.set_session_pending_question.await_args.args[1] == session.user_id
 
 
 @pytest.mark.asyncio
@@ -314,7 +315,9 @@ async def test_replying_clears_the_pending_question(
         await clear_pending_question(session)
 
     assert session.metadata.pending_question is None
-    db.clear_session_pending_question.assert_awaited_once_with(session.session_id)
+    db.clear_session_pending_question.assert_awaited_once_with(
+        session.session_id, session.user_id
+    )
 
 
 @pytest.mark.asyncio

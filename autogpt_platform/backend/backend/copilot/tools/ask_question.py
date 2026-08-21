@@ -109,7 +109,9 @@ async def _mark_pending(session: ChatSession, text: str) -> None:
     asked_at = datetime.now(UTC)
     session.metadata.pending_question = PendingQuestion(text=text, asked_at=asked_at)
     try:
-        await chat_db().set_session_pending_question(session.session_id, text, asked_at)
+        await chat_db().set_session_pending_question(
+            session.session_id, session.user_id, text, asked_at
+        )
     except Exception as e:
         logger.warning(
             "Could not record pending question for session %s: %s",

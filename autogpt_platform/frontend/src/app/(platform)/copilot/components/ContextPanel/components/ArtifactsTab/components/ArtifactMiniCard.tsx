@@ -39,7 +39,7 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
         type="button"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="shrink-0 rounded-full p-1 text-zinc-300 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-zinc-600 focus-visible:opacity-100 motion-reduce:transition-none"
+        className="shrink-0 rounded-full p-1 text-zinc-300 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-zinc-600 focus-visible:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
       >
         <Icon icon={Download04Icon} size={16} />
       </button>

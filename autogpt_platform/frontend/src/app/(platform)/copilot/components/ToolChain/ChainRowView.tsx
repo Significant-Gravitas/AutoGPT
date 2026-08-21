@@ -183,7 +183,7 @@ export function ChainRowView({ row, isLast }: Props) {
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={!showContent}
+            inert={!showContent ? ("" as unknown as boolean) : undefined}
             className="min-h-0 overflow-hidden"
           >
             <div
