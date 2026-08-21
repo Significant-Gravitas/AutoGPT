@@ -52,6 +52,7 @@ oauth_config:
       - files:read          # download user-attached files into the workspace
       - files:write         # upload generated artifacts back to the user
       - groups:history      # read private-channel messages (thread follow-ups)
+      - groups:read         # private-channel metadata (proactive-post authorization)
       - im:history          # read DM history (for thread follow-up context)
       - im:read             # access DM channel metadata
       - im:write            # open DM channels with users

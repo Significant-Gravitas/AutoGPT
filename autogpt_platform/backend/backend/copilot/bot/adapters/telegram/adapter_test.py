@@ -1,5 +1,7 @@
 """Tests for the Telegram adapter."""
 
+import html
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -413,3 +415,22 @@ class TestProactiveChunking:
         for c in calls:
             sent = c.kwargs["text"]
             assert sent.count("<pre>") == sent.count("</pre>") == 1
+
+    @pytest.mark.asyncio
+    async def test_entity_dense_chunks_respect_the_parsed_length_cap(self):
+        # Telegram's 4096 cap counts characters AFTER entity parsing (Bot API,
+        # sendMessage.text), so the raw HTML may legitimately run over it;
+        # what must hold is the parsed length of every chunk.
+        a = _adapter()
+        line = '<div class="row">Tom & Jerry\'s "quote"</div>'
+        await a.post_channel_message("123", "\n".join([line] * 200))
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2
+        raw_over_cap = 0
+        for c in calls:
+            sent = c.kwargs["text"]
+            parsed = html.unescape(re.sub(r"<[^>]+>", "", sent))
+            assert len(parsed) <= 4096
+            raw_over_cap += len(sent) > 4096
+        assert raw_over_cap > 0  # the raw length is not the limit

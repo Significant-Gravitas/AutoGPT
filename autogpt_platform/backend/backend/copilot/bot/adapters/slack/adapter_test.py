@@ -1,6 +1,7 @@
 """Tests for the Slack webhook adapter (multi-workspace)."""
 
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,19 @@ from backend.data.bot_installs import BotInstallCredentials
 from .adapter import SlackAdapter, _decode_target, _encode_target
 
 _SIGN = "backend.copilot.bot.adapters.slack.adapter.signing.verify"
+_SUBSCRIBED = "backend.copilot.bot.adapters.slack.adapter.threads.is_subscribed"
+
+
+def _mention_in_thread() -> dict:
+    return {
+        "type": "app_mention",
+        "channel": "C1",
+        "ts": "2.0",
+        "thread_ts": "1.0",
+        "user": "U1",
+        "text": "<@UBOT> summarize",
+        "team": "T1",
+    }
 
 
 def _mock_client() -> MagicMock:
@@ -140,7 +154,7 @@ class TestInboundRouting:
         assert ctx.channel_id == "T1|G1|1.0"
 
     @pytest.mark.asyncio
-    async def test_mention_in_thread_pulls_budgeted_history(self, adapter):
+    async def test_mention_in_unowned_thread_pulls_history(self, adapter):
         client = adapter._clients["T1"]
         client.conversations_replies = AsyncMock(
             return_value={
@@ -157,20 +171,69 @@ class TestInboundRouting:
             captured["ctx"] = ctx
 
         adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "app_mention",
-                "channel": "C1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "<@UBOT> summarize",
-                "team": "T1",
-            }
-        )
+        with patch(_SUBSCRIBED, new=AsyncMock(return_value=False)):
+            await adapter._dispatch_event(_mention_in_thread())
         client.conversations_replies.assert_awaited_once()
         # Bot's own message and the triggering mention are excluded.
         assert [e.text for e in captured["ctx"].thread_history] == ["the parent"]
+
+    @pytest.mark.asyncio
+    async def test_mention_in_own_thread_skips_the_history_fetch(self, adapter):
+        # The handler discards history for a subscribed thread, so the
+        # adapter must not pay for the fetch.
+        adapter.on_message(AsyncMock())
+        with patch(_SUBSCRIBED, new=AsyncMock(return_value=True)):
+            await adapter._dispatch_event(_mention_in_thread())
+        adapter._clients["T1"].conversations_replies.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dm_and_unmentioned_thread_reply_fetch_no_history(self, adapter):
+        adapter.on_message(AsyncMock())
+        with patch(_SUBSCRIBED, new=AsyncMock(return_value=False)):
+            await adapter._dispatch_event(
+                {
+                    "type": "message",
+                    "channel_type": "im",
+                    "channel": "D1",
+                    "ts": "2.0",
+                    "thread_ts": "1.0",
+                    "user": "U1",
+                    "text": "hi",
+                    "team": "T1",
+                }
+            )
+            await adapter._dispatch_event(
+                {
+                    "type": "message",
+                    "channel_type": "channel",
+                    "channel": "C1",
+                    "ts": "2.0",
+                    "thread_ts": "1.0",
+                    "user": "U1",
+                    "text": "follow up",
+                    "team": "T1",
+                }
+            )
+        adapter._clients["T1"].conversations_replies.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_group_dm_thread_reply_is_deliberately_dropped(self, adapter):
+        # Multi-person DMs ("mpim") are not handled; pin the omission.
+        cb = AsyncMock()
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "message",
+                "channel_type": "mpim",
+                "channel": "G9",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "follow up",
+                "team": "T1",
+            }
+        )
+        cb.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_channel_uses_top_level_team_id_for_server(self, adapter):
@@ -326,6 +389,26 @@ class TestOutbound:
         )
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
         assert text == "&lt;!channel&gt; &lt;@U9&gt; <@U9>"
+
+    @pytest.mark.asyncio
+    async def test_allowlisted_name_with_escapable_chars_still_pings(self, adapter):
+        # Display names like "R&D" are raw; matching must happen before the
+        # text is escaped or the ping silently disappears.
+        await adapter.send_message("T1|C1|", "hey @R&D, see <@U7>", (("R&D", "U7"),))
+        text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert text == "hey <@U7>, see &lt;@U7&gt;"
+
+    @pytest.mark.asyncio
+    async def test_post_channel_message_chunks_before_escaping(self, adapter):
+        # A hard cut through escaped text can bisect an entity ("…ab&amp" /
+        # ";ab…"); chunking the canonical text first can't.
+        await adapter.post_channel_message("T1|C1|", "ab&" * 2000)
+        calls = adapter._clients["T1"].chat_postMessage.await_args_list
+        assert len(calls) >= 2
+        for c in calls:
+            sent = c.kwargs["text"]
+            assert re.search(r"&(?!amp;)", sent) is None
+            assert not sent.startswith(";")
 
     @pytest.mark.asyncio
     async def test_send_file_uploads_into_thread(self, adapter):

@@ -314,3 +314,77 @@ async def test_callback_exchange_failure_redirects_gracefully():
     assert resp.headers["location"] == (
         "https://f.example/settings/bots?slack_install_error=1"
     )
+
+
+@pytest.mark.asyncio
+async def test_callback_transport_failure_also_lands_gracefully():
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        # slack_sdk re-raises the raw asyncio/aiohttp error on transport failure.
+        web_client.return_value.oauth_v2_access = AsyncMock(side_effect=TimeoutError())
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "auth-code"})
+        )
+    upsert.assert_not_awaited()
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_failure_detail_carries_slack_error_code():
+    # Without a frontend URL the plain-text landing is all an operator sees,
+    # so Slack's error code must survive into it.
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = ""
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError(
+                "bad code", response={"ok": False, "error": "invalid_code"}
+            )
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "expired-code"})
+        )
+    assert resp.status_code == 400
+    assert b"invalid_code" in resp.body
+
+
+@pytest.mark.asyncio
+async def test_callback_handles_a_non_json_slack_response():
+    # A proxy outage hands slack_sdk a text/plain body; SlackApiError then
+    # carries a raw aiohttp response with no .get(), which must not 500.
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = "https://f.example"
+        web_client.return_value.oauth_v2_access = AsyncMock(
+            side_effect=SlackApiError("bad gateway", response=MagicMock(spec=[]))
+        )
+        resp = await oauth._handle_callback(
+            _req({"state": oauth._make_state(), "code": "auth-code"})
+        )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "https://f.example/settings/bots?slack_install_error=1"
+    )

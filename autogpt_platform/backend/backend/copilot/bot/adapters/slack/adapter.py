@@ -25,6 +25,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.web.async_client import AsyncWebClient
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
@@ -37,11 +38,7 @@ from backend.copilot.bot.adapters.base import (
     read_verified_webhook_body,
     unauthorized_webhook_response,
 )
-from backend.copilot.bot.adapters.shared import (
-    InboundFile,
-    budget_history,
-    collect_attachments,
-)
+from backend.copilot.bot.adapters.shared import InboundFile, collect_attachments
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
@@ -51,7 +48,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import commands, config, oauth, signing
+from . import commands, config, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
@@ -75,10 +72,10 @@ _CHANNEL_ID_RE = re.compile(r"^[CGD][A-Z0-9]{7,}$")
 # OAuth callback only evicts the replica that handled it.
 _CLIENT_CACHE_TTL_SECONDS = 15 * 60
 
-# First @-mention into an existing thread pulls its history for context —
-# conversations.replies page cap, then char-budgeted like Discord's.
-_THREAD_HISTORY_LIMIT = 1000
-_THREAD_HISTORY_CHAR_BUDGET = 24000
+# Allowlisted @-mentions are stashed behind this while the text is escaped,
+# then swapped for live <@Uid> tokens (see _render). Input NULs are stripped
+# first, so every NUL pair is a placeholder whatever the id alphabet.
+_MENTION_STASH_RE = re.compile(r"\x00([^\x00]+)\x00")
 
 
 class SlackAdapter(WebhookAdapter):
@@ -249,10 +246,9 @@ class SlackAdapter(WebhookAdapter):
             and event.get("thread_ts")
         ):
             # Reply in a channel thread without an @mention — the handler checks
-            # thread-subscription state and ignores it if it isn't ours. "group"
-            # is Slack's channel_type for private channels; without it the bot
-            # answers the first mention there, subscribes the thread, then never
-            # sees a follow-up.
+            # thread-subscription state and ignores it if it isn't ours. Slack
+            # types private channels "group" (needs groups:history to arrive);
+            # multi-person DMs ("mpim") are deliberately not handled.
             ctx = await self._build_context(event, team_id, bot_mentioned=False)
         if ctx is None:
             return
@@ -288,13 +284,12 @@ class SlackAdapter(WebhookAdapter):
             channel_type = "channel"
         target_channel_id = _encode_target(team, channel, thread_ts)
 
-        # Mirror of Discord: an @mention into an existing thread carries the
-        # thread's prior messages so the model has context (the handler only
-        # folds them in when the thread isn't ours).
+        # An @mention into an existing thread carries the thread's prior human
+        # messages so the model has context for the conversation above it.
         thread_history: tuple[MessageHistoryEntry, ...] = ()
         if bot_mentioned and thread_ts and not is_dm:
             thread_history = await self._thread_history(
-                team, channel, thread_ts, exclude_ts=ts
+                team, channel, thread_ts, target_channel_id, exclude_ts=ts
             )
 
         attachments, skipped = await self._extract_attachments(team, event)
@@ -316,40 +311,37 @@ class SlackAdapter(WebhookAdapter):
         )
 
     async def _thread_history(
-        self, team: str, channel: str, thread_ts: str, *, exclude_ts: str
+        self,
+        team: str,
+        channel: str,
+        thread_ts: str,
+        target_id: str,
+        *,
+        exclude_ts: str,
     ) -> tuple[MessageHistoryEntry, ...]:
+        # The handler only folds history in for a thread the bot doesn't own
+        # (its own threads' turns already live in the session), so don't pay
+        # for a fetch it would discard.
+        if await threads.is_subscribed(self.platform_name, target_id):
+            return ()
         client = await self._client_for(team)
         if client is None:
             return ()
-        bot_id = await self._bot_user_id_for(team)
         try:
-            resp = await client.conversations_replies(
-                channel=channel, ts=thread_ts, limit=_THREAD_HISTORY_LIMIT
+            return await history.fetch_thread_history(
+                client,
+                channel=channel,
+                thread_ts=thread_ts,
+                exclude_ts=exclude_ts,
+                bot_user_id=await self._bot_user_id_for(team),
+                display_name=lambda uid: self._user_display_name(team, uid),
+                strip_mentions=lambda text: self._strip_mentions(team, text),
             )
         except Exception:
-            logger.warning("Could not fetch Slack thread history", exc_info=True)
+            # History is optional context; it must never cost the user their
+            # turn, so answer without it rather than drop the message.
+            logger.warning("Slack thread history failed; skipping", exc_info=True)
             return ()
-        messages = list(resp.get("messages") or [])
-
-        async def _entries():
-            # conversations.replies is oldest-first; budget_history needs
-            # newest-first so the budget keeps the recent end.
-            for m in reversed(messages):
-                if m.get("ts") == exclude_ts:
-                    continue
-                user = m.get("user")
-                if not user or m.get("bot_id") or (bot_id and user == bot_id):
-                    continue
-                text = await self._strip_mentions(team, m.get("text") or "")
-                if not text:
-                    continue
-                yield MessageHistoryEntry(
-                    username=await self._user_display_name(team, user),
-                    user_id=user,
-                    text=text,
-                )
-
-        return await budget_history(_entries(), char_budget=_THREAD_HISTORY_CHAR_BUDGET)
 
     async def _extract_attachments(
         self, team_id: str, event: dict[str, Any]
@@ -389,14 +381,17 @@ class SlackAdapter(WebhookAdapter):
     # -- Outbound --
 
     def _render(self, text: str, mentionable_users: tuple[tuple[str, str], ...]) -> str:
-        # Localize first — to_mrkdwn escapes &/</>, neutralizing any raw
-        # <!channel>/<@Uid> in model output — THEN inject allowlisted
-        # @-mentions as <@Uid> so only those survive as live pings.
-        localized = self.localize_markup(text)
-        rendered, _pinged = resolve_mentions(
-            localized, mentionable_users, lambda _name, uid: f"<@{uid}>"
+        # Match @names on the canonical text (display names are raw, and
+        # to_mrkdwn would escape & < > in both), stash the hits behind NUL
+        # placeholders that survive the escaping, then swap in live <@Uid>
+        # tokens. Anything else shaped like <@Uid> or <!channel> arrives
+        # escaped, so only allowlisted names ever ping.
+        resolved, _pinged = resolve_mentions(
+            text.replace("\x00", ""),
+            mentionable_users,
+            lambda _name, uid: f"\x00{uid}\x00",
         )
-        return rendered
+        return _MENTION_STASH_RE.sub(r"<@\1>", self.localize_markup(resolved))
 
     async def send_message(
         self,
@@ -576,9 +571,13 @@ class SlackAdapter(WebhookAdapter):
         if client is None:
             return None
         first_ts = thread_ts
-        for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
+        # Chunk the canonical markdown, then localize each chunk: a cut through
+        # escaped text could bisect an entity or a <url|label> link.
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
             resp = await client.chat_postMessage(
-                channel=channel, text=chunk, thread_ts=first_ts
+                channel=channel,
+                text=self.localize_markup(chunk),
+                thread_ts=first_ts,
             )
             if first_ts is None:
                 first_ts = resp.get("ts")

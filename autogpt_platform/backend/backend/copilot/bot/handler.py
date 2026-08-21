@@ -65,10 +65,12 @@ class MessageHandler:
         self._session_locks: dict[str, asyncio.Lock] = {}
 
     async def handle(self, ctx: MessageContext, adapter: PlatformAdapter) -> None:
-        # A message whose only content was attachments the adapter had to skip
-        # (too large / failed download) falls through: the problem report below
-        # tells the user instead of silence or a misleading nudge.
-        if not ctx.text.strip() and not ctx.attachments and not ctx.skipped_attachments:
+        # Skipped attachments (too large / failed download) count as content:
+        # the user sent something and must hear why nothing happened.
+        has_content = bool(
+            ctx.text.strip() or ctx.attachments or ctx.skipped_attachments
+        )
+        if not has_content:
             if ctx.channel_type == "channel":
                 await adapter.send_reply(
                     ctx.channel_id,
@@ -93,6 +95,13 @@ class MessageHandler:
                 include_thread_history = True
 
         if not await self._ensure_linked(ctx, adapter):
+            return
+
+        if not ctx.text.strip() and not ctx.attachments:
+            # Nothing usable survived the adapter, so there is no turn to run.
+            # Say so in place: resolving a target first would open a thread
+            # (a real, visible one on Discord) just to hold the note.
+            await self._report_skipped_only(ctx, adapter)
             return
 
         target_id = await self._resolve_target(ctx, adapter)
@@ -165,6 +174,22 @@ class MessageHandler:
         await self._enqueue_and_process(
             ctx, adapter, target_id, message_text, file_ids, session_id
         )
+
+    async def _report_skipped_only(
+        self, ctx: MessageContext, adapter: PlatformAdapter
+    ) -> None:
+        self._api.track_event(
+            platform=ctx.platform,
+            event_type="message_received",
+            server_id=ctx.server_id,
+            channel_type=ctx.channel_type,
+            char_count=0,
+        )
+        note = format_attachment_problems(list(ctx.skipped_attachments))
+        if ctx.channel_type == "channel":
+            await adapter.send_reply(ctx.channel_id, note, ctx.message_id)
+        else:
+            await adapter.send_message(ctx.channel_id, note)
 
     # -- Session + target resolution --
 

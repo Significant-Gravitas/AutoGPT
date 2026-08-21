@@ -22,6 +22,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from backend.data.bot_analytics import record_guild_joined
 from backend.data.bot_installs import upsert_bot_install
@@ -47,6 +48,7 @@ _SCOPES = (
     "files:read",
     "files:write",
     "groups:history",
+    "groups:read",
     "im:history",
     "im:read",
     "im:write",
@@ -129,13 +131,14 @@ async def _handle_callback(
             redirect_uri=_redirect_uri(),
         )
     except SlackApiError as e:
-        # The SDK raises on ok:false (expired/reused code, bad secret) — route
-        # it to the graceful redirect instead of a raw 500 in the browser.
-        logger.warning("Slack oauth.v2.access failed: %s", e)
-        return _done(ok=False, detail="exchange failed")
-    if not resp.get("ok"):
-        logger.warning("Slack oauth.v2.access failed: %s", resp.get("error"))
-        return _done(ok=False, detail=resp.get("error") or "exchange failed")
+        # The SDK raises on ok:false (expired/reused code, bad secret); the
+        # error code is the one actionable signal an operator gets.
+        return _exchange_failed(_slack_error_code(e))
+    except Exception as e:
+        # slack_sdk re-raises raw aiohttp/asyncio errors on transport failure
+        # (timeout, DNS, proxy outage) — same graceful landing, never a 500.
+        logger.warning("Slack oauth.v2.access request failed", exc_info=True)
+        return _exchange_failed(type(e).__name__)
 
     team = resp.get("team") or {}
     install = _Install(
@@ -154,6 +157,19 @@ async def _handle_callback(
     if user_id:
         await _mark_install_pending(user_id, install)
     return _post_install_response(install)
+
+
+def _exchange_failed(error: str | None) -> Response:
+    detail = error or "exchange failed"
+    logger.warning("Slack oauth.v2.access failed: %s", detail)
+    return _done(ok=False, detail=detail)
+
+
+def _slack_error_code(e: SlackApiError) -> str | None:
+    # ``response`` is a parsed Slack response for an ok:false body, but a raw
+    # aiohttp response (or a str body) for a malformed / non-JSON one.
+    data = e.response.data if isinstance(e.response, AsyncSlackResponse) else e.response
+    return data.get("error") if isinstance(data, dict) else None
 
 
 class _Install(BaseModel):
