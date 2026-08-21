@@ -28,6 +28,7 @@ from backend.integrations.codex.access import (
     CODEX_MINIMUM_PLAN_ERROR,
     has_codex_access_for_discovery,
 )
+from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
@@ -60,6 +61,10 @@ class ConnectionTier(BaseModel):
     label: str
     selectable: bool
     display_model: str | None = None
+    # Why this tier cannot be picked, when it cannot. Advanced is a paid
+    # tier on hosted, so the row stays visible and says what unlocks it --
+    # hiding it would remove the upgrade reason it exists to create.
+    lock_reason: str | None = None
 
 
 class AIConnectionOffer(BaseModel):
@@ -102,8 +107,9 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     mode = "thinking" if use_sdk else "fast"
     models = await _platform_tier_models(mode, user_id, config)
     codex_models = _codex_tier_models(mode)
+    advanced_allowed = await _advanced_tier_allowed(user_id)
     offers = [
-        _offer(transport, models, codex_models)
+        _offer(transport, models, codex_models, advanced_allowed)
         for transport in await get_chat_transports(user_id)
     ]
     locked = await _locked_codex_offer(user_id, offers)
@@ -192,6 +198,25 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
     return f"{transport.auth_provider}:{transport.credential_id or 'deployment'}"
 
 
+ADVANCED_TIER_LOCK_REASON = "A Max plan or higher is required for Advanced."
+
+
+async def _advanced_tier_allowed(user_id: str) -> bool:
+    """Whether this user may pick the Advanced tier.
+
+    A failure to resolve the entitlement leaves the tier open rather than
+    locked: a billing hiccup should not silently downgrade someone's model.
+    """
+    try:
+        return await has_entitlement(user_id, Entitlement.ADVANCED_MODEL_TIER)
+    except Exception:
+        logger.warning(
+            "Could not resolve the Advanced tier entitlement; leaving it open",
+            exc_info=True,
+        )
+        return True
+
+
 def _display_name(slug: str | None) -> str | None:
     """What the catalog calls this model, rather than its slug.
 
@@ -224,6 +249,7 @@ def _offer(
     transport: ChatTransportResponse,
     platform_models: dict[CopilotLLMModel, str | None],
     codex_models: dict[CopilotLLMModel, str | None],
+    advanced_allowed: bool,
 ) -> AIConnectionOffer:
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
@@ -240,11 +266,18 @@ def _offer(
             ConnectionTier(
                 tier=tier,
                 label=label,
-                selectable=transport.available,
+                selectable=(
+                    transport.available and (advanced_allowed or tier != "advanced")
+                ),
                 display_model=(
                     platform_models.get(tier)
                     if transport.auth_provider == "platform"
                     else codex_models.get(tier)
+                ),
+                lock_reason=(
+                    None
+                    if advanced_allowed or tier != "advanced"
+                    else ADVANCED_TIER_LOCK_REASON
                 ),
             )
             for tier, label in TIER_LABELS.items()

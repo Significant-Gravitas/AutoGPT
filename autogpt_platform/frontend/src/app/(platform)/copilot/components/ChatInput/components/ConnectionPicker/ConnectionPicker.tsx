@@ -13,7 +13,15 @@ import {
 } from "react-icons/pi";
 
 import { ChoiceRow } from "./ChoiceRow";
-import { offerSubtitle, tierLabel, tierModel, tierName } from "./helpers";
+import {
+  isLinkedAccount,
+  offerSubtitle,
+  tierLabel,
+  tierModel,
+  tierName,
+  tierLock,
+  tierSummary,
+} from "./helpers";
 import { useConnectionPicker } from "./useConnectionPicker";
 
 const TIERS = ["standard", "advanced"] as const;
@@ -111,7 +119,10 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
                   key={offer.offer_id}
                   title={offer.display_name}
                   subtitle={offerSubtitle(offer)}
-                  notes={offer.limitations}
+                  badge={isLinkedAccount(offer) ? "Connected" : undefined}
+                  notes={[tierSummary(offer), ...offer.limitations].filter(
+                    Boolean,
+                  )}
                   isSelected={offer.offer_id === active?.offer_id}
                   onSelect={() => chooseConnection(offer)}
                   lock={
@@ -140,6 +151,7 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
                   label={tierLabel(active, candidate)}
                   isSelected={tier === candidate}
                   onSelect={() => setTier(candidate)}
+                  lock={tierLock(active, candidate)}
                 />
               ))}
             </div>
