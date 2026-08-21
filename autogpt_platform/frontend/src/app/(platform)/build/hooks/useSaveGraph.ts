@@ -22,17 +22,22 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+import { getTeamRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
   onSuccess?: (graph: GraphModel) => void;
   onError?: (error: any) => void;
+  // Team to own a newly created agent (org-home when null). Only applied on
+  // the create-new path — updating an existing graph never re-parents it.
+  teamId?: string | null;
 };
 
 export const useSaveGraph = ({
   showToast = true,
   onSuccess,
   onError,
+  teamId = null,
 }: SaveGraphOptions) => {
   const { toast } = useToast();
 
@@ -58,6 +63,7 @@ export const useSaveGraph = ({
 
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
+      request: getTeamRequestInit(teamId),
       mutation: {
         onSuccess: async (response) => {
           const data = response.data as GraphModel;

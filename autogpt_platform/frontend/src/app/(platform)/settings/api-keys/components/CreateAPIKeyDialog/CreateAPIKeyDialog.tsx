@@ -12,8 +12,16 @@ interface Props {
 }
 
 export function CreateAPIKeyDialog({ open, onOpenChange }: Props) {
-  const { form, view, plainTextKey, isPending, handleSubmit, handleClose } =
-    useCreateAPIKeyForm({ onClose: () => onOpenChange(false) });
+  const {
+    form,
+    view,
+    plainTextKey,
+    isPending,
+    handleSubmit,
+    handleClose,
+    teamId,
+    setTeamId,
+  } = useCreateAPIKeyForm({ onClose: () => onOpenChange(false) });
 
   const isSuccess = view === "success";
   const title = isSuccess ? "Your new API key" : "Create API key";
@@ -45,6 +53,8 @@ export function CreateAPIKeyDialog({ open, onOpenChange }: Props) {
             form={form}
             onSubmit={handleSubmit}
             isPending={isPending}
+            teamId={teamId}
+            setTeamId={setTeamId}
           />
         )}
       </Dialog.Content>
