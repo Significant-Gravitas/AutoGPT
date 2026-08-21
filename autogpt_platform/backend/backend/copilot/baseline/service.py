@@ -2476,6 +2476,7 @@ async def stream_chat_completion_baseline(
             _failed_session,
             error_msg,
             retryable=failure.retryable if failure is not None else True,
+            failure=failure.as_part() if failure is not None else None,
         ):
             try:
                 await upsert_chat_session(_failed_session)
