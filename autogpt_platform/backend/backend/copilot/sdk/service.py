@@ -4372,10 +4372,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+        if not (
+            user_id
+            and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+        ):
             # The whole expert-team surface rides the hire-experts flag:
-            # without it, no session gets the team tools on either side of
-            # expert_id.
+            # without it (fail closed for anonymous turns), no session gets
+            # the team tools on either side of expert_id.
             disabled_tool_groups.extend(["experts", "expert_admin", "delegation"])
         elif not session.expert_id:
             disabled_tool_groups.append("experts")
