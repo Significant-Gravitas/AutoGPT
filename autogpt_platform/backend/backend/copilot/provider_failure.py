@@ -123,6 +123,34 @@ class ProviderFailure(BaseModel):
         }
 
 
+# Codex failures arrive carrying an internal code as their message
+# ("codex_credential_busy"), which is a log line, not something to show a
+# person. These say the same thing in the user's terms, and say what to do.
+_CODEX_MESSAGES: dict[type[BaseException], str] = {
+    # Deliberately does not say "only one chat at a time": the credential
+    # lock is currently held for the whole of every chat, but it is only
+    # needed for sign-in and refresh. Wording this as a rule would enshrine
+    # a limitation that is meant to go away.
+    CodexCredentialBusyError: (
+        "This ChatGPT connection is in use by another chat right now. "
+        "Try again in a moment."
+    ),
+    CodexCredentialIntegrityError: (
+        "This ChatGPT connection can't be used. Reconnect the account in "
+        "Settings, then send this again."
+    ),
+    CodexTransportOverloadedError: (
+        "ChatGPT is busy right now. Try again in a moment."
+    ),
+    CodexInvocationTimeoutError: ("ChatGPT took too long to respond. Try again."),
+}
+
+
+def _humanize(exc: BaseException) -> str | None:
+    """A user-facing sentence for a failure whose own message is a code."""
+    return _CODEX_MESSAGES.get(type(exc))
+
+
 def classify(
     exc: BaseException,
     *,
@@ -142,7 +170,7 @@ def classify(
         return None
     return ProviderFailure(
         kind=kind,
-        message=message or str(exc) or type(exc).__name__,
+        message=message or _humanize(exc) or str(exc) or type(exc).__name__,
         auth_provider=auth_provider,
         credential_id=credential_id,
         resets_at=_resets_at(exc),
