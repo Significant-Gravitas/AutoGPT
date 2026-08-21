@@ -7,6 +7,7 @@ import {
   type AuthMethod,
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+import { getConnectableCredentialTypes } from "@/hooks/useCredentials";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 import { useConnectCredentialDialog } from "./useConnectCredentialDialog";
@@ -55,9 +56,9 @@ export function ConnectCredentialDialog({
     id: provider,
     name: displayName,
     description: null,
-    supportedAuthTypes: (schema.credentials_types ?? []).filter(
-      (t): t is AuthMethod => KNOWN_AUTH_METHODS.has(t as AuthMethod),
-    ),
+    supportedAuthTypes: getConnectableCredentialTypes(
+      schema.credentials_types ?? [],
+    ).filter((t): t is AuthMethod => KNOWN_AUTH_METHODS.has(t as AuthMethod)),
   };
 
   return (
@@ -78,6 +79,7 @@ export function ConnectCredentialDialog({
             onSelectMethod={setSelectedMethod}
             apiKeyForm={apiKeyForm}
             onApiKeySubmit={handleApiKeySubmit}
+            onDeviceAuthSuccess={handleClose}
           />
           <div className="flex items-center justify-end gap-3">
             <Button variant="secondary" size="small" onClick={handleClose}>

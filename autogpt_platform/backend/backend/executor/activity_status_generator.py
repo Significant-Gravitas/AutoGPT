@@ -50,6 +50,13 @@ INSUFFICIENT_BALANCE_SUMMARY = (
     "This run couldn't complete because there weren't enough credits available. "
     f"{INSUFFICIENT_BALANCE_GUIDANCE}"
 )
+ENTITLEMENT_REQUIRED_GUIDANCE = (
+    "Upgrade the plan, or switch the step to an option your plan includes."
+)
+ENTITLEMENT_REQUIRED_SUMMARY = (
+    "This run couldn't complete because it used a feature the current plan "
+    f"doesn't include. {ENTITLEMENT_REQUIRED_GUIDANCE}"
+)
 
 
 # Default system prompt template for activity status generation
@@ -219,6 +226,12 @@ def _get_deterministic_failure_response(
     if execution_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE:
         return {
             "activity_status": INSUFFICIENT_BALANCE_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    if execution_stats.failure_reason == ExecutionFailureReason.ENTITLEMENT_REQUIRED:
+        return {
+            "activity_status": ENTITLEMENT_REQUIRED_SUMMARY,
             "correctness_score": 0.0,
         }
 

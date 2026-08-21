@@ -5,6 +5,7 @@ import contextvars
 import json
 import logging
 import uuid
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import field_validator
@@ -95,6 +96,24 @@ CodexAutoPilotCredentials = CredentialsMetaInput[
 ]
 
 
+class AutoPilotTransport(str, Enum):
+    """Which account pays for the model calls this block makes.
+
+    `platform` spends AutoGPT credits; `codex_app_server` spends the user's own
+    ChatGPT subscription. Because the two bill differently, the choice is
+    explicit rather than inferred from whether a credential happens to be set.
+    """
+
+    PLATFORM = "platform"
+    CODEX_APP_SERVER = "codex_app_server"
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        json_schema["enumNames"] = ["AutoGPT Platform", "ChatGPT"]
+        return json_schema
+
+
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
@@ -133,14 +152,29 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
+        transport: AutoPilotTransport | None = SchemaField(
+            title="Transport",
+            default=None,
+            placeholder="Select a transport",
+            description=(
+                "Run on platform credits, or on your connected ChatGPT "
+                "subscription if supported by your plan."
+            ),
+            advanced=False,
+        )
+
         codex_credentials: CodexAutoPilotCredentials = CredentialsField(
             title="ChatGPT / Codex connection",
-            description=(
-                "Optional connected ChatGPT plan. Leave empty to use the "
-                "normal platform-funded AutoPilot transport."
-            ),
+            description="Connected ChatGPT subscription used by the Codex transport.",
             default=None,
             credential_reference_only=True,
+            discriminator="transport",
+            # `platform` is deliberately absent: it needs no credential at all,
+            # and an unmapped discriminator value makes the credential input
+            # hide itself rather than asking for something that does not exist.
+            discriminator_mapping={
+                AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
             json_schema_extra={
                 "secret": True,
                 "advanced": False,
@@ -501,6 +535,37 @@ class AutoPilotBlock(Block):
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
         codex_connection = input_data.codex_credentials
+        # `transport` is optional precisely so "never chosen" stays
+        # distinguishable from "deliberately platform". A filled-in default
+        # cannot express that difference, and reading one as a real choice
+        # would silently move legacy agents onto platform credits.
+        if input_data.transport is None:
+            # Saved before the field existed: the connection *is* the choice.
+            use_codex = codex_connection is not None
+            if use_codex:
+                logger.warning(
+                    "AutoPilot node has a ChatGPT connection but no transport "
+                    "set — billing to the connection. Run "
+                    "`python -m backend.data.autopilot_migrate --apply`."
+                )
+        elif input_data.transport == AutoPilotTransport.CODEX_APP_SERVER:
+            if codex_connection is None:
+                # Falling back to platform here would bill a different account
+                # than the one the user asked for, without saying so.
+                yield "error", (
+                    "The ChatGPT transport needs a connected ChatGPT account. "
+                    "Connect one, or switch this step to platform credits."
+                )
+                return
+            use_codex = True
+        elif input_data.transport == AutoPilotTransport.PLATFORM:
+            # Explicit platform: honour it even if a connection is still
+            # attached, otherwise the user cannot move a step back onto
+            # platform credits once codex has been configured.
+            use_codex = False
+        else:
+            yield "error", f"Unsupported AutoPilot transport: {input_data.transport}"
+            return
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
@@ -508,27 +573,39 @@ class AutoPilotBlock(Block):
                 dry_run=input_data.dry_run or execution_context.dry_run,
                 organization_id=execution_context.organization_id,
                 team_id=execution_context.team_id,
-                llm_auth_provider=(
-                    "codex" if codex_connection is not None else "platform"
-                ),
-                llm_credential_id=(
-                    codex_connection.id if codex_connection is not None else None
-                ),
+                llm_auth_provider=("codex" if use_codex else "platform"),
+                llm_credential_id=(codex_connection.id if use_codex else None),
             )
-        elif codex_connection is not None:
-            from backend.copilot.model import get_chat_session
+        else:
+            # Validate on every resume, not just codex ones. Gating this on
+            # `use_codex` let an explicit `platform` node resume a session that
+            # was created against codex, which then billed the ChatGPT
+            # subscription the user had just opted out of.
+            from backend.copilot.model import get_chat_session_metadata
 
-            existing_session = await get_chat_session(
+            existing_session = await get_chat_session_metadata(
                 sid,
                 execution_context.user_id,
             )
-            if not (
-                existing_session is not None
-                and existing_session.metadata.llm_auth_provider == "codex"
-                and existing_session.metadata.llm_credential_id == codex_connection.id
+            if existing_session is None:
+                yield "session_id", sid
+                yield "error", (
+                    "The AutoPilot session was not found. Start a new session "
+                    "or check that the session ID belongs to this account."
+                )
+                return
+
+            expected_provider = "codex" if use_codex else "platform"
+            expected_credential = codex_connection.id if use_codex else None
+            if (
+                existing_session.metadata.llm_auth_provider != expected_provider
+                or existing_session.metadata.llm_credential_id != expected_credential
             ):
                 yield "session_id", sid
-                yield "error", "codex_session_route_mismatch"
+                yield "error", (
+                    "The AutoPilot session uses a different transport or connection. "
+                    "Start a new session for this selection."
+                )
                 return
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own

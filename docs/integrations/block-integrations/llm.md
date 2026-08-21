@@ -597,7 +597,7 @@ Choose `codex_app_server` to use a connected ChatGPT plan. This path requires ma
 |-------|-------------|------|----------|
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
 | system_prompt | Optional instructions passed to the selected Codex transport. | str | No |
-| transport | Use an OpenAI API key or your connected ChatGPT plan through Codex App Server. | "openai_api" \| "codex_app_server" | No |
+| transport | Use an OpenAI API key, or your connected ChatGPT subscription through Codex App Server if supported by your plan. | "openai_api" \| "codex_app_server" | No |
 | model | OpenAI API transport only. Codex App Server selects the current subscription model from its live model catalog. | "gpt-5.6-sol" \| "gpt-5.6-terra" \| "gpt-5.6-luna" \| "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
 | reasoning_effort | Controls the selected transport's reasoning effort. OpenAI API does not support 'ultra'; select 'none' to omit reasoning config. | "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
 | max_output_tokens | OpenAI API transport only: upper bound for generated tokens (hard limit 128,000). Codex App Server uses its model and plan limits. | int | No |

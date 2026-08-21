@@ -389,6 +389,33 @@ class GraphMeta(GraphBaseMeta):
         )
 
 
+def _mappable_discriminator_default(
+    input_schema: "AnyBlockSchema",
+    field_info: CredentialsFieldInfo,
+) -> Any:
+    """The discriminator's schema default, or None if it can't discriminate.
+
+    Read from the serialized schema rather than the model field so the value is
+    a plain JSON scalar matching `discriminator_mapping` keys instead of a
+    Python enum member. Returns None unless the default is actually present in
+    the mapping, because `discriminate()` raises on unknown values and this
+    runs inside a computed_field where raising would break schema generation.
+    """
+    discriminator = field_info.discriminator
+    mapping = field_info.discriminator_mapping
+    if not discriminator or not mapping:
+        return None
+
+    # `.get`, not indexing: a schema with no properties at all would raise
+    # here, and this runs inside a computed_field where that breaks schema
+    # generation for the whole graph — the failure mode this helper's
+    # None-returning contract exists to avoid.
+    properties = input_schema.jsonschema().get("properties", {})
+    field_schema = properties.get(discriminator, {})
+    default = field_schema.get("default")
+    return default if default in mapping else None
+
+
 class GraphModel(Graph, GraphMeta):
     """
     Full graph model representing an existing graph from the database.
@@ -552,6 +579,11 @@ class GraphModel(Graph, GraphMeta):
         node_required_map: dict[str, bool] = {}  # node_id -> is_required
 
         for graph in [self] + self.sub_graphs:
+            linked_inputs = {
+                (link.sink_id, sanitize_pin_name(link.sink_name))
+                for link in graph.links
+            }
+
             for node in graph.nodes:
                 # A node's credentials are optional if either:
                 # 1. The node metadata says so (credentials_optional=True), or
@@ -574,9 +606,57 @@ class GraphModel(Graph, GraphMeta):
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
-                    discriminator_value = node.input_default.get(discriminator)
+                    discriminator_is_linked = (
+                        node.id,
+                        sanitize_pin_name(discriminator),
+                    ) in linked_inputs
+                    # An upstream link overrides the saved/default value at
+                    # runtime, so its value is unknown during aggregation.
+                    discriminator_value = (
+                        None
+                        if discriminator_is_linked
+                        else node.input_default.get(discriminator)
+                    )
+                    if (
+                        discriminator_value is None
+                        and field_info.discriminator_type_mapping
+                        and not discriminator_is_linked
+                    ):
+                        # The node hasn't pinned the discriminator, but the
+                        # executor will: it builds `input_schema(**input_default)`,
+                        # so pydantic fills the schema default. Resolve it the
+                        # same way here.
+                        #
+                        # Only when the credential TYPE depends on the
+                        # discriminator. There the un-discriminated union is a
+                        # cross-product that asserts pairs which don't exist
+                        # (e.g. codex+api_key, openai+oauth2). For mapping-only
+                        # discriminators the type set is a singleton, so the
+                        # union is faithful and is left alone — its slot key is
+                        # what persisted preset/schedule credentials are keyed by.
+                        discriminator_value = _mappable_discriminator_default(
+                            node.block.input_schema, field_info
+                        )
+
                     if discriminator_value is None:
                         node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    # A selection that needs no credential contributes no slot.
+                    # Discriminating on it would raise, and this runs inside a
+                    # computed_field where that breaks schema generation for
+                    # the whole graph.
+                    #
+                    # Only for an optional field. A *required* credential whose
+                    # discriminator maps to nothing is not "credit-funded", it
+                    # is broken — a node pinned to a since-removed LLM model
+                    # lands here, and `discriminate()` raising is what produces
+                    # the actionable "Model 'X' is not supported. It may have
+                    # been deprecated." Skipping instead would drop the slot
+                    # silently and the run form would never ask for the key.
+                    if field_name not in block_required and not (
+                        field_info.requires_credentials(discriminator_value)
+                    ):
                         continue
 
                     discriminated_info = field_info.discriminate(discriminator_value)
@@ -974,22 +1054,39 @@ class GraphModel(Graph, GraphMeta):
                 if for_run:
                     dependencies.extend(field_json_schema.get("depends_on", []))
 
-                # Require presence of credentials discriminator (always).
+                field_is_required = field_name in required_fields
+
+                # Require presence of credentials discriminator.
                 # The `discriminator` is either the name of a sibling field (str),
                 # or an object that discriminates between possible types for this field:
                 # {"propertyName": prop_name, "mapping": {prop_value: sub_schema}}
+                #
+                # Skipped only when both the credentials field and the
+                # discriminator are optional, which is exactly the shape of a
+                # node saved before the discriminator was added: it carries a
+                # credential and no discriminator value. Erroring on it made
+                # every such graph unsaveable, unrunnable and unimportable —
+                # naming a field their exported JSON does not contain — while
+                # the block itself already defines what "unset" means.
+                #
+                # `has_value` treats any field with a schema default as set
+                # (a required field's default is `PydanticUndefined`, which is
+                # not None), so in practice this check only ever fires for a
+                # discriminator declared `default=None`. The kept branch is
+                # therefore defensive: a *required* credential whose provider
+                # cannot be determined is unresolvable, and no block declares
+                # that shape today.
                 if (
-                    discriminator := field_json_schema.get("discriminator")
-                ) and isinstance(discriminator, str):
+                    (discriminator := field_json_schema.get("discriminator"))
+                    and isinstance(discriminator, str)
+                    and (field_is_required or discriminator in required_fields)
+                ):
                     dependencies.append(discriminator)
 
                 if not dependencies:
                     continue
 
-                # Check if dependent field has value in input_default
                 field_has_value = has_value(node, field_name)
-                field_is_required = field_name in required_fields
-
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
