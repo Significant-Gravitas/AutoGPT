@@ -57,6 +57,7 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import PooledCodexRuntimeLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotLLMModel, CopilotMode
@@ -83,6 +84,7 @@ from ..model import (
     ChatMessage,
     ChatSession,
     get_chat_session,
+    clear_pending_question,
     maybe_append_user_message,
     upsert_chat_session,
 )
@@ -4085,6 +4087,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if message:
         message = strip_user_context_tags(message)
 
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message:
+        await clear_pending_question(session)
+
     _user_message_appended = maybe_append_user_message(
         session, message, is_user_message
     )
@@ -4364,8 +4372,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
-        if not session.expert_id:
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+            # The whole expert-team surface rides the hire-experts flag:
+            # without it, no session gets the team tools on either side of
+            # expert_id.
+            disabled_tool_groups.extend(["experts", "expert_admin", "delegation"])
+        elif not session.expert_id:
             disabled_tool_groups.append("experts")
+        else:
+            # Staffing is the user's call in the Autopilot chat, so the inverse
+            # gate to "experts": an expert session never sees hire/raise/confirm.
+            disabled_tool_groups.append("expert_admin")
 
         # Hide both permission-denied tools AND group-disabled tools at
         # registration. ``allowed_tools`` filtering alone routes group-

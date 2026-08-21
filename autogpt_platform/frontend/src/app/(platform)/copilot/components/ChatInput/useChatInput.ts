@@ -1,4 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
@@ -22,6 +23,9 @@ export function useChatInput({
   const isSubmittingRef = useRef(false);
   const { initialPrompt, setInitialPrompt, notifyMessageSent } =
     useCopilotUIStore();
+  // Eager clear-and-restore ships with the new tool UI; the old UI keeps
+  // its clear-after-send behaviour (and lets a failed send propagate).
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
 
   useEffect(
     function consumeInitialPrompt() {
@@ -65,10 +69,18 @@ export function useChatInput({
 
     isSubmittingRef.current = true;
     setIsSending(true);
+    // Clear eagerly: onSend can resolve only when the whole stream finishes,
+    // which would leave the sent text sitting in the composer for the entire
+    // turn. On failure the draft is restored — unless the user has already
+    // started typing their next message.
+    if (isNewToolUI) setValue("");
     try {
       await onSend(trimmedMessage);
-      setValue("");
+      if (!isNewToolUI) setValue("");
       notifyMessageSent();
+    } catch (error) {
+      if (!isNewToolUI) throw error;
+      setValue((current) => (current ? current : message));
     } finally {
       isSubmittingRef.current = false;
       setIsSending(false);

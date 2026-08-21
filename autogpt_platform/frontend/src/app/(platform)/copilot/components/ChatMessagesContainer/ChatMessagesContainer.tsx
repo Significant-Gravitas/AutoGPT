@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
   Conversation,
@@ -32,6 +33,8 @@ import {
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
+import { useCopilotUIStore } from "../../store";
+import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
@@ -347,6 +350,18 @@ export function ChatMessagesContainer({
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+  // The workspace-files card floats over the column's right side, so the
+  // centred content slides left to make room for it. The docked artifacts
+  // panel narrows the column by itself, so no slide there — double-shifting
+  // pushed the messages under the app sidebar. New tool UI only: the old
+  // UI's files tab IS the docked panel.
+  const areFilesOpen =
+    useCopilotUIStore(
+      (s) =>
+        s.artifactPanel.isOpen &&
+        s.artifactPanel.activeArtifact == null &&
+        s.artifactPanel.activeTab !== "artifacts",
+    ) && isNewToolUI;
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -514,21 +529,35 @@ export function ChatMessagesContainer({
     <>
       {/* Sits above the scroller rather than sticky inside it, so the bar
           spans the full chat width while its row stays aligned with the
-          max-w-3xl message column. */}
-      {expertIdentity && (
+          max-w-3xl message column. Under the new tool UI an expert session
+          wears the expert's identity and every other session is Autopilot's,
+          so the thread is never anonymous; the old UI keeps its header for
+          expert sessions only. */}
+      {isNewToolUI ? (
         <div
           data-testid="expert-thread-header"
-          className="z-10 w-full border-b border-zinc-200/60 bg-[#fafafa]/80 backdrop-blur-md"
+          className="z-10 w-full border-b border-b-[#80808017] bg-[#fafafa]/80 backdrop-blur-md"
         >
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 pb-3 pt-4">
+          <div
+            className={cn(
+              "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+              areFilesOpen && "xl:-translate-x-40",
+            )}
+          >
             <ExpertAvatar
-              name={expertIdentity.name}
-              avatarUrl={expertIdentity.avatarUrl}
+              name={expertIdentity?.name ?? "Autopilot"}
+              avatarUrl={expertIdentity?.avatarUrl ?? null}
+              isAutopilot={!expertIdentity}
             />
-            <span className="text-sm font-medium text-zinc-800">
-              {expertIdentity.name}
-            </span>
-            {!readOnly && !expertIdentity.isArchived && (
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-medium text-zinc-800">
+                {expertIdentity?.name ?? "Autopilot"}
+              </span>
+              <span className="truncate text-xs text-zinc-500">
+                {expertIdentity?.role ?? "Head of AI"}
+              </span>
+            </div>
+            {expertIdentity && !readOnly && !expertIdentity.isArchived && (
               <ExpertSchedulesButton
                 expertId={expertIdentity.id}
                 expertName={expertIdentity.name}
@@ -536,7 +565,32 @@ export function ChatMessagesContainer({
             )}
           </div>
         </div>
+      ) : (
+        expertIdentity && (
+          <div
+            data-testid="expert-thread-header"
+            className="z-10 w-full border-b border-zinc-200/60 bg-[#fafafa]/80 backdrop-blur-md"
+          >
+            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 pb-3 pt-4">
+              <ExpertAvatar
+                name={expertIdentity.name}
+                avatarUrl={expertIdentity.avatarUrl}
+                size="sm"
+              />
+              <span className="text-sm font-medium text-zinc-800">
+                {expertIdentity.name}
+              </span>
+              {!readOnly && !expertIdentity.isArchived && (
+                <ExpertSchedulesButton
+                  expertId={expertIdentity.id}
+                  expertName={expertIdentity.name}
+                />
+              )}
+            </div>
+          </div>
+        )
       )}
+      {isNewToolUI && <ChatMinimap messages={messages} />}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -548,7 +602,10 @@ export function ChatMessagesContainer({
         }
       >
         <ConversationContent
-          className="mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-4"
+          className={cn(
+            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-4 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            areFilesOpen && "xl:-translate-x-40",
+          )}
           style={
             bottomContentPadding
               ? { paddingBottom: bottomContentPadding + 24 }
@@ -763,7 +820,13 @@ export function ChatMessagesContainer({
                     );
                   })()}
                 {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <MessageActions
+                    className={cn(
+                      "mt-1 items-center justify-end gap-2",
+                      !isNewToolUI &&
+                        "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
+                    )}
+                  >
                     {(() => {
                       const createdAt = turnStats?.get(message.id)?.createdAt;
                       if (!createdAt) return null;
@@ -799,7 +862,13 @@ export function ChatMessagesContainer({
                   />
                 )}
                 {readOnly && showActions && (
-                  <MessageActions className="mt-1 items-center justify-start gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <MessageActions
+                    className={cn(
+                      "mt-1 items-center justify-start gap-2",
+                      !isNewToolUI &&
+                        "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
+                    )}
+                  >
                     <CopyButton
                       text={textParts.map((p) => p.text).join("\n")}
                     />

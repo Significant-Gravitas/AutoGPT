@@ -34,6 +34,7 @@ import {
   type ChainRow,
   getChainHeading,
   isLiftedSetupRow,
+  markSupersededSubSessionRows,
   toChainRow,
 } from "./helpers";
 import { SwapText } from "./SwapText";
@@ -96,18 +97,20 @@ export function ToolChain({ parts, isStreaming }: Props) {
 
   const rows = useMemo(
     () =>
-      parts
-        .map((part, i) => toChainRow(part, i))
-        .filter((row): row is ChainRow => row !== null)
-        // Unanswered clarifying questions and setup cards render their work
-        // in the card below the chain — their rows are lifted out of view.
-        .map((row) =>
-          pendingQuestions?.callIds.includes(row.key)
-            ? { ...row, requiresAction: true, lifted: true }
-            : isLiftedSetupRow(row)
-              ? { ...row, lifted: true }
-              : row,
-        ),
+      markSupersededSubSessionRows(
+        parts
+          .map((part, i) => toChainRow(part, i))
+          .filter((row): row is ChainRow => row !== null)
+          // Unanswered clarifying questions and setup cards render their work
+          // in the card below the chain — their rows are lifted out of view.
+          .map((row) =>
+            pendingQuestions?.callIds.includes(row.key)
+              ? { ...row, requiresAction: true, lifted: true }
+              : isLiftedSetupRow(row)
+                ? { ...row, lifted: true }
+                : row,
+          ),
+      ),
     [parts, pendingQuestions],
   );
   if (rows.length === 0) return null;
@@ -129,17 +132,20 @@ export function ToolChain({ parts, isStreaming }: Props) {
   // action rows visible, and the streaming window is disabled for them.
   const actionOnly = !open && hasRequiredAction;
   const panelOpen = open || actionOnly;
-  // Rows stay mounted while closed so the 0fr collapse can animate.
+  // Rows stay mounted while closed so the 0fr collapse can animate — but
+  // only the streaming window's rows. Mounting the full list the moment the
+  // stream ends would flood the collapsing panel with entering rows; the
+  // rest mount when the user actually expands.
   const visible = actionOnly
     ? shownRows.filter((row) => row.requiresAction)
-    : windowMode
+    : windowMode || !panelOpen
       ? shownRows.slice(-COLLAPSED_WINDOW)
       : shownRows;
 
   // A finished chain closes with a "Done" step, so the rail always ends on
   // a resolved node instead of trailing off the last tool. An errored or
   // still-running chain has no such ending.
-  const showDone = !isStreaming && !hasError && !windowMode;
+  const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
 
   const pendingActions = [...actionEntries.values()];
   const connectorRequests = pendingActions
@@ -214,7 +220,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={panelOpen ? undefined : ("" as unknown as boolean)}
+                inert={!panelOpen}
                 className="min-h-0 overflow-hidden"
               >
                 <div
@@ -224,51 +230,71 @@ export function ToolChain({ parts, isStreaming }: Props) {
                   }
                 >
                   <AnimatePresence mode="popLayout">
-                    {visible.map((row, i) => (
-                      <m.div
-                        key={row.key}
-                        layout={!reducedMotion}
-                        initial={
-                          reducedMotion
-                            ? false
-                            : { opacity: 0, y: 8, scale: 0.985 }
-                        }
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={
-                          reducedMotion
-                            ? undefined
-                            : { opacity: 0, y: -6, scale: 0.985 }
-                        }
-                        transition={{
-                          opacity: {
-                            duration: reducedMotion ? 0 : 0.18,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          y: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          scale: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            delay: reducedMotion ? 0 : Math.min(i, 6) * 0.035,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                          layout: {
-                            duration: reducedMotion ? 0 : 0.22,
-                            ease: [0.22, 1, 0.36, 1],
-                          },
-                        }}
-                      >
-                        <ChainActionsContext.Provider value={chainActions}>
-                          <ChainRowView
-                            row={row}
-                            isLast={i === visible.length - 1 && !showDone}
-                          />
-                        </ChainActionsContext.Provider>
-                      </m.div>
-                    ))}
+                    {visible.map((row, i) => {
+                      // While streaming the window slides on every tool, so
+                      // rows enter without stagger and leave quickly — the
+                      // stagger is for the settled list revealed on expand.
+                      // Post-stream mounts (manual expand) skip per-row
+                      // animation entirely; PANEL_REVEAL fades the panel.
+                      const stagger =
+                        reducedMotion || windowMode
+                          ? 0
+                          : Math.min(i, 6) * 0.035;
+                      const animateIn = !reducedMotion && isStreaming;
+                      return (
+                        <m.div
+                          key={row.key}
+                          layout={!reducedMotion}
+                          initial={
+                            animateIn
+                              ? { opacity: 0, y: 8, scale: 0.985 }
+                              : false
+                          }
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={
+                            reducedMotion
+                              ? undefined
+                              : {
+                                  opacity: 0,
+                                  y: -6,
+                                  scale: 0.985,
+                                  transition: {
+                                    duration: 0.12,
+                                    ease: [0.22, 1, 0.36, 1],
+                                  },
+                                }
+                          }
+                          transition={{
+                            opacity: {
+                              duration: reducedMotion ? 0 : 0.18,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            y: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            scale: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              delay: stagger,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                            layout: {
+                              duration: reducedMotion ? 0 : 0.22,
+                              ease: [0.22, 1, 0.36, 1],
+                            },
+                          }}
+                        >
+                          <ChainActionsContext.Provider value={chainActions}>
+                            <ChainRowView
+                              row={row}
+                              isLast={i === visible.length - 1 && !showDone}
+                            />
+                          </ChainActionsContext.Provider>
+                        </m.div>
+                      );
+                    })}
                   </AnimatePresence>
                   {showDone && (
                     <div className="flex items-stretch gap-2.5">

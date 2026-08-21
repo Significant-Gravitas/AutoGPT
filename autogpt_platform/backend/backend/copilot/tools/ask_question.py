@@ -1,9 +1,11 @@
 """AskQuestionTool - Ask the user one or more clarifying questions."""
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, PendingQuestion
+from backend.data.db_accessors import chat_db
 
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
@@ -88,10 +90,31 @@ class AskQuestionTool(BaseTool):
                 "ask_question requires at least one valid question in 'questions'"
             )
 
+        text = "; ".join(q.question for q in questions)
+        if session:
+            await _mark_pending(session, text)
         return ClarificationNeededResponse(
-            message="; ".join(q.question for q in questions),
+            message=text,
             session_id=session.session_id if session else None,
             questions=questions,
+        )
+
+
+async def _mark_pending(session: ChatSession, text: str) -> None:
+    """Park the question on the session so Home can surface it.
+
+    Best-effort: a failure here costs the user a "Needs You" row, and must
+    never cost them the answer they were about to be asked for.
+    """
+    asked_at = datetime.now(UTC)
+    session.metadata.pending_question = PendingQuestion(text=text, asked_at=asked_at)
+    try:
+        await chat_db().set_session_pending_question(session.session_id, text, asked_at)
+    except Exception as e:
+        logger.warning(
+            "Could not record pending question for session %s: %s",
+            session.session_id,
+            e,
         )
 
 

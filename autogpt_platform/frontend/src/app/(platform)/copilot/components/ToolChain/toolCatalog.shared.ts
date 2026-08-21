@@ -18,6 +18,7 @@ export type ChainCategory =
   | "integration"
   | "feature"
   | "question"
+  | "team"
   | "info"
   | "narration";
 

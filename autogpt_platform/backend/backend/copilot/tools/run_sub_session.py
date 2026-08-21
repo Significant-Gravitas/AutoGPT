@@ -41,6 +41,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .base import BaseTool
 from .models import (
+    DelegatedExpertInfo,
     ErrorResponse,
     SubSessionStatusResponse,
     ToolResponseBase,
@@ -211,6 +212,27 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+
+
+def apply_delegated_expert(
+    response: SubSessionStatusResponse,
+    expert: DelegatedExpertInfo | None,
+) -> SubSessionStatusResponse:
+    """Re-badge a sub-session response as a named teammate's delegated run.
+
+    ``response_from_outcome`` speaks in terms of "Sub-AutoPilot" because that
+    is what a same-scope sub is. When ``delegate_to_expert`` routed the work to
+    someone else, both the model-facing message and the ToolChain card should
+    name them instead. No-op for same-scope subs.
+    """
+    if expert is None:
+        return response
+    return response.model_copy(
+        update={
+            "message": response.message.replace("Sub-AutoPilot", expert.name),
+            "expert": expert,
+        }
+    )
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:

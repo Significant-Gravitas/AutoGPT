@@ -8,8 +8,9 @@ Two layers with different prompt weights:
   while the cacheable base prefix stays byte-identical.
 - ``build_expert_context()`` → first-user-message context blocks:
   ``<expert_workflows>`` (expert session: installed workflows the model
-  should prefer ``run_agent`` on) or ``<team_context>`` (plain session:
-  hired experts the model can suggest, never silently delegate to).
+  should prefer ``run_agent`` on) plus ``<team_context>`` — the hired roster,
+  which a plain session may only *suggest* opening, and an expert session
+  (self excluded) may hand work to via ``delegate_to_expert``.
 
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
@@ -190,7 +191,7 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
     else:
         workflow_lines = "- No workflows installed yet."
 
-    return (
+    workflows_block = (
         f"<expert_workflows>\n"
         f"Workflows installed on this expert. For requests that match a "
         f"workflow's purpose, prefer running it with `run_agent` using the "
@@ -198,23 +199,52 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
         f"{workflow_lines}\n"
         f"</expert_workflows>\n\n"
     )
+    # The roster is an optional extra here; a failed lookup must not cost the
+    # expert its own workflow block, which is the load-bearing half.
+    try:
+        teammates = await _team_context(user_id, exclude_expert_id=expert_id)
+    except Exception as e:
+        logger.warning(f"Failed to build teammate context: {e}")
+        teammates = ""
+    return workflows_block + teammates
 
 
-async def _team_context(user_id: str) -> str:
+async def _team_context(user_id: str, *, exclude_expert_id: str | None = None) -> str:
+    """Roster block for the first user message.
+
+    Plain sessions get a hand-off *suggestion* rule — AutoPilot speaks for the
+    platform, so silently answering as an expert would misattribute the work.
+    Expert sessions get the teammate list minus themselves plus the
+    ``delegate_to_expert`` rule: a colleague passing work to a colleague is
+    normal, and the delegated turn runs under the teammate's own identity,
+    memory, and budget rather than being ghost-written.
+    """
     experts = await experts_db().list_experts(user_id)
-    if not experts:
+    teammates = [e for e in experts if e.id != exclude_expert_id]
+    if not teammates:
         return ""
 
-    lines = "\n".join(_team_line(e) for e in experts)
-    return (
-        f"<team_context>\n"
-        f"The user has hired these experts:\n"
-        f"{lines}\n"
-        f"When a request clearly matches an expert's domain, suggest opening "
-        f"that expert's thread (by expert id) instead of handling it here; "
-        f"never silently delegate to an expert.\n"
-        f"</team_context>\n\n"
+    lines = "\n".join(_team_line(e) for e in teammates)
+    if exclude_expert_id is None:
+        rule = (
+            "When a request clearly matches an expert's domain, suggest "
+            "opening that expert's thread (by expert id) instead of handling "
+            "it here; never silently delegate to an expert."
+        )
+    else:
+        rule = (
+            "These are your teammates. When a task needs their skills or "
+            "workflows rather than yours, hand it over with "
+            "`delegate_to_expert(expert_id=..., prompt=...)` — they cannot "
+            "see this thread, so put the context they need in the prompt. "
+            "Never impersonate a teammate or guess at their domain yourself."
+        )
+    header = (
+        "The user has hired these experts:"
+        if exclude_expert_id is None
+        else "Your teammates on this user's team:"
     )
+    return f"<team_context>\n{header}\n{lines}\n{rule}\n</team_context>\n\n"
 
 
 def _team_line(expert: Expert) -> str:

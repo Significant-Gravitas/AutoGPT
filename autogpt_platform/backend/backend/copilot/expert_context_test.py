@@ -361,6 +361,7 @@ class TestBuildExpertContextExpertSession:
 
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", "exp-1")
 
@@ -373,6 +374,48 @@ class TestBuildExpertContextExpertSession:
         assert "la-1" in result
         assert "graph-1" in result
         assert "run_agent" in result
+
+    @pytest.mark.asyncio
+    async def test_lists_teammates_excluding_self_with_delegation_rule(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Otto")]
+        )
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" in result
+        assert "Otto" in result
+        assert "Maria" not in result.split("<team_context>")[1]
+        assert "delegate_to_expert" in result
+
+    @pytest.mark.asyncio
+    async def test_solo_expert_gets_no_team_block(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" not in result
+
+    @pytest.mark.asyncio
+    async def test_teammate_lookup_failure_keeps_workflows(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(side_effect=RuntimeError("db down"))
+        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<expert_workflows>" in result
+        assert "<team_context>" not in result
 
     @pytest.mark.asyncio
     async def test_archived_expert_returns_empty(self):

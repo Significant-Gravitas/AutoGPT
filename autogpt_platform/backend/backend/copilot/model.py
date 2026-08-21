@@ -80,6 +80,13 @@ CHAT_STATUS_RUNNING = "running"
 # ===================== Chat data models ===================== #
 
 
+class PendingQuestion(BaseModel):
+    """The last unanswered question a session asked the user."""
+
+    text: str
+    asked_at: datetime
+
+
 class ChatSessionMetadata(BaseModel):
     """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
 
@@ -108,6 +115,23 @@ class ChatSessionMetadata(BaseModel):
     # When ``kind == "dream"``, the originating pass id so the session
     # links back to the orchestrator run that produced it.
     dream_pass_id: str | None = None
+
+    # Delegation provenance, set by ``delegate_to_expert``: which expert
+    # (None = plain AutoPilot) asked for this work, and from which session.
+    # The session id is the poll capability — ``get_sub_session_result``
+    # accepts a cross-expert sub only when it names the caller here.
+    delegated_by_expert_id: str | None = None
+    delegated_by_session_id: str | None = None
+
+    # Set by ``handoff_to_expert`` alongside the delegation fields: a handoff
+    # transfers ownership rather than borrowing a teammate, so the receiving
+    # expert can tell "this is now mine" from "report back to whoever asked".
+    handed_off_from_expert_id: str | None = None
+
+    # Set by ``ask_question`` when a turn ends waiting on the user, cleared
+    # when they reply. Drives the Home "Needs You" question item; one per
+    # session, latest wins.
+    pending_question: PendingQuestion | None = None
 
 
 class ChatMessage(BaseModel):
@@ -229,6 +253,24 @@ def is_message_duplicate(
         else:
             break
     return False
+
+
+async def clear_pending_question(session: "ChatSession") -> None:
+    """Resolve the session's Home "Needs You" question — the user replied.
+
+    Answering in chat is the only resolution path, so this runs on every
+    user turn. Best-effort: a stale row on Home is not worth failing a turn
+    the user is waiting on.
+    """
+    if session.metadata.pending_question is None:
+        return
+    session.metadata.pending_question = None
+    try:
+        await chat_db().clear_session_pending_question(session.session_id)
+    except Exception as e:
+        logger.warning(
+            f"Could not clear pending question for {session.session_id}: {e}"
+        )
 
 
 def maybe_append_user_message(
@@ -396,6 +438,9 @@ class ChatSession(ChatSessionInfo):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        delegated_by_expert_id: str | None = None,
+        delegated_by_session_id: str | None = None,
+        handed_off_from_expert_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -412,6 +457,9 @@ class ChatSession(ChatSessionInfo):
                 source_platform=source_platform,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
+                delegated_by_expert_id=delegated_by_expert_id,
+                delegated_by_session_id=delegated_by_session_id,
+                handed_off_from_expert_id=handed_off_from_expert_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1206,6 +1254,9 @@ async def create_chat_session(
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     expert_id: str | None = None,
+    delegated_by_expert_id: str | None = None,
+    delegated_by_session_id: str | None = None,
+    handed_off_from_expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1221,6 +1272,12 @@ async def create_chat_session(
             validated here and pinned to the owner's personal organization, and
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
+        delegated_by_expert_id: Expert that delegated this session's work
+            (None = plain AutoPilot). Provenance only.
+        delegated_by_session_id: Session that delegated this session's work.
+            Doubles as the poll capability for cross-expert delegation.
+        handed_off_from_expert_id: Expert that handed this work off for good,
+            set only by ``handoff_to_expert``. Provenance only.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1243,6 +1300,9 @@ async def create_chat_session(
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         expert_id=expert_id,
+        delegated_by_expert_id=delegated_by_expert_id,
+        delegated_by_session_id=delegated_by_session_id,
+        handed_off_from_expert_id=handed_off_from_expert_id,
     )
 
     # Create in database first - fail fast if this fails

@@ -5,6 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -20,10 +21,13 @@ import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/Usag
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
+import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import { useCopilotUIStore } from "../../store";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -126,6 +130,17 @@ export const ChatContainer = ({
   // Old tool UI keeps its interactive in-transcript question card; the dock
   // is the new-UI answering surface, so gate it to avoid double forms.
   const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+  // Mirrors the files card's visibility (useWorkspaceFileCards.isOpen): the
+  // composer only slides aside while the floating card is actually shown.
+  // New tool UI only — the old UI docks a side panel instead, which narrows
+  // the column by itself.
+  const areFilesOpen =
+    useCopilotUIStore(
+      (s) =>
+        s.artifactPanel.isOpen &&
+        s.artifactPanel.activeArtifact == null &&
+        s.artifactPanel.activeTab !== "artifacts",
+    ) && isNewToolUI;
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -232,7 +247,15 @@ export const ChatContainer = ({
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
-              <div className="flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+                {isNewToolUI && isArtifactsEnabled && (
+                  <>
+                    <div className="absolute right-0 top-0 z-30">
+                      <ContextPanelToggle sessionId={sessionId} />
+                    </div>
+                    <WorkspaceFileCards sessionId={sessionId} />
+                  </>
+                )}
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -262,7 +285,10 @@ export const ChatContainer = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
-                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+                    className={cn(
+                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+                      areFilesOpen && "xl:-translate-x-40",
+                    )}
                   >
                     {isLimitReached && (
                       <div

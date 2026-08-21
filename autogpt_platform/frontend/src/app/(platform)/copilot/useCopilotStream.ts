@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useMountEffect } from "@/hooks/useMountEffect";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
@@ -33,6 +34,7 @@ import {
   hasVisibleAssistantContent,
   resolveModeChangedMode,
 } from "./helpers";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
@@ -89,6 +91,9 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  // The hydrated-tail trim below ships with the new tool UI; the old UI
+  // keeps its original in-progress-only trim.
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
@@ -361,6 +366,25 @@ export function useCopilotStream({
       markCopilotChatRuntimeHealthy(sessionId);
     }
     setMessages((prev) => {
+      // The GET-resume replays the active turn from its start as a fresh
+      // assistant message, so any HYDRATED partial of that turn must be
+      // dropped first — keeping it splits one turn into two bubbles with
+      // two tool chains. Trimming only in-progress tails is not enough: a
+      // turn parked between tools (e.g. waiting on a handoff) hydrates
+      // with every persisted part already complete. Only db-hydrated
+      // messages (``-seq-N`` ids) are dropped — a streamed tail belongs
+      // to a finished turn this mount ran (continuation reconnect) and
+      // the resume will NOT replay it.
+      if (isNewToolUI) {
+        const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
+        const tail = lastUserIndex === -1 ? [] : prev.slice(lastUserIndex + 1);
+        if (
+          tail.length > 0 &&
+          tail.every((m) => extractDbSequence(m) !== null)
+        ) {
+          return prev.slice(0, lastUserIndex + 1);
+        }
+      }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });

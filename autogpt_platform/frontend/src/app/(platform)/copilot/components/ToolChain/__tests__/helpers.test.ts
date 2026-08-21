@@ -8,6 +8,7 @@ import {
   getChainHeading,
   isChainPart,
   isLiftedSetupRow,
+  markSupersededSubSessionRows,
   toChainRow,
   type ChainRow,
 } from "../helpers";
@@ -449,5 +450,51 @@ describe("buildChainSegments edge cases", () => {
       { kind: "part", part: parts[0], index: 0 },
       { kind: "chain", parts: [parts[1]], index: 1 },
     ]);
+  });
+});
+
+describe("markSupersededSubSessionRows", () => {
+  function subRow(key: string, tool: string, subSessionId: string): ChainRow {
+    return {
+      key,
+      category: "agent",
+      text: tool,
+      state: "done",
+      tool,
+      output: { status: "running", sub_session_id: subSessionId },
+    };
+  }
+
+  it("keeps the card only on the last row per sub-session", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it("leaves unrelated sessions and tools untouched", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "delegate_to_expert", "sub-2"),
+      {
+        key: "c",
+        category: "web",
+        text: "Searched",
+        state: "done",
+        tool: "web_search",
+        output: { sub_session_id: "sub-1" },
+      } as ChainRow,
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.every((r) => !r.supersededSubSession)).toBe(true);
   });
 });

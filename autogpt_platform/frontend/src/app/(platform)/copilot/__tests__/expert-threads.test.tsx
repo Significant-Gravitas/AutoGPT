@@ -729,7 +729,24 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(expertDetailRequests).toBe(0);
   });
 
-  it("renders no expert header or identity for plain sessions", () => {
+  it("wears the Autopilot identity on plain sessions under the new tool UI", () => {
+    flagState.values = { "hire-experts": true, "new-tool-ui": true };
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(header.textContent).toContain("Autopilot");
+    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
+    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("renders no header for plain sessions on the old tool UI", () => {
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}

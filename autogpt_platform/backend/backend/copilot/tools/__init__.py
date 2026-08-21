@@ -15,11 +15,13 @@ from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
 from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
+from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
+from .delegate_to_expert import DelegateToExpertTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
@@ -34,6 +36,8 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
+from .handoff_to_expert import HandoffToExpertTool
+from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
 from .manage_folders import (
     CreateFolderTool,
@@ -46,6 +50,7 @@ from .manage_folders import (
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .platform_info import PlatformInfoTool
+from .raise_expert import RaiseExpertTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -55,6 +60,7 @@ from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
+from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -115,6 +121,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
+    "delegate_to_expert": DelegateToExpertTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
@@ -157,6 +164,13 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
+    # Team changes from chat (Autopilot sessions only): preview + one
+    # shared confirm.  Handoff is the expert-session counterpart.
+    "hire_expert": HireExpertTool(),
+    "raise_expert": RaiseExpertTool(),
+    "update_expert": UpdateExpertTool(),
+    "confirm_expert_change": ConfirmExpertChangeTool(),
+    "handoff_to_expert": HandoffToExpertTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -170,7 +184,7 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts"]
+ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -181,6 +195,21 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
     "confirm_expert_soul_update": "experts",
+    # A handoff transfers a task between experts, so it needs a caller with
+    # an expert identity to hand it off from.
+    "handoff_to_expert": "experts",
+    # Staffing the team is the user's call, made in the Autopilot chat — an
+    # expert must not hire its own teammates.  The engines disable this
+    # group whenever the session HAS an expert_id (the opposite gate to
+    # ``experts`` above).
+    "hire_expert": "expert_admin",
+    "raise_expert": "expert_admin",
+    "update_expert": "expert_admin",
+    "confirm_expert_change": "expert_admin",
+    # Delegation works from either side of ``session.expert_id`` (AutoPilot
+    # and expert sessions alike), so it has its own group: the engines
+    # disable it only when the user's hire-experts flag is off.
+    "delegate_to_expert": "delegation",
 }
 
 

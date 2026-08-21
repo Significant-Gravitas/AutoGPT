@@ -29,6 +29,7 @@ function resetStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —

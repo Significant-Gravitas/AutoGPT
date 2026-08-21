@@ -56,6 +56,7 @@ from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     RoutingSource,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -126,6 +127,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -1645,6 +1647,12 @@ async def stream_chat_completion_baseline(
     if message:
         message = strip_user_context_tags(message)
 
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message:
+        await clear_pending_question(session)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -2067,8 +2075,19 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
-    if not session.expert_id:
+    if not (
+        user_id and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+    ):
+        # The whole expert-team surface rides the hire-experts flag: without
+        # it (fail closed for anonymous turns), no session gets the team
+        # tools on either side of expert_id.
+        disabled_tool_groups.extend(["experts", "expert_admin", "delegation"])
+    elif not session.expert_id:
         disabled_tool_groups.append("experts")
+    else:
+        # Staffing is the user's call in the Autopilot chat, so the inverse
+        # gate to "experts": an expert session never sees hire/raise/confirm.
+        disabled_tool_groups.append("expert_admin")
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---

@@ -130,6 +130,7 @@ function MainArea({
   setDroppedFiles,
 }: MainAreaProps) {
   const hasSession = !!sessionId;
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
       <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
@@ -177,7 +178,11 @@ function MainArea({
         <ContextPanel sessionId={sessionId} />
       )}
       {!isMobile && isArtifactsEnabled && sessionId && <ArtifactPanel />}
-      {!isMobile && isArtifactsEnabled && sessionId && <ContextPanelToggle />}
+      {/* Under the new tool UI the trigger lives inside the chat column,
+          beside the workspace-files card it opens. */}
+      {!isMobile && isArtifactsEnabled && sessionId && !isNewToolUI && (
+        <ContextPanelToggle />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ from prisma.enums import ReviewStatus
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .attention import compose_attention_items
@@ -278,3 +279,92 @@ def test_review_without_expert_details_has_no_expert() -> None:
     )
 
     assert items[0].expert is None
+
+
+def _asking_session(
+    *, session_id: str = "sess-1", expert_id: str | None = None, text: str = "Which?"
+) -> ChatSessionInfo:
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id="user",
+        usage=[],
+        started_at=NOW,
+        updated_at=NOW,
+        expert_id=expert_id,
+        metadata=ChatSessionMetadata(
+            pending_question=PendingQuestion(text=text, asked_at=NOW)
+        ),
+    )
+
+
+def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text="Monday or Friday?")],
+    )
+
+    assert [item.kind for item in items] == ["question"]
+    assert items[0].id == "question-sess-1"
+    assert items[0].title == "Autopilot has a question"
+    assert items[0].description == "Monday or Friday?"
+    assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
+
+
+def test_answered_question_leaves_nothing_behind() -> None:
+    assert (
+        compose_attention_items(
+            now=NOW,
+            experts=[],
+            reviews=[],
+            schedules=[],
+            credits_balance=None,
+            questions=[],
+        )
+        == []
+    )
+
+
+def test_expert_question_is_titled_and_avatared_by_its_expert() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert()],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="expert")],
+    )
+
+    assert items[0].title == "Ada has a question"
+    assert items[0].expert is not None and items[0].expert.name == "Ada"
+
+
+def test_question_from_a_vanished_expert_still_renders() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="deleted-expert")],
+    )
+
+    assert items[0].title == "Autopilot has a question"
+    assert items[0].expert is None
+
+
+def test_one_session_asking_twice_yields_one_item() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text="latest question only")],
+    )
+
+    assert len(items) == 1
+    assert items[0].description == "latest question only"

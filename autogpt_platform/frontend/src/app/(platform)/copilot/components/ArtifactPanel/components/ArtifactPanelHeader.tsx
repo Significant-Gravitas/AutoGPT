@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";
@@ -13,6 +14,7 @@ import {
   ArrowLeft02Icon,
   Cancel01Icon,
   Copy01Icon,
+  Download01Icon,
   Download04Icon,
   Folder01Icon,
 } from "@hugeicons/core-free-icons";
@@ -73,8 +75,18 @@ export function ArtifactPanelHeader({
   onOpenFiles,
   onSourceToggle,
 }: Props) {
+  // The new tool UI closes the panel from the chat's sidebar-right toggle,
+  // so the header drops its own Close button there.
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+  // New UI: h matches the chat thread header (36px avatar + py-2 + border)
+  // so the two top bars share one seam across the panel split.
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3 py-2">
+    <div
+      className={cn(
+        "sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3",
+        isNewToolUI ? "h-[53px]" : "py-2",
+      )}
+    >
       {/* Left section */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {canGoBack && (
@@ -113,14 +125,19 @@ export function ArtifactPanelHeader({
           </HeaderButton>
         )}
         <HeaderButton onClick={onDownload} title="Download">
-          <Icon icon={Download04Icon} size={16} />
+          <Icon
+            icon={isNewToolUI ? Download01Icon : Download04Icon}
+            size={16}
+          />
         </HeaderButton>
         <HeaderButton onClick={onOpenFiles} title="All files">
           <Icon icon={Folder01Icon} size={16} />
         </HeaderButton>
-        <HeaderButton onClick={onClose} title="Close">
-          <Icon icon={Cancel01Icon} size={16} />
-        </HeaderButton>
+        {!isNewToolUI && (
+          <HeaderButton onClick={onClose} title="Close">
+            <Icon icon={Cancel01Icon} size={16} />
+          </HeaderButton>
+        )}
       </div>
     </div>
   );

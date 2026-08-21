@@ -8,7 +8,7 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { CARD, HALF } from "./ResultCards";
+import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   inline,
   integrationIconSrc,
@@ -57,7 +57,7 @@ const BLOCK_ICON = (
 
 export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {blocks.map((block, i) => {
         const categories = Array.isArray(block.categories)
           ? (block.categories as unknown[]).filter(

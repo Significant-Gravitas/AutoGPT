@@ -5,6 +5,7 @@ from urllib.parse import quote
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.outcome import as_utc, run_link
+from backend.copilot.model import ChatSessionInfo
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
@@ -21,10 +22,15 @@ def compose_attention_items(
     reviews: list[PendingHumanReviewModel],
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
+    questions: list[ChatSessionInfo] | None = None,
 ) -> list[HomeAttentionItem]:
+    expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
     items.extend(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
+    )
+    items.extend(
+        _question_attention(session, expert_by_id) for session in questions or []
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -93,6 +99,30 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
     )
 
 
+def _question_attention(
+    session: ChatSessionInfo, expert_by_id: dict[str, Expert]
+) -> HomeAttentionItem:
+    """A chat that ended waiting on the user. Replying there is the only fix,
+    so the item links straight back into the thread and has no own action."""
+    question = session.metadata.pending_question
+    asker = expert_by_id.get(session.expert_id or "")
+    name = asker.name if asker else "Autopilot"
+    return HomeAttentionItem(
+        id=f"question-{session.session_id}",
+        kind="question",
+        priority="normal",
+        title=f"{name} has a question",
+        description=_clip(question.text) if question else "",
+        why_it_matters="The work is paused until you answer in the chat.",
+        expert=to_home_expert(asker) if asker else None,
+        created_at=as_utc(question.asked_at) if question else None,
+        primary_action=HomeAction(
+            label="Answer",
+            href=f"/copilot?sessionId={quote(session.session_id)}",
+        ),
+    )
+
+
 def _credits_attention(schedule_count: int) -> HomeAttentionItem:
     return HomeAttentionItem(
         id="credits",
@@ -126,7 +156,11 @@ def _payload_preview(payload: object) -> str | None:
     if payload is None:
         return None
     rendered = payload if isinstance(payload, str) else json.dumps(payload, default=str)
-    compact = " ".join(rendered.split())
+    return _clip(rendered)
+
+
+def _clip(text: str) -> str:
+    compact = " ".join(text.split())
     if len(compact) <= _PREVIEW_MAX:
         return compact
     return f"{compact[:_PREVIEW_MAX - 3]}…"

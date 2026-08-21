@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
-from backend.util.json import SafeJson, sanitize_string
+from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
     ChatMessage,
@@ -830,6 +830,61 @@ async def user_has_any_session(user_id: str) -> bool:
         user_id,
     )
     return bool(rows)
+
+
+# Bounds the Home "Needs You" question source. Questions are one-per-session
+# and resolve as soon as the user replies, so a long tail is stale by
+# definition — showing the newest few is the whole product surface.
+PENDING_QUESTION_LIMIT = 10
+
+
+async def set_session_pending_question(
+    session_id: str, text: str, asked_at: datetime
+) -> None:
+    """Record the question this session is waiting on the user to answer.
+
+    Writes the one key rather than the whole ``metadata`` blob: session
+    metadata is otherwise immutable after creation, and a concurrent turn
+    must not be able to clobber unrelated flags by round-tripping a stale
+    copy of it.
+    """
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('pending_question', $2::jsonb) WHERE \"id\" = $1",
+        session_id,
+        dumps({"text": text, "asked_at": asked_at.isoformat()}),
+    )
+
+
+async def clear_session_pending_question(session_id: str) -> None:
+    """Drop the pending question — the user answered, so it needs nobody."""
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        '"metadata" - \'pending_question\' WHERE "id" = $1',
+        session_id,
+    )
+
+
+async def get_sessions_with_pending_question(
+    user_id: str,
+    limit: int = PENDING_QUESTION_LIMIT,
+) -> list[ChatSessionInfo]:
+    """Sessions of *user_id* still waiting on an answer, newest question first."""
+    sessions = await db.query_raw_with_schema(
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        # jsonb_typeof, not IS NOT NULL: a session created after this field
+        # existed persists an explicit ``"pending_question": null``, which is a
+        # JSON null — present as far as ``->`` is concerned.
+        + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
+        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC "
+        "LIMIT $2",
+        user_id,
+        limit,
+        model=PrismaChatSession,
+    )
+    return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
 def _escape_like(value: str) -> str:

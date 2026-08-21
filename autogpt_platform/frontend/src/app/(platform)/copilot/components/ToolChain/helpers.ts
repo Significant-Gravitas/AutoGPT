@@ -26,6 +26,41 @@ export interface ChainRow {
    *  the card below the chain — the row is hidden but stays mounted so the
    *  card keeps its registration. */
   lifted?: boolean;
+  /** A later row shows this same sub-session's card — this one keeps its
+   *  row line but renders no card, so one delegation never stacks
+   *  duplicate cards down the chain. */
+  supersededSubSession?: boolean;
+}
+
+const SUB_SESSION_CARD_TOOLS = new Set([
+  "run_sub_session",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "get_sub_session_result",
+]);
+
+function subSessionIdOf(row: ChainRow): string | null {
+  if (!row.tool || !SUB_SESSION_CARD_TOOLS.has(row.tool)) return null;
+  const output = asObject(row.output);
+  const sid = output?.sub_session_id;
+  return typeof sid === "string" && sid ? sid : null;
+}
+
+/** Delegate → poll → poll chains reference the same sub-session; only the
+ *  LAST row per session keeps its card, earlier ones are marked superseded. */
+export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
+  const lastRowKey = new Map<string, string>();
+  for (const row of rows) {
+    const sid = subSessionIdOf(row);
+    if (sid) lastRowKey.set(sid, row.key);
+  }
+  if (lastRowKey.size === 0) return rows;
+  return rows.map((row) => {
+    const sid = subSessionIdOf(row);
+    return sid && lastRowKey.get(sid) !== row.key
+      ? { ...row, supersededSubSession: true }
+      : row;
+  });
 }
 
 const ACTION_RESPONSE_TYPES = new Set([
@@ -34,6 +69,7 @@ const ACTION_RESPONSE_TYPES = new Set([
   "need_login",
   "trigger_config_required",
   "suggested_goal",
+  "expert_change_proposed",
 ]);
 
 function actionLabel(output: unknown): string | null {
@@ -59,6 +95,7 @@ function actionLabel(output: unknown): string | null {
       : "Review this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
+  if (data.type === "expert_change_proposed") return "Approve the new expert";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
     : "Action required";
@@ -69,9 +106,11 @@ function actionLabel(output: unknown): string | null {
  *  an MCP row into the same connectors table. */
 export function isLiftedSetupRow(row: ChainRow): boolean {
   const data = asObject(row.output);
-  return (
-    !!data && data.type === "setup_requirements" && !!asObject(data.setup_info)
-  );
+  if (!data) return false;
+  // A hire/raise preview renders as the approval card below the chain, not
+  // as a row inside it — the ask is the whole point of the turn.
+  if (data.type === "expert_change_proposed") return true;
+  return data.type === "setup_requirements" && !!asObject(data.setup_info);
 }
 
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
@@ -212,6 +251,7 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   integration: "connected integrations",
   feature: "handled feature requests",
   question: "asked you questions",
+  team: "changed the team",
   info: "checked your account",
   narration: "",
   other: "used tools",
