@@ -35,6 +35,12 @@ from openai import (
 from pydantic import BaseModel, Field
 
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.integrations.codex.transport import (
+    CodexCredentialBusyError,
+    CodexCredentialIntegrityError,
+    CodexInvocationTimeoutError,
+    CodexTransportOverloadedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +149,42 @@ def classify(
     )
 
 
+# HTTP status the compat gateway should answer with for each kind, so the
+# CLI upstream of it can tell "stop asking" from "try again". A blanket 502
+# reads as a server fault and invites a retry that cannot succeed.
+_STATUS_BY_KIND: dict[ProviderFailureKind, int] = {
+    ProviderFailureKind.AUTH_EXPIRED: 401,
+    ProviderFailureKind.INVALID_CREDENTIAL: 401,
+    ProviderFailureKind.ENTITLEMENT_REQUIRED: 402,
+    ProviderFailureKind.POLICY_DENIED: 403,
+    ProviderFailureKind.MODEL_UNAVAILABLE: 404,
+    ProviderFailureKind.USAGE_LIMIT: 429,
+    ProviderFailureKind.TRANSIENT: 503,
+}
+
+
+def status_for(failure: "ProviderFailure") -> int:
+    """The status a gateway should return for this failure."""
+    return _STATUS_BY_KIND.get(failure.kind, 502)
+
+
 def _kind_of(exc: BaseException) -> ProviderFailureKind | None:
     if isinstance(exc, UserPaywalledError):
         return ProviderFailureKind.ENTITLEMENT_REQUIRED
+    # Codex runs behind a CLI, so its failures arrive as transport
+    # exceptions rather than HTTP errors. Only the ones whose meaning is
+    # unambiguous are named; a bare CodexTransportError could be anything.
+    if isinstance(exc, CodexCredentialIntegrityError):
+        return ProviderFailureKind.INVALID_CREDENTIAL
+    if isinstance(
+        exc,
+        (
+            CodexInvocationTimeoutError,
+            CodexTransportOverloadedError,
+            CodexCredentialBusyError,
+        ),
+    ):
+        return ProviderFailureKind.TRANSIENT
     if isinstance(exc, AuthenticationError):
         return ProviderFailureKind.AUTH_EXPIRED
     if isinstance(exc, PermissionDeniedError):
