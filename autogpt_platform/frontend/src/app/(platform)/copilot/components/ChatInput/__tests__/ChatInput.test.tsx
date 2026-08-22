@@ -19,6 +19,7 @@ import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 import { useCopilotStop } from "../../../useCopilotStop";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
@@ -86,9 +87,11 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
 }));
 
 let mockFlagValue = false;
+let mockNewToolUIFlag = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION" },
-  useGetFlag: () => mockFlagValue,
+  Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION", NEW_TOOL_UI: "NEW_TOOL_UI" },
+  useGetFlag: (flag: string) =>
+    flag === "NEW_TOOL_UI" ? mockNewToolUIFlag : mockFlagValue,
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -254,6 +257,7 @@ afterEach(() => {
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
+  mockNewToolUIFlag = false;
   mockInitialPrompt = null;
 });
 
@@ -747,6 +751,69 @@ describe("ChatInput submit behavior", () => {
       window.removeEventListener("unhandledrejection", swallowWindow);
       process.off("unhandledRejection", swallowProcess);
     }
+  });
+});
+
+describe("ChatInput send failure with the new tool UI", () => {
+  it("toasts and puts the failed message back in the composer", async () => {
+    mockNewToolUIFlag = true;
+    const onSend = vi.fn().mockRejectedValue(new Error("Backend exploded"));
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("hello");
+    });
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        description: expect.stringContaining("Backend exploded"),
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("keeps a draft typed during the stream alongside the failed message", async () => {
+    mockNewToolUIFlag = true;
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first message" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    fireEvent.change(textarea, { target: { value: "second thought" } });
+    await act(async () => {
+      rejectSend?.(new Error("nope"));
+    });
+
+    expect(textarea.value).toContain("first message");
+    expect(textarea.value).toContain("second thought");
+  });
+
+  it("does not toast when the send succeeds", async () => {
+    mockNewToolUIFlag = true;
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(textarea.value).toBe("");
+    expect(toast).not.toHaveBeenCalled();
   });
 });
 

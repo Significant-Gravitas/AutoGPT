@@ -8,10 +8,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { safeHostname } from "./resultHelpers";
 
 interface StatusPillProps {
   status: string;
+  className?: string;
 }
 
 interface StatusCardProps {
@@ -37,6 +39,8 @@ interface LinkCardProps {
 
 export const CARD = "rounded-xl bg-white ring-1 ring-zinc-200/70";
 export const HALF = "w-full sm:w-1/2";
+export const RESULT_GRID =
+  "grid max-h-64 gap-1.5 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 sm:grid-cols-2";
 
 const STATUS_STYLES: Record<string, string> = {
   COMPLETED: "bg-green-50 text-green-600",
@@ -45,15 +49,20 @@ const STATUS_STYLES: Record<string, string> = {
   QUEUED: "bg-amber-50 text-amber-600",
 };
 
-export function StatusPill({ status }: StatusPillProps) {
+export function StatusPill({ status, className }: StatusPillProps) {
   const normalized = status.toUpperCase();
+  const isPending = normalized === "RUNNING" || normalized === "QUEUED";
   return (
     <span
-      className={
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium " +
-        (STATUS_STYLES[normalized] ?? "bg-zinc-100 text-zinc-500")
-      }
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        STATUS_STYLES[normalized] ?? "bg-zinc-100 text-zinc-500",
+        className,
+      )}
     >
+      {isPending && (
+        <span className="size-2.5 animate-spin rounded-full border border-current border-t-transparent motion-reduce:animate-none" />
+      )}
       {normalized.toLowerCase()}
     </span>
   );
