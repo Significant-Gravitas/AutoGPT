@@ -8,15 +8,17 @@ it go.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import (
     TOOL_GROUPS,
+    execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    get_tool,
 )
 
 from .get_sub_session_result import _in_caller_scope
@@ -280,3 +282,57 @@ class TestExpertToolGate:
         assert expert_tool_disabled_groups(
             experts_enabled=True, expert_id="expert-a"
         ) == ["expert_admin"]
+
+
+class TestExecuteToolEnforcesDisabledGroups:
+    """``get_available_tools`` only hides disabled tools from the schema list
+    handed to the model — a presentation filter. ``execute_tool`` is the
+    actual enforcement boundary: a model that names a hidden tool anyway
+    must be refused BEFORE ``tool.execute`` runs, not just told about it
+    afterwards."""
+
+    @pytest.mark.asyncio
+    async def test_a_tool_in_a_disabled_group_is_refused_without_dispatching(
+        self,
+    ) -> None:
+        session = _session()
+        tool = get_tool("hire_expert")
+        assert tool is not None
+
+        with patch.object(
+            tool, "execute", new=AsyncMock(return_value="should never run")
+        ) as execute_mock:
+            result = await execute_tool(
+                tool_name="hire_expert",
+                parameters={},
+                user_id="alice",
+                session=session,
+                tool_call_id="call-1",
+                disabled_groups=["expert_admin"],
+            )
+
+        execute_mock.assert_not_awaited()
+        assert result.success is False
+        output = ErrorResponse.model_validate_json(result.output)
+        assert output.error == "tool_disabled"
+
+    @pytest.mark.asyncio
+    async def test_a_tool_outside_any_disabled_group_still_dispatches(self) -> None:
+        session = _session()
+        tool = get_tool("hire_expert")
+        assert tool is not None
+
+        with patch.object(
+            tool, "execute", new=AsyncMock(return_value="it ran")
+        ) as execute_mock:
+            result = await execute_tool(
+                tool_name="hire_expert",
+                parameters={},
+                user_id="alice",
+                session=session,
+                tool_call_id="call-1",
+                disabled_groups=(),
+            )
+
+        execute_mock.assert_awaited_once()
+        assert result == "it ran"

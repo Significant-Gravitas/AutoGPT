@@ -25,8 +25,10 @@ from prisma.types import ChatSessionCreateInput
 from backend.copilot.db import (
     create_chat_session,
     get_chat_session_metadata,
+    get_sessions_with_pending_question,
     get_user_chat_sessions,
     get_user_session_count,
+    set_session_pending_question,
     update_chat_session_title,
     user_has_any_session,
 )
@@ -298,3 +300,103 @@ async def test_title_search_matches_literally_and_skips_dream_sessions(
     assert normal.session_id in result_ids
     assert decoy.session_id not in result_ids
     assert dream.session_id not in result_ids
+
+
+# ---------- get_sessions_with_pending_question (Home "Needs You") ----------
+
+
+@pytest.mark.asyncio
+async def test_pending_question_query_avoids_select_star_and_excludes_sub_sessions():
+    """The Home pending-question query must select only the columns
+    ``ChatSessionInfo.from_db`` reads (plus the columns the generated
+    ``PrismaChatSession`` model requires with no default) — not ``SELECT *``
+    — and must exclude delegated/handed-off sub-session threads."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        result = await get_sessions_with_pending_question("u1", limit=5)
+
+    assert result == []
+    query = raw.call_args.args[0]
+    assert "SELECT *" not in query
+    assert '"id"' in query
+    assert '"metadata"' in query
+    assert "\"metadata\" ->> 'delegated_by_session_id' IS NULL" in query
+    assert "\"metadata\" ->> 'handed_off_from_expert_id' IS NULL" in query
+    # NULL-safe form: must use ``->>`` (text extraction), never a bare ``->``
+    # comparison, which would treat every session's default explicit JSON
+    # ``null`` as "present" and hide every normal session.
+    assert "\"metadata\" -> 'delegated_by_session_id' IS NULL" not in query
+    assert "\"metadata\" -> 'handed_off_from_expert_id' IS NULL" not in query
+    assert raw.call_args.args[1:] == ("u1", 5)
+    assert raw.call_args.kwargs["model"] is PrismaChatSession
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_pending_question_excludes_delegated_sub_sessions(
+    setup_test_user, test_user_id
+):
+    """A sub-session's pending question must not surface on Home — replying
+    there unblocks nothing, only the original caller's thread does.
+
+    Also proves the exclusion predicate is NULL-safe: every session
+    (including the normal one here) persists ``delegated_by_session_id`` /
+    ``handed_off_from_expert_id`` as an explicit JSON ``null`` by default, and
+    that must NOT be mistaken for "is a sub-session".
+    """
+    now = datetime.now(UTC)
+
+    normal = await create_chat_session(str(uuid4()), test_user_id)
+    await set_session_pending_question(
+        normal.session_id, test_user_id, "What's the budget?", now
+    )
+
+    delegated = await create_chat_session(
+        str(uuid4()),
+        test_user_id,
+        metadata=ChatSessionMetadata(delegated_by_session_id=normal.session_id),
+    )
+    await set_session_pending_question(
+        delegated.session_id, test_user_id, "Which API key?", now
+    )
+
+    handed_off = await create_chat_session(
+        str(uuid4()),
+        test_user_id,
+        metadata=ChatSessionMetadata(handed_off_from_expert_id="expert-1"),
+    )
+    await set_session_pending_question(
+        handed_off.session_id, test_user_id, "Confirm the vendor?", now
+    )
+
+    pending_ids = {
+        s.session_id
+        for s in await get_sessions_with_pending_question(test_user_id, limit=100)
+    }
+    assert normal.session_id in pending_ids
+    assert delegated.session_id not in pending_ids
+    assert handed_off.session_id not in pending_ids
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_pending_question_excludes_explicit_json_null(
+    setup_test_user, test_user_id
+):
+    """Every session persists ``metadata.pending_question`` as an explicit
+    JSON ``null`` by default (a JSON null present under the key, not a SQL
+    NULL). The filter must use ``jsonb_typeof(...) = 'object'`` — an
+    ``IS NOT NULL`` check on the raw ``->`` extraction would treat that
+    default null as "present" and surface every ordinary session on Home.
+    """
+    no_question = await create_chat_session(str(uuid4()), test_user_id)
+
+    with_question = await create_chat_session(str(uuid4()), test_user_id)
+    await set_session_pending_question(
+        with_question.session_id, test_user_id, "Which vendor?", datetime.now(UTC)
+    )
+
+    pending_ids = {
+        s.session_id
+        for s in await get_sessions_with_pending_question(test_user_id, limit=100)
+    }
+    assert no_question.session_id not in pending_ids
+    assert with_question.session_id in pending_ids

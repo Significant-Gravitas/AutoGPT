@@ -18,15 +18,17 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
-from backend.api.features.experts.models import ExpertSoulUpdate
+from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, ExpertSoulUpdate
 from backend.util.exceptions import ExpertNotFoundError
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
+from .expert_proposal import ExpertChangeProposal, apply_proposal
 from .hire_expert import HireExpertTool
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
+    ExpertChangePreview,
     ExpertChangeProposedResponse,
 )
 from .raise_expert import RaiseExpertTool
@@ -219,6 +221,21 @@ class TestPreviewNeverWrites:
         assert isinstance(resp, ErrorResponse)
         assert "charter" in resp.message
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_rejects_an_invalid_color(self):
+        """``color`` is free-text model output, not a constrained enum on the
+        wire — an out-of-palette value must be refused before any proposal
+        is stored, not merely coerced or ignored."""
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            resp = await _raise(
+                make_session(_USER), **{**_CHARTER, "color": "not-a-real-color"}
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "color" in resp.message
+        assert len(redis.store) == 0
+        db.create_raised_expert.assert_not_called()
+
 
 class TestPreviewTimeLimits:
     @pytest.mark.asyncio(loop_scope="session")
@@ -259,6 +276,28 @@ class TestUpdate:
             "exp-2",
             ExpertSoulUpdate(
                 name="Nick",
+                identity=otto.identity,
+                boundaries=otto.boundaries,
+                voice_preferences=otto.voice_preferences,
+            ),
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_blank_boundaries_keep_the_stored_value(self):
+        """Unlike ``voice_preferences``, boundaries has no documented
+        empty-string clearing and a raise requires them — a whitespace-only
+        edit must not silently wipe the existing boundaries."""
+        with _env() as db:
+            resp = await _update(
+                make_session(_USER), expert_id="exp-2", boundaries="   "
+            )
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        otto = _hired_otto()
+        db.update_soul.assert_awaited_once_with(
+            _USER,
+            "exp-2",
+            ExpertSoulUpdate(
+                name=otto.name,
                 identity=otto.identity,
                 boundaries=otto.boundaries,
                 voice_preferences=otto.voice_preferences,
@@ -439,3 +478,60 @@ class TestExpertSessionsCannotStaff:
             )
         assert isinstance(resp, ErrorResponse)
         db.hire_expert.assert_not_called()
+
+
+class TestHireNameValidation:
+    """hire_expert's rename field must be bounded and normalized the same
+    way raise_expert already bounds its name — an unbounded name is
+    interpolated into every expert session's <team_context> roster, where
+    escape_prompt_xml_tags neutralizes angle brackets but not newlines."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_overlong_name_is_refused(self):
+        with _env() as db:
+            resp = await _hire(
+                make_session(_USER),
+                template_id="tpl-scout",
+                name="x" * (EXPERT_NAME_MAX_LENGTH + 1),
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "name" in resp.message.lower()
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_name_whitespace_is_collapsed(self):
+        with _env():
+            resp = await _hire(
+                make_session(_USER),
+                template_id="tpl-scout",
+                name="  Bea\n\nNewman   Ops  ",
+            )
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.preview.name == "Bea Newman Ops"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_omitted_name_falls_back_to_template_name(self):
+        with _env():
+            resp = await _hire(make_session(_USER), template_id="tpl-scout")
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.preview.name == "Scout"
+
+
+class TestApplyProposalDispatch:
+    """apply_proposal must be exhaustive over ExpertChangeKind — a preview
+    whose kind is neither 'hire' nor 'raise' must be refused rather than
+    silently falling through to _apply_raise, which would CREATE an expert
+    instead of applying whatever that other kind was meant to mean."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_unsupported_kind_is_refused_not_applied(self):
+        with _env() as db:
+            proposal = ExpertChangeProposal(
+                user_id=_USER,
+                session_id="s1",
+                preview=ExpertChangePreview(kind="update", name="Nope"),
+            )
+            resp = await apply_proposal(_USER, "s1", proposal)
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+        db.create_raised_expert.assert_not_called()

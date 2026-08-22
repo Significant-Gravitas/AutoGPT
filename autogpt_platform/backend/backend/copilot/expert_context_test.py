@@ -12,6 +12,7 @@ Covers:
 """
 
 import hashlib
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -470,7 +471,7 @@ class TestBuildExpertContextPlainSession:
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await build_expert_context("user-1", None)
 
-        mock_db.list_experts.assert_awaited_once_with("user-1")
+        mock_db.list_experts.assert_awaited_once_with("user-1", with_metrics=False)
         mock_db.get_expert.assert_not_called()
         assert "<team_context>" in result
         assert "</team_context>" in result
@@ -482,7 +483,40 @@ class TestBuildExpertContextPlainSession:
         assert "Copywriter" in result
         assert "exp-2" in result
         assert "Blog Writer" in result
-        assert "never silently delegate" in result
+        # Plain sessions may delegate to a listed expert (not just suggest
+        # opening their thread) as long as the model discloses it.
+        assert "delegate_to_expert" in result
+        assert "Never delegate silently." in result
+
+    @pytest.mark.asyncio
+    async def test_team_context_is_byte_identical_regardless_of_metrics(self):
+        """The roster block renders only name/role/id/workflow names — the
+        ``list_experts(with_metrics=False)`` call site must not change a
+        single byte of <team_context> versus a roster carrying real
+        last_run/weekly_spend metrics."""
+        from backend.copilot.expert_context import build_expert_context
+
+        no_metrics = [_expert(), _expert(expert_id="exp-2", name="Otto")]
+        with_metrics = [
+            e.model_copy(
+                update={
+                    "last_run_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    "last_run_status": "COMPLETED",
+                    "weekly_budget": 500,
+                    "weekly_spend": 250,
+                }
+            )
+            for e in no_metrics
+        ]
+
+        results = []
+        for experts in (no_metrics, with_metrics):
+            mock_db = MagicMock()
+            mock_db.list_experts = AsyncMock(return_value=experts)
+            with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+                results.append(await build_expert_context("user-1", None))
+
+        assert results[0] == results[1]
 
     @pytest.mark.asyncio
     async def test_no_experts_returns_empty(self):

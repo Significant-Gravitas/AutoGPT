@@ -311,6 +311,42 @@ class TestDelegation:
         assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
 
 
+class TestHandoffReentry:
+    @pytest.mark.asyncio
+    async def test_resume_rejects_handed_off_session(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """A session that has been handed off (handed_off_from_expert_id set)
+        must not be re-enterable via delegate_to_expert, even though it still
+        carries this caller's delegated_by_session_id. handoff_to_expert
+        stamps both fields on the same row, and get_sub_session_result's
+        _in_caller_scope already refuses to let the delegator poll a handed-off
+        sub — delegate_to_expert's own resume path must refuse it too, or the
+        delegator could inject a turn and read the result through this door
+        instead."""
+        parent = _session(session_id="s1", expert_id="expert-a")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="first",
+            wait_for_result=0,
+        )
+        mock_sessions[0].metadata.handed_off_from_expert_id = "expert-b"
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="sneak back into the handed-off thread",
+            delegated_session_id="inner-1",
+            wait_for_result=0,
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "not a delegation you started" in r.message
+        assert mock_turn.await_count == 1, "must not inject a turn into the handoff"
+
+
 class TestPollScope:
     @pytest.mark.asyncio
     async def test_delegator_can_poll_across_expert_scope(

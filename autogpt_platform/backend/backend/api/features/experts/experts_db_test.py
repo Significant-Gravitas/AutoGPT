@@ -1131,6 +1131,38 @@ async def test_list_experts_defaults_a_missing_spend_entry_to_zero(
     assert by_id[missing] == 0
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_experts_with_metrics_false_skips_run_and_spend_lookups(
+    server: SpinTestServer, test_user
+):
+    """The copilot team-context roster only reads name/role/id/workflow
+    names — ``with_metrics=False`` lets it skip the AgentGraphExecution
+    query and per-expert Redis reads that ``with_metrics=True`` callers
+    (team page, briefing) still need, while leaving every field the roster
+    actually renders unchanged."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with (
+        patch.object(experts_db, "_latest_runs", new_callable=AsyncMock) as latest_runs,
+        patch.object(
+            experts_db, "_weekly_spends", new_callable=AsyncMock
+        ) as weekly_spend,
+    ):
+        experts = await experts_db.list_experts(test_user.id, with_metrics=False)
+
+    latest_runs.assert_not_awaited()
+    weekly_spend.assert_not_awaited()
+    me = next(e for e in experts if e.id == hired.expert.id)
+    assert me.name == hired.expert.name
+    assert me.role == hired.expert.role
+    assert [w.name for w in me.workflows] == [w.name for w in hired.expert.workflows]
+    assert me.last_run_at is None
+    assert me.last_run_status is None
+    assert me.weekly_spend == 0
+
+
 def test_expert_identity_projection_columns_exist_in_schema():
     """Guard the hand-written projection in ``list_expert_identities``.
 

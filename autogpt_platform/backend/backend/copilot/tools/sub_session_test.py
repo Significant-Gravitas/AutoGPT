@@ -20,10 +20,16 @@ from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    WorkspaceFileInfoData,
+)
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
+    apply_delegated_expert,
     response_from_outcome,
 )
 
@@ -855,3 +861,62 @@ class TestHollowResponseRepro:
         )
         assert r.sub_workspace_files is None
         assert "workspace file" not in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# actor parameter — response_from_outcome builds the message once instead of
+# relying on a post-hoc string substitution against its own wording.
+# ---------------------------------------------------------------------------
+
+
+class TestActorParameter:
+    def test_default_actor_is_sub_autopilot(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+
+    @pytest.mark.parametrize(
+        "outcome,expected_prefix",
+        [
+            ("running", "Bea is still running"),
+            ("failed", "Bea failed"),
+            ("completed", "Bea completed"),
+        ],
+    )
+    def test_actor_names_the_delegate_in_every_terminal_message(
+        self, outcome, expected_prefix
+    ):
+        r = response_from_outcome(
+            outcome=outcome,
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        assert r.message is not None and r.message.startswith(expected_prefix)
+
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
+        """When the caller already passed the delegate's name as ``actor``,
+        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
+        find nothing to substitute — the message was already built correctly
+        by response_from_outcome, not patched up afterwards."""
+        response = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        expert = DelegatedExpertInfo(
+            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+        )
+        result = apply_delegated_expert(response, expert)
+        assert result.message == response.message
+        assert "Sub-AutoPilot" not in (result.message or "")
