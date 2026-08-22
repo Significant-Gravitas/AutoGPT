@@ -342,7 +342,10 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
     assert '"id"' in query
     assert '"metadata"' in query
     assert "\"metadata\" ->> 'delegated_by_session_id' IS NULL" in query
-    assert "handed_off_from_expert_id" not in query
+    # A handoff sets ``delegated_by_session_id`` too, so the delegated test
+    # alone would swallow every handed-off thread. The re-admitting arm has to
+    # be in the predicate, not merely absent from it.
+    assert "\"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL" in query
     # NULL-safe form: must use ``->>`` (text extraction), never a bare ``->``
     # comparison, which would treat every session's default explicit JSON
     # ``null`` as "present" and hide every normal session.
@@ -405,10 +408,19 @@ async def test_pending_question_excludes_delegated_but_keeps_handed_off(
         delegated.session_id, test_user_id, "Which API key?", now
     )
 
+    # Mirror what ``handoff_to_expert._transfer`` actually writes: a handoff
+    # records the delegation fields *as well as* the handoff marker. Building
+    # this session with the marker alone made the assertion below vacuous —
+    # it tested a shape the product never produces, and the real one was
+    # excluded by the delegated-sub filter.
     handed_off = await create_chat_session(
         str(uuid4()),
         test_user_id,
-        metadata=ChatSessionMetadata(handed_off_from_expert_id="expert-1"),
+        metadata=ChatSessionMetadata(
+            delegated_by_session_id=normal.session_id,
+            delegated_by_expert_id="expert-1",
+            handed_off_from_expert_id="expert-1",
+        ),
     )
     await set_session_pending_question(
         handed_off.session_id, test_user_id, "Confirm the vendor?", now

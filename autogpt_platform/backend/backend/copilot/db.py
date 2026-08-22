@@ -922,9 +922,17 @@ async def get_sessions_with_pending_question(
         # check on ``->`` would silently exclude every normal session (same
         # class of bug as the dream-session filter above). ``->>`` collapses
         # "key absent" and "explicit JSON null" to the same SQL NULL, so only
-        # a real delegating session id excludes the row. Handed-off threads
-        # are intentionally not filtered here — see the docstring.
-        "AND \"metadata\" ->> 'delegated_by_session_id' IS NULL "
+        # a real delegating session id excludes the row.
+        #
+        # The second arm is load-bearing, not defensive: a handoff records the
+        # delegation fields too (``handoff_to_expert._transfer`` sets
+        # ``delegated_by_session_id`` for attribution and because
+        # ``get_sub_session_result._in_caller_scope`` reads it to refuse the
+        # poll), so "delegated" alone matches every handed-off thread as well.
+        # Without this arm the receiving expert's question — the only path
+        # back to the user — never reaches Home. See the docstring.
+        "AND (\"metadata\" ->> 'delegated_by_session_id' IS NULL "
+        "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL) "
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).
