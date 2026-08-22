@@ -379,9 +379,24 @@ def _chat_session_create_input(
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
         **({"expertId": expert_id} if expert_id else {}),
-        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
+        metadata=SafeJson(_persisted_metadata(metadata).model_dump()),
     )
     return data
+
+
+def _persisted_metadata(metadata: ChatSessionMetadata | None) -> ChatSessionMetadata:
+    """Stamp a concrete origin on every row written here.
+
+    ``origin=None`` means "persisted before the field existed", and readers
+    treat it as legacy — so a row created now must never claim it, or a real
+    pre-deploy session stops being distinguishable from a fresh one. The
+    callers that pass no metadata at all (expert kickoff, parked assistant
+    messages) are machine paths, so an unset origin resolves to ``automation``.
+    """
+    resolved = metadata or ChatSessionMetadata()
+    if resolved.origin is None:
+        return resolved.model_copy(update={"origin": "automation"})
+    return resolved
 
 
 async def update_chat_session(

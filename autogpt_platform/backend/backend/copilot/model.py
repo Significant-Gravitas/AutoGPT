@@ -113,10 +113,14 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
 
-    # Defaults to ``interactive`` so sessions written before this field
-    # existed keep behaving as user-driven; machine callers set it
-    # explicitly. See :data:`ChatSessionOrigin`.
-    origin: ChatSessionOrigin = "interactive"
+    # ``None`` means the row was persisted before this field existed, and is
+    # NOT a synonym for either value: session metadata is immutable after
+    # creation, so a legacy row can never gain the key, and every writer goes
+    # through ``create_chat_session``, which always supplies a concrete
+    # origin. Readers must decide deliberately which way an unknown origin
+    # falls — see ``blocks/autopilot.py`` (legacy resumes) and
+    # ``autopilot_session_guard`` (legacy cannot staff).
+    origin: ChatSessionOrigin | None = None
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -145,6 +149,19 @@ class ChatSessionMetadata(BaseModel):
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
     pending_question: PendingQuestion | None = None
+
+
+def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
+    """Origin for a fresh session a tool opens on *parent*'s behalf.
+
+    A legacy ``None`` must not be copied into a row written today — that would
+    keep minting sessions indistinguishable from pre-deploy ones, and let a
+    legacy chat launder itself through a delegation. It resolves to
+    ``automation`` rather than ``interactive`` because these children are
+    opened by a tool call carrying a model-authored prompt: when the parent
+    cannot prove a human drove it, the child must not claim one did.
+    """
+    return parent.origin or "automation"
 
 
 class ChatMessage(BaseModel):

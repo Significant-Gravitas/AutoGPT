@@ -20,7 +20,7 @@ from backend.api.features.experts.errors import (
     RaisedExpertLifetimeLimitExceededError,
 )
 from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, ExpertSoulUpdate
-from backend.copilot.model import ChatMessage
+from backend.copilot.model import ChatMessage, ChatSessionMetadata
 from backend.util.exceptions import ExpertNotFoundError
 
 from ._test_data import make_session
@@ -179,6 +179,19 @@ def _automation_session():
     but no human typing into it either."""
     session = make_session(_USER)
     session.metadata.origin = "automation"
+    return session
+
+
+def _legacy_session():
+    """A session persisted before ``origin`` existed.
+
+    Built by parsing metadata JSON that genuinely lacks the key, because the
+    legacy state IS a deserialization default — assigning ``origin = None`` to
+    a constructed model would pass even if the field still defaulted to
+    ``"interactive"``, which is the bug this pins.
+    """
+    session = make_session(_USER)
+    session.metadata = ChatSessionMetadata.model_validate_json('{"dry_run": false}')
     return session
 
 
@@ -732,6 +745,44 @@ class TestPartialHire:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.failed_workflows == []
         assert "could not be installed" not in resp.message
+
+
+class TestLegacySessionsCannotStaff:
+    """A session persisted before ``origin`` existed reads back as ``None``.
+
+    The guard matches ``interactive`` positively, so an unknown origin is
+    refused: it cannot prove a human is here, and the cost is that a chat
+    older than this deploy needs a new one before it can staff. The
+    AutoPilotBlock resume path deliberately takes the other side of the same
+    unknown — refusing legacy sessions there would break live graphs.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_is_refused_in_a_legacy_session(self):
+        with _env() as db:
+            resp = await _hire(_legacy_session(), template_id="tpl-scout")
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_is_refused_in_a_legacy_session(self):
+        with _env() as db:
+            resp = await _raise(_legacy_session(), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_update_is_refused_in_a_legacy_session(self):
+        with _env() as db:
+            resp = await _update(_legacy_session(), expert_id="exp-2", name="Nick")
+        assert isinstance(resp, ErrorResponse)
+        db.update_soul_if_current.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_fresh_session_is_never_born_legacy(self):
+        """The guard's cost is bounded only because no row written today can
+        look legacy — ``ChatSession.new`` always supplies a concrete origin."""
+        assert make_session(_USER).metadata.origin == "interactive"
 
 
 class TestAutomationSessionsCannotStaff:

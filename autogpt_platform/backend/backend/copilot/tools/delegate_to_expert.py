@@ -34,7 +34,12 @@ from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.context import get_current_permissions
-from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    child_session_origin,
+    create_chat_session,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
@@ -297,7 +302,7 @@ class DelegateToExpertTool(BaseTool):
                 expert_id=target.id,
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
-                origin=session.metadata.origin,
+                origin=child_session_origin(session.metadata),
             )
             return new_session.session_id
 

@@ -25,7 +25,12 @@ from typing import Any
 from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.context import get_current_permissions
-from backend.copilot.model import ChatSession, create_chat_session, delete_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    child_session_origin,
+    create_chat_session,
+    delete_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     run_copilot_turn_via_queue,
@@ -151,7 +156,7 @@ class HandoffToExpertTool(BaseTool):
             delegated_by_expert_id=session.expert_id,
             delegated_by_session_id=session.session_id,
             handed_off_from_expert_id=session.expert_id,
-            origin=session.metadata.origin,
+            origin=child_session_origin(session.metadata),
         )
         outcome = await self._queue_task(
             user_id, session, inner.session_id, prompt, context
@@ -256,6 +261,19 @@ def _request_refusal(
         return "expert_id is required"
     if not prompt.strip():
         return "prompt is required"
+    if caller_expert_id is None:
+        # The ``experts`` tool group already hides and refuses this tool for a
+        # plain Autopilot session, so this is defence in depth — but the
+        # failure it prevents is silent rather than loud: ``_transfer`` would
+        # persist ``handed_off_from_expert_id`` as JSON null while still
+        # setting ``delegated_by_session_id``, and the Home pending-question
+        # predicate (``copilot/db.py``) reads the first with ``->>``, whose
+        # NULL then fails the ``IS NOT NULL`` re-admit arm. The receiving
+        # expert's question would vanish from Home with nothing logged.
+        return (
+            "Only an expert can hand a task over. Delegate it with "
+            "delegate_to_expert, or tell the user which expert should own it."
+        )
     if target_id == caller_expert_id:
         return (
             "You are that expert — the task is already yours. Do it, or "

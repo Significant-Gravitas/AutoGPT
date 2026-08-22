@@ -25,6 +25,7 @@ def _session(
     user_id: str = "alice",
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
+    origin: str | None = "interactive",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -35,6 +36,9 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
+    # Set explicitly: a bare MagicMock attribute is truthy, so an origin
+    # assertion would pass even if the kwarg were dropped.
+    sess.metadata.origin = origin
     sess.expert_id = expert_id
     return sess
 
@@ -120,6 +124,55 @@ def mock_sessions(monkeypatch):
         "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
     )
     return created
+
+
+class TestDelegatedSessionOrigin:
+    """A delegated thread is the target expert's own visible chat — the user
+    can open it and type — so it is NOT stamped ``automation`` the way an
+    internal ``run_sub_session`` scratch thread is. It carries the lineage of
+    the conversation that opened it, and a legacy parent (persisted before
+    ``origin`` existed) resolves rather than copying ``None`` into a row
+    written today."""
+
+    @pytest.mark.asyncio
+    async def test_lineage_of_an_interactive_parent_is_preserved(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(origin="interactive"),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert mock_sessions[0].metadata.origin == "interactive"
+
+    @pytest.mark.asyncio
+    async def test_automation_parent_stays_an_automation(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(origin="automation"),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert mock_sessions[0].metadata.origin == "automation"
+
+    @pytest.mark.asyncio
+    async def test_legacy_parent_never_mints_another_legacy_row(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """``None`` means "predates the field". Copying it into a fresh row
+        would keep manufacturing sessions indistinguishable from pre-deploy
+        ones; an unprovable parent resolves to ``automation`` because the
+        opening prompt here is model-authored."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(origin=None),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert mock_sessions[0].metadata.origin == "automation"
 
 
 class TestValidation:

@@ -190,13 +190,18 @@ def autopilot_session_guard(
             ),
             session_id=session.session_id,
         )
+    # Positive match, so a legacy ``None`` (a session persisted before
+    # ``origin`` existed) is refused too: an unknown origin cannot prove a
+    # human is here, and the cost is a chat older than this deploy needing a
+    # new one before it can staff. The block resume path takes the opposite
+    # side of the same unknown on purpose — see ``blocks/autopilot.py``.
     if session.metadata.origin != "interactive":
         return ErrorResponse(
             message=(
-                "This session was started by an automation, not by the user, "
-                "so it cannot hire, raise, or edit a teammate. Report what "
-                "the team would need and let the user make the change in "
-                "their own Autopilot chat."
+                "This session was started by an automation, or predates the "
+                "check that tells them apart, so it cannot hire, raise, or "
+                "edit a teammate. Report what the team would need and let the "
+                "user make the change in a new Autopilot chat."
             ),
             session_id=session.session_id,
         )

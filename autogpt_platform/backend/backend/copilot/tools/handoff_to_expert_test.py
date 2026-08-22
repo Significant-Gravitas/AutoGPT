@@ -33,6 +33,7 @@ def _session(
     user_id: str = "alice",
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
+    origin: str | None = "interactive",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -40,6 +41,9 @@ def _session(
     sess.dry_run = False
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
+    # Set explicitly: a bare MagicMock attribute is truthy, so an origin
+    # assertion would pass even if the kwarg were dropped.
+    sess.metadata.origin = origin
     sess.expert_id = expert_id
     return sess
 
@@ -143,6 +147,32 @@ class TestGuards:
         assert isinstance(r, ErrorResponse)
 
     @pytest.mark.asyncio
+    async def test_plain_autopilot_session_cannot_hand_off(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """A caller with no expert identity has nothing to transfer FROM.
+
+        The ``experts`` tool group already refuses this tool for a plain
+        session, so this is defence in depth — but the failure it prevents is
+        silent rather than loud: ``_transfer`` would persist
+        ``handed_off_from_expert_id`` as JSON null while still setting
+        ``delegated_by_session_id``, and the Home pending-question predicate
+        reads the former with ``->>``, whose NULL fails the ``IS NOT NULL``
+        re-admit arm. The receiving expert's question would disappear from
+        Home with nothing logged.
+        """
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Only an expert can hand a task over" in r.message
+        mock_turn.assert_not_awaited()
+        assert mock_sessions == []
+
+    @pytest.mark.asyncio
     async def test_handoff_to_self_rejected(self, roster, mock_turn, mock_sessions):
         r = await HandoffToExpertTool()._execute(
             user_id="alice",
@@ -189,6 +219,34 @@ class TestTransfer:
         assert sub.expert_id == "expert-b"
         assert sub.metadata.handed_off_from_expert_id == "expert-a"
         assert sub.metadata.delegated_by_session_id == "s1"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("parent_origin", "expected"),
+        [
+            # The receiving thread is that expert's own visible chat, which
+            # the user can open and type into, so it keeps the lineage of the
+            # conversation that opened it rather than being stamped
+            # ``automation`` like an internal run_sub_session thread.
+            ("interactive", "interactive"),
+            ("automation", "automation"),
+            # ``None`` means "persisted before the field existed"; a row
+            # written today must never claim that, and an unprovable parent
+            # resolves to automation because the opening prompt here is
+            # model-authored.
+            (None, "automation"),
+        ],
+    )
+    async def test_receiving_thread_origin(
+        self, parent_origin, expected, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a", origin=parent_origin),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert mock_sessions[0].metadata.origin == expected
 
     @pytest.mark.asyncio
     async def test_never_waits_for_a_result(self, roster, mock_turn, mock_sessions):
