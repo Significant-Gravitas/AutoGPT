@@ -599,6 +599,19 @@ class AutoPilotBlock(Block):
                 )
                 return
 
+            # `create_session` stamps origin="automation" so this block's
+            # machine-authored prompt can never reach the staffing tools.
+            # Resuming has to hold the same line: without this check a graph
+            # could pass the user's own interactive session_id and run its
+            # prompt under an origin that `autopilot_session_guard` accepts.
+            if existing_session.metadata.origin != "automation":
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session was started by a person, not by an "
+                    "automation. Start a new session for this graph run."
+                )
+                return
+
             expected_provider = "codex" if use_codex else "platform"
             expected_credential = codex_connection.id if use_codex else None
             if (

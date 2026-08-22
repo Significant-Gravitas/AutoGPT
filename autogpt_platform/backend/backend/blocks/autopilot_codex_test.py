@@ -110,11 +110,25 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         (
             SimpleNamespace(
                 metadata=SimpleNamespace(
+                    origin="automation",
                     llm_auth_provider="codex",
                     llm_credential_id="different-credential",
                 )
             ),
             "different transport or connection",
+        ),
+        # A graph naming the user's own chat session would otherwise run its
+        # machine-authored prompt under the one origin the staffing guard
+        # accepts — `create_session` stamps "automation" precisely to stop that.
+        (
+            SimpleNamespace(
+                metadata=SimpleNamespace(
+                    origin="interactive",
+                    llm_auth_provider="codex",
+                    llm_credential_id="cred-1",
+                )
+            ),
+            "started by a person",
         ),
     ],
 )
@@ -329,6 +343,7 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
     session = MagicMock()
+    session.metadata.origin = "automation"
     session.metadata.llm_auth_provider = "codex"
     session.metadata.llm_credential_id = "cred-1"
 

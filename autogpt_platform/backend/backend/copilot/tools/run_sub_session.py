@@ -161,6 +161,20 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            # The fresh-sub branch below propagates the caller's origin for a
+            # reason; a resume has to match it too. Otherwise an automation
+            # could name an interactive session it happens to own and run its
+            # machine-authored prompt under an origin the staffing guard lets
+            # through.
+            if owned.metadata.origin != session.metadata.origin:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} was "
+                        "started by a different kind of caller. Leave empty to "
+                        "start a fresh sub for this session."
+                    ),
+                    session_id=session.session_id,
+                )
             if (
                 owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
                 or owned.metadata.llm_credential_id

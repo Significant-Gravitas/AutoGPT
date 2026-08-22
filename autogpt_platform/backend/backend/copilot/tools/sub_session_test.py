@@ -308,6 +308,37 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_resume_rejects_mismatched_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Resuming must hold the line the fresh-sub branch holds.
+
+        An automation may own an interactive session of the user's; naming it
+        here would run the machine-authored prompt under ``interactive``,
+        which is exactly the origin ``autopilot_session_guard`` lets reach the
+        staffing tools.
+        """
+        interactive_sub = _session("alice", "other-session", origin="interactive")
+
+        async def fake_get(_session_id: str):
+            return interactive_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "different kind of caller" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
         self, monkeypatch, mock_queue, mock_waiter, mock_model
     ):
