@@ -60,6 +60,23 @@ class ExpertNotFoundError(NotFoundError):
         return f"Expert {self.expert_id} not found"
 
 
+class ExpertWriteNotReadableError(Exception):
+    """A write landed, but the expert could not be read back afterwards.
+
+    Deliberately not an ``ExpertNotFoundError``: the row vanishing *after* a
+    committed update is the opposite of the update being refused, and callers
+    must never fold the two together and report a landed change as "nothing
+    was changed".
+    """
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} was updated but could not be read back"
+
+
 class ExpertPrivateTenancyNotFoundError(MissingConfigError):
     def __init__(self, expert_id: str):
         super().__init__(expert_id)

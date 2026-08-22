@@ -21,7 +21,7 @@ from backend.api.features.experts.errors import (
 )
 from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, ExpertSoulUpdate
 from backend.copilot.model import ChatMessage, ChatSessionMetadata
-from backend.util.exceptions import ExpertNotFoundError
+from backend.util.exceptions import ExpertNotFoundError, ExpertWriteNotReadableError
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
@@ -396,6 +396,24 @@ class TestUpdate:
             )
         assert isinstance(resp, ErrorResponse)
         assert "edited somewhere else" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_landed_edit_is_never_reported_as_nothing_changed(self):
+        """The compare-and-set committed, then the row went before the
+        read-back. Folding that into the stale error would tell the model to
+        re-preview an edit that already applied."""
+        with _env() as db:
+            db.update_soul_if_current.side_effect = ExpertWriteNotReadableError("exp-2")
+            session = make_session(_USER)
+            preview = await _update(session, expert_id="exp-2", name="Nick")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session), confirmation_id=preview.confirmation_id
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "was saved" in resp.message
+        assert "nothing was changed" not in resp.message
+        assert "Do not re-preview" in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_name_whitespace_is_collapsed(self):

@@ -58,6 +58,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    ExpertWriteNotReadableError,
 )
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -841,7 +842,12 @@ async def update_soul_if_current(
     Backs the copilot ``update_expert`` confirm step, which rewrites every
     column from a preview taken minutes earlier — without the comparison a
     concurrent edit from the team UI would be reverted. ``None`` means the
-    expert is gone or moved; the caller re-previews.
+    write was refused (the expert is gone or moved); the caller re-previews.
+
+    The rowcount is the only success signal: once it is non-zero the edit is
+    committed, so a read-back that comes up empty must not be reported as a
+    refusal. Archived rows are included for that reason, and a row that is
+    gone outright raises rather than returning ``None``.
     """
     updated = await prisma.models.Expert.prisma().update_many(
         where={
@@ -864,7 +870,10 @@ async def update_soul_if_current(
     )
     if updated == 0:
         return None
-    return await get_expert(user_id, expert_id)
+    expert = await get_expert(user_id, expert_id, include_archived=True)
+    if expert is None:
+        raise ExpertWriteNotReadableError(expert_id)
+    return expert
 
 
 def _soul_field_update_data(
