@@ -25,7 +25,7 @@ from backend.util.exceptions import ExpertNotFoundError
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
-from .expert_proposal import ExpertChangeProposal, apply_proposal
+from .expert_proposal import ExpertChangeProposal, apply_proposal, proposal_key
 from .hire_expert import HireExpertTool
 from .models import (
     ErrorResponse,
@@ -826,3 +826,59 @@ class TestAutomationSessionsCannotStaff:
             )
         assert isinstance(resp, ErrorResponse)
         db.hire_expert.assert_not_called()
+
+
+def _legacy_proposal_json(session_id: str) -> str:
+    """A proposal exactly as pre-watermark code parked it in Redis.
+
+    Raw JSON on purpose: the missing watermark IS a deserialization default,
+    so constructing the model and clearing the field would still pass if the
+    default went back to a number.
+    """
+    return (
+        f'{{"user_id": "{_USER}", "session_id": "{session_id}", '
+        '"preview": {"kind": "hire", "name": "Scout", '
+        '"template_id": "tpl-scout"}}'
+    )
+
+
+class TestProposalsInFlightAcrossTheDeploy:
+    """A proposal written before the watermark existed reads back without one.
+
+    Defaulting it to a number would make any session with one sequenced user
+    message clear the gate, so an absent watermark refuses instead.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_proposal_without_a_watermark_deserializes_to_none(self):
+        proposal = ExpertChangeProposal.model_validate_json(
+            _legacy_proposal_json("session-x")
+        )
+        assert proposal.user_turn_watermark is None
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_proposal_without_a_watermark_is_refused(self):
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            session = _approve(make_session(_USER))
+            redis.store[proposal_key("pre-deploy-id")] = _legacy_proposal_json(
+                session.session_id
+            )
+            resp = await _confirm(session, confirmation_id="pre-deploy-id")
+        assert isinstance(resp, ErrorResponse)
+        assert "fresh preview" in resp.message
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_refusal_does_not_burn_the_proposal(self):
+        """Same courtesy a premature confirm gets: the id survives so the
+        re-preview the model is told to run is the only thing that replaces
+        it."""
+        redis = _FakeRedis()
+        with _env(redis=redis):
+            session = _approve(make_session(_USER))
+            redis.store[proposal_key("pre-deploy-id")] = _legacy_proposal_json(
+                session.session_id
+            )
+            await _confirm(session, confirmation_id="pre-deploy-id")
+        assert proposal_key("pre-deploy-id") in redis.store

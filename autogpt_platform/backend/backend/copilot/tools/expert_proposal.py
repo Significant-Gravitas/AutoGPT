@@ -31,6 +31,7 @@ from backend.data.redis_client import AsyncRedisClient
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    ExpertWriteNotReadableError,
 )
 
 from .models import (
@@ -81,7 +82,11 @@ class ExpertChangeProposal(BaseModel):
     # Only set for ``kind == "update"``: see ``ExpertSoulSnapshot``.
     expected_soul: ExpertSoulSnapshot | None = None
     # The human turn this preview answered — see ``user_turn_watermark``.
-    user_turn_watermark: int = -1
+    # ``None`` only for a proposal parked by code that predates the field.
+    # An unknown watermark cannot prove the user answered anything, so the
+    # gate refuses it rather than reading it as "answered at -1", which any
+    # session with one sequenced user message would clear.
+    user_turn_watermark: int | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:
@@ -109,6 +114,18 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
             "confirm_expert_change only after they reply approving it."
+        ),
+        session_id=session_id,
+    )
+
+
+def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "This preview was created before the approval check and carries "
+            "no record of the turn it answered, so it cannot be confirmed. "
+            f"Call {_PREVIEW_TOOLS} again for a fresh preview and confirm "
+            "that one after the user approves it."
         ),
         session_id=session_id,
     )
@@ -267,6 +284,8 @@ async def load_bound_proposal(
 
     # Checked before the DEL below so a premature confirm doesn't burn the
     # proposal the user is about to approve for real.
+    if proposal.user_turn_watermark is None:
+        return _unwatermarked_preview_error(session.session_id)
     if user_turn_watermark(session) <= proposal.user_turn_watermark:
         return _unapproved_preview_error(session.session_id)
 
@@ -412,6 +431,8 @@ async def _apply_update(
         )
     except ExpertNotFoundError:
         return _stale_expert_error(session_id)
+    except ExpertWriteNotReadableError:
+        return _applied_but_unreadable_error(session_id, preview.name)
     except Exception as e:
         return _unexpected_failure(e, session_id, "update_expert")
     if updated is None:
@@ -430,6 +451,24 @@ def _stale_expert_error(session_id: str) -> ErrorResponse:
             "That expert is gone or was edited somewhere else since this "
             "preview, so nothing was changed. Call update_expert again to "
             "preview the current version."
+        ),
+        session_id=session_id,
+    )
+
+
+def _applied_but_unreadable_error(session_id: str, name: str) -> ErrorResponse:
+    """The edit committed, then the teammate disappeared before the read-back.
+
+    Never route this to :func:`_stale_expert_error`: the change did land, so
+    telling the model to re-preview would have it re-apply an edit that is
+    already saved, or announce it was dropped when it was not.
+    """
+    return ErrorResponse(
+        message=(
+            f"The edit to {name} was saved, but they were removed from the "
+            "team before it could be read back. Do not re-preview or retry: "
+            "tell the user the change applied and that the teammate is no "
+            "longer on the team."
         ),
         session_id=session_id,
     )

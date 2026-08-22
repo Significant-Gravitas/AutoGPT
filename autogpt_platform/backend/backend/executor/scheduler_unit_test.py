@@ -587,6 +587,52 @@ async def test_execute_copilot_turn_dispatches_when_session_exists():
 
 
 @pytest.mark.asyncio
+async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn():
+    """A follow-up fired into a chat the user already owns must not persist as
+    role="user".
+
+    ``origin`` is a property of the session, so an interactive Autopilot chat
+    stays interactive when a schedule fires into it — the confirm gate in
+    ``expert_proposal`` falls back to the newest user-message sequence to prove
+    a human answered the preview. A machine-authored turn landing as role="user"
+    would raise that watermark and let a scheduled follow-up approve the expert
+    change the scheduling turn previewed."""
+    args = _args()
+    mock_schedule_turn = AsyncMock()
+    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch("backend.executor.scheduler.get_chat_session", new=mock_get_session),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert mock_schedule_turn.call_args.kwargs["is_user_message"] is False
+
+
+@pytest.mark.asyncio
+async def test_execute_copilot_turn_into_a_fresh_session_stays_a_user_turn():
+    """The sentinel path keeps the opener as the user turn: the fresh chat is
+    stamped ``origin="automation"`` so no proposal can be parked in it, and the
+    user-role first message is what titles the session."""
+    args = _args(session_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(
+        return_value=MagicMock(session_id="new-session-uuid")
+    )
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert mock_schedule_turn.call_args.kwargs["is_user_message"] is True
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()

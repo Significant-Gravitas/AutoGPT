@@ -380,6 +380,12 @@ async def _execute_copilot_turn(**kwargs):
                 return
             target_session_id = new_session.session_id
             target_session = new_session
+            # Nothing can be forged in a chat that has never existed before:
+            # its ``origin="automation"`` refuses the staffing tools outright,
+            # so no proposal can be parked here to approve. Persist the opener
+            # as the user turn so the fresh session still gets a title and the
+            # first-turn user context.
+            persist_as_user_turn = True
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
                 f"session {target_session_id[:12]} (sentinel session_id=None)"
@@ -414,6 +420,13 @@ async def _execute_copilot_turn(**kwargs):
                     return
             target_session_id = args.session_id
             target_session = session
+            # The target may be the user's own interactive Autopilot chat,
+            # where ``origin`` says nothing about who wrote *this* turn. A
+            # role="user" row here would raise the confirm watermark
+            # ``expert_proposal`` gates on, letting a scheduled follow-up
+            # approve the expert change the scheduling turn previewed. The
+            # message is model-authored either way, so persist it as one.
+            persist_as_user_turn = False
 
         assert target_session_id is not None
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
@@ -426,6 +439,7 @@ async def _execute_copilot_turn(**kwargs):
             user_id=args.user_id,
             turn_id=str(uuid.uuid4()),
             message=args.message,
+            is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
             organization_id=args.organization_id,
