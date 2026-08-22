@@ -77,3 +77,15 @@ def test_invalid_salt_format():
 
     # Invalid salt format should fail gracefully
     assert keysmith.verify_key(key.key, key.hash, "invalid_hex") is False
+
+
+def test_verify_key_none_and_type_safety():
+    keysmith = APIKeySmith()
+    key = keysmith.generate_key()
+
+    # Test None and non-string inputs fail gracefully without raising AttributeError
+    assert keysmith.verify_key(None, key.hash, key.salt) is False
+    assert keysmith.verify_key(12345, key.hash, key.salt) is False
+    assert keysmith.verify_key(key.key, None, key.salt) is False
+    assert keysmith.verify_key(key.key, None) is False
+
