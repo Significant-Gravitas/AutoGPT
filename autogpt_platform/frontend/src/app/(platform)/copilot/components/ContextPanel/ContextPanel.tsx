@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   MAX_CONTEXT_PANEL_WIDTH,
   MIN_CONTEXT_PANEL_WIDTH,
@@ -65,17 +65,11 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     ...(showFilesTab ? (["files"] as const) : []),
     ...(isNewToolUI ? (["artifacts"] as const) : []),
   ];
+  // Read-side only: "files" stays "files" in the store because the toggle,
+  // the workspace-files card and the chat column all read the raw tab.
   const effectiveTab = availableTabs.includes(activeTab)
     ? activeTab
     : availableTabs[0];
-  // Every other consumer of the panel state (the chat column's shift, the
-  // workspace-files card, the toggle's pressed state) reads the raw tab, so
-  // the clamp has to be written back. Without it, a user whose persisted tab
-  // is "files" when the new tool UI flips on gets the docked artifacts panel
-  // and the floating files card at once, with the toggle reading un-pressed.
-  useEffect(() => {
-    if (effectiveTab !== activeTab) setActiveTab(effectiveTab);
-  }, [activeTab, effectiveTab, setActiveTab]);
 
   // One tab left (new tool UI docks the panel for artifacts only) means the
   // switcher has nothing to switch, and the chat's sidebar icon already
@@ -145,12 +139,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   }
 
   // Under the new tool UI the open flag also drives the inline files card, so
-  // the docked panel only claims the side region for the artifacts tab. Test
-  // the clamped tab, not the raw one: a persisted "files"/"progress" from
-  // before the flag flipped still renders as artifacts, and comparing the raw
-  // value here would leave the toggle open a panel that never mounts.
-  const isDocked =
-    showExpanded && !(isNewToolUI && effectiveTab !== "artifacts");
+  // the docked panel only claims the side region for the artifacts tab. The
+  // raw tab decides: a "files" tab belongs to the card, not to this panel.
+  const isDocked = showExpanded && !(isNewToolUI && activeTab !== "artifacts");
 
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a

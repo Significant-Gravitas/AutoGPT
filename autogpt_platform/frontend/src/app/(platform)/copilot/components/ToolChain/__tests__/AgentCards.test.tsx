@@ -164,9 +164,10 @@ describe("SubSessionCard", () => {
     );
   });
 
-  it("renders an expert avatar from any host through the shared avatar", () => {
-    // Expert avatars are only validated as https by the backend, so this card
-    // must not go through next/image's configured-hostname allow list.
+  it("renders the expert avatar url through the shared avatar", () => {
+    // Only asserts the card hands the backend url to ExpertAvatar unchanged.
+    // ExpertAvatar still renders via next/image, so the configured-hostname
+    // allow list is not covered here — setup-nextjs-mocks swaps in a plain img.
     render(
       <SubSessionCard
         output={{

@@ -68,13 +68,26 @@ describe("ContextPanel", () => {
     expect(screen.queryByRole("tablist")).toBeNull();
   });
 
-  test("writes the clamped tab back so the files card and the docked panel can't both show", async () => {
+  test("leaves a files tab alone and stays undocked so the files card owns it", async () => {
     flagState.newToolUI = true;
-    render(<ContextPanel sessionId="session-1" />);
+    const { container } = render(<ContextPanel sessionId="session-1" />);
     await waitFor(() =>
-      expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
-        "artifacts",
-      ),
+      expect(container.querySelector("[data-context-panel]")).toBeNull(),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
+  });
+
+  test("docks for the artifacts tab under the new tool UI", async () => {
+    flagState.newToolUI = true;
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "artifacts" },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
+      "artifacts",
     );
   });
 
