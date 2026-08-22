@@ -11,10 +11,40 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import type { UIMessage } from "ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
 import { WorkspaceFileCards } from "../WorkspaceFileCards";
+
+// Skip real download wiring — fetch/blob plumbing isn't under test.
+const downloadArtifactMock = vi.fn(() => Promise.resolve());
+vi.mock("../../ArtifactPanel/downloadArtifact", () => ({
+  downloadArtifact: (...args: unknown[]) =>
+    downloadArtifactMock(...(args as [])),
+}));
+
+const downloadFilesAsZipMock = vi.fn(() => Promise.resolve());
+vi.mock(
+  "../../ContextPanel/components/FilesTab/helpers",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../ContextPanel/components/FilesTab/helpers")
+      >();
+    return {
+      ...actual,
+      downloadFilesAsZip: (...args: unknown[]) =>
+        downloadFilesAsZipMock(...(args as [])),
+    };
+  },
+);
+
+const toastSpy = vi.fn();
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: (...args: unknown[]) => toastSpy(...(args as [])),
+  useToast: () => ({ toast: toastSpy }),
+}));
 
 const SESSION = "session-1";
 
@@ -111,6 +141,11 @@ afterEach(() => {
     },
   });
   useCopilotStreamStore.setState({ messageSnapshots: {} });
+  downloadArtifactMock.mockClear();
+  downloadArtifactMock.mockImplementation(() => Promise.resolve());
+  downloadFilesAsZipMock.mockClear();
+  downloadFilesAsZipMock.mockImplementation(() => Promise.resolve());
+  toastSpy.mockClear();
 });
 
 describe("WorkspaceFileCards", () => {
@@ -197,5 +232,74 @@ describe("WorkspaceFileCards", () => {
     expect(screen.getByText("Daily Digest")).toBeDefined();
     expect(screen.getByText(/^Schedules \(1\)/)).toBeDefined();
     expect(screen.getByText("Morning brief")).toBeDefined();
+  });
+
+  it("downloads a single file on click", async () => {
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    fireEvent.click(await screen.findByLabelText("Download result.csv"));
+
+    await waitFor(() => expect(downloadArtifactMock).toHaveBeenCalledTimes(1));
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("toasts when a single-file download fails", async () => {
+    downloadArtifactMock.mockImplementation(() =>
+      Promise.reject(new Error("network error")),
+    );
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    fireEvent.click(await screen.findByLabelText("Download uploaded.png"));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Download failed" }),
+      ),
+    );
+  });
+
+  it("zips and downloads every file via Download all", async () => {
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    fireEvent.click(await screen.findByLabelText("Download all"));
+
+    await waitFor(() =>
+      expect(downloadFilesAsZipMock).toHaveBeenCalledTimes(1),
+    );
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("toasts when Download all fails", async () => {
+    downloadFilesAsZipMock.mockImplementation(() =>
+      Promise.reject(new Error("zip error")),
+    );
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    fireEvent.click(await screen.findByLabelText("Download all"));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Download all failed" }),
+      ),
+    );
+  });
+
+  it("toasts and still closes the dialog when delete fails", async () => {
+    server.use(
+      http.delete("/api/proxy/api/workspace/files/:fileId", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    fireEvent.click(await screen.findByLabelText("Delete result.csv"));
+    fireEvent.click(await screen.findByRole("button", { name: /^Delete$/ }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Failed to delete file" }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

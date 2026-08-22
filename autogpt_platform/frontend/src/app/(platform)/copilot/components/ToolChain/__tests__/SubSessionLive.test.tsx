@@ -4,6 +4,7 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SubSessionCard } from "../AgentCards";
+import { ToolResult } from "../ToolResult";
 
 function subSession(messages: Record<string, unknown>[]) {
   return getGetV2GetSessionMockHandler200({
@@ -84,8 +85,7 @@ describe("SubSessionLive", () => {
     expect(screen.queryByText("Done. Discord clone is built.")).toBeNull();
   });
 
-  it("shows who is on it before a blocking delegate returns", async () => {
-    const { ToolResult } = await import("../ToolResult");
+  it("shows who is on it before a blocking delegate returns", () => {
     render(
       <ToolResult
         row={{
