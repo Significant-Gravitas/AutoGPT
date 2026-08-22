@@ -137,8 +137,12 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   }
 
   // Under the new tool UI the open flag also drives the inline files card, so
-  // the docked panel only claims the side region for the artifacts tab.
-  const isDocked = showExpanded && !(isNewToolUI && activeTab !== "artifacts");
+  // the docked panel only claims the side region for the artifacts tab. Test
+  // the clamped tab, not the raw one: a persisted "files"/"progress" from
+  // before the flag flipped still renders as artifacts, and comparing the raw
+  // value here would leave the toggle open a panel that never mounts.
+  const isDocked =
+    showExpanded && !(isNewToolUI && effectiveTab !== "artifacts");
 
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a

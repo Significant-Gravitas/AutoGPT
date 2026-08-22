@@ -25,7 +25,7 @@ from typing import Any
 from backend.api.features.experts.models import Expert
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.context import get_current_permissions
-from backend.copilot.model import ChatSession, create_chat_session
+from backend.copilot.model import ChatSession, create_chat_session, delete_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     run_copilot_turn_via_queue,
@@ -157,6 +157,18 @@ class HandoffToExpertTool(BaseTool):
             user_id, session, inner.session_id, prompt, context
         )
         if outcome not in _OWNERSHIP_TAKEN:
+            # Nothing moved (that is what the outcome means), so the thread we
+            # opened for the target holds no work — leaving it behind would
+            # show them an empty handoff that never happened. Best-effort:
+            # a failed cleanup must not turn a refusal into an error.
+            try:
+                await delete_chat_session(inner.session_id, user_id)
+            except Exception:
+                logger.warning(
+                    "Failed to clean up unused handoff session %s",
+                    inner.session_id,
+                    exc_info=True,
+                )
             return self._error(_refused_transfer_message(target.name, outcome), session)
         return apply_delegated_expert(
             _transferred_response(

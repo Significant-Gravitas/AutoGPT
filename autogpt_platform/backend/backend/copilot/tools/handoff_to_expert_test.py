@@ -89,7 +89,22 @@ def mock_turn(monkeypatch):
 
 
 @pytest.fixture
-def mock_sessions(monkeypatch):
+def deleted_sessions(monkeypatch):
+    """Records the receiving threads the tool cleans up after a refusal."""
+    deleted: list[str] = []
+
+    async def fake_delete(session_id: str, user_id: str | None = None) -> bool:
+        deleted.append(session_id)
+        return True
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.handoff_to_expert.delete_chat_session", fake_delete
+    )
+    return deleted
+
+
+@pytest.fixture
+def mock_sessions(monkeypatch, deleted_sessions):
     created: list[MagicMock] = []
 
     async def fake_create(user_id, **kwargs):
@@ -97,6 +112,9 @@ def mock_sessions(monkeypatch):
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
+        # Without this the MagicMock answers any origin assertion truthily, so
+        # a test for origin propagation would pass with the kwarg dropped.
+        sess.metadata.origin = kwargs.get("origin")
         sess.metadata.handed_off_from_expert_id = kwargs.get(
             "handed_off_from_expert_id"
         )
@@ -333,6 +351,27 @@ class TestFailedTransfer:
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
         assert "already running" in r.message
+
+    @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
+    @pytest.mark.asyncio
+    async def test_a_refused_dispatch_leaves_no_empty_thread_behind(
+        self, roster, mock_turn, mock_sessions, deleted_sessions, outcome
+    ):
+        """The receiving thread is opened before the dispatch is attempted.
+
+        A refusal means nothing moved, so that thread holds no work — leaving
+        it would show the target an empty handoff that never happened.
+        """
+        await self._handoff(mock_turn, outcome)
+        assert len(mock_sessions) == 1
+        assert deleted_sessions == [mock_sessions[0].session_id]
+
+    @pytest.mark.asyncio
+    async def test_a_successful_transfer_keeps_the_receiving_thread(
+        self, roster, mock_turn, mock_sessions, deleted_sessions
+    ):
+        await self._handoff(mock_turn, "queued")
+        assert deleted_sessions == []
 
 
 class TestGating:
