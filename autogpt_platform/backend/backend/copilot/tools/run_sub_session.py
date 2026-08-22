@@ -179,6 +179,7 @@ class RunSubSessionTool(BaseTool):
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
+                parent_session_id=session.session_id,
             )
             inner_session_id = new_session.session_id
 

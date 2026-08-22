@@ -109,6 +109,9 @@ class ChatSessionMetadata(BaseModel):
     # links back to the orchestrator run that produced it.
     dream_pass_id: str | None = None
 
+    # Provenance tracking: parent session that spawned this sub-session.
+    parent_session_id: str | None = None
+
 
 class ChatMessage(BaseModel):
     id: str | None = None
@@ -396,6 +399,7 @@ class ChatSession(ChatSessionInfo):
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        parent_session_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -412,6 +416,7 @@ class ChatSession(ChatSessionInfo):
                 source_platform=source_platform,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
+                parent_session_id=parent_session_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1206,6 +1211,7 @@ async def create_chat_session(
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     expert_id: str | None = None,
+    parent_session_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1221,6 +1227,7 @@ async def create_chat_session(
             validated here and pinned to the owner's personal organization, and
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
+        parent_session_id: Parent session ID if this is a delegated sub-session.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1243,6 +1250,7 @@ async def create_chat_session(
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         expert_id=expert_id,
+        parent_session_id=parent_session_id,
     )
 
     # Create in database first - fail fast if this fails
