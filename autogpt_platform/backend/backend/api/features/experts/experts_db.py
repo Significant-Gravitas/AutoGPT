@@ -826,6 +826,47 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     return expert
 
 
+async def update_soul_if_current(
+    user_id: str,
+    expert_id: str,
+    soul: ExpertSoulUpdate,
+    *,
+    expected_name: str,
+    expected_identity: str,
+    expected_voice_preferences: str,
+    expected_boundaries: str,
+) -> Expert | None:
+    """Whole-soul :func:`update_soul` that only lands while the soul is unchanged.
+
+    Backs the copilot ``update_expert`` confirm step, which rewrites every
+    column from a preview taken minutes earlier — without the comparison a
+    concurrent edit from the team UI would be reverted. ``None`` means the
+    expert is gone or moved; the caller re-previews.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+            "name": expected_name,
+            "identity": expected_identity,
+            "voicePreferences": expected_voice_preferences,
+            "boundaries": expected_boundaries,
+        },
+        data={
+            "name": soul.name,
+            "identity": soul.identity,
+            "voicePreferences": soul.voice_preferences,
+            "boundaries": soul.boundaries,
+        },
+    )
+    if updated == 0:
+        return None
+    return await get_expert(user_id, expert_id)
+
+
 def _soul_field_update_data(
     *,
     identity: str | None,

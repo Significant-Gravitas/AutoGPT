@@ -250,18 +250,21 @@ class TestRunSubSession:
         assert mock_model["created"][0].dry_run is True
 
     @pytest.mark.asyncio
-    async def test_fresh_sub_inherits_automation_origin(
-        self, mock_queue, mock_waiter, mock_model
+    @pytest.mark.parametrize("parent_origin", ["automation", "interactive"])
+    async def test_fresh_sub_is_always_an_automation(
+        self, parent_origin, mock_queue, mock_waiter, mock_model
     ):
-        """A sub of an automation is still an automation.
+        """A sub is machine-driven whatever opened it.
 
-        The staffing tools refuse an ``origin="automation"`` session, but a
-        block-driven session can open a sub — and if the child defaulted back
-        to ``"interactive"`` the gate would be one hop from bypassed.
+        Its prompt is written by the parent model, not typed by the user, and
+        nothing restricts which tools it may call — so inheriting an
+        ``interactive`` origin would let a parent that read attacker-supplied
+        content reach the staffing tools one hop from the gate that refuses
+        them directly.
         """
         await RunSubSessionTool()._execute(
             user_id="alice",
-            session=_session("alice", origin="automation"),
+            session=_session("alice", origin=parent_origin),
             prompt="hi",
             wait_for_result=0,
         )
@@ -313,10 +316,10 @@ class TestRunSubSession:
     ):
         """Resuming must hold the line the fresh-sub branch holds.
 
-        An automation may own an interactive session of the user's; naming it
-        here would run the machine-authored prompt under ``interactive``,
-        which is exactly the origin ``autopilot_session_guard`` lets reach the
-        staffing tools.
+        Subs are created as automations, so only a sub may be resumed as one.
+        Naming an interactive session the caller happens to own would run the
+        machine-authored prompt under the origin
+        ``autopilot_session_guard`` lets reach the staffing tools.
         """
         interactive_sub = _session("alice", "other-session", origin="interactive")
 
@@ -329,7 +332,7 @@ class TestRunSubSession:
 
         result = await RunSubSessionTool()._execute(
             user_id="alice",
-            session=_session("alice", origin="automation"),
+            session=_session("alice", origin="interactive"),
             prompt="continue",
             sub_autopilot_session_id="other-session",
         )

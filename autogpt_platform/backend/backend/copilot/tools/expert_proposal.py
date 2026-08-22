@@ -55,6 +55,21 @@ _LOG_ID_PREFIX_LENGTH = 12
 _PREVIEW_TOOLS = "hire_expert, raise_expert or update_expert"
 
 
+class ExpertSoulSnapshot(BaseModel):
+    """The stored soul exactly as ``update_expert`` read it at preview time.
+
+    Compared field-by-field in the apply write so an edit the user made
+    elsewhere between preview and confirm refuses instead of being reverted.
+    Raw column values, not ``ExpertSoulUpdate`` — validating them again here
+    would normalise the snapshot away from what the row actually holds.
+    """
+
+    name: str
+    identity: str
+    voice_preferences: str
+    boundaries: str
+
+
 class ExpertChangeProposal(BaseModel):
     """The exact pending team change stored between preview and confirm."""
 
@@ -63,6 +78,10 @@ class ExpertChangeProposal(BaseModel):
     preview: ExpertChangePreview
     # Only set for ``kind == "update"``: the teammate the edit rewrites.
     expert_id: str | None = None
+    # Only set for ``kind == "update"``: see ``ExpertSoulSnapshot``.
+    expected_soul: ExpertSoulSnapshot | None = None
+    # The human turn this preview answered — see ``user_turn_watermark``.
+    user_turn_watermark: int = -1
 
 
 def proposal_key(confirmation_id: str) -> str:
@@ -84,6 +103,17 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
+def _unapproved_preview_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "The user has not answered this preview yet, so there is nothing "
+            "to confirm. Read the change back to them and call "
+            "confirm_expert_change only after they reply approving it."
+        ),
+        session_id=session_id,
+    )
+
+
 def _already_confirmed_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
@@ -93,6 +123,25 @@ def _already_confirmed_error(session_id: str) -> ErrorResponse:
             "change, or if that earlier confirmation reported an error."
         ),
         session_id=session_id,
+    )
+
+
+def user_turn_watermark(session: ChatSession) -> int:
+    """Sequence of the newest human-authored message in this session.
+
+    The preview stores it and ``load_bound_proposal`` demands a strictly
+    higher one, so the approval the confirm claims to act on has to be a real
+    user turn. Without it the same assistant turn that previewed a change can
+    call ``confirm_expert_change`` on the id it just received, and the whole
+    preview/confirm seam collapses into one uninterrupted model decision.
+    """
+    return max(
+        (
+            message.sequence
+            for message in session.messages
+            if message.role == "user" and message.sequence is not None
+        ),
+        default=-1,
     )
 
 
@@ -114,11 +163,18 @@ def autopilot_session_guard(
     """Team changes belong to the user, typing in their own Autopilot chat.
 
     Two things have to hold, and "no ``expert_id``" only proves the first:
-    an expert must not staff its own team, AND a human must actually be
-    driving the conversation. A session an ``AutoPilotBlock`` opened inside
-    a graph run carries no ``expert_id`` either, and its prompt can be
-    assembled from data the user never read — so it is gated on the
-    positive ``interactive`` origin instead.
+    an expert must not staff its own team, AND the conversation has to be one
+    a human drives. A session an ``AutoPilotBlock`` opened inside a graph run
+    carries no ``expert_id`` either, and its prompt can be assembled from data
+    the user never read — so it is gated on the positive ``interactive``
+    origin instead, and every machine entry point (block, sub-session,
+    scheduled turn) stamps ``automation`` at creation.
+
+    ``origin`` is a property of the session, not of the invocation, so it
+    cannot by itself prove a human wrote *this* turn — a scheduled follow-up
+    fired into a chat the user already owns still reads as interactive. The
+    user-turn watermark in ``load_bound_proposal`` is what closes that gap at
+    the confirm step.
     """
     if not user_id:
         return ErrorResponse(
@@ -203,6 +259,11 @@ async def load_bound_proposal(
             message="This confirmation_id belongs to a different chat.",
             session_id=session.session_id,
         )
+
+    # Checked before the DEL below so a premature confirm doesn't burn the
+    # proposal the user is about to approve for real.
+    if user_turn_watermark(session) <= proposal.user_turn_watermark:
+        return _unapproved_preview_error(session.session_id)
 
     # GET and DEL are intentionally separate: binding must be checked before
     # consumption so a mismatched caller cannot invalidate a legitimate
@@ -317,15 +378,20 @@ async def _apply_update(
 ) -> ToolResponseBase:
     """Write the soul edit previewed by ``update_expert``.
 
-    The preview already merged the requested fields over the stored soul and
-    validated the result, so this writes the previewed values verbatim — the
-    user approved exactly this text.
+    The preview merged the requested fields over the stored soul, so this
+    writes the whole soul back — which would silently revert an edit made
+    elsewhere in the meantime. Compare-and-set against the snapshot the
+    preview read (mirroring ``soul_proposal``) so a soul that moved refuses
+    instead.
     """
     preview = proposal.preview
     if proposal.expert_id is None:
         return _discarded_proposal_error(session_id, "expert", "update_expert")
+    if proposal.expected_soul is None:
+        return _discarded_proposal_error(session_id, "soul snapshot", "update_expert")
+    expected = proposal.expected_soul
     try:
-        updated = await experts_db().update_soul(
+        updated = await experts_db().update_soul_if_current(
             user_id,
             proposal.expert_id,
             ExpertSoulUpdate(
@@ -334,23 +400,33 @@ async def _apply_update(
                 boundaries=preview.boundaries,
                 voice_preferences=preview.voice_preferences,
             ),
+            expected_name=expected.name,
+            expected_identity=expected.identity,
+            expected_voice_preferences=expected.voice_preferences,
+            expected_boundaries=expected.boundaries,
         )
     except ExpertNotFoundError:
-        return ErrorResponse(
-            message=(
-                "That expert vanished between the preview and the "
-                "confirmation — they may have just been archived. Nothing "
-                "was changed."
-            ),
-            session_id=session_id,
-        )
+        return _stale_expert_error(session_id)
     except Exception as e:
         return _unexpected_failure(e, session_id, "update_expert")
+    if updated is None:
+        return _stale_expert_error(session_id)
     return ExpertChangeAppliedResponse(
         message=f"{updated.name} is updated. Tell the user exactly what changed.",
         session_id=session_id,
         kind="update",
         expert=_summary(updated),
+    )
+
+
+def _stale_expert_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "That expert is gone or was edited somewhere else since this "
+            "preview, so nothing was changed. Call update_expert again to "
+            "preview the current version."
+        ),
+        session_id=session_id,
     )
 
 

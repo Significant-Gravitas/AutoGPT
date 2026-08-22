@@ -6,8 +6,9 @@ hand — so this is the same class of edit ``update_expert_soul`` already gates,
 and it goes through the same preview + ``confirm_expert_change`` flow as
 hire/raise. The tool merges the requested edits over the current soul, shows
 the result, and parks it under a one-time ``confirmation_id``;
-``confirm_expert_change`` writes it through ``update_soul``, the same path the
-team UI's soul editor uses.
+``confirm_expert_change`` writes it through ``update_soul_if_current``, the
+team UI's soul-editor write plus a compare-and-set against the soul this
+preview read.
 """
 
 import uuid
@@ -24,8 +25,10 @@ from .base import BaseTool
 from .expert_proposal import (
     PROPOSAL_TTL_MINUTES,
     ExpertChangeProposal,
+    ExpertSoulSnapshot,
     autopilot_session_guard,
     store_proposal,
+    user_turn_watermark,
 )
 from .models import (
     ErrorResponse,
@@ -135,7 +138,9 @@ class UpdateExpertTool(BaseTool):
 
         try:
             merged = ExpertSoulUpdate(
-                name=name if name is not None else expert.name,
+                # Collapsed, not just stripped — a newline in the name forges
+                # extra lines in the ``<team_context>`` roster block.
+                name=" ".join(name.split()) if name is not None else expert.name,
                 identity=about if about is not None else expert.identity,
                 # Blank keeps the stored value: unlike voice_preferences,
                 # boundaries has no documented empty-string clearing, and a
@@ -176,6 +181,13 @@ class UpdateExpertTool(BaseTool):
                 session_id=session_id,
                 preview=preview,
                 expert_id=expert.id,
+                expected_soul=ExpertSoulSnapshot(
+                    name=expert.name,
+                    identity=expert.identity,
+                    voice_preferences=expert.voice_preferences,
+                    boundaries=expert.boundaries,
+                ),
+                user_turn_watermark=user_turn_watermark(session),
             ),
         )
         return ExpertChangeProposedResponse(

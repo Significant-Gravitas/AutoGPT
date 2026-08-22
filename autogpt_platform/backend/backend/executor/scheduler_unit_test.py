@@ -275,7 +275,10 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
     powers ``schedule_followup`` calls with no explicit session_id.
 
     The fresh session must land in the org/team captured at schedule time —
-    not the user's default org — so an org chat's followups stay in-tenant."""
+    not the user's default org — so an org chat's followups stay in-tenant,
+    and it must be stamped ``origin="automation"``: the message it fires was
+    written by the scheduling turn rather than typed by the user, so the
+    team-staffing tools have to refuse it."""
     args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock()  # should NOT be called
@@ -297,6 +300,7 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         organization_id="org-sched",
         team_id="team-sched",
         expert_id=None,
+        origin="automation",
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
@@ -337,6 +341,7 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         organization_id="org-sched",
         team_id="team-sched",
         expert_id="expert-1",
+        origin="automation",
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
 
@@ -556,6 +561,7 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
         organization_id=None,
         team_id=None,
         expert_id=None,
+        origin="automation",
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-legacy-session"
     mock_self_delete.assert_not_awaited()

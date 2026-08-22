@@ -503,6 +503,7 @@ class DatabaseManager(AppService):
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
     update_soul = _(experts_db.update_soul)
+    update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     # Hire / raise from the copilot chat tools, plus the counts their
@@ -839,6 +840,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
     update_soul = d.update_soul
+    update_soul_if_current = d.update_soul_if_current
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
     list_templates = d.list_templates

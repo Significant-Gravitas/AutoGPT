@@ -357,6 +357,11 @@ async def _execute_copilot_turn(**kwargs):
                 organization_id=args.organization_id,
                 team_id=args.team_id,
                 expert_id=args.expert_id,
+                # The message this fires is model-authored — the scheduling
+                # turn wrote it, not the user. Without this the fresh session
+                # defaults to "interactive" and schedule_followup becomes a
+                # way to reach the staffing tools with nobody watching.
+                origin="automation",
             )
             if args.expert_id and new_session.expert_id is None:
                 # The scope check above passed, so the expert was archived or

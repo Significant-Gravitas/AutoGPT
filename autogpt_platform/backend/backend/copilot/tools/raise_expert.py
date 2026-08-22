@@ -27,6 +27,7 @@ from .expert_proposal import (
     autopilot_session_guard,
     capacity_error,
     store_proposal,
+    user_turn_watermark,
 )
 from .models import (
     ErrorResponse,
@@ -172,8 +173,12 @@ class RaiseExpertTool(BaseTool):
             )
         try:
             params = _RaiseParams(
-                name=name.strip(),
-                role=role.strip(),
+                # Collapsed, not just stripped: the roster block in
+                # ``expert_context`` renders one line per teammate, so an
+                # embedded newline in either field forges extra roster
+                # entries that ``escape_prompt_xml_tags`` cannot neutralise.
+                name=" ".join(name.split()),
+                role=" ".join(role.split()),
                 color=color,
                 weekly_budget=weekly_budget,
             )
@@ -216,6 +221,7 @@ class RaiseExpertTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
+                user_turn_watermark=user_turn_watermark(session),
             ),
         )
         return ExpertChangeProposedResponse(

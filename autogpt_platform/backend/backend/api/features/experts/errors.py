@@ -3,24 +3,37 @@
 Kept free of Prisma and of the DB module itself so callers that only need to
 name a failure — the copilot hire/raise tools, for one — can import it without
 pulling the query layer in behind it.
+
+The four failures a copilot tool has to tell apart are defined in
+``backend.util.exceptions`` and re-exported here: ``EXCEPTION_MAPPING`` is
+built from that module alone, so an exception class defined anywhere else
+reaches the Prisma-less copilot executor as a retried ``HTTPServerError``
+instead of its own type.
 """
+
+from backend.util.exceptions import (
+    ExpertHireUnavailableError,
+    ExpertLimitExceededError,
+    ExpertTemplateNotFoundError,
+    RaisedExpertLifetimeLimitExceededError,
+)
+
+__all__ = [
+    "ACTIVE_EXPERT_LIMIT",
+    "LIFETIME_RAISED_EXPERT_LIMIT",
+    "ExpertHireUnavailableError",
+    "ExpertLimitExceededError",
+    "ExpertPodLimitReachedError",
+    "ExpertPodNameTakenError",
+    "ExpertPodNotFoundError",
+    "ExpertTemplateNotFoundError",
+    "RaisedExpertLifetimeLimitExceededError",
+]
 
 # The active cap bounds team-list fan-out. The lifetime raised-expert cap also
 # bounds durable rows when users repeatedly raise and archive experts.
 ACTIVE_EXPERT_LIMIT = 20
 LIFETIME_RAISED_EXPERT_LIMIT = 100
-
-
-class ExpertTemplateNotFoundError(Exception):
-    def __init__(self, template_id: str):
-        super().__init__(f"Expert template {template_id} not found")
-        self.template_id = template_id
-
-
-class ExpertHireUnavailableError(Exception):
-    def __init__(self, expert_id: str):
-        super().__init__(expert_id)
-        self.expert_id = expert_id
 
 
 class ExpertPodNotFoundError(Exception):
@@ -38,16 +51,4 @@ class ExpertPodNameTakenError(Exception):
 class ExpertPodLimitReachedError(Exception):
     def __init__(self, limit: int):
         super().__init__(f"You can have at most {limit} pods")
-        self.limit = limit
-
-
-class ExpertLimitExceededError(Exception):
-    def __init__(self, limit: int):
-        super().__init__(f"Active expert limit of {limit} reached")
-        self.limit = limit
-
-
-class RaisedExpertLifetimeLimitExceededError(Exception):
-    def __init__(self, limit: int):
-        super().__init__(f"Raised expert lifetime limit of {limit} reached")
         self.limit = limit

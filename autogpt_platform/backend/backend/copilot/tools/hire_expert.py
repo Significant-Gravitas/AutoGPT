@@ -21,6 +21,7 @@ from .expert_proposal import (
     autopilot_session_guard,
     capacity_error,
     store_proposal,
+    user_turn_watermark,
 )
 from .models import (
     ErrorResponse,
@@ -132,6 +133,7 @@ class HireExpertTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
+                user_turn_watermark=user_turn_watermark(session),
             ),
         )
         return ExpertChangeProposedResponse(

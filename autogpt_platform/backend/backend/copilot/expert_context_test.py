@@ -31,6 +31,19 @@ from backend.copilot.expert_context import (
 
 _EC = "backend.copilot.expert_context"
 
+
+@pytest.fixture(autouse=True)
+def hire_experts_flag_on():
+    """Pin the hire-experts flag on.
+
+    ``build_expert_context`` reads it to decide whether the roster block may
+    name ``delegate_to_expert``; without pinning it these tests would follow
+    whatever LaunchDarkly (or a local ``FORCE_FLAG_`` override) says.
+    """
+    with patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=True)):
+        yield
+
+
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT captured before the Task 6 change.
 # The prompt cache contract requires this constant to stay byte-identical.
 _PRE_CHANGE_PROMPT_SHA256 = (
@@ -487,6 +500,46 @@ class TestBuildExpertContextPlainSession:
         # opening their thread) as long as the model discloses it.
         assert "delegate_to_expert" in result
         assert "Never delegate silently." in result
+
+    @pytest.mark.asyncio
+    async def test_flag_off_roster_never_names_the_delegation_tool(self):
+        """``delegate_to_expert`` is hidden from the schema and refused by
+        execute_tool when hire-experts is off, so a roster block that still
+        told the model to call it would prepend a broken instruction to every
+        first message of a user who had already hired experts."""
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        with (
+            patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=False)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<team_context>" in result
+        assert "Maria" in result
+        assert "delegate_to_expert" not in result
+        assert "opening that expert's thread" in result
+
+    @pytest.mark.asyncio
+    async def test_flag_off_teammate_block_never_names_the_delegation_tool(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(
+            return_value=[_expert(), _expert(expert_id="exp-2", name="Otto")]
+        )
+        with (
+            patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=False)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<team_context>" in result
+        assert "Otto" in result
+        assert "delegate_to_expert" not in result
 
     @pytest.mark.asyncio
     async def test_team_context_is_byte_identical_regardless_of_metrics(self):

@@ -161,12 +161,11 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
-            # The fresh-sub branch below propagates the caller's origin for a
-            # reason; a resume has to match it too. Otherwise an automation
-            # could name an interactive session it happens to own and run its
-            # machine-authored prompt under an origin the staffing guard lets
-            # through.
-            if owned.metadata.origin != session.metadata.origin:
+            # Subs are created as automations below, so only a sub may be
+            # resumed as one. Otherwise this tool would run a model-authored
+            # prompt inside an interactive session the caller happens to own,
+            # under an origin the staffing guard lets through.
+            if owned.metadata.origin != "automation":
                 return ErrorResponse(
                     message=(
                         f"sub_autopilot_session_id {sub_session_param} was "
@@ -194,11 +193,12 @@ class RunSubSessionTool(BaseTool):
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
-                # A sub of an automation is still an automation. Without this
-                # the child defaults to "interactive", so a block-driven
-                # session could reach the staffing tools one hop away from the
+                # A sub is machine-driven whatever opened it: its prompt is
+                # written by the parent model, not typed by the user, and no
+                # tool restriction applies to it. Inheriting an "interactive"
+                # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
-                origin=session.metadata.origin,
+                origin="automation",
             )
             inner_session_id = new_session.session_id
 
