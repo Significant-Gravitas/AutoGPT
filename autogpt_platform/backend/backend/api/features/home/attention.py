@@ -5,7 +5,7 @@ from urllib.parse import quote
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.outcome import as_utc, run_link
-from backend.copilot.model import ChatSessionInfo
+from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
@@ -30,7 +30,8 @@ def compose_attention_items(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
     )
     items.extend(
-        _question_attention(session, expert_by_id) for session in questions or []
+        _question_attention(session, question, expert_by_id)
+        for session, question in _open_questions(questions or [])
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -99,28 +100,62 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
     )
 
 
+def _open_questions(
+    sessions: list[ChatSessionInfo],
+) -> list[tuple[ChatSessionInfo, PendingQuestion]]:
+    """The questions still waiting on the user, one row per session.
+
+    Answering clears ``pending_question``, so a session without one has
+    nothing left to show. A session that asked twice keeps only its latest
+    question, and collapses to a single row here even if the caller hands us
+    the same session more than once — the item id is keyed on the session, so
+    two rows would be two cards with the same id.
+    """
+    latest: dict[str, tuple[ChatSessionInfo, PendingQuestion]] = {}
+    for session in sessions:
+        question = session.metadata.pending_question
+        if question is None:
+            continue
+        seen = latest.get(session.session_id)
+        if seen is None or seen[1].asked_at <= question.asked_at:
+            latest[session.session_id] = (session, question)
+    return list(latest.values())
+
+
 def _question_attention(
-    session: ChatSessionInfo, expert_by_id: dict[str, Expert]
+    session: ChatSessionInfo,
+    question: PendingQuestion,
+    expert_by_id: dict[str, Expert],
 ) -> HomeAttentionItem:
     """A chat that ended waiting on the user. Replying there is the only fix,
     so the item links straight back into the thread and has no own action."""
-    question = session.metadata.pending_question
-    asker = expert_by_id.get(session.expert_id or "")
-    name = asker.name if asker else "Autopilot"
+    asker = expert_by_id.get(session.expert_id) if session.expert_id else None
     return HomeAttentionItem(
         id=f"question-{session.session_id}",
         kind="question",
         priority="normal",
-        title=f"{name} has a question",
-        description=_clip(question.text) if question else "",
+        title=f"{_asker_name(session.expert_id, asker)} has a question",
+        description=_clip(question.text),
         why_it_matters="The work is paused until you answer in the chat.",
         expert=to_home_expert(asker) if asker else None,
-        created_at=as_utc(question.asked_at) if question else None,
+        created_at=as_utc(question.asked_at),
         primary_action=HomeAction(
             label="Answer",
             href=f"/copilot?sessionId={quote(session.session_id)}",
         ),
     )
+
+
+def _asker_name(expert_id: str | None, asker: Expert | None) -> str:
+    """Who to credit the question to.
+
+    ``expert_by_id`` only holds active experts, so an archived teammate's
+    question resolves to nothing — falling back to the Autopilot default
+    there would put words in Autopilot's mouth it never said.
+    """
+    if asker:
+        return asker.name
+    return "A teammate" if expert_id else "Autopilot"
 
 
 def _credits_attention(schedule_count: int) -> HomeAttentionItem:

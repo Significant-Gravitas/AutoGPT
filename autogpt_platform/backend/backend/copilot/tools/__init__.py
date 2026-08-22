@@ -266,7 +266,8 @@ async def execute_tool(
     user_id: str | None,
     session: ChatSession,
     tool_call_id: str,
-    disabled_groups: Iterable[ToolGroup] = (),
+    *,
+    disabled_groups: Iterable[ToolGroup],
 ) -> StreamToolOutputAvailable:
     """Execute a tool by name, refusing anything in *disabled_groups*.
 
@@ -276,6 +277,11 @@ async def execute_tool(
     mid-session) would still reach ``tool.execute``.  Re-checking the group
     here makes the capability gate an enforcement boundary, matching the SDK
     engine where hidden tools are never registered with the MCP server at all.
+
+    ``disabled_groups`` is keyword-only and has no default on purpose: it is
+    an enforcement boundary, so a new call site must state its gate rather
+    than silently inherit "nothing is disabled" and drop back to the
+    presentation-only behaviour this function exists to close.
     """
     tool = get_tool(tool_name)
     if not tool:

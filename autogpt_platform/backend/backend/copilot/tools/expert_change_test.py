@@ -1,8 +1,9 @@
-"""Tests for the confirm-gated hire/raise flow.
+"""Tests for the confirm-gated hire/raise/update flow.
 
-The contract under test is the gate itself: a preview must never create an
-expert, the confirmation_id must be single-use and bound to the Autopilot
-session that produced it, and confirm must apply exactly what was previewed.
+The contract under test is the gate itself: a preview must never write, the
+confirmation_id must be single-use and bound to the Autopilot session that
+produced it, confirm must apply exactly what was previewed, and only a
+session a human is actually driving may reach any of it.
 """
 
 from contextlib import contextmanager
@@ -140,6 +141,7 @@ def _env(
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_RAISE_MODULE}.get_redis_async", shared_redis),
+        patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_CONFIRM_MODULE}.get_redis_async", shared_redis),
     ):
         yield db
@@ -161,6 +163,14 @@ async def _confirm(session, **kwargs):
 
 async def _update(session, **kwargs):
     return await UpdateExpertTool()._execute(user_id=_USER, session=session, **kwargs)
+
+
+def _automation_session():
+    """A session an AutoPilotBlock opened inside a graph run: no expert_id,
+    but no human typing into it either."""
+    session = make_session(_USER)
+    session.metadata.origin = "automation"
+    return session
 
 
 class TestPreviewNeverWrites:
@@ -262,14 +272,35 @@ class TestPreviewTimeLimits:
 
 
 class TestUpdate:
+    """``identity``/``boundaries`` are injected into that expert's system
+    prompt on every later turn and hand-written boundaries have no undo, so
+    an update goes through the same preview + confirm gate as hire/raise
+    rather than writing on the model's say-so."""
+
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_rename_applies_immediately_merged_over_the_current_soul(self):
-        with _env() as db:
-            db.update_soul.return_value = _created("Nick", "exp-2")
+    async def test_preview_merges_over_the_current_soul_and_writes_nothing(self):
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
             resp = await _update(make_session(_USER), expert_id="exp-2", name="Nick")
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.applied is False
+        assert resp.preview.kind == "update"
+        otto = _hired_otto()
+        assert resp.preview.name == "Nick"
+        assert resp.preview.about == otto.identity
+        assert resp.preview.boundaries == otto.boundaries
+        assert len(redis.store) == 1
+        db.update_soul.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_confirm_writes_exactly_the_previewed_soul(self):
+        with _env() as db:
+            session = make_session(_USER)
+            preview = await _update(session, expert_id="exp-2", name="Nick")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(session, confirmation_id=preview.confirmation_id)
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "update"
-        assert resp.expert.name == "Nick"
         otto = _hired_otto()
         db.update_soul.assert_awaited_once_with(
             _USER,
@@ -287,22 +318,12 @@ class TestUpdate:
         """Unlike ``voice_preferences``, boundaries has no documented
         empty-string clearing and a raise requires them — a whitespace-only
         edit must not silently wipe the existing boundaries."""
-        with _env() as db:
+        with _env():
             resp = await _update(
                 make_session(_USER), expert_id="exp-2", boundaries="   "
             )
-        assert isinstance(resp, ExpertChangeAppliedResponse)
-        otto = _hired_otto()
-        db.update_soul.assert_awaited_once_with(
-            _USER,
-            "exp-2",
-            ExpertSoulUpdate(
-                name=otto.name,
-                identity=otto.identity,
-                boundaries=otto.boundaries,
-                voice_preferences=otto.voice_preferences,
-            ),
-        )
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.preview.boundaries == _hired_otto().boundaries
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_fields_is_refused(self):
@@ -320,11 +341,15 @@ class TestUpdate:
         db.update_soul.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_expert_vanishing_mid_edit_is_reported(self):
+    async def test_expert_vanishing_before_the_confirm_is_reported(self):
         with _env() as db:
             db.update_soul.side_effect = ExpertNotFoundError("exp-2")
-            resp = await _update(make_session(_USER), expert_id="exp-2", name="Nick")
+            session = make_session(_USER)
+            preview = await _update(session, expert_id="exp-2", name="Nick")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(session, confirmation_id=preview.confirmation_id)
         assert isinstance(resp, ErrorResponse)
+        assert "archived" in resp.message
 
 
 class TestConfirm:
@@ -363,7 +388,9 @@ class TestConfirm:
         )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_second_confirm_fails(self):
+    async def test_second_confirm_says_the_change_is_already_done(self):
+        """A double "yes" is a normal thing for a user to say — it must read
+        as "already done", not as the same message an expired preview gets."""
         with _env() as db:
             session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
@@ -371,13 +398,16 @@ class TestConfirm:
             await _confirm(session, confirmation_id=preview.confirmation_id)
             resp = await _confirm(session, confirmation_id=preview.confirmation_id)
         assert isinstance(resp, ErrorResponse)
+        assert "already confirmed" in resp.message
         assert db.hire_expert.await_count == 1
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_expired_or_unknown_id_fails(self):
+    async def test_expired_or_unknown_id_fails_and_discloses_the_window(self):
         with _env() as db:
             resp = await _confirm(make_session(_USER), confirmation_id="nope")
         assert isinstance(resp, ErrorResponse)
+        assert "expired" in resp.message
+        assert "15 minutes" in resp.message
         db.hire_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -518,13 +548,12 @@ class TestHireNameValidation:
 
 
 class TestApplyProposalDispatch:
-    """apply_proposal must be exhaustive over ExpertChangeKind — a preview
-    whose kind is neither 'hire' nor 'raise' must be refused rather than
-    silently falling through to _apply_raise, which would CREATE an expert
-    instead of applying whatever that other kind was meant to mean."""
+    """apply_proposal must be exhaustive over ExpertChangeKind and must
+    refuse a proposal that lost the target it referred to, rather than
+    falling through to a branch that CREATES an expert instead."""
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_unsupported_kind_is_refused_not_applied(self):
+    async def test_update_without_a_target_expert_is_refused(self):
         with _env() as db:
             proposal = ExpertChangeProposal(
                 user_id=_USER,
@@ -533,5 +562,95 @@ class TestApplyProposalDispatch:
             )
             resp = await apply_proposal(_USER, "s1", proposal)
         assert isinstance(resp, ErrorResponse)
+        db.update_soul.assert_not_called()
         db.hire_expert.assert_not_called()
         db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_without_a_template_is_refused(self):
+        with _env() as db:
+            proposal = ExpertChangeProposal(
+                user_id=_USER,
+                session_id="s1",
+                preview=ExpertChangePreview(kind="hire", name="Nope"),
+            )
+            resp = await apply_proposal(_USER, "s1", proposal)
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+
+
+class TestPartialHire:
+    """A hire whose workflows failed to install leaves an expert that cannot
+    do part of its job — the message must say so, or the user only finds out
+    when the work silently doesn't happen."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_failed_workflows_are_named_in_the_message(self):
+        partial = SimpleNamespace(
+            expert=_created(),
+            failed_preloads=["Inbox triage", "Daily digest"],
+        )
+        with _env(hire_result=partial):
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(session, confirmation_id=preview.confirmation_id)
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert resp.failed_workflows == ["Inbox triage", "Daily digest"]
+        assert "Inbox triage" in resp.message
+        assert "Daily digest" in resp.message
+        assert "is hired and on the team." not in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_clean_hire_still_reads_as_a_clean_hire(self):
+        with _env():
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(session, confirmation_id=preview.confirmation_id)
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert resp.failed_workflows == []
+        assert "could not be installed" not in resp.message
+
+
+class TestAutomationSessionsCannotStaff:
+    """``expert_id is None`` means "not an expert chat", not "a human is
+    typing". An AutoPilotBlock session inside a graph run satisfies the
+    former while its prompt may be assembled from untrusted upstream data,
+    so the team tools gate on the interactive origin instead."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_is_refused_in_a_block_origin_session(self):
+        with _env() as db:
+            resp = await _hire(_automation_session(), template_id="tpl-scout")
+        assert isinstance(resp, ErrorResponse)
+        assert "automation" in resp.message
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_is_refused_in_a_block_origin_session(self):
+        with _env() as db:
+            resp = await _raise(_automation_session(), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_update_is_refused_in_a_block_origin_session(self):
+        with _env() as db:
+            resp = await _update(_automation_session(), expert_id="exp-2", name="Nick")
+        assert isinstance(resp, ErrorResponse)
+        db.update_soul.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_confirm_is_refused_in_a_block_origin_session(self):
+        with _env() as db:
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            block_session = _automation_session()
+            block_session.session_id = session.session_id
+            resp = await _confirm(
+                block_session, confirmation_id=preview.confirmation_id
+            )
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()

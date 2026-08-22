@@ -83,8 +83,8 @@ from ..moonshot import (
 from ..model import (
     ChatMessage,
     ChatSession,
-    get_chat_session,
     clear_pending_question,
+    get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
 )

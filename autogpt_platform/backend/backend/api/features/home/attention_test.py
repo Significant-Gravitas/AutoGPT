@@ -282,8 +282,14 @@ def test_review_without_expert_details_has_no_expert() -> None:
 
 
 def _asking_session(
-    *, session_id: str = "sess-1", expert_id: str | None = None, text: str = "Which?"
+    *,
+    session_id: str = "sess-1",
+    expert_id: str | None = None,
+    text: str | None = "Which?",
+    asked_at: datetime | None = None,
 ) -> ChatSessionInfo:
+    """A chat waiting on the user. ``text=None`` is a session whose question
+    was already answered, which clears ``pending_question``."""
     return ChatSessionInfo(
         session_id=session_id,
         user_id="user",
@@ -292,7 +298,11 @@ def _asking_session(
         updated_at=NOW,
         expert_id=expert_id,
         metadata=ChatSessionMetadata(
-            pending_question=PendingQuestion(text=text, asked_at=NOW)
+            pending_question=(
+                PendingQuestion(text=text, asked_at=asked_at or NOW)
+                if text is not None
+                else None
+            )
         ),
     )
 
@@ -315,17 +325,19 @@ def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
 
 
 def test_answered_question_leaves_nothing_behind() -> None:
-    assert (
-        compose_attention_items(
-            now=NOW,
-            experts=[],
-            reviews=[],
-            schedules=[],
-            credits_balance=None,
-            questions=[],
-        )
-        == []
+    """Answering clears ``pending_question``. The session is still a recent
+    chat and can still be handed to the composer, but it must no longer
+    raise a "has a question" card."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text=None)],
     )
+
+    assert items == []
 
 
 def test_expert_question_is_titled_and_avatared_by_its_expert() -> None:
@@ -342,28 +354,37 @@ def test_expert_question_is_titled_and_avatared_by_its_expert() -> None:
     assert items[0].expert is not None and items[0].expert.name == "Ada"
 
 
-def test_question_from_a_vanished_expert_still_renders() -> None:
+def test_question_from_an_archived_expert_is_not_credited_to_autopilot() -> None:
+    """The expert map only holds *active* experts, so an archived teammate's
+    question resolves to nothing — but Autopilot never asked it, and saying
+    it did is a lie the user cannot check."""
     items = compose_attention_items(
         now=NOW,
         experts=[],
         reviews=[],
         schedules=[],
         credits_balance=None,
-        questions=[_asking_session(expert_id="deleted-expert")],
+        questions=[_asking_session(expert_id="archived-expert")],
     )
 
-    assert items[0].title == "Autopilot has a question"
+    assert items[0].title == "A teammate has a question"
     assert items[0].expert is None
 
 
 def test_one_session_asking_twice_yields_one_item() -> None:
+    """A session holds one pending question, latest wins. Even handed the
+    same session twice, the composer must emit a single card — two would
+    collide on the ``question-<session_id>`` item id."""
+    earlier = _asking_session(text="first question", asked_at=NOW - timedelta(hours=2))
+    latest = _asking_session(text="latest question only", asked_at=NOW)
+
     items = compose_attention_items(
         now=NOW,
         experts=[],
         reviews=[],
         schedules=[],
         credits_balance=None,
-        questions=[_asking_session(text="latest question only")],
+        questions=[earlier, latest],
     )
 
     assert len(items) == 1

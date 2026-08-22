@@ -1,9 +1,10 @@
-"""Server-side storage and application for pending hire/raise proposals.
+"""Server-side storage and application for pending team-change proposals.
 
-Mirrors ``soul_proposal`` for team changes: the preview tools write nothing and
-park the exact proposal in Redis under a one-time ``confirmation_id``, and
-``confirm_expert_change`` loads it bound to the same Autopilot session,
-consumes it single-use, and applies it.
+Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
+``raise_expert``, ``update_expert``) write nothing and park the exact proposal
+in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
+loads it bound to the same Autopilot session, consumes it single-use, and
+applies it.
 """
 
 import logging
@@ -18,7 +19,12 @@ from backend.api.features.experts.errors import (
     ExpertTemplateNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
-from backend.api.features.experts.models import Expert, HireResult, RaiseResult
+from backend.api.features.experts.models import (
+    Expert,
+    ExpertSoulUpdate,
+    HireResult,
+    RaiseResult,
+)
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import AsyncRedisClient
@@ -39,8 +45,14 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 PROPOSAL_TTL_SECONDS = 15 * 60
+PROPOSAL_TTL_MINUTES = PROPOSAL_TTL_SECONDS // 60
 _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
+# Tombstone written when a proposal is consumed, so a repeated "yes" can be
+# answered with "already done" instead of the same message an expired
+# preview gets.
+_CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
 _LOG_ID_PREFIX_LENGTH = 12
+_PREVIEW_TOOLS = "hire_expert, raise_expert or update_expert"
 
 
 class ExpertChangeProposal(BaseModel):
@@ -49,17 +61,36 @@ class ExpertChangeProposal(BaseModel):
     user_id: str
     session_id: str
     preview: ExpertChangePreview
+    # Only set for ``kind == "update"``: the teammate the edit rewrites.
+    expert_id: str | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:
     return f"{_PROPOSAL_KEY_PREFIX}{confirmation_id}"
 
 
+def _consumed_key(confirmation_id: str) -> str:
+    return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
+
+
 def _stale_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
-            "This confirmation_id is unknown, expired, or already used. "
-            "Call hire_expert or raise_expert again for a fresh preview."
+            "This confirmation_id is unknown or has expired — previews last "
+            f"{PROPOSAL_TTL_MINUTES} minutes. Call {_PREVIEW_TOOLS} again for "
+            "a fresh preview."
+        ),
+        session_id=session_id,
+    )
+
+
+def _already_confirmed_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "You already confirmed this change, so there is nothing left to "
+            "apply — tell the user it is done. Call "
+            f"{_PREVIEW_TOOLS} for a fresh preview only if they want another "
+            "change, or if that earlier confirmation reported an error."
         ),
         session_id=session_id,
     )
@@ -80,7 +111,15 @@ async def store_proposal(
 def autopilot_session_guard(
     user_id: str | None, session: ChatSession
 ) -> ErrorResponse | None:
-    """Team changes belong to Autopilot — an expert cannot staff its own team."""
+    """Team changes belong to the user, typing in their own Autopilot chat.
+
+    Two things have to hold, and "no ``expert_id``" only proves the first:
+    an expert must not staff its own team, AND a human must actually be
+    driving the conversation. A session an ``AutoPilotBlock`` opened inside
+    a graph run carries no ``expert_id`` either, and its prompt can be
+    assembled from data the user never read — so it is gated on the
+    positive ``interactive`` origin instead.
+    """
     if not user_id:
         return ErrorResponse(
             message="Please sign in to change the team.",
@@ -92,6 +131,16 @@ def autopilot_session_guard(
                 "Only the user can change the team, and only from the "
                 "Autopilot chat. Tell them what you'd add and let them do it "
                 "there."
+            ),
+            session_id=session.session_id,
+        )
+    if session.metadata.origin != "interactive":
+        return ErrorResponse(
+            message=(
+                "This session was started by an automation, not by the user, "
+                "so it cannot hire, raise, or edit a teammate. Report what "
+                "the team would need and let the user make the change in "
+                "their own Autopilot chat."
             ),
             session_id=session.session_id,
         )
@@ -135,6 +184,8 @@ async def load_bound_proposal(
     key = proposal_key(confirmation_id)
     raw = await redis.get(key)
     if raw is None:
+        if await redis.get(_consumed_key(confirmation_id)) is not None:
+            return _already_confirmed_error(session.session_id)
         return _stale_preview_error(session.session_id)
 
     try:
@@ -158,6 +209,7 @@ async def load_bound_proposal(
     # proposal.
     if await redis.delete(key) == 0:
         return _stale_preview_error(session.session_id)
+    await redis.setex(_consumed_key(confirmation_id), PROPOSAL_TTL_SECONDS, "1")
     return proposal
 
 
@@ -171,6 +223,8 @@ async def apply_proposal(
         return await _apply_hire(user_id, session_id, preview)
     if preview.kind == "raise":
         return await _apply_raise(user_id, session_id, preview)
+    if preview.kind == "update":
+        return await _apply_update(user_id, session_id, proposal)
     logger.error(
         "apply_proposal received unsupported preview kind %r for user %s",
         preview.kind,
@@ -179,7 +233,7 @@ async def apply_proposal(
     return ErrorResponse(
         message=(
             "This proposal kind is not supported by confirm_expert_change. "
-            "Call hire_expert or raise_expert again for a fresh preview."
+            f"Call {_PREVIEW_TOOLS} again for a fresh preview."
         ),
         session_id=session_id,
     )
@@ -191,7 +245,7 @@ async def _apply_hire(
     preview: ExpertChangePreview,
 ) -> ToolResponseBase:
     if preview.template_id is None:
-        return _apply_failed_error(session_id)
+        return _discarded_proposal_error(session_id, "template", "hire_expert")
     try:
         result: HireResult = await experts_db().hire_expert(
             user_id,
@@ -201,14 +255,29 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=(
-            f"{result.expert.name} is hired and on the team. Tell the user "
-            "who joined and what they own."
-        ),
+        message=_hire_message(result.expert.name, result.failed_preloads),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
         failed_workflows=result.failed_preloads,
+    )
+
+
+def _hire_message(name: str, failed_workflows: list[str]) -> str:
+    """A hire whose workflows didn't install must not read as a clean one.
+
+    The expert exists either way, but until the listed workflows are added
+    back it cannot do the part of the job they carried — so the model is
+    told to name them rather than announce an unqualified success.
+    """
+    if not failed_workflows:
+        return f"{name} is hired and on the team. Tell the user who joined and what they own."
+    workflows = ", ".join(failed_workflows)
+    return (
+        f"{name} joined the team, but {len(failed_workflows)} of their "
+        f"workflows could not be installed: {workflows}. Tell the user who "
+        "joined, name the workflows that failed, and say those need to be "
+        f"added from {name}'s team page before that part of the job can run."
     )
 
 
@@ -238,6 +307,50 @@ async def _apply_raise(
         session_id=session_id,
         kind="raise",
         expert=_summary(result.expert),
+    )
+
+
+async def _apply_update(
+    user_id: str,
+    session_id: str,
+    proposal: ExpertChangeProposal,
+) -> ToolResponseBase:
+    """Write the soul edit previewed by ``update_expert``.
+
+    The preview already merged the requested fields over the stored soul and
+    validated the result, so this writes the previewed values verbatim — the
+    user approved exactly this text.
+    """
+    preview = proposal.preview
+    if proposal.expert_id is None:
+        return _discarded_proposal_error(session_id, "expert", "update_expert")
+    try:
+        updated = await experts_db().update_soul(
+            user_id,
+            proposal.expert_id,
+            ExpertSoulUpdate(
+                name=preview.name,
+                identity=preview.about,
+                boundaries=preview.boundaries,
+                voice_preferences=preview.voice_preferences,
+            ),
+        )
+    except ExpertNotFoundError:
+        return ErrorResponse(
+            message=(
+                "That expert vanished between the preview and the "
+                "confirmation — they may have just been archived. Nothing "
+                "was changed."
+            ),
+            session_id=session_id,
+        )
+    except Exception as e:
+        return _unexpected_failure(e, session_id, "update_expert")
+    return ExpertChangeAppliedResponse(
+        message=f"{updated.name} is updated. Tell the user exactly what changed.",
+        session_id=session_id,
+        kind="update",
+        expert=_summary(updated),
     )
 
 
@@ -318,11 +431,13 @@ def _summary(expert: Expert) -> ExpertSummary:
     )
 
 
-def _apply_failed_error(session_id: str) -> ErrorResponse:
+def _discarded_proposal_error(
+    session_id: str, missing: str, tool_name: str
+) -> ErrorResponse:
     return ErrorResponse(
         message=(
-            "That proposal is missing the template it referred to and has "
-            "been discarded. Call hire_expert again to re-preview."
+            f"That proposal is missing the {missing} it referred to and has "
+            f"been discarded. Call {tool_name} again to re-preview."
         ),
         session_id=session_id,
     )

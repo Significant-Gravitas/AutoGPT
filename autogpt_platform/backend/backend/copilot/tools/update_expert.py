@@ -1,12 +1,16 @@
-"""Edit an existing expert's soul, applied immediately.
+"""Preview a soul edit for an expert already on the team (never writes).
 
-Unlike hire/raise — which create someone new and go through the
-preview + ``confirm_expert_change`` gate — an update edits a teammate the
-user already owns and can re-edit just as cheaply, so the user's ask IS the
-confirmation. The tool merges the requested edits over the current soul and
-writes through the same ``update_soul`` path the team UI's soul editor uses.
+``identity`` and ``boundaries`` are injected into that expert's system prompt
+on every later turn, and there is no undo for boundaries the user wrote by
+hand — so this is the same class of edit ``update_expert_soul`` already gates,
+and it goes through the same preview + ``confirm_expert_change`` flow as
+hire/raise. The tool merges the requested edits over the current soul, shows
+the result, and parks it under a one-time ``confirmation_id``;
+``confirm_expert_change`` writes it through ``update_soul``, the same path the
+team UI's soul editor uses.
 """
 
+import uuid
 from typing import Any
 
 from pydantic import ValidationError
@@ -14,20 +18,25 @@ from pydantic import ValidationError
 from backend.api.features.experts.models import ExpertSoulUpdate
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.util.exceptions import ExpertNotFoundError
+from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_proposal import autopilot_session_guard
+from .expert_proposal import (
+    PROPOSAL_TTL_MINUTES,
+    ExpertChangeProposal,
+    autopilot_session_guard,
+    store_proposal,
+)
 from .models import (
     ErrorResponse,
-    ExpertChangeAppliedResponse,
-    ExpertSummary,
+    ExpertChangePreview,
+    ExpertChangeProposedResponse,
     ToolResponseBase,
 )
 
 
 class UpdateExpertTool(BaseTool):
-    """Apply a soul edit to an expert already on the team."""
+    """Propose a soul edit to an expert already on the team."""
 
     @property
     def name(self) -> str:
@@ -40,13 +49,13 @@ class UpdateExpertTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Edit an expert already on the team — rename them or rewrite "
-            "their soul: what they own (about), where they stop "
-            "(boundaries), how they sound (voice). Pass only the fields "
-            "that change; the rest stay as they are. Applies immediately: "
-            "when the user asks for a change, call this once with it — do "
-            "not ask them to confirm first. Afterwards tell them exactly "
-            "what changed."
+            "Propose an edit to an expert already on the team — rename them "
+            "or rewrite their soul: what they own (about), where they stop "
+            "(boundaries), how they sound (voice). Pass only the fields that "
+            "change; the rest stay as they are. Never writes: returns the "
+            "merged soul plus a one-time confirmation_id. Show the user "
+            "exactly what would change and, only after they approve, call "
+            "confirm_expert_change with that id."
         )
 
     @property
@@ -148,27 +157,38 @@ class UpdateExpertTool(BaseTool):
                 session_id=session_id,
             )
 
-        try:
-            updated = await experts_db().update_soul(user_id, expert.id, merged)
-        except ExpertNotFoundError:
-            return ErrorResponse(
-                message=(
-                    "That expert vanished mid-edit — they may have just been "
-                    "archived. Nothing was changed."
-                ),
-                session_id=session_id,
-            )
-        return ExpertChangeAppliedResponse(
-            message=f"{updated.name} is updated. Tell the user exactly what changed.",
-            session_id=session_id,
+        preview = ExpertChangePreview(
             kind="update",
-            expert=ExpertSummary(
-                id=updated.id,
-                name=updated.name,
-                role=updated.role,
-                avatar_url=updated.avatar_url,
-                color=updated.color,
+            name=merged.name,
+            role=expert.role,
+            about=merged.identity,
+            boundaries=merged.boundaries,
+            voice_preferences=merged.voice_preferences,
+            avatar_url=expert.avatar_url,
+            color=expert.color,
+        )
+        confirmation_id = str(uuid.uuid4())
+        await store_proposal(
+            await get_redis_async(),
+            confirmation_id,
+            ExpertChangeProposal(
+                user_id=user_id,
+                session_id=session_id,
+                preview=preview,
+                expert_id=expert.id,
             ),
+        )
+        return ExpertChangeProposedResponse(
+            message=(
+                f"Nothing changed yet. Show the user exactly how {expert.name} "
+                "would be rewritten, including anything this replaces. Only "
+                "after they explicitly approve, call confirm_expert_change "
+                f"with this confirmation_id; it expires in "
+                f"{PROPOSAL_TTL_MINUTES} minutes."
+            ),
+            session_id=session_id,
+            preview=preview,
+            confirmation_id=confirmation_id,
         )
 
 
