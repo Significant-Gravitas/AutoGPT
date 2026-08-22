@@ -143,7 +143,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   // Width is the animated property because the panel pushes the chat column
   // rather than overlaying it. Dragging the handle bypasses the tween (a
   // queued 300ms tween per pointer move would trail the cursor). The old UI
-  // mounts instantly, exactly as it did before the animation existed.
+  // always mounts instantly — the open/close tween is new-tool-UI only.
   const transition =
     shouldReduceMotion || isResizing || !isNewToolUI
       ? { duration: 0 }
@@ -158,7 +158,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           animate={{ width: contextPanelWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="relative h-full shrink-0 overflow-hidden border-l border-l-[#80808017] bg-sidebar"
+          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
         >
           <PanelResizeHandle
             panelSelector="[data-context-panel]"

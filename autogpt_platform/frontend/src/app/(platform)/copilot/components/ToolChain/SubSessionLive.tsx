@@ -5,9 +5,12 @@ import {
   useGetV2ListSessions,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import type { ToolUIPart } from "ai";
+import Link from "next/link";
 import { useRef } from "react";
 import {
   getAnimationText,
@@ -50,6 +53,7 @@ export function SubSessionLive({ subSessionId, active }: Props) {
     query: {
       enabled: active && !!subSessionId,
       refetchInterval: (query) => {
+        if (query.state.status === "error") return false;
         if (Date.now() - mountedAtRef.current > POLL_CAP_MS) return false;
         const raw = query.state.data;
         const session = raw && raw.status === 200 ? raw.data : null;
@@ -205,6 +209,15 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
           )}
         </p>
         <StatusPill status="running" className="text-sm" />
+        {liveSessionId && (
+          <Link
+            href={`/copilot?sessionId=${liveSessionId}`}
+            aria-label="Open sub-session"
+            className="shrink-0 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <Icon icon={LinkSquare01Icon} size={14} />
+          </Link>
+        )}
       </div>
       {prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
@@ -228,8 +241,18 @@ function useDelegatedSessionId(expertId: string | null) {
     {
       query: {
         enabled: !!expertId,
-        refetchInterval: () =>
-          Date.now() - mountedAtRef.current > POLL_CAP_MS ? false : POLL_MS,
+        refetchInterval: (query) => {
+          if (query.state.status === "error") return false;
+          if (Date.now() - mountedAtRef.current > POLL_CAP_MS) return false;
+          const raw = query.state.data;
+          const sessions = raw && raw.status === 200 ? raw.data.sessions : [];
+          const hasLive = sessions.some(
+            (s) => s.is_processing || s.chat_status === "running",
+          );
+          // Once a live session is found, SubSessionLive takes over polling
+          // it directly by id — this list poll has nothing left to watch for.
+          return hasLive ? false : POLL_MS;
+        },
         select: (res) => (res.status === 200 ? res.data.sessions : []),
       },
     },

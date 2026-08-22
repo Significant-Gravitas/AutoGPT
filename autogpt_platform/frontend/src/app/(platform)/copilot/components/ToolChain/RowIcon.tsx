@@ -30,9 +30,9 @@ import {
   Robot01Icon,
   Search01Icon,
   Settings01Icon,
-  UserGroupIcon,
   SlidersHorizontalIcon,
   TerminalIcon,
+  UserGroupIcon,
   WrenchIcon,
 } from "@hugeicons/core-free-icons";
 import Image from "next/image";

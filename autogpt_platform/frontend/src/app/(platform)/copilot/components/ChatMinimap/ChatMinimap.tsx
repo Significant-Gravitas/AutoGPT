@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { tickColor, tickScale, toMinimapEntries } from "./helpers";
 
 const TICK_SPRING = { type: "spring", stiffness: 200, damping: 15 } as const;
@@ -22,7 +22,7 @@ interface Props {
 export function ChatMinimap({ messages }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const entries = toMinimapEntries(messages);
+  const entries = useMemo(() => toMinimapEntries(messages), [messages]);
 
   if (entries.length < 3) return null;
 
@@ -40,11 +40,15 @@ export function ChatMinimap({ messages }: Props) {
             className="relative cursor-pointer py-[3px]"
             onMouseEnter={() => setHovered(index)}
             onFocus={() => setHovered(index)}
+            onBlur={() => setHovered(null)}
             onClick={() => scrollToMessage(entry.id)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 scrollToMessage(entry.id);
+              }
+              if (e.key === "Escape") {
+                setHovered(null);
               }
             }}
             role="button"

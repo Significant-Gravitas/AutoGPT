@@ -55,6 +55,9 @@ import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+// Autopilot's product-facing title when a session carries no expert identity.
+const DEFAULT_EXPERT_ROLE = "Head of AI";
+
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   status: string;
@@ -352,9 +355,10 @@ export function ChatMessagesContainer({
   const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   // The workspace-files card floats over the column's right side, so the
   // centred content slides left to make room for it. The docked artifacts
-  // panel narrows the column by itself, so no slide there — double-shifting
-  // pushed the messages under the app sidebar. New tool UI only: the old
-  // UI's files tab IS the docked panel.
+  // panel already narrows the column on its own, so it must never also
+  // trigger this slide, or the two shifts stack and push the messages off
+  // screen under the app sidebar. New tool UI only: the old UI's files tab
+  // IS the docked panel.
   const areFilesOpen =
     useCopilotUIStore(
       (s) =>
@@ -554,7 +558,7 @@ export function ChatMessagesContainer({
                 {expertIdentity?.name ?? "Autopilot"}
               </span>
               <span className="truncate text-xs text-zinc-500">
-                {expertIdentity?.role ?? "Head of AI"}
+                {expertIdentity?.role ?? DEFAULT_EXPERT_ROLE}
               </span>
             </div>
             {expertIdentity && !readOnly && !expertIdentity.isArchived && (

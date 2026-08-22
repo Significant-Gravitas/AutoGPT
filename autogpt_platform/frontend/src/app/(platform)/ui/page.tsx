@@ -1,6 +1,15 @@
 "use client";
 
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
+import { notFound } from "next/navigation";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ToolUIPreview } from "./components/ToolUIPreview/ToolUIPreview";
 
-export default withFeatureFlag(ToolUIPreview, "new-tool-ui");
+export default function ToolUIPreviewPage() {
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+
+  if (!isNewToolUI) {
+    notFound();
+  }
+
+  return <ToolUIPreview />;
+}

@@ -111,7 +111,11 @@ function RunRow({ run }: { run: SessionRun }) {
       </Link>
     );
   }
-  return <div className={rowClass}>{content}</div>;
+  return (
+    <div title={name} className={rowClass}>
+      {content}
+    </div>
+  );
 }
 
 function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {

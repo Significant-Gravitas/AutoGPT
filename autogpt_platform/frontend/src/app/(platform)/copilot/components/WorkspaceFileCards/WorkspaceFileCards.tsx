@@ -7,6 +7,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { SessionActivityCard } from "./components/SessionActivityCard";
 import { StackSection } from "./components/StackSection";
 import { WorkspaceFilesContent } from "./components/WorkspaceFilesContent";
+import { useSessionActivity } from "./useSessionActivity";
 import { useWorkspaceFileCards } from "./useWorkspaceFileCards";
 
 interface Props {
@@ -46,6 +47,8 @@ export function WorkspaceFileCards({ sessionId }: Props) {
   // An empty-state card is noise floating over the chat — the files card only
   // earns its space once there's something in it (or something to report).
   const showFilesCard = isLoading || isError || files.length > 0;
+  const { runs, schedules } = useSessionActivity(sessionId);
+  const hasActivity = runs.length > 0 || schedules.length > 0;
 
   return (
     <AnimatePresence initial={false}>
@@ -57,6 +60,13 @@ export function WorkspaceFileCards({ sessionId }: Props) {
           transition={CARD_TRANSITION}
           className="absolute right-8 top-18 z-30 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3"
         >
+          {!showFilesCard && !hasActivity && (
+            <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">
+              <p className="py-2 text-center text-sm text-zinc-400">
+                Nothing here yet.
+              </p>
+            </div>
+          )}
           {showFilesCard && (
             <StackSection
               title="Files"

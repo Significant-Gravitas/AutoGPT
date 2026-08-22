@@ -118,8 +118,8 @@ export function useCopilotStream({
   const pendingResumeRef = useRef<(() => void) | null>(null);
   // Synchronous flag read inside SDK callbacks — kept as a ref so callbacks
   // don't have to trigger re-renders to observe changes. Scoped to this
-  // mount (= this session), so a boolean is enough; cross-session scoping
-  // is no longer needed because the parent remounts on session switch.
+  // mount (= this session): the parent remounts on session switch, so a
+  // plain boolean can't bleed state across sessions.
   const isUserStoppingRef = useRef(false);
   const pendingEngineSwitchRef = useRef(false);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously

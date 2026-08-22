@@ -15,7 +15,6 @@ import {
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
 import { ExpertChangeCard } from "./ExpertCards";
-import { SubSessionPendingCard } from "./SubSessionLive";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -54,6 +53,7 @@ import {
   str,
   stripBaseFields,
 } from "./resultHelpers";
+import { SubSessionPendingCard } from "./SubSessionLive";
 import {
   FileCard,
   KeyValueList,

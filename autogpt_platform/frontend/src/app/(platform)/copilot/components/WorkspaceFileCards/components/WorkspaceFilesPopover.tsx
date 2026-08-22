@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Popover,
   PopoverContent,
@@ -62,37 +62,47 @@ export function WorkspaceFilesPopover({
 
   // Mirrors the floating stack: each section only earns its space once it has
   // something to show (files keep loading/error states so a slow fetch doesn't
-  // read as "no files").
+  // read as "no files"). Keyed by section identity rather than array index so
+  // a section dropping out doesn't reassign a neighboring section's state.
   const sections = [
-    (isLoading || isError || files.length > 0) && (
-      <WorkspaceFilesContent
-        files={files}
-        isLoading={isLoading}
-        isError={isError}
-        isDeleting={isDeleting}
-        isZipping={isZipping}
-        pendingDelete={pendingDelete}
-        onOpen={handleOpenFile}
-        onDownload={handleDownload}
-        onRequestDelete={setPendingDelete}
-        onConfirmDelete={handleConfirmDelete}
-        onCancelDelete={() => setPendingDelete(null)}
-        onDownloadAll={handleDownloadAll}
-      />
-    ),
-    runs.length > 0 && (
-      <>
-        <span className={SECTION_LABEL}>Runs ({runs.length})</span>
-        <RunsList runs={runs} />
-      </>
-    ),
-    schedules.length > 0 && (
-      <>
-        <span className={SECTION_LABEL}>Schedules ({schedules.length})</span>
-        <SchedulesList schedules={schedules} />
-      </>
-    ),
-  ].filter(Boolean);
+    {
+      key: "files",
+      node: (isLoading || isError || files.length > 0) && (
+        <WorkspaceFilesContent
+          files={files}
+          isLoading={isLoading}
+          isError={isError}
+          isDeleting={isDeleting}
+          isZipping={isZipping}
+          pendingDelete={pendingDelete}
+          onOpen={handleOpenFile}
+          onDownload={handleDownload}
+          onRequestDelete={setPendingDelete}
+          onConfirmDelete={handleConfirmDelete}
+          onCancelDelete={() => setPendingDelete(null)}
+          onDownloadAll={handleDownloadAll}
+        />
+      ),
+    },
+    {
+      key: "runs",
+      node: runs.length > 0 && (
+        <>
+          <span className={SECTION_LABEL}>Runs ({runs.length})</span>
+          <RunsList runs={runs} />
+        </>
+      ),
+    },
+    {
+      key: "schedules",
+      node: schedules.length > 0 && (
+        <>
+          <span className={SECTION_LABEL}>Schedules ({schedules.length})</span>
+          <SchedulesList schedules={schedules} />
+        </>
+      ),
+    },
+  ].filter((section) => section.node);
 
   return (
     <div className={cn("flex shrink-0 items-start p-2", wrapperClassName)}>
@@ -103,7 +113,6 @@ export function WorkspaceFilesPopover({
             variant="ghost"
             size="icon"
             aria-label="Workspace files"
-            aria-pressed={isPopoverOpen}
             className={cn(
               triggerClassName ?? "size-9 rounded-xl",
               isPopoverOpen && "bg-zinc-200/70 text-zinc-900",
@@ -136,9 +145,9 @@ export function WorkspaceFilesPopover({
             // One popover can't float three cards, so the stack's card breaks
             // become hairlines here.
             sections.map((section, index) => (
-              <Fragment key={index}>
+              <Fragment key={section.key}>
                 {index > 0 && <div className="my-3 border-t border-zinc-100" />}
-                {section}
+                {section.node}
               </Fragment>
             ))
           )}

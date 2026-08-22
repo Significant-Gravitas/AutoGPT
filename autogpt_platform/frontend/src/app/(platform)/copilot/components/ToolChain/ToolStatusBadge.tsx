@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import type { ChainRowState } from "./helpers";
 
@@ -36,7 +37,11 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         />
         <m.span
           aria-hidden="true"
-          className="absolute -inset-[3px] animate-[spin_0.9s_linear_infinite] rounded-full border border-transparent border-t-zinc-500 motion-reduce:animate-none"
+          className={cn(
+            "absolute -inset-[3px] rounded-full border border-transparent border-t-zinc-500",
+            running &&
+              "animate-[spin_0.9s_linear_infinite] motion-reduce:animate-none",
+          )}
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
