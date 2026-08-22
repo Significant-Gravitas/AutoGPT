@@ -160,6 +160,9 @@ export function ContextPanel({ sessionId, mobile }: Props) {
           transition={transition}
           className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
         >
+          {/* Sibling of the clip, not a child of it: the handle is
+              -translate-x-1/2 and deliberately straddles the border, so
+              clipping it here would halve the drag target to 6px. */}
           <PanelResizeHandle
             panelSelector="[data-context-panel]"
             onWidthChange={setContextPanelWidth}
@@ -167,13 +170,17 @@ export function ContextPanel({ sessionId, mobile }: Props) {
             minWidth={MIN_CONTEXT_PANEL_WIDTH}
             maxWidth={MAX_CONTEXT_PANEL_WIDTH}
           />
-          {/* Fixed inner width: the tabs keep their final layout while the
-              shell widens, so nothing reflows mid-animation. */}
-          <div
-            style={{ width: contextPanelWidth }}
-            className="flex h-full min-h-0 flex-col overflow-hidden"
-          >
-            {tabs}
+          <div className="h-full overflow-hidden">
+            {/* Fixed inner width: the tabs keep their final layout while the
+                shell widens, so nothing reflows mid-animation. That also
+                means the inner is wider than the shell for the whole tween,
+                so the clip above is what stops it spilling over the chat. */}
+            <div
+              style={{ width: contextPanelWidth }}
+              className="flex h-full min-h-0 flex-col overflow-hidden"
+            >
+              {tabs}
+            </div>
           </div>
         </motion.div>
       )}
