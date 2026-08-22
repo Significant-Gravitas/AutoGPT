@@ -197,7 +197,15 @@ async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
     return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
 
 
-async def list_experts(user_id: str) -> list[Expert]:
+async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Expert]:
+    """List the user's hired roster, with workflow names always included.
+
+    Set ``with_metrics=False`` to skip the ``AgentGraphExecution`` lookup and
+    the per-expert Redis spend reads — callers that only render name/role/id
+    and workflow names (e.g. the copilot team-context roster) would otherwise
+    pay for ``latest_run``/``weekly_spend`` data they discard. Those fields
+    come back as their unset defaults (``None`` / ``0``) in that case.
+    """
     rows = await prisma.models.Expert.prisma().find_many(
         where={
             "ownerUserId": user_id,
@@ -207,6 +215,8 @@ async def list_experts(user_id: str) -> list[Expert]:
         },
         include=_WORKFLOW_INCLUDE,
     )
+    if not with_metrics:
+        return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
     return [

@@ -871,20 +871,56 @@ async def clear_session_pending_question(session_id: str, user_id: str) -> None:
     )
 
 
+#  Columns selected below = every field ``ChatSessionInfo.from_db`` reads
+#  ("id", "userId", "title", "credentials", "createdAt", "updatedAt",
+#  "successfulAgentRuns", "successfulAgentSchedules", "metadata",
+#  "totalPromptTokens", "totalCompletionTokens", "chatStatus",
+#  "organizationId", "teamId", "isPinned", "expertId") plus "visibility",
+#  "isShared", "autoShareExecutions" — those three are unused by ``from_db``
+#  but have no default on the generated ``PrismaChatSession`` model, so
+#  ``query_raw_with_schema(..., model=PrismaChatSession)`` raises a pydantic
+#  validation error if they're left out of the row. "shareToken" and
+#  "sharedAt" are the only columns safely dropped (both default to None).
+_PENDING_QUESTION_SESSION_COLUMNS = (
+    '"id", "userId", "title", "credentials", "createdAt", "updatedAt", '
+    '"successfulAgentRuns", "successfulAgentSchedules", "metadata", '
+    '"totalPromptTokens", "totalCompletionTokens", "chatStatus", '
+    '"organizationId", "teamId", "isPinned", "expertId", "visibility", '
+    '"isShared", "autoShareExecutions"'
+)
+
+
 async def get_sessions_with_pending_question(
     user_id: str,
     limit: int = PENDING_QUESTION_LIMIT,
 ) -> list[ChatSessionInfo]:
-    """Sessions of *user_id* still waiting on an answer, newest question first."""
+    """Sessions of *user_id* still waiting on an answer, newest question first.
+
+    Excludes sub-sessions (delegated-to or handed-off threads): answering a
+    pending question there unblocks nothing on Home, only the original
+    caller's thread does.
+    """
     sessions = await db.query_raw_with_schema(
-        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
+        'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
         # jsonb_typeof, not IS NOT NULL: a session created after this field
         # existed persists an explicit ``"pending_question": null``, which is a
         # JSON null — present as far as ``->`` is concerned.
         + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
-        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC "
-        "LIMIT $2",
+        # ``->>`` (text extraction), not ``->``: every session persists these
+        # keys with an explicit JSON null by default, and ``->`` returns that
+        # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
+        # check on ``->`` would silently exclude every normal session (same
+        # class of bug as the dream-session filter above). ``->>`` collapses
+        # "key absent" and "explicit JSON null" to the same SQL NULL, so only
+        # a real delegated/handoff id excludes the row.
+        "AND \"metadata\" ->> 'delegated_by_session_id' IS NULL "
+        "AND \"metadata\" ->> 'handed_off_from_expert_id' IS NULL "
+        # Lexicographic text sort — only correct because every writer emits
+        # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
+        # fields, so ISO-8601 string order matches chronological order).
+        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC " "LIMIT $2",
         user_id,
         limit,
         model=PrismaChatSession,

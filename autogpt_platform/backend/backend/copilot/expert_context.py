@@ -9,8 +9,8 @@ Two layers with different prompt weights:
 - ``build_expert_context()`` → first-user-message context blocks:
   ``<expert_workflows>`` (expert session: installed workflows the model
   should prefer ``run_agent`` on) plus ``<team_context>`` — the hired roster,
-  which a plain session may only *suggest* opening, and an expert session
-  (self excluded) may hand work to via ``delegate_to_expert``.
+  which both a plain session and an expert session (self excluded) may hand
+  work to via ``delegate_to_expert``, as long as they tell the user.
 
 Expert identity lookup fails closed for an expert-scoped session: if its
 persisted expert is missing, archived, or unavailable, the turn raises
@@ -175,7 +175,21 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
 
 
 async def _expert_session_context(user_id: str, expert_id: str) -> str:
-    expert = await experts_db().get_expert(user_id, expert_id)
+    async def _load_teammates() -> str:
+        # The roster is an optional extra here; a failed lookup must not cost
+        # the expert its own workflow block, which is the load-bearing half.
+        try:
+            return await _team_context(user_id, exclude_expert_id=expert_id)
+        except Exception as e:
+            logger.warning(f"Failed to build teammate context: {e}")
+            return ""
+
+    # Independent lookups — run concurrently rather than paying their
+    # latency serially on every expert-session turn.
+    expert, teammates = await asyncio.gather(
+        experts_db().get_expert(user_id, expert_id),
+        _load_teammates(),
+    )
     # Identity validation already failed closed before this context lookup.
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
@@ -199,27 +213,21 @@ async def _expert_session_context(user_id: str, expert_id: str) -> str:
         f"{workflow_lines}\n"
         f"</expert_workflows>\n\n"
     )
-    # The roster is an optional extra here; a failed lookup must not cost the
-    # expert its own workflow block, which is the load-bearing half.
-    try:
-        teammates = await _team_context(user_id, exclude_expert_id=expert_id)
-    except Exception as e:
-        logger.warning(f"Failed to build teammate context: {e}")
-        teammates = ""
     return workflows_block + teammates
 
 
 async def _team_context(user_id: str, *, exclude_expert_id: str | None = None) -> str:
     """Roster block for the first user message.
 
-    Plain sessions get a hand-off *suggestion* rule — AutoPilot speaks for the
-    platform, so silently answering as an expert would misattribute the work.
-    Expert sessions get the teammate list minus themselves plus the
+    Plain sessions may delegate to a listed expert or suggest opening their
+    thread, but must disclose it — AutoPilot speaks for the platform, so
+    silently answering as (or handing work to) an expert would misattribute
+    the work. Expert sessions get the teammate list minus themselves plus the
     ``delegate_to_expert`` rule: a colleague passing work to a colleague is
     normal, and the delegated turn runs under the teammate's own identity,
     memory, and budget rather than being ghost-written.
     """
-    experts = await experts_db().list_experts(user_id)
+    experts = await experts_db().list_experts(user_id, with_metrics=False)
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
         return ""
@@ -227,9 +235,10 @@ async def _team_context(user_id: str, *, exclude_expert_id: str | None = None) -
     lines = "\n".join(_team_line(e) for e in teammates)
     if exclude_expert_id is None:
         rule = (
-            "When a request clearly matches an expert's domain, suggest "
-            "opening that expert's thread (by expert id) instead of handling "
-            "it here; never silently delegate to an expert."
+            "When a request clearly matches an expert's domain, you may hand "
+            "it off with `delegate_to_expert(expert_id=..., prompt=...)` or "
+            "suggest opening that expert's thread — either way, tell the "
+            "user which expert is handling it. Never delegate silently."
         )
     else:
         rule = (
