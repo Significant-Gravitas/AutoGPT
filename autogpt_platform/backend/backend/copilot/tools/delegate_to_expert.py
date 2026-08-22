@@ -13,15 +13,19 @@ backs every other copilot turn, so the delegated work:
   the target's Soul by the normal per-turn path),
 - reads and writes the *target's* memory namespace
   (:func:`derive_memory_group_id` keys on the session's ``expert_id``),
-- bills the *target's* weekly budget (executions attribute via the session's
-  expert), which is why a paused/archived teammate is refused here,
+- attributes the agent runs it starts to the *target's* weekly budget (only
+  graph executions accrue weekly spend; the delegated conversation's own LLM
+  cost does not), which is why a paused/archived teammate is refused here,
 - inherits the caller's ``dry_run`` and LLM routing, and can only ever narrow
   the caller's tool permissions (``merged_with_parent``).
 
 Provenance lives in the sub's session metadata rather than a new column:
 ``delegated_by_expert_id`` records who asked, and ``delegated_by_session_id``
 doubles as the poll capability — ``get_sub_session_result`` accepts an
-out-of-scope sub only when it names the caller's session there.
+out-of-scope sub only when it names the caller's session there. Walking that
+same chain upwards bounds how far a task may be passed on
+(:data:`MAX_DELEGATION_DEPTH`) and catches an expert handing work back to one
+already waiting on it.
 """
 
 import logging
@@ -45,6 +49,11 @@ from .run_sub_session import (
 )
 
 logger = logging.getLogger(__name__)
+
+# How many delegation hops a single task may travel. Each hop is a fresh
+# session with a fresh delegator, so without this nothing downstream would
+# ever notice a chain — or a loop — sustaining itself on the user's credits.
+MAX_DELEGATION_DEPTH = 3
 
 
 class DelegateToExpertTool(BaseTool):
@@ -145,6 +154,10 @@ class DelegateToExpertTool(BaseTool):
         if isinstance(target, ErrorResponse):
             return target
 
+        chain_error = await self._check_delegation_chain(user_id, session, target)
+        if chain_error is not None:
+            return chain_error
+
         inner_session_id = await self._resolve_session(
             user_id=user_id,
             session=session,
@@ -221,6 +234,45 @@ class DelegateToExpertTool(BaseTool):
                 session,
             )
         return target
+
+    async def _check_delegation_chain(
+        self, user_id: str, session: ChatSession, target: Expert
+    ) -> ErrorResponse | None:
+        """Refuse a hand-off that would push the chain past its bound, or hand
+        work back to an expert already waiting further up it.
+
+        Depth is read off the ``delegated_by_session_id`` provenance rather
+        than a stored counter: a plain session pays nothing, and a delegated
+        one pays at most ``MAX_DELEGATION_DEPTH`` cache-backed session reads.
+        The ``seen`` set is belt-and-braces — provenance is written once at
+        creation, but a traversal that trusts stored ids must not be able to
+        spin.
+        """
+        seen = {session.session_id}
+        parent_id = session.metadata.delegated_by_session_id
+        depth = 0
+        while parent_id and parent_id not in seen:
+            depth += 1
+            if depth >= MAX_DELEGATION_DEPTH:
+                return self._error(
+                    "This task has already been passed between teammates "
+                    f"{depth} times. Do as much as you can yourself and "
+                    "report back instead of handing it on again.",
+                    session,
+                )
+            seen.add(parent_id)
+            parent = await get_chat_session(parent_id, user_id)
+            if parent is None:
+                break
+            if parent.expert_id == target.id:
+                return self._error(
+                    f"{target.name} is already waiting on this task further "
+                    "up the chain, so handing it back would loop. Report what "
+                    "you have instead.",
+                    session,
+                )
+            parent_id = parent.metadata.delegated_by_session_id
+        return None
 
     async def _resolve_session(
         self,

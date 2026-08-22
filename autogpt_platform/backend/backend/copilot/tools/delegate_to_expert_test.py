@@ -107,7 +107,7 @@ def mock_sessions(monkeypatch):
         created.append(sess)
         return sess
 
-    async def fake_get(session_id):
+    async def fake_get(session_id, user_id=None):
         return next((s for s in created if s.session_id == session_id), None)
 
     monkeypatch.setattr(
@@ -398,6 +398,198 @@ class TestPollScope:
         )
         assert isinstance(r, ErrorResponse)
         assert "No sub-session" in r.message
+
+
+class TestDelegationChainBound:
+    """Every hop is a fresh session with a fresh delegator, so a chain — or a
+    loop — would otherwise sustain itself indefinitely on the user's credits.
+    The ``delegated_by_session_id`` provenance is the only thing that links
+    the hops, so the bound is read back off it."""
+
+    def _chain(self, mock_sessions, expert_ids: list[str]) -> MagicMock:
+        """Splice a ready-made delegation chain into the session store and
+        hand back its deepest session."""
+        parent_id = None
+        for depth, expert_id in enumerate(expert_ids):
+            sess = _session(session_id=f"chain-{depth}", expert_id=expert_id)
+            sess.metadata.delegated_by_session_id = parent_id
+            mock_sessions.append(sess)
+            parent_id = sess.session_id
+        return mock_sessions[-1]
+
+    @pytest.mark.asyncio
+    async def test_a_root_session_reads_no_ancestors(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """An undelegated session has no chain, so the guard must cost it
+        nothing — otherwise every plain delegation pays for the rare case."""
+        probe = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.get_chat_session", probe
+        )
+
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        probe.assert_not_awaited()
+        mock_turn.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_chain_inside_the_bound_still_delegates(
+        self, roster, mock_turn, mock_sessions
+    ):
+        caller = self._chain(mock_sessions, ["expert-a", "expert-c"])
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert not isinstance(r, ErrorResponse)
+        mock_turn.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_chain_at_the_bound_is_refused(
+        self, roster, mock_turn, mock_sessions
+    ):
+        caller = self._chain(
+            mock_sessions, ["expert-a", "expert-c", "expert-d", "expert-e"]
+        )
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="keep passing it on",
+            wait_for_result=0,
+        )
+
+        assert isinstance(r, ErrorResponse)
+        assert "passed between teammates" in r.message
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_handing_work_back_up_the_chain_is_refused(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """Bea delegates to Ari, Ari delegates back to Bea: a two-expert loop
+        that the depth bound alone would only stop three hops in."""
+        caller = self._chain(mock_sessions, ["expert-b", "expert-a"])
+
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="you take it back",
+            wait_for_result=0,
+        )
+
+        assert isinstance(r, ErrorResponse)
+        assert "loop" in r.message
+        mock_turn.assert_not_awaited()
+
+
+class TestBorrowedThreadLimits:
+    """A delegated sub is the *target's* user-visible chat, not the caller's
+    private scratch space — the user can open the returned link and type into
+    it. The delegator is owed its answer, not a live window or a stop button."""
+
+    async def _delegate(self, parent) -> None:
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_delegator_cannot_cancel_a_teammates_turn(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        cancel = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.enqueue_cancel_task",
+            cancel,
+        )
+        parent = _session(session_id="s1", expert_id="expert-a")
+        await self._delegate(parent)
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=parent,
+            sub_session_id="inner-1",
+            cancel=True,
+        )
+
+        assert isinstance(r, ErrorResponse)
+        assert "only they can" in r.message
+        cancel.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_delegator_gets_no_message_window_into_the_thread(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        snapshot = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result._build_progress_snapshot",
+            snapshot,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
+            AsyncMock(return_value=("running", SessionResult())),
+        )
+        parent = _session(session_id="s1", expert_id="expert-a")
+        await self._delegate(parent)
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=parent,
+            sub_session_id="inner-1",
+            wait_if_running=0,
+            include_progress=True,
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running"
+        assert r.progress is None
+        snapshot.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_own_scope_sub_still_reports_progress(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The narrowing must not reach a same-scope run_sub_session sub,
+        whose whole point is that the caller can watch it work."""
+        snapshot = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result._build_progress_snapshot",
+            snapshot,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
+            AsyncMock(return_value=("running", SessionResult())),
+        )
+        await self._delegate(_session(session_id="s1", expert_id="expert-a"))
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s9", expert_id="expert-b"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+            include_progress=True,
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        snapshot.assert_awaited_once()
 
 
 class TestCallerNameFraming:

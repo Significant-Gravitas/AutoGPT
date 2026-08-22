@@ -106,7 +106,8 @@ class GetSubSessionResultTool(BaseTool):
                 "include_progress": {
                     "type": "boolean",
                     "description": (
-                        "Populate progress.last_messages when status=running."
+                        "Populate progress.last_messages when status=running. "
+                        "Ignored for a teammate's delegated thread."
                     ),
                     "default": False,
                 },
@@ -153,8 +154,19 @@ class GetSubSessionResultTool(BaseTool):
 
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
+        borrowed = _is_borrowed_thread(sub, session)
 
         if cancel:
+            if borrowed:
+                return ErrorResponse(
+                    message=(
+                        "That thread belongs to the teammate you delegated "
+                        "to, and the user chats in it too — only they can "
+                        "stop a turn there. Wait for the result, or say what "
+                        "you need instead."
+                    ),
+                    session_id=session.session_id,
+                )
             # Fan out the cancel event. Whichever worker is running the
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
@@ -202,7 +214,7 @@ class GetSubSessionResultTool(BaseTool):
 
         elapsed = time.monotonic() - started_at
 
-        if outcome == "running" and include_progress:
+        if outcome == "running" and include_progress and not borrowed:
             # Running + caller wants progress — hand-assemble the response
             # with the progress snapshot attached. response_from_outcome
             # doesn't carry progress, so we build the response here.
@@ -266,6 +278,18 @@ def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
         and session.session_id is not None
         and sub.metadata.delegated_by_session_id == session.session_id
     )
+
+
+def _is_borrowed_thread(sub: ChatSession, session: ChatSession) -> bool:
+    """Whether *sub* is a teammate's own thread rather than the caller's sub.
+
+    A ``run_sub_session`` sub is private scratch space the caller owns end to
+    end. A ``delegate_to_expert`` sub is the *target's* user-visible chat: the
+    user can open the returned link and type into it. The delegator is owed
+    the answer it asked for, not a live window into that thread or a stop
+    button over turns the user started there, so both are refused here.
+    """
+    return sub.expert_id != session.expert_id
 
 
 async def _delegated_expert_info(

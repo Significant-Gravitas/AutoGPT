@@ -32,6 +32,7 @@ def compose_attention_items(
     items.extend(
         _question_attention(session, question, expert_by_id)
         for session, question in _open_questions(questions or [])
+        if _is_answerable(session, expert_by_id)
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -134,7 +135,7 @@ def _question_attention(
         id=f"question-{session.session_id}",
         kind="question",
         priority="normal",
-        title=f"{_asker_name(session.expert_id, asker)} has a question",
+        title=f"{asker.name if asker else 'Autopilot'} has a question",
         description=_clip(question.text),
         why_it_matters="The work is paused until you answer in the chat.",
         expert=to_home_expert(asker) if asker else None,
@@ -146,16 +147,16 @@ def _question_attention(
     )
 
 
-def _asker_name(expert_id: str | None, asker: Expert | None) -> str:
-    """Who to credit the question to.
+def _is_answerable(session: ChatSessionInfo, expert_by_id: dict[str, Expert]) -> bool:
+    """Whether replying in the thread can still clear the question.
 
-    ``expert_by_id`` only holds active experts, so an archived teammate's
-    question resolves to nothing — falling back to the Autopilot default
-    there would put words in Autopilot's mouth it never said.
+    ``expert_by_id`` holds only active experts, so a missing entry means the
+    asking teammate was archived. That thread now fails its expert-identity
+    build before the reply reaches ``clear_pending_question``, so the card
+    would survive every answer the user gives it and nothing else on Home can
+    dismiss it. Dropping it is the only way it ever goes away.
     """
-    if asker:
-        return asker.name
-    return "A teammate" if expert_id else "Autopilot"
+    return session.expert_id is None or session.expert_id in expert_by_id
 
 
 def _credits_attention(schedule_count: int) -> HomeAttentionItem:
