@@ -87,6 +87,70 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+  types:
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API client
+        run: pnpm generate:api
+
+      - name: Check types
+        run: pnpm types
+
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API client
+        run: pnpm generate:api
+
+      - name: Run production build
+        env:
+          NEXT_PUBLIC_SOURCEMAPS: "false"
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: pnpm exec next build
+
   chromatic:
     runs-on: ubuntu-latest
     needs: setup
