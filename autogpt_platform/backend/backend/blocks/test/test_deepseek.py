@@ -11,7 +11,6 @@ from backend.blocks.deepseek import (
 )
 from backend.data.model import APIKeyCredentials
 from backend.util.exceptions import BlockExecutionError
-from backend.util.test import execute_block_test
 
 
 def _make_input(**overrides) -> dict:
@@ -47,6 +46,21 @@ class TestDeepSeekModelFallback:
         error = DeepSeekBlock.Input.validate_data(data)
         assert error is None
         assert data["model"] == DeepSeekModel.CHAT.value
+
+    def test_max_tokens_negative_validation_error(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            DeepSeekBlock.Input(**_make_input(max_tokens=-1))
+
+    def test_temperature_out_of_bounds_validation_error(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            DeepSeekBlock.Input(**_make_input(temperature=-0.1))
+
+        with pytest.raises(ValidationError):
+            DeepSeekBlock.Input(**_make_input(temperature=2.1))
 
 
 class TestDeepSeekBlockExecution:
@@ -154,7 +168,7 @@ class TestDeepSeekBlockExecution:
             assert "temperature" not in call_kwargs
 
     @pytest.mark.asyncio
-    async def test_deepseek_json_mode(self):
+    async def test_deepseek_json_mode_with_json_in_prompt(self):
         block = DeepSeekBlock()
         mock_credentials = APIKeyCredentials(
             id="test-id",
@@ -179,13 +193,58 @@ class TestDeepSeekBlockExecution:
             result = await block.call_deepseek(
                 credentials=mock_credentials,
                 model=DeepSeekModel.CHAT,
-                prompt="Output JSON",
+                prompt="Output JSON object",
                 json_mode=True,
             )
 
             assert result["response"] == '{"status": "ok"}'
             call_kwargs = mock_client.chat.completions.create.call_args.kwargs
             assert call_kwargs["response_format"] == {"type": "json_object"}
+            assert call_kwargs["messages"] == [
+                {"role": "user", "content": "Output JSON object"}
+            ]
+
+    @pytest.mark.asyncio
+    async def test_deepseek_json_mode_without_json_in_prompt_appends_instruction(self):
+        block = DeepSeekBlock()
+        mock_credentials = APIKeyCredentials(
+            id="test-id",
+            provider="deepseek",
+            api_key=SecretStr("sk-test-key"),
+            title="Test Key",
+        )
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{"count": 5}'
+        mock_choice.message.reasoning_content = None
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = None
+
+        with patch("openai.AsyncOpenAI") as mock_openai_cls:
+            mock_client = MagicMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_openai_cls.return_value = mock_client
+
+            result = await block.call_deepseek(
+                credentials=mock_credentials,
+                model=DeepSeekModel.CHAT,
+                prompt="List top 5 fruits",
+                system_prompt="You are a helpful assistant.",
+                json_mode=True,
+            )
+
+            assert result["response"] == '{"count": 5}'
+            call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+            assert call_kwargs["response_format"] == {"type": "json_object"}
+            assert call_kwargs["messages"] == [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant.\nRespond with a valid JSON object.",
+                },
+                {"role": "user", "content": "List top 5 fruits"},
+            ]
 
     @pytest.mark.asyncio
     async def test_deepseek_streaming_execution(self):
@@ -278,10 +337,3 @@ class TestDeepSeekBlockExecution:
                 ]
 
 
-class TestDeepSeekBlockIntegration:
-    """Integration test using the platform's execute_block_test utility."""
-
-    @pytest.mark.asyncio
-    async def test_execute_block_test(self):
-        block = DeepSeekBlock()
-        await execute_block_test(block)

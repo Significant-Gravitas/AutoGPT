@@ -105,6 +105,7 @@ class DeepSeekBlock(Block):
         max_tokens: int | None = SchemaField(
             title="Max Tokens",
             default=None,
+            ge=0,
             description="The maximum number of tokens to generate.",
             advanced=True,
         )
@@ -192,11 +193,6 @@ class DeepSeekBlock(Block):
             api_key=credentials.api_key.get_secret_value(),
         )
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
         # DeepSeek-reasoner does not support custom temperature
         extra_kwargs: dict[str, Any] = {}
         if temperature is not None and model != DeepSeekModel.REASONER:
@@ -204,6 +200,17 @@ class DeepSeekBlock(Block):
 
         if json_mode:
             extra_kwargs["response_format"] = {"type": "json_object"}
+            # Ensure "json" is present in the prompt or system_prompt to satisfy API constraint
+            if "json" not in f"{system_prompt} {prompt}".lower():
+                if system_prompt:
+                    system_prompt = f"{system_prompt}\nRespond with a valid JSON object."
+                else:
+                    system_prompt = "Respond with a valid JSON object."
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
 
         try:
             if stream:
