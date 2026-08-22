@@ -896,9 +896,17 @@ async def get_sessions_with_pending_question(
 ) -> list[ChatSessionInfo]:
     """Sessions of *user_id* still waiting on an answer, newest question first.
 
-    Excludes sub-sessions (delegated-to or handed-off threads): answering a
-    pending question there unblocks nothing on Home, only the original
-    caller's thread does.
+    Excludes *delegated* sub-threads (``delegated_by_session_id``): the caller
+    that delegated is still waiting on that answer and owns reporting back, so
+    the sub's question is an implementation detail of someone else's task —
+    surfacing it on Home asks the user to unblock a thread whose result they
+    will never see directly.
+
+    *Handed-off* threads (``handed_off_from_expert_id``) are deliberately NOT
+    excluded. A handoff transfers ownership outright: nobody is waiting behind
+    it, and the receiving expert is told to ask the user directly when
+    something only they can provide is missing. That question is the only path
+    back to the user, so hiding it is how a handed-off request dies in silence.
     """
     sessions = await db.query_raw_with_schema(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
@@ -908,15 +916,15 @@ async def get_sessions_with_pending_question(
         # existed persists an explicit ``"pending_question": null``, which is a
         # JSON null — present as far as ``->`` is concerned.
         + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
-        # ``->>`` (text extraction), not ``->``: every session persists these
-        # keys with an explicit JSON null by default, and ``->`` returns that
+        # ``->>`` (text extraction), not ``->``: every session persists this
+        # key with an explicit JSON null by default, and ``->`` returns that
         # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
         # check on ``->`` would silently exclude every normal session (same
         # class of bug as the dream-session filter above). ``->>`` collapses
         # "key absent" and "explicit JSON null" to the same SQL NULL, so only
-        # a real delegated/handoff id excludes the row.
+        # a real delegating session id excludes the row. Handed-off threads
+        # are intentionally not filtered here — see the docstring.
         "AND \"metadata\" ->> 'delegated_by_session_id' IS NULL "
-        "AND \"metadata\" ->> 'handed_off_from_expert_id' IS NULL "
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).

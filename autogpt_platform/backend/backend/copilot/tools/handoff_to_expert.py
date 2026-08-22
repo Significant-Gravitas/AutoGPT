@@ -5,32 +5,63 @@ caller still owns the task. A handoff gives it away: the receiving expert owns
 the outcome and reports to the user, and this tool returns as soon as the work
 is queued rather than waiting on a result.
 
-The mechanics are the same queue-backed sub-session — target scope, target
-memory, target budget — so the guards are the same too: never yourself, never
-an archived or budget-paused teammate. Provenance records both the delegation
-fields (so the sub is attributable) and ``handed_off_from_expert_id``, which
-is what tells the receiver the task is now theirs.
+The mechanics are the same queue-backed sub-session — target scope, memory and
+budget — so the guards are too: never yourself, never an archived or
+budget-paused teammate. Provenance records the delegation fields (so the sub
+is attributable) plus ``handed_off_from_expert_id``, which tells the receiver
+the task is now theirs.
+
+The *response* is deliberately not delegation's. A handoff is terminal for the
+caller: it gets no result and — by design, see
+``get_sub_session_result._in_caller_scope`` — cannot poll the sub it gave
+away. So this tool builds its own ``status="transferred"`` response rather
+than reuse ``response_from_outcome``, whose queued/running wording would send
+the model to a poll that answers "no such sub-session".
 """
 
 import logging
-import time
 from typing import Any
 
 from backend.api.features.experts.models import Expert
+from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession, create_chat_session
-from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.sdk.session_waiter import (
+    SessionOutcome,
+    run_copilot_turn_via_queue,
+)
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
-from .run_sub_session import apply_delegated_expert, response_from_outcome
+from .expert_delegation import safe_caller_name
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    ToolResponseBase,
+)
+from .run_sub_session import _sub_session_link, apply_delegated_expert
 
 logger = logging.getLogger(__name__)
 
-# Caller names are user-authored; keep them to a single short line so a
-# crafted name can't forge extra framing inside the handoff preamble.
-_CALLER_NAME_LIMIT = 80
+# Outcomes meaning the task now sits in the target's own session — dispatched,
+# already picked up, or appended to a turn in flight there. Anything else (the
+# concurrent-turn cap, a failed dispatch) means nothing moved.
+_OWNERSHIP_TAKEN: frozenset[SessionOutcome] = frozenset(
+    {"running", "queued", "completed"}
+)
+
+
+class _HandoffRefused(Exception):
+    """The target cannot own this task; carries the model-facing reason.
+
+    Typed control flow so the caller checks one exception type instead of
+    narrowing a returned union by ``isinstance``.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
 
 
 class HandoffToExpertTool(BaseTool):
@@ -90,24 +121,27 @@ class HandoffToExpertTool(BaseTool):
         context: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        target_id = expert_id.strip()
-        if not target_id:
-            return self._error("expert_id is required", session)
-        if not prompt.strip():
-            return self._error("prompt is required", session)
         if user_id is None:
             return self._error("Authentication required", session)
-        if target_id == session.expert_id:
-            return self._error(
-                "You are that expert — the task is already yours. Do it, or "
-                "use run_sub_session to isolate it in a fresh context.",
-                session,
-            )
+        target_id = expert_id.strip()
+        refusal = _request_refusal(target_id, prompt, session.expert_id)
+        if refusal is not None:
+            return self._error(refusal, session)
+        try:
+            target = await self._resolve_target(user_id, target_id)
+        except _HandoffRefused as refused:
+            return self._error(refused.message, session)
+        return await self._transfer(user_id, session, target, prompt, context)
 
-        target = await self._load_target(user_id, target_id, session)
-        if isinstance(target, ErrorResponse):
-            return target
-
+    async def _transfer(
+        self,
+        user_id: str,
+        session: ChatSession,
+        target: Expert,
+        prompt: str,
+        context: str,
+    ) -> ToolResponseBase:
+        """Open the receiving thread, queue the task, and hand ownership over."""
         inner = await create_chat_session(
             user_id,
             dry_run=session.dry_run,
@@ -117,29 +151,20 @@ class HandoffToExpertTool(BaseTool):
             delegated_by_expert_id=session.expert_id,
             delegated_by_session_id=session.session_id,
             handed_off_from_expert_id=session.expert_id,
+            origin=session.metadata.origin,
         )
-
-        caller = await self._caller_name(user_id, session.expert_id)
-        started_at = time.monotonic()
-        outcome, result = await run_copilot_turn_via_queue(
-            session_id=inner.session_id,
-            user_id=user_id,
-            message=_transfer_message(caller, context, prompt),
-            timeout=0,
-            permissions=get_current_permissions(),
-            tool_call_id=(
-                f"handoff:{session.session_id}" if session.session_id else "handoff"
-            ),
-            tool_name="handoff_to_expert",
+        outcome = await self._queue_task(
+            user_id, session, inner.session_id, prompt, context
         )
+        if outcome not in _OWNERSHIP_TAKEN:
+            return self._error(_refused_transfer_message(target.name, outcome), session)
         return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
+            _transferred_response(
                 inner_session_id=inner.session_id,
                 parent_session_id=session.session_id,
-                elapsed=time.monotonic() - started_at,
+                target_name=target.name,
             ),
+            # Identity for the ToolChain card, so it names the new owner.
             DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,
@@ -149,12 +174,33 @@ class HandoffToExpertTool(BaseTool):
             ),
         )
 
+    async def _queue_task(
+        self,
+        user_id: str,
+        session: ChatSession,
+        inner_session_id: str,
+        prompt: str,
+        context: str,
+    ) -> SessionOutcome:
+        """Push the framed task onto the target's session. Never waits."""
+        caller = await self._caller_name(user_id, session.expert_id)
+        outcome, _result = await run_copilot_turn_via_queue(
+            session_id=inner_session_id,
+            user_id=user_id,
+            message=_transfer_message(caller, context, prompt),
+            timeout=0,
+            permissions=get_current_permissions(),
+            tool_call_id=(
+                f"handoff:{session.session_id}" if session.session_id else "handoff"
+            ),
+            tool_name="handoff_to_expert",
+        )
+        return outcome
+
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
 
-    async def _load_target(
-        self, user_id: str, target_id: str, session: ChatSession
-    ) -> Expert | ErrorResponse:
+    async def _resolve_target(self, user_id: str, target_id: str) -> Expert:
         """Resolve the teammate, refusing anyone who can't safely own work."""
         try:
             target = await experts_db().get_expert(
@@ -162,20 +208,18 @@ class HandoffToExpertTool(BaseTool):
             )
         except Exception as e:
             logger.warning(f"Handoff target lookup failed for {target_id}: {e}")
-            return self._error(
-                "Could not reach that expert right now. Try again.", session
-            )
+            raise _HandoffRefused(
+                "Could not reach that expert right now. Try again."
+            ) from e
         if target is None or target.is_archived:
-            return self._error(
-                f"No active expert with id {target_id} on this team. Pick one "
-                "from <team_context>.",
-                session,
+            raise _HandoffRefused(
+                f"No active expert with id {target_id} on this team. Pick an "
+                "active teammate from your team."
             )
         if target.schedules_paused_at is not None:
-            return self._error(
+            raise _HandoffRefused(
                 f"{target.name} is paused (budget guardrail or archive) and "
-                "cannot take the task until the user resumes them.",
-                session,
+                "cannot take the task until the user resumes them."
             )
         return target
 
@@ -192,14 +236,72 @@ class HandoffToExpertTool(BaseTool):
         return caller.name if caller else "a teammate"
 
 
+def _request_refusal(
+    target_id: str, prompt: str, caller_expert_id: str | None
+) -> str | None:
+    """Why this handoff can't even be attempted, or ``None`` if it can."""
+    if not target_id:
+        return "expert_id is required"
+    if not prompt.strip():
+        return "prompt is required"
+    if target_id == caller_expert_id:
+        return (
+            "You are that expert — the task is already yours. Do it, or "
+            "use run_sub_session to isolate it in a fresh context."
+        )
+    return None
+
+
+def _transferred_response(
+    *,
+    inner_session_id: str,
+    parent_session_id: str | None,
+    target_name: str,
+) -> SubSessionStatusResponse:
+    """The terminal handoff contract: ownership moved, nothing to poll.
+
+    No poll instruction on purpose — ``_in_caller_scope`` denies the
+    handing-off session any read on the sub, so pointing the model at
+    ``get_sub_session_result`` earns it a false "no sub-session with id X"
+    and the user never learns the receiving thread exists. ``elapsed_seconds``
+    stays unset for the same reason: this tool waits for nothing.
+    """
+    link = _sub_session_link(inner_session_id)
+    return SubSessionStatusResponse(
+        message=(
+            f"{target_name} owns this now and will report to the user "
+            f"directly.{f' Follow along at {link}.' if link else ''}"
+        ),
+        session_id=parent_session_id,
+        status="transferred",
+        sub_session_id=inner_session_id,
+        sub_autopilot_session_id=inner_session_id,
+        sub_autopilot_session_link=link,
+    )
+
+
+def _refused_transfer_message(target_name: str, outcome: SessionOutcome) -> str:
+    """Say plainly that nothing moved, so the model doesn't announce a handoff
+    that never happened and then drop the task."""
+    if outcome == "rejected_concurrent_turn_cap":
+        return (
+            f"The handoff to {target_name} did not happen — the task is still "
+            f"yours. {running_turn_limit_message()}"
+        )
+    return (
+        f"The handoff to {target_name} did not happen — their session could not "
+        "take the task, so it is still yours. Do it yourself or try again."
+    )
+
+
 def _transfer_message(caller: str, context: str, prompt: str) -> str:
     """Frame the task as transferred, not borrowed.
 
-    The delegation preamble asks the receiver to report back to the teammate
-    who called. A handoff has no one to report to — the caller has moved on —
-    so the receiver is told to own the task and speak to the user directly.
+    Delegation's preamble asks the receiver to report back to the teammate who
+    called. A handoff has no one to report to, so the receiver is told to own
+    the task and speak to the user directly.
     """
-    name = " ".join(caller.split())[:_CALLER_NAME_LIMIT] or "a teammate"
+    name = safe_caller_name(caller)
     preamble = (
         f"[Task handed to you by {name}, a teammate on this user's team. It "
         "is yours now: they are not waiting on a report and cannot answer "
