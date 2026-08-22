@@ -237,6 +237,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Claude Code](block-integrations/llm.md#claude-code) | Execute tasks using Claude Code in an E2B sandbox |
 | [Code Generation](block-integrations/llm.md#code-generation) | Generate or refactor code using an OpenAI API key or a connected ChatGPT plan through Codex App Server |
 | [Create Talking Avatar Video](block-integrations/llm.md#create-talking-avatar-video) | This block integrates with D-ID to create video clips and retrieve their URLs |
+| [Deep Seek](block-integrations/llm.md#deep-seek) | Execute chat and reasoning prompts with DeepSeek AI models (DeepSeek-V3 and DeepSeek-R1) and extract reasoning tokens |
 | [Exa Answer](block-integrations/exa/answers.md#exa-answer) | Get an LLM answer to a question informed by Exa search results |
 | [Exa Create Enrichment](block-integrations/exa/websets_enrichment.md#exa-create-enrichment) | Create enrichments to extract additional structured data from webset items |
 | [Exa Create Research](block-integrations/exa/research.md#exa-create-research) | Create research task with optional waiting - explores web and synthesizes findings with citations |
