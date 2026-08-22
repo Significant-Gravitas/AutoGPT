@@ -23,9 +23,9 @@ Provenance lives in the sub's session metadata rather than a new column:
 ``delegated_by_expert_id`` records who asked, and ``delegated_by_session_id``
 doubles as the poll capability — ``get_sub_session_result`` accepts an
 out-of-scope sub only when it names the caller's session there. Walking that
-same chain upwards bounds how far a task may be passed on
-(:data:`MAX_DELEGATION_DEPTH`) and catches an expert handing work back to one
-already waiting on it.
+same chain upwards bounds how far a task may be passed on and catches an
+expert handing work back to one already waiting on it
+(:func:`expert_delegation.chain_refusal`, shared with ``handoff_to_expert``).
 """
 
 import logging
@@ -44,7 +44,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .expert_delegation import safe_caller_name
+from .expert_delegation import chain_refusal, safe_caller_name
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
@@ -54,11 +54,6 @@ from .run_sub_session import (
 )
 
 logger = logging.getLogger(__name__)
-
-# How many delegation hops a single task may travel. Each hop is a fresh
-# session with a fresh delegator, so without this nothing downstream would
-# ever notice a chain — or a loop — sustaining itself on the user's credits.
-MAX_DELEGATION_DEPTH = 3
 
 
 class DelegateToExpertTool(BaseTool):
@@ -159,9 +154,9 @@ class DelegateToExpertTool(BaseTool):
         if isinstance(target, ErrorResponse):
             return target
 
-        chain_error = await self._check_delegation_chain(user_id, session, target)
-        if chain_error is not None:
-            return chain_error
+        refusal = await chain_refusal(user_id, session, target)
+        if refusal is not None:
+            return self._error(refusal, session)
 
         inner_session_id = await self._resolve_session(
             user_id=user_id,
@@ -239,45 +234,6 @@ class DelegateToExpertTool(BaseTool):
                 session,
             )
         return target
-
-    async def _check_delegation_chain(
-        self, user_id: str, session: ChatSession, target: Expert
-    ) -> ErrorResponse | None:
-        """Refuse a hand-off that would push the chain past its bound, or hand
-        work back to an expert already waiting further up it.
-
-        Depth is read off the ``delegated_by_session_id`` provenance rather
-        than a stored counter: a plain session pays nothing, and a delegated
-        one pays at most ``MAX_DELEGATION_DEPTH`` cache-backed session reads.
-        The ``seen`` set is belt-and-braces — provenance is written once at
-        creation, but a traversal that trusts stored ids must not be able to
-        spin.
-        """
-        seen = {session.session_id}
-        parent_id = session.metadata.delegated_by_session_id
-        depth = 0
-        while parent_id and parent_id not in seen:
-            depth += 1
-            if depth >= MAX_DELEGATION_DEPTH:
-                return self._error(
-                    "This task has already been passed between teammates "
-                    f"{depth} times. Do as much as you can yourself and "
-                    "report back instead of handing it on again.",
-                    session,
-                )
-            seen.add(parent_id)
-            parent = await get_chat_session(parent_id, user_id)
-            if parent is None:
-                break
-            if parent.expert_id == target.id:
-                return self._error(
-                    f"{target.name} is already waiting on this task further "
-                    "up the chain, so handing it back would loop. Report what "
-                    "you have instead.",
-                    session,
-                )
-            parent_id = parent.metadata.delegated_by_session_id
-        return None
 
     async def _resolve_session(
         self,

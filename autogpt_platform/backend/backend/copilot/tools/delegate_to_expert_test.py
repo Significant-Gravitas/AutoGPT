@@ -121,6 +121,9 @@ def mock_sessions(monkeypatch):
         "backend.copilot.tools.delegate_to_expert.get_chat_session", fake_get
     )
     monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.get_chat_session", fake_get
+    )
+    monkeypatch.setattr(
         "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
     )
     return created
@@ -478,7 +481,7 @@ class TestDelegationChainBound:
         nothing — otherwise every plain delegation pays for the rare case."""
         probe = AsyncMock(return_value=None)
         monkeypatch.setattr(
-            "backend.copilot.tools.delegate_to_expert.get_chat_session", probe
+            "backend.copilot.tools.expert_delegation.get_chat_session", probe
         )
 
         await DelegateToExpertTool()._execute(

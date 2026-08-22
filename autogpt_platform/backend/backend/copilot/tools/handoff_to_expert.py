@@ -7,9 +7,11 @@ is queued rather than waiting on a result.
 
 The mechanics are the same queue-backed sub-session — target scope, memory and
 budget — so the guards are too: never yourself, never an archived or
-budget-paused teammate. Provenance records the delegation fields (so the sub
-is attributable) plus ``handed_off_from_expert_id``, which tells the receiver
-the task is now theirs.
+budget-paused teammate, and never past the shared chain bound
+(:func:`expert_delegation.chain_refusal`, since a handoff hop costs the same
+session-plus-turn as a delegated one and writes the same provenance to walk).
+Provenance records the delegation fields (so the sub is attributable) plus
+``handed_off_from_expert_id``, which tells the receiver the task is now theirs.
 
 The *response* is deliberately not delegation's. A handoff is terminal for the
 caller: it gets no result and — by design, see
@@ -38,7 +40,7 @@ from backend.copilot.sdk.session_waiter import (
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .expert_delegation import safe_caller_name
+from .expert_delegation import chain_refusal, safe_caller_name
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -136,6 +138,9 @@ class HandoffToExpertTool(BaseTool):
             target = await self._resolve_target(user_id, target_id)
         except _HandoffRefused as refused:
             return self._error(refused.message, session)
+        chain = await chain_refusal(user_id, session, target)
+        if chain is not None:
+            return self._error(chain, session)
         return await self._transfer(user_id, session, target, prompt, context)
 
     async def _transfer(

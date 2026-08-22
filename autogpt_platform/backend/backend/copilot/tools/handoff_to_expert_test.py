@@ -42,8 +42,10 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
-    # assertion would pass even if the kwarg were dropped.
+    # assertion would pass even if the kwarg were dropped — and a truthy
+    # delegator id would send the chain walk off reading ancestors.
     sess.metadata.origin = origin
+    sess.metadata.delegated_by_session_id = None
     sess.expert_id = expert_id
     return sess
 
@@ -125,8 +127,14 @@ def mock_sessions(monkeypatch, deleted_sessions):
         created.append(sess)
         return sess
 
+    async def fake_get(session_id, user_id=None):
+        return next((s for s in created if s.session_id == session_id), None)
+
     monkeypatch.setattr(
         "backend.copilot.tools.handoff_to_expert.create_chat_session", fake_create
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.get_chat_session", fake_get
     )
     return created
 
@@ -200,6 +208,103 @@ class TestGuards:
         )
         assert isinstance(r, ErrorResponse)
         assert "paused" in r.message
+        mock_turn.assert_not_awaited()
+
+
+class TestHandoffChainBound:
+    """A handoff hop mints a session and runs a full turn exactly as a
+    delegated one does, and writes the same ``delegated_by_session_id``
+    provenance, so the chain bound has to cover both tools. Bounding only
+    delegation just moves the burn here: A hands off to B, B hands it back to
+    A (allowed — A is not B), A hands it to B again, and nothing stops it.
+    """
+
+    def _chain(self, mock_sessions, expert_ids: list[str]) -> MagicMock:
+        """Splice a ready-made hand-off chain into the session store and hand
+        back its deepest session."""
+        parent_id = None
+        for depth, expert_id in enumerate(expert_ids):
+            sess = _session(session_id=f"chain-{depth}", expert_id=expert_id)
+            sess.metadata.delegated_by_session_id = parent_id
+            mock_sessions.append(sess)
+            parent_id = sess.session_id
+        return mock_sessions[-1]
+
+    @pytest.mark.asyncio
+    async def test_a_root_session_reads_no_ancestors(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """An unhanded session has no chain, so the guard must cost it
+        nothing — otherwise every plain handoff pays for the rare case."""
+        probe = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.get_chat_session", probe
+        )
+
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+
+        probe.assert_not_awaited()
+        mock_turn.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_chain_inside_the_bound_still_transfers(
+        self, roster, mock_turn, mock_sessions
+    ):
+        caller = self._chain(mock_sessions, ["expert-a", "expert-c"])
+
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice", session=caller, expert_id="expert-b", prompt="hi"
+        )
+
+        assert isinstance(r, SubSessionStatusResponse)
+        mock_turn.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_chain_at_the_bound_is_refused(
+        self, roster, mock_turn, mock_sessions
+    ):
+        caller = self._chain(
+            mock_sessions, ["expert-a", "expert-c", "expert-d", "expert-e"]
+        )
+        opened = len(mock_sessions)
+
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="keep passing it on",
+        )
+
+        assert isinstance(r, ErrorResponse)
+        assert "passed between teammates" in r.message
+        mock_turn.assert_not_awaited()
+        # Refused before the receiving thread is opened: an empty session the
+        # target can see is itself a cost the bound is meant to prevent.
+        assert len(mock_sessions) == opened
+
+    @pytest.mark.asyncio
+    async def test_handing_work_back_down_the_chain_is_refused(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """Bea hands off to Ari, Ari hands it straight back: the two-expert
+        ping-pong that the self-handoff guard does not catch (Ari is not Bea)
+        and that the depth bound alone would only stop three hops in."""
+        caller = self._chain(mock_sessions, ["expert-b", "expert-a"])
+
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=caller,
+            expert_id="expert-b",
+            prompt="you take it back",
+        )
+
+        assert isinstance(r, ErrorResponse)
+        assert "loop" in r.message
         mock_turn.assert_not_awaited()
 
 
