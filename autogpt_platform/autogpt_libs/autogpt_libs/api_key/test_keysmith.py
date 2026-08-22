@@ -83,9 +83,12 @@ def test_verify_key_none_and_type_safety():
     keysmith = APIKeySmith()
     key = keysmith.generate_key()
 
-    # Test None and non-string inputs fail gracefully without raising AttributeError
+    # Test None and non-string inputs fail gracefully without raising AttributeError or TypeError
     assert keysmith.verify_key(None, key.hash, key.salt) is False
     assert keysmith.verify_key(12345, key.hash, key.salt) is False
     assert keysmith.verify_key(key.key, None, key.salt) is False
     assert keysmith.verify_key(key.key, None) is False
+    assert keysmith.verify_key(key.key, 12345, key.salt) is False
+    assert keysmith.verify_key(key.key, 12345) is False
+
 
