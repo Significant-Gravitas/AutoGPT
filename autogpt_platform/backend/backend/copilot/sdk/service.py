@@ -104,7 +104,11 @@ from ..permissions import (
     all_known_tool_names,
     apply_tool_permissions,
 )
-from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..prompting import (
+    get_delegation_supplement,
+    get_graphiti_supplement,
+    get_sdk_supplement,
+)
 from ..rate_limit import (
     get_global_rate_limits,
     get_remaining_usd_budget,
@@ -4314,6 +4318,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # The whole expert-team surface rides the hire-experts flag, failing
+        # closed for anonymous turns.  Resolved here rather than at the
+        # tool-hiding site below so the delegation rules can be gated on the
+        # same boolean — a flag-off turn must not be told to call tools that
+        # were never registered with the MCP server.
+        experts_enabled = bool(user_id) and await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        )
+        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4328,6 +4341,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
+            + delegation_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4372,12 +4386,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
-        # The whole expert-team surface rides the hire-experts flag, failing
-        # closed for anonymous turns; the role split lives in the shared
-        # helper.
-        experts_enabled = bool(user_id) and await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        )
+        # ``experts_enabled`` was resolved with the system-prompt supplements
+        # above; the role split lives in the shared helper.
         disabled_tool_groups.extend(
             expert_tool_disabled_groups(
                 experts_enabled=experts_enabled, expert_id=session.expert_id

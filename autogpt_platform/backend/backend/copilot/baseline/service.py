@@ -74,7 +74,11 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    get_delegation_supplement,
+    get_graphiti_supplement,
+)
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -1033,10 +1037,15 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    disabled_groups: Sequence[ToolGroup],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
+
+    ``disabled_groups`` is the same list used to build the turn's schema
+    list; passing it here makes the capability gate an enforcement boundary
+    rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1096,6 +1105,7 @@ async def _baseline_tool_executor(
             user_id=user_id,
             session=session,
             tool_call_id=tool_call_id,
+            disabled_groups=disabled_groups,
         )
         _emit(state, result)
         tool_output = (
@@ -1825,6 +1835,15 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns.  Resolved here rather than at the
+    # tool-filtering site below so the delegation rules can be gated on the
+    # same boolean — a flag-off turn must not be told to call tools its
+    # ``execute_tool`` gate will refuse.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1834,6 +1853,7 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        + delegation_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -2080,11 +2100,8 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
-    # The whole expert-team surface rides the hire-experts flag, failing
-    # closed for anonymous turns; the role split lives in the shared helper.
-    experts_enabled = bool(user_id) and await is_feature_enabled(
-        Flag.HIRE_EXPERTS, user_id, default=False
-    )
+    # ``experts_enabled`` was resolved with the system-prompt supplements
+    # above; the role split lives in the shared helper.
     disabled_tool_groups.extend(
         expert_tool_disabled_groups(
             experts_enabled=experts_enabled, expert_id=session.expert_id
@@ -2159,6 +2176,7 @@ async def stream_chat_completion_baseline(
             state=state,
             user_id=user_id,
             session=_session_holder[0],
+            disabled_groups=disabled_tool_groups,
         )
 
     _bound_conversation_updater = partial(

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
 from .add_understanding import AddUnderstandingTool
@@ -49,6 +50,7 @@ from .manage_folders import (
 )
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
 from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .run_agent import RunAgentTool
@@ -74,7 +76,6 @@ from .workspace_files import (
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
-    from backend.copilot.response_model import StreamToolOutputAvailable
 
 logger = logging.getLogger(__name__)
 
@@ -265,11 +266,38 @@ async def execute_tool(
     user_id: str | None,
     session: ChatSession,
     tool_call_id: str,
-) -> "StreamToolOutputAvailable":
-    """Execute a tool by name."""
+    disabled_groups: Iterable[ToolGroup] = (),
+) -> StreamToolOutputAvailable:
+    """Execute a tool by name, refusing anything in *disabled_groups*.
+
+    ``get_available_tools`` only hides disabled tools from the schema list it
+    hands the model, which is a presentation filter: a model that names a
+    hidden tool anyway (replayed transcript, prompt injection, a flag flipped
+    mid-session) would still reach ``tool.execute``.  Re-checking the group
+    here makes the capability gate an enforcement boundary, matching the SDK
+    engine where hidden tools are never registered with the MCP server at all.
+    """
     tool = get_tool(tool_name)
     if not tool:
         raise ValueError(f"Tool {tool_name} not found")
+
+    if tool_name in tool_names_in_groups(disabled_groups):
+        logger.warning(
+            "Refusing disabled tool: tool=%s user=%s session=%s",
+            tool_name,
+            user_id,
+            session.session_id,
+        )
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=ErrorResponse(
+                message=f"{tool_name} is not available in this session.",
+                error="tool_disabled",
+                session_id=session.session_id,
+            ).model_dump_json(),
+            success=False,
+        )
 
     # Track tool call in PostHog
     logger.info(
