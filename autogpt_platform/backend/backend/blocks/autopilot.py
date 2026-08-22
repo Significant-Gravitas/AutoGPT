@@ -372,6 +372,10 @@ class AutoPilotBlock(Block):
             dry_run=dry_run,
             organization_id=organization_id,
             team_id=team_id,
+            # The prompt of a graph run is machine-authored and may quote
+            # untrusted upstream data, so this session must not reach the
+            # tools that restaff the user's team.
+            origin="automation",
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
         )

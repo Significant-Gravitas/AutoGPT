@@ -38,6 +38,7 @@ def _session(
     user_id: str = "u",
     session_id: str = "s1",
     expert_id: str | None = None,
+    origin: str = "interactive",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -47,6 +48,7 @@ def _session(
     sess.team_id = None
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
+    sess.metadata.origin = origin
     sess.expert_id = expert_id
     return sess
 
@@ -151,9 +153,11 @@ def mock_model(monkeypatch):
         llm_auth_provider: str = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        origin: str = "interactive",
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
+        sess.metadata.origin = origin
         sess.user_id = user_id
         sess.dry_run = dry_run
         sess.organization_id = organization_id
@@ -244,6 +248,25 @@ class TestRunSubSession:
         )
         assert mock_model["created"], "create_chat_session was never awaited"
         assert mock_model["created"][0].dry_run is True
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_inherits_automation_origin(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A sub of an automation is still an automation.
+
+        The staffing tools refuse an ``origin="automation"`` session, but a
+        block-driven session can open a sub — and if the child defaulted back
+        to ``"interactive"`` the gate would be one hop from bypassed.
+        """
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_model["created"], "create_chat_session was never awaited"
+        assert mock_model["created"][0].metadata.origin == "automation"
 
     @pytest.mark.asyncio
     async def test_fresh_sub_inherits_expert_scope(

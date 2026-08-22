@@ -180,6 +180,11 @@ class RunSubSessionTool(BaseTool):
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
+                # A sub of an automation is still an automation. Without this
+                # the child defaults to "interactive", so a block-driven
+                # session could reach the staffing tools one hop away from the
+                # gate that refuses them directly.
+                origin=session.metadata.origin,
             )
             inner_session_id = new_session.session_id
 

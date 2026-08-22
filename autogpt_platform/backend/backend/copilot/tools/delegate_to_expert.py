@@ -35,6 +35,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .expert_delegation import safe_caller_name
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
@@ -44,10 +45,6 @@ from .run_sub_session import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Caller names are user-authored; keep them to a single short line so a
-# crafted name can't forge extra framing inside the hand-off preamble.
-_CALLER_NAME_LIMIT = 80
 
 
 class DelegateToExpertTool(BaseTool):
@@ -214,7 +211,7 @@ class DelegateToExpertTool(BaseTool):
         if target is None or target.is_archived:
             return self._error(
                 f"No active expert with id {target_id} on this team. Pick one "
-                "from <team_context>.",
+                "of the teammates listed in your team context.",
                 session,
             )
         if target.schedules_paused_at is not None:
@@ -248,6 +245,7 @@ class DelegateToExpertTool(BaseTool):
                 expert_id=target.id,
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
+                origin=session.metadata.origin,
             )
             return new_session.session_id
 
@@ -269,7 +267,13 @@ class DelegateToExpertTool(BaseTool):
             prior.metadata.llm_auth_provider != session.metadata.llm_auth_provider
             or prior.metadata.llm_credential_id != session.metadata.llm_credential_id
         ):
-            return self._error("codex_session_route_mismatch", session)
+            return self._error(
+                f"That delegation thread with {target.name} runs on a "
+                "different model connection than this chat does, so it "
+                "cannot be resumed from here. Leave delegated_session_id "
+                "empty to open a fresh one.",
+                session,
+            )
         return delegated_session_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
@@ -293,7 +297,7 @@ def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
     teammate would address them directly and ask follow-up questions nobody
     is there to answer.
     """
-    name = " ".join(caller.split())[:_CALLER_NAME_LIMIT] or "a teammate"
+    name = safe_caller_name(caller)
     preamble = (
         f"[Delegated task from {name}, a teammate on this user's team — not "
         "the user. They cannot see your thread, so report the outcome in your "

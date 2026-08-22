@@ -56,6 +56,14 @@ RoutingSource = Literal[
     "account_available",
 ]
 
+# Who opened a session. ``interactive`` means a human is typing into it (web
+# chat, a linked chat platform); ``automation`` means a graph block or a
+# scheduler opened it, so every prompt in it is machine-authored and may
+# carry data the user never read. Tools that restaff the user's team require
+# an interactive origin — "has no expert_id" only means "not an expert chat",
+# which an AutoPilotBlock session also satisfies.
+ChatSessionOrigin = Literal["interactive", "automation"]
+
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
@@ -104,6 +112,11 @@ class ChatSessionMetadata(BaseModel):
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
     source_platform: str | None = None
+
+    # Defaults to ``interactive`` so sessions written before this field
+    # existed keep behaving as user-driven; machine callers set it
+    # explicitly. See :data:`ChatSessionOrigin`.
+    origin: ChatSessionOrigin = "interactive"
 
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
@@ -445,6 +458,7 @@ class ChatSession(ChatSessionInfo):
         session_id: str | None = None,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
@@ -467,6 +481,7 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                origin=origin,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
                 delegated_by_expert_id=delegated_by_expert_id,
@@ -1263,6 +1278,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    origin: ChatSessionOrigin = "interactive",
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     expert_id: str | None = None,
@@ -1280,6 +1296,9 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
+        origin: Whether a human drives this session or an automation opened
+            it. Machine callers (graph blocks, schedulers) must pass
+            ``"automation"``; the team-staffing tools refuse those sessions.
         expert_id: Private expert this session is scoped to. Expert sessions are
             validated here and pinned to the owner's personal organization, and
             the database re-validates active ownership atomically with session
@@ -1307,6 +1326,7 @@ async def create_chat_session(
         session_id=session_id,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        origin=origin,
         organization_id=organization_id,
         team_id=team_id,
         llm_auth_provider=llm_auth_provider,
