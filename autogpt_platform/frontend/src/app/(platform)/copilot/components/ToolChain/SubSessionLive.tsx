@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import type { ToolUIPart } from "ai";
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getAnimationText,
   getToolCategory,
@@ -48,27 +48,134 @@ interface LiveStep {
  *  once it goes idle, polling stops and the last state stays up as the
  *  delegate's final answer. */
 export function SubSessionLive({ subSessionId, active }: Props) {
-  const mountedAtRef = useRef(Date.now());
-  const { data } = useGetV2GetSession(subSessionId, undefined, {
+  const { session, isError, isPaused } = useLiveSubSession(
+    subSessionId,
+    active,
+  );
+  if (!active) return null;
+
+  const turn = session ? collectCurrentTurn(session) : null;
+  const recent = turn?.steps.slice(-MAX_STEPS) ?? [];
+  const latestText = turn?.latestText ?? null;
+  const notice = getLiveNotice({ isError, isPaused });
+  if (!notice && recent.length === 0 && !latestText) return null;
+
+  const isLive = !!session && isSessionLive(session) && !isPaused && !isError;
+  const rows = recent.map((step, i) =>
+    toMiniRow(step, i, isLive && i === recent.length - 1),
+  );
+
+  return (
+    <div className="mt-2 border-t border-zinc-100 pl-1 pt-2.5">
+      <LiveSteps rows={rows} />
+      {latestText && (
+        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-zinc-600">
+          {latestText}
+        </p>
+      )}
+      {notice && <LiveNotice text={notice} subSessionId={subSessionId} />}
+    </div>
+  );
+}
+
+/** The polled sub-session plus the two states that used to render as
+ *  nothing at all: a failed fetch, and the poll cap expiring while the run
+ *  is still live. Both stop the polling, so both have to be visible —
+ *  otherwise a dead card is indistinguishable from a working one. */
+function useLiveSubSession(subSessionId: string, active: boolean) {
+  const [isCapped, setIsCapped] = useState(false);
+  useEffect(
+    function stopPollingAfterCap() {
+      if (!active) return;
+      const timer = setTimeout(() => setIsCapped(true), POLL_CAP_MS);
+      return () => clearTimeout(timer);
+    },
+    [active],
+  );
+  const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
       enabled: active && !!subSessionId,
       refetchInterval: (query) => {
-        if (query.state.status === "error") return false;
-        if (Date.now() - mountedAtRef.current > POLL_CAP_MS) return false;
+        if (query.state.status === "error" || isCapped) return false;
         const raw = query.state.data;
-        const session = raw && raw.status === 200 ? raw.data : null;
-        return !session || isSessionLive(session) ? POLL_MS : false;
+        const polled = raw && raw.status === 200 ? raw.data : null;
+        return !polled || isSessionLive(polled) ? POLL_MS : false;
       },
       select: (res) => (res.status === 200 ? res.data : null),
     },
   });
-  if (!active || !data) return null;
+  const session = data ?? null;
+  return {
+    session,
+    isError,
+    // A capped poll on a finished session is not "paused" — the last
+    // snapshot IS the final answer, so there is nothing left to watch.
+    isPaused: isCapped && (!session || isSessionLive(session)),
+  };
+}
 
-  const isLive = isSessionLive(data);
-  const allMessages = Array.isArray(data.messages) ? data.messages : [];
-  // A re-delegation reuses the same sub-session, so only the CURRENT turn
-  // (everything after the last user message) belongs to this card — the
-  // full history would replay the previous delegation's final answer here.
+function getLiveNotice({
+  isError,
+  isPaused,
+}: {
+  isError: boolean;
+  isPaused: boolean;
+}) {
+  if (isError) return "Couldn't load live updates";
+  if (isPaused) return "Live updates paused";
+  return null;
+}
+
+/** Says the polling stopped and keeps the deep link, so the user can follow
+ *  the run at its source instead of watching a spinner that never resolves. */
+function LiveNotice({
+  text,
+  subSessionId,
+}: {
+  text: string;
+  subSessionId: string;
+}) {
+  return (
+    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+      {text}
+      <Link
+        href={`/copilot?sessionId=${subSessionId}`}
+        className="underline underline-offset-2 hover:text-zinc-600"
+      >
+        Open sub-session
+      </Link>
+    </p>
+  );
+}
+
+function LiveSteps({ rows }: { rows: ChainRow[] }) {
+  return rows.map((row, i) => {
+    const isLastRow = i === rows.length - 1;
+    return (
+      <div key={row.key} className="flex items-stretch gap-2.5">
+        <div className="flex w-6 flex-col items-center">
+          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+            <RowIcon row={row} />
+          </div>
+          {!isLastRow && <div className="w-px flex-1 bg-zinc-200" />}
+        </div>
+        <div className={cn("min-w-0 flex-1 pt-[2px]", !isLastRow && "pb-2.5")}>
+          <SwapText
+            text={row.text}
+            shimmer={row.state === "running"}
+            className="max-w-full text-sm leading-5 text-zinc-600"
+          />
+        </div>
+      </div>
+    );
+  });
+}
+
+/** A re-delegation reuses the same sub-session, so only the CURRENT turn
+ *  (everything after the last user message) belongs to this card — the full
+ *  history would replay the previous delegation's final answer here. */
+function collectCurrentTurn(session: SessionDetailResponse) {
+  const allMessages = Array.isArray(session.messages) ? session.messages : [];
   const lastUserIndex = allMessages.findLastIndex((m) => m.role === "user");
   const messages =
     lastUserIndex === -1 ? allMessages : allMessages.slice(lastUserIndex + 1);
@@ -93,44 +200,7 @@ export function SubSessionLive({ subSessionId, active }: Props) {
       latestText = msg.content.trim();
     }
   }
-  const recent = steps.slice(-MAX_STEPS);
-  if (recent.length === 0 && !latestText) return null;
-
-  const rows = recent.map((step, i) =>
-    toMiniRow(step, i, isLive && i === recent.length - 1),
-  );
-
-  return (
-    <div className="mt-2 border-t border-zinc-100 pl-1 pt-2.5">
-      {rows.map((row, i) => {
-        const isLastRow = i === rows.length - 1;
-        return (
-          <div key={row.key} className="flex items-stretch gap-2.5">
-            <div className="flex w-6 flex-col items-center">
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-                <RowIcon row={row} />
-              </div>
-              {!isLastRow && <div className="w-px flex-1 bg-zinc-200" />}
-            </div>
-            <div
-              className={cn("min-w-0 flex-1 pt-[2px]", !isLastRow && "pb-2.5")}
-            >
-              <SwapText
-                text={row.text}
-                shimmer={row.state === "running"}
-                className="max-w-full text-sm leading-5 text-zinc-600"
-              />
-            </div>
-          </div>
-        );
-      })}
-      {latestText && (
-        <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-zinc-600">
-          {latestText}
-        </p>
-      )}
-    </div>
-  );
+  return { steps, latestText };
 }
 
 /** Dress a polled tool call as a ChainRow so the delegate's steps reuse the
@@ -179,16 +249,11 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
   );
   const liveSessionId = inputSessionId ?? discoveredId;
   // Cache-shared with SubSessionLive's query below — no extra request.
-  const { data: liveSession } = useGetV2GetSession(
-    liveSessionId ?? "",
-    undefined,
-    {
-      query: {
-        enabled: !!liveSessionId,
-        select: (res) => (res.status === 200 ? res.data : null),
-      },
-    },
-  );
+  const {
+    session: liveSession,
+    isError,
+    isPaused,
+  } = useLiveSubSession(liveSessionId ?? "", !!liveSessionId);
   const expertId = inputExpertId ?? liveSession?.expert_id ?? null;
   const expert = expertId ? expertsById.get(expertId) : undefined;
 
@@ -208,7 +273,12 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
             </span>
           )}
         </p>
-        <StatusPill status="running" className="text-sm" />
+        {/* Once the poll dies the card no longer knows the run is going —
+            keeping the spinner up would be a guess dressed as a fact. */}
+        <StatusPill
+          status={isError || isPaused ? "unknown" : "running"}
+          className="text-sm"
+        />
         {liveSessionId && (
           <Link
             href={`/copilot?sessionId=${liveSessionId}`}
@@ -273,13 +343,16 @@ export function useSubSessionEffectiveStatus(
   status: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
-  const { data } = useGetV2GetSession(subSessionId ?? "", undefined, {
+  const { data, isError } = useGetV2GetSession(subSessionId ?? "", undefined, {
     query: {
       enabled: stale && !!subSessionId,
       select: (res) => (res.status === 200 ? res.data : null),
     },
   });
-  if (!stale || !data) return status;
+  if (!stale) return status;
+  // The frozen status is only trustworthy while the poll can refute it.
+  if (isError) return "unknown";
+  if (!data) return status;
   return isSessionLive(data) ? status : "completed";
 }
 

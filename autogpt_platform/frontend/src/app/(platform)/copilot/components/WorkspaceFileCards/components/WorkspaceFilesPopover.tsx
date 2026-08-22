@@ -113,14 +113,19 @@ export function WorkspaceFilesPopover({
             variant="ghost"
             size="icon"
             aria-label="Workspace files"
+            // p-0: the atom's size="icon" is p-3, which on a size-8 trigger
+            // leaves an 8px content box and squeezes the glyph. shrink-0: the
+            // atom has no [&_svg]:shrink-0, so the icon would flex-shrink to
+            // fit regardless of its own size class.
             className={cn(
+              "p-0",
               triggerClassName ?? "size-9 rounded-xl",
               isPopoverOpen && "bg-zinc-200/70 text-zinc-900",
             )}
           >
             <Icon
               icon={CheckListIcon}
-              className={iconClassName ?? "!size-[1.15rem]"}
+              className={cn("shrink-0", iconClassName ?? "!size-[1.15rem]")}
             />
           </Button>
         </PopoverTrigger>

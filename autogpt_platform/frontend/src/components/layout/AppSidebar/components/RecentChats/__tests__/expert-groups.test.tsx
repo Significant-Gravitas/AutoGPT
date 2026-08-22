@@ -86,7 +86,8 @@ function groupHeader(label: string) {
   return screen.getByRole("button", { name: `${label} chats` });
 }
 
-async function openGroup(label: string) {
+/** Groups render open, so this is how a test gets to the collapsed state. */
+async function collapseGroup(label: string) {
   fireEvent.click(
     await screen.findByRole("button", { name: `${label} chats` }),
   );
@@ -102,7 +103,7 @@ afterEach(() => {
 });
 
 describe("RecentChats — expert groups", () => {
-  it("starts collapsed and expands when its header is clicked", async () => {
+  it("starts open and collapses when its header is clicked", async () => {
     const sessions = makeSessions(2);
     server.use(
       getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
@@ -110,16 +111,13 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
-    expect(
-      await screen.findByRole("button", { name: "Autopilot chats" }),
-    ).toBeDefined();
-    expect(screen.queryByText("autopilot chat 1")).toBeNull();
-
-    fireEvent.click(groupHeader("Autopilot"));
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
 
     fireEvent.click(groupHeader("Autopilot"));
     expect(screen.queryByText("autopilot chat 1")).toBeNull();
+
+    fireEvent.click(groupHeader("Autopilot"));
+    expect(await screen.findByText("autopilot chat 1")).toBeDefined();
   });
 
   it("keeps a running chat visible while the group is collapsed", async () => {
@@ -132,6 +130,7 @@ describe("RecentChats — expert groups", () => {
       getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
+    await collapseGroup("Autopilot");
 
     expect(await screen.findByText("running chat")).toBeDefined();
     expect(screen.queryByText("autopilot chat 1")).toBeNull();
@@ -144,7 +143,6 @@ describe("RecentChats — expert groups", () => {
       getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
-    await openGroup("Autopilot");
 
     expect(await screen.findByText("autopilot chat 10")).toBeDefined();
     expect(screen.queryByText("autopilot chat 11")).toBeNull();
@@ -171,10 +169,7 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
-    await openGroup("Maria");
-    await openGroup("Autopilot");
-
-    expect(screen.getByText("expert-maria chat 10")).toBeDefined();
+    expect(await screen.findByText("expert-maria chat 10")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 11")).toBeNull();
     expect(screen.queryByText("autopilot chat 11")).toBeNull();
 
@@ -193,7 +188,9 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
-    await openGroup("Expert");
+    expect(
+      await screen.findByRole("button", { name: "Expert chats" }),
+    ).toBeDefined();
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
@@ -207,7 +204,6 @@ describe("RecentChats — expert groups", () => {
       getListExpertIdentitiesMockHandler([]),
     );
     renderRecentChats();
-    await openGroup("Autopilot");
 
     expect(
       await screen.findByRole("button", { name: "Load more Autopilot chats" }),
@@ -215,7 +211,7 @@ describe("RecentChats — expert groups", () => {
     expect(screen.getByRole("button", { name: "Load more" })).toBeDefined();
   });
 
-  it("keeps reveal state across session list refetches", async () => {
+  it("keeps reveal and collapse state across session list refetches", async () => {
     const sessions = [...makeSessions(12), ...makeSessions(2, mariaExpert.id)];
     let listCalls = 0;
     server.use(
@@ -227,7 +223,7 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
-    await openGroup("Autopilot");
+    await collapseGroup("Maria");
     fireEvent.click(
       await screen.findByRole("button", { name: "Load more Autopilot chats" }),
     );

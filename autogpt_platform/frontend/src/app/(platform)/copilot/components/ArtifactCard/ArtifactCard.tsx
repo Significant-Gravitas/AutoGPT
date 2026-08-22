@@ -62,8 +62,6 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
     artifact.title,
     artifact.sizeBytes,
   );
-  // The rounder card and the grid-friendly min-w-0 ship with the new tool
-  // UI; the old UI keeps its original look byte for byte.
   const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const cardShapeClass = isNewToolUI ? "min-w-0 rounded-2xl" : "rounded-lg";
   const downloadIcon = isNewToolUI ? Download01Icon : Download04Icon;

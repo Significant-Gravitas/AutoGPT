@@ -2,9 +2,16 @@ import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoi
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { SubSessionCard } from "../AgentCards";
 import { ToolResult } from "../ToolResult";
+
+const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
+
+function failingSubSession() {
+  return http.get(SESSION_ROUTE, () => new HttpResponse(null, { status: 500 }));
+}
 
 function subSession(messages: Record<string, unknown>[]) {
   return getGetV2GetSessionMockHandler200({
@@ -117,5 +124,44 @@ describe("SubSessionLive", () => {
 
     expect(screen.getByText("All done")).toBeDefined();
     expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
+  });
+
+  it("says live updates failed instead of spinning on running forever", async () => {
+    server.use(failingSubSession());
+
+    render(
+      <SubSessionCard
+        output={{ status: "running", sub_session_id: "sub-1" }}
+      />,
+    );
+
+    expect(await screen.findByText("Couldn't load live updates")).toBeDefined();
+    expect(screen.queryByText("running")).toBeNull();
+    expect(screen.getByText("unknown")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: "Open sub-session" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=sub-1");
+  });
+
+  it("drops the running pill on the pending card when the poll fails", async () => {
+    server.use(failingSubSession());
+
+    render(
+      <ToolResult
+        row={{
+          key: "delegate",
+          category: "agent",
+          text: "Handing off to a teammate",
+          state: "running",
+          tool: "delegate_to_expert",
+          input: { sub_session_id: "sub-1", prompt: "Create a chat app" },
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("unknown")).toBeDefined();
+    expect(screen.queryByText("running")).toBeNull();
   });
 });

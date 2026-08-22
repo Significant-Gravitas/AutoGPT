@@ -15,6 +15,20 @@ interface Props {
   output: Record<string, unknown>;
 }
 
+const APPLIED_LABELS: Record<string, string> = {
+  hire: "Hired",
+  raise: "Raised",
+  update: "Updated",
+};
+
+function failedWorkflows(output: Record<string, unknown>): string[] {
+  const value = output.failed_workflows;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is string => typeof entry === "string" && !!entry.trim(),
+  );
+}
+
 /** An expert inside the chain — either a hire/raise preview awaiting the
  *  user's OK (given in chat, nothing created yet) or the teammate
  *  ``confirm_expert_change`` actually created. Once they exist, the card
@@ -31,6 +45,8 @@ export function ExpertChangeCard({ output }: Props) {
   const boundaries = str(expert, "boundaries");
   const budget =
     typeof expert.weekly_budget === "number" ? expert.weekly_budget : null;
+  const appliedLabel = APPLIED_LABELS[str(output, "kind") ?? ""] ?? "Done";
+  const failed = applied ? failedWorkflows(output) : [];
 
   return (
     <div className={`${CARD} ${HALF} p-2.5`}>
@@ -47,11 +63,10 @@ export function ExpertChangeCard({ output }: Props) {
           )}
         </p>
         {applied ? (
-          <Icon
-            icon={CheckmarkCircle02Icon}
-            size={15}
-            className="shrink-0 text-emerald-600"
-          />
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <Icon icon={CheckmarkCircle02Icon} size={11} />
+            {appliedLabel}
+          </span>
         ) : (
           <span className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
             Needs your OK
@@ -71,6 +86,12 @@ export function ExpertChangeCard({ output }: Props) {
       {budget !== null && (
         <p className="mt-1 pl-9 text-[11px] text-zinc-400">
           Weekly budget: {budget} credits
+        </p>
+      )}
+      {failed.length > 0 && (
+        <p className="mt-1 pl-9 text-[11px] text-amber-700">
+          Couldn&apos;t set up: {failed.join(", ")}. Everything else is ready —
+          add {failed.length > 1 ? "them" : "it"} from the expert&apos;s page.
         </p>
       )}
       {applied && id && (

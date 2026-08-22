@@ -67,12 +67,51 @@ describe("expert change cards", () => {
 
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.queryByText("Needs your OK")).toBeNull();
+    // The applied state must be readable, not colour-and-glyph only.
+    expect(screen.getByText("Raised")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /Edit/ }).getAttribute("href"),
     ).toBe("/team/exp-otto");
     expect(
       screen.getByRole("link", { name: /Chat/ }).getAttribute("href"),
     ).toBe("/copilot?expertId=exp-otto");
+  });
+
+  it("names the workflows that failed to install on a partial hire", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_applied",
+          message: "Otto is on the team.",
+          applied: true,
+          kind: "hire",
+          expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
+          failed_workflows: ["Inbox sweep", "Weekly digest"],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Hired")).toBeDefined();
+    expect(
+      screen.getByText(/Couldn't set up: Inbox sweep, Weekly digest/),
+    ).toBeDefined();
+  });
+
+  it("stays quiet when every workflow installed", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_applied",
+          message: "Otto is on the team.",
+          applied: true,
+          kind: "hire",
+          expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
+          failed_workflows: [],
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/Couldn't set up/)).toBeNull();
   });
 
   it("renders a handoff as the receiving teammate's sub-session", () => {

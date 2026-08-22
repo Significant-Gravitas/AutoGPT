@@ -2,7 +2,6 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 
 export interface MinimapEntry {
   id: string;
-  role: string;
   title: string;
   body: string;
 }
@@ -19,7 +18,6 @@ export function toMinimapEntries(
     const [title, body] = splitPreview(messageText(message));
     return {
       id: message.id,
-      role: message.role,
       title: title || roleFallback(message.role),
       body,
     };

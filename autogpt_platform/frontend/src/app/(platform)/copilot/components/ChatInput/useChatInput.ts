@@ -1,4 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
@@ -71,8 +72,7 @@ export function useChatInput({
     setIsSending(true);
     // Clear eagerly: onSend can resolve only when the whole stream finishes,
     // which would leave the sent text sitting in the composer for the entire
-    // turn. On failure the draft is restored — unless the user has already
-    // started typing their next message.
+    // turn. On failure the draft is restored (see restoreFailedDraft).
     if (isNewToolUI) setValue("");
     try {
       await onSend(trimmedMessage);
@@ -80,7 +80,12 @@ export function useChatInput({
       notifyMessageSent();
     } catch (error) {
       if (!isNewToolUI) throw error;
-      setValue((current) => (current ? current : message));
+      setValue((current) => restoreFailedDraft(current, message));
+      toast({
+        title: "Couldn't send message",
+        description: describeSendFailure(error),
+        variant: "destructive",
+      });
     } finally {
       isSubmittingRef.current = false;
       setIsSending(false);
@@ -106,4 +111,20 @@ export function useChatInput({
     handleChange,
     isSending,
   };
+}
+
+/** A failed send must never cost the user their words. The composer was
+ *  cleared eagerly, so the failed message goes back in — and if they started
+ *  a new draft during the stream, BOTH are kept: silently picking a winner
+ *  deletes the other one for good. */
+function restoreFailedDraft(current: string, failed: string) {
+  if (!current.trim() || current === failed) return failed;
+  return `${failed}\n\n${current}`;
+}
+
+function describeSendFailure(error: unknown) {
+  const reason = error instanceof Error ? error.message.trim() : "";
+  return reason
+    ? `${reason} — your message is back in the composer.`
+    : "Your message is back in the composer. Try again.";
 }

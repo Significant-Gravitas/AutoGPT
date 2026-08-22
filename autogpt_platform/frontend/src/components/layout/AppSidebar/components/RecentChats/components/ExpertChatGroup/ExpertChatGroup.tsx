@@ -31,7 +31,10 @@ export function ExpertChatGroup({
   sessions,
   renderItem,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(false);
+  // Open on mount: the sidebar's job is to show the chats, so a group that
+  // hides them behind a click on every render is a step backwards. Controlled
+  // rather than `defaultOpen` because the collapsed branch below reads it.
+  const [isOpen, setIsOpen] = useState(true);
   const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
   const visibleSessions = sessions.slice(0, visibleCount);
   const hasHiddenSessions = sessions.length > visibleSessions.length;

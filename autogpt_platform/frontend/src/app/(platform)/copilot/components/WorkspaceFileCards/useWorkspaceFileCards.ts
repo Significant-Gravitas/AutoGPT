@@ -31,7 +31,6 @@ export function useWorkspaceFileCards(sessionId: string | null) {
       s.artifactPanel.activeArtifact == null &&
       s.artifactPanel.activeTab !== "artifacts",
   );
-  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
@@ -100,7 +99,6 @@ export function useWorkspaceFileCards(sessionId: string | null) {
     isDeleting,
     isZipping,
     pendingDelete,
-    close: closeArtifactPanel,
     setPendingDelete,
     handleOpen,
     handleDownload,
