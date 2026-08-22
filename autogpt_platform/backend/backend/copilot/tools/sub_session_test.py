@@ -38,7 +38,7 @@ def _session(
     user_id: str = "u",
     session_id: str = "s1",
     expert_id: str | None = None,
-    origin: str = "interactive",
+    origin: str | None = "interactive",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -338,8 +338,40 @@ class TestRunSubSession:
         )
 
         assert isinstance(result, ErrorResponse)
-        assert "different kind of caller" in result.message
+        assert "started by a person" in result.message
         mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_accepts_legacy_sub_without_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """A sub started before ``origin`` shipped reads back as ``None``.
+
+        Every parent that stored a sub session id and re-feeds it holds one of
+        those, so refusing an unknown origin here would break live sub-sessions
+        to close a hole they never opened — the staffing guard is where an
+        unknown origin fails closed instead.
+        """
+        legacy_sub = _session("alice", "other-session", origin=None)
+        legacy_sub.messages = []
+
+        async def fake_get(_session_id: str):
+            return legacy_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+            wait_for_result=0,
+        )
+
+        assert not isinstance(result, ErrorResponse)
+        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(

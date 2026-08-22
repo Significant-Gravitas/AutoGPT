@@ -165,12 +165,20 @@ class RunSubSessionTool(BaseTool):
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
             # under an origin the staffing guard lets through.
-            if owned.metadata.origin != "automation":
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and any
+            # sub started before this deploy holds one of those. Refusing them
+            # would break live sub-sessions to close a hole they never opened
+            # — the staffing guard is where an unknown origin fails closed
+            # instead. Same call as `blocks/autopilot.py` on resume.
+            if owned.metadata.origin == "interactive":
                 return ErrorResponse(
                     message=(
                         f"sub_autopilot_session_id {sub_session_param} was "
-                        "started by a different kind of caller. Leave empty to "
-                        "start a fresh sub for this session."
+                        "started by a person, not by a previous run_sub_session "
+                        "call. Leave empty to start a fresh sub for this "
+                        "session."
                     ),
                     session_id=session.session_id,
                 )

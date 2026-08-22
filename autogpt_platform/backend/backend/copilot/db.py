@@ -389,9 +389,11 @@ def _persisted_metadata(metadata: ChatSessionMetadata | None) -> ChatSessionMeta
 
     ``origin=None`` means "persisted before the field existed", and readers
     treat it as legacy — so a row created now must never claim it, or a real
-    pre-deploy session stops being distinguishable from a fresh one. The
-    callers that pass no metadata at all (expert kickoff, parked assistant
-    messages) are machine paths, so an unset origin resolves to ``automation``.
+    pre-deploy session stops being distinguishable from a fresh one. An unset
+    origin resolves to ``automation``: the only caller that reaches here
+    without metadata is the expert kickoff thread, which a run opens. A thread
+    the user is meant to type into must pass ``origin="interactive"`` itself
+    rather than inherit this default — see ``append_plain_session_message``.
     """
     resolved = metadata or ChatSessionMetadata()
     if resolved.origin is None:
@@ -1411,8 +1413,15 @@ async def append_plain_session_message(
     if sessions:
         session_id = sessions[0].id
     else:
+        # An automation writes the first message, but the thread itself is the
+        # user's primary chat — the one the product opens them into. Stamping
+        # it ``automation`` (the unset-metadata default) would leave a user
+        # whose briefing arrived before their first chat unable to staff their
+        # team from the very thread they were handed.
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            metadata=ChatSessionMetadata(origin="interactive"),
         )
         session_id = created.session_id
 
