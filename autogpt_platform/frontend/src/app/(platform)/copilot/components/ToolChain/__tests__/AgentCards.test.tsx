@@ -164,6 +164,29 @@ describe("SubSessionCard", () => {
     );
   });
 
+  it("renders an expert avatar from any host through the shared avatar", () => {
+    // Expert avatars are only validated as https by the backend, so this card
+    // must not go through next/image's configured-hostname allow list.
+    render(
+      <SubSessionCard
+        output={{
+          status: "running",
+          expert: {
+            id: "exp-1",
+            name: "Maria",
+            role: "Researcher",
+            avatar_url: "https://cdn.example.com/maria.png",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByAltText("Maria").getAttribute("src")).toBe(
+      "https://cdn.example.com/maria.png",
+    );
+    expect(screen.getByText("Researcher")).toBeDefined();
+  });
+
   it("shows second-scale elapsed time without a link", () => {
     render(
       <SubSessionCard output={{ status: "RUNNING", elapsed_seconds: 45 }} />,

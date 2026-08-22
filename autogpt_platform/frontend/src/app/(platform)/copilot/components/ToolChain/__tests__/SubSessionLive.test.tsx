@@ -8,9 +8,44 @@ import { SubSessionCard } from "../AgentCards";
 import { ToolResult } from "../ToolResult";
 
 const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
+const SESSION_LIST_ROUTE = "/api/proxy/api/chat/sessions";
 
 function failingSubSession() {
   return http.get(SESSION_ROUTE, () => new HttpResponse(null, { status: 500 }));
+}
+
+function summary(id: string, extra: Record<string, unknown>) {
+  return {
+    id,
+    created_at: "2026-08-21T00:00:00Z",
+    updated_at: "2026-08-21T00:00:00Z",
+    title: id,
+    chat_status: "idle",
+    is_processing: false,
+    is_pinned: false,
+    expert_id: "exp-1",
+    ...extra,
+  };
+}
+
+/** Mimics the backend default: pinned sessions win over recency, so a running
+ *  session only reaches a small page when pinned_first is explicitly off. */
+function expertSessions() {
+  return http.get(SESSION_LIST_ROUTE, ({ request }) => {
+    const pinnedFirst =
+      new URL(request.url).searchParams.get("pinned_first") !== "false";
+    const pinned = Array.from({ length: 5 }, (_, i) =>
+      summary(`pin-${i}`, { is_pinned: true }),
+    );
+    const running = summary("sub-live", {
+      chat_status: "running",
+      is_processing: true,
+    });
+    return HttpResponse.json({
+      sessions: pinnedFirst ? pinned : [running, ...pinned],
+      total: 6,
+    });
+  });
 }
 
 function subSession(messages: Record<string, unknown>[]) {
@@ -109,6 +144,29 @@ describe("SubSessionLive", () => {
     expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
     expect(screen.getByText("Create a chat app")).toBeDefined();
     expect(screen.getByText("running")).toBeDefined();
+  });
+
+  it("finds the delegate's running session behind a wall of pinned ones", async () => {
+    server.use(expertSessions());
+
+    render(
+      <ToolResult
+        row={{
+          key: "delegate",
+          category: "agent",
+          text: "Handing off to a teammate",
+          state: "running",
+          tool: "delegate_to_expert",
+          input: { expert_id: "exp-1", prompt: "Create a chat app" },
+        }}
+      />,
+    );
+
+    expect(
+      (
+        await screen.findByRole("link", { name: "Open sub-session" })
+      ).getAttribute("href"),
+    ).toBe("/copilot?sessionId=sub-live");
   });
 
   it("stays quiet once the sub-session has finished", () => {

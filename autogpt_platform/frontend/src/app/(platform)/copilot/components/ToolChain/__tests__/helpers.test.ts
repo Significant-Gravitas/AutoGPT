@@ -239,6 +239,19 @@ describe("isLiftedSetupRow", () => {
     expect(lifted && isLiftedSetupRow(lifted)).toBe(true);
     expect(notLifted && isLiftedSetupRow(notLifted)).toBe(false);
   });
+
+  it("does not lift an expert approval, whose card never registers", () => {
+    const row = toChainRow(
+      toolPart(
+        "hire_expert",
+        {},
+        { type: "expert_change_proposed", preview: { name: "Otto" } },
+      ),
+      0,
+    );
+
+    expect(row && isLiftedSetupRow(row)).toBe(false);
+  });
 });
 
 describe("isChainPart", () => {
@@ -475,6 +488,25 @@ describe("markSupersededSubSessionRows", () => {
     const marked = markSupersededSubSessionRows(rows);
     expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
       true,
+      true,
+      false,
+    ]);
+  });
+
+  it("keeps the answer of a run a re-delegation reuses the session for", () => {
+    // Re-delegation deliberately reuses the sub-session, so keying on the id
+    // alone would drop the first run's response from the transcript.
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "delegate_to_expert", "sub-1"),
+      subRow("d", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      false,
       true,
       false,
     ]);

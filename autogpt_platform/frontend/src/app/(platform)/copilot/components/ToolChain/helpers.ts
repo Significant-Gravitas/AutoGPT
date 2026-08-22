@@ -46,21 +46,35 @@ function subSessionIdOf(row: ChainRow): string | null {
   return typeof sid === "string" && sid ? sid : null;
 }
 
+/** Delegating opens a run; ``get_sub_session_result`` only polls one. A
+ *  re-delegation reuses the same sub-session, so grouping by id alone would
+ *  hide the previous run's answer. */
+const SUB_SESSION_START_TOOLS = new Set([
+  "run_sub_session",
+  "delegate_to_expert",
+  "handoff_to_expert",
+]);
+
 /** Delegate → poll → poll chains reference the same sub-session; only the
- *  LAST row per session keeps its card, earlier ones are marked superseded. */
+ *  LAST row per RUN keeps its card, earlier ones are marked superseded. A
+ *  fresh delegation starts a new run, so the row holding the previous run's
+ *  response stays readable instead of dropping out of the transcript. */
 export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
-  const lastRowKey = new Map<string, string>();
+  const supersededKeys = new Set<string>();
+  const openRowKey = new Map<string, string>();
   for (const row of rows) {
     const sid = subSessionIdOf(row);
-    if (sid) lastRowKey.set(sid, row.key);
+    if (!sid) continue;
+    const open = openRowKey.get(sid);
+    if (open && !SUB_SESSION_START_TOOLS.has(row.tool ?? "")) {
+      supersededKeys.add(open);
+    }
+    openRowKey.set(sid, row.key);
   }
-  if (lastRowKey.size === 0) return rows;
-  return rows.map((row) => {
-    const sid = subSessionIdOf(row);
-    return sid && lastRowKey.get(sid) !== row.key
-      ? { ...row, supersededSubSession: true }
-      : row;
-  });
+  if (supersededKeys.size === 0) return rows;
+  return rows.map((row) =>
+    supersededKeys.has(row.key) ? { ...row, supersededSubSession: true } : row,
+  );
 }
 
 const ACTION_RESPONSE_TYPES = new Set([
@@ -103,13 +117,12 @@ function actionLabel(output: unknown): string | null {
 
 /** Setup-requirements rows whose card registers with the chain and renders
  *  outside it — including run_mcp_tool, whose hidden MCPSetupCard registers
- *  an MCP row into the same connectors table. */
+ *  an MCP row into the same connectors table. Only rows whose card registers
+ *  a ChainActionEntry may be lifted: a lifted row renders off-screen, so a
+ *  card that never registers would disappear entirely. */
 export function isLiftedSetupRow(row: ChainRow): boolean {
   const data = asObject(row.output);
   if (!data) return false;
-  // A hire/raise preview renders as the approval card below the chain, not
-  // as a row inside it — the ask is the whole point of the turn.
-  if (data.type === "expert_change_proposed") return true;
   return data.type === "setup_requirements" && !!asObject(data.setup_info);
 }
 

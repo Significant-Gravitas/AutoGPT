@@ -7,9 +7,9 @@ import {
   StarIcon,
   WrenchIcon,
 } from "@hugeicons/core-free-icons";
-import Image from "next/image";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
@@ -182,24 +182,13 @@ export function SubSessionCard({ output }: OutputCardProps) {
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
+  const name = (expert && str(expert, "name")) ?? "Sub-AutoPilot";
   return (
     <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100">
-          {avatarUrl ? (
-            <Image
-              src={avatarUrl}
-              alt=""
-              width={28}
-              height={28}
-              className="size-full object-cover"
-            />
-          ) : (
-            <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
-          )}
-        </div>
+        <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
-          {(expert && str(expert, "name")) ?? "Sub-AutoPilot"}
+          {name}
           {role && (
             <span className="ml-1.5 font-normal text-zinc-400">{role}</span>
           )}

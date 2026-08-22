@@ -307,7 +307,10 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
 function useDelegatedSessionId(expertId: string | null) {
   const mountedAtRef = useRef(Date.now());
   const { data } = useGetV2ListSessions(
-    { expert_id: expertId ?? undefined, limit: 5 },
+    // Strict recency: the default puts pinned sessions first, so an expert
+    // with a handful of pinned threads would push the running one out of
+    // the window and the live view would never find it.
+    { expert_id: expertId ?? undefined, limit: 5, pinned_first: false },
     {
       query: {
         enabled: !!expertId,
