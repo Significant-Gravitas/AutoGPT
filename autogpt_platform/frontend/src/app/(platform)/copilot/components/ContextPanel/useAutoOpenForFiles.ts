@@ -23,7 +23,7 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
  * panel directly on the most recently generated file (unless the user has
  * explicitly closed the panel).
  */
-export function useAutoOpenForFiles(sessionId: string | null) {
+export function useAutoOpenForFiles(sessionId: string | null, enabled = true) {
   const autoOpenArtifact = useCopilotUIStore((s) => s.autoOpenArtifact);
   const { generated } = useSessionFiles(sessionId);
   const lastGenerated = getLastGeneratedFile(generated);
@@ -44,9 +44,10 @@ export function useAutoOpenForFiles(sessionId: string | null) {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (lastGenerated && !triggered.current) {
       triggered.current = true;
       autoOpenArtifact(fileItemToArtifactRef(lastGenerated.item));
     }
-  }, [lastGenerated, autoOpenArtifact]);
+  }, [enabled, lastGenerated, autoOpenArtifact]);
 }

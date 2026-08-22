@@ -72,6 +72,9 @@ interface UseCopilotStreamArgs {
   userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
+  /** Id of the first hydrated message of the turn the backend is still
+   *  running — the point the GET-resume replay starts from. */
+  activeTurnStartMessageId?: string | null;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
@@ -84,6 +87,7 @@ export function useCopilotStream({
   userId = null,
   sessionId,
   hydratedMessages,
+  activeTurnStartMessageId = null,
   hasActiveStream,
   refetchSession,
   copilotMode,
@@ -376,13 +380,25 @@ export function useCopilotStream({
       // to a finished turn this mount ran (continuation reconnect) and
       // the resume will NOT replay it.
       if (isNewToolUI) {
+        // The trim starts at the running turn's first hydrated message, not
+        // at the last user message: a turn the backend started on its own
+        // (engine-switch continuation) has no user row in front of it, so a
+        // user-anchored cut would also delete the completed answer above it
+        // — content the resume never replays. Never cut past the last user
+        // message either, so the prompt itself always survives.
         const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
-        const tail = lastUserIndex === -1 ? [] : prev.slice(lastUserIndex + 1);
+        const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
+        const activeTurnIndex = activeTurnStartMessageId
+          ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
+          : -1;
+        const cutIndex =
+          activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
+        const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
         if (
           tail.length > 0 &&
           tail.every((m) => extractDbSequence(m) !== null)
         ) {
-          return prev.slice(0, lastUserIndex + 1);
+          return prev.slice(0, cutIndex);
         }
       }
       const last = prev[prev.length - 1];

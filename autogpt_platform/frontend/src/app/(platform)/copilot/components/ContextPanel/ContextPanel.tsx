@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MAX_CONTEXT_PANEL_WIDTH,
   MIN_CONTEXT_PANEL_WIDTH,
@@ -68,6 +68,14 @@ export function ContextPanel({ sessionId, mobile }: Props) {
   const effectiveTab = availableTabs.includes(activeTab)
     ? activeTab
     : availableTabs[0];
+  // Every other consumer of the panel state (the chat column's shift, the
+  // workspace-files card, the toggle's pressed state) reads the raw tab, so
+  // the clamp has to be written back. Without it, a user whose persisted tab
+  // is "files" when the new tool UI flips on gets the docked artifacts panel
+  // and the floating files card at once, with the toggle reading un-pressed.
+  useEffect(() => {
+    if (effectiveTab !== activeTab) setActiveTab(effectiveTab);
+  }, [activeTab, effectiveTab, setActiveTab]);
 
   // One tab left (new tool UI docks the panel for artifacts only) means the
   // switcher has nothing to switch, and the chat's sidebar icon already

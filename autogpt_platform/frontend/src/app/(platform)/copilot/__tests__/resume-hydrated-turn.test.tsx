@@ -5,6 +5,7 @@ import type { UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
   renderHost,
   TEST_BACKEND_BASE_URL,
@@ -159,7 +160,23 @@ const RESUME_REPLAY_CHUNKS: UIMessageChunk[] = [
   { type: "text-end", id: "replay-2" },
 ];
 
-function renderResumedSession() {
+/**
+ * A turn the backend started on its own (the engine-switch continuation
+ * dispatched with ``is_user_message=False``): the completed answer is
+ * followed straight by the running turn's persisted half, with no user row
+ * between them. Both rows are consecutive assistants, so hydration merges
+ * them unless the active turn's ``started_at`` splits them apart.
+ */
+const BACKEND_STARTED_TURN_MESSAGES = [
+  sessionMessage(1, "user", EARLIER_PROMPT),
+  sessionMessage(2, "assistant", EARLIER_ANSWER),
+  sessionMessage(3, "assistant", PERSISTED_HALF),
+];
+
+function renderResumedSession(
+  messages: SessionDetailResponseMessagesItem[] = HYDRATED_SESSION_MESSAGES,
+  activeStreamStartedAt = "2026-05-13T00:04:00Z",
+) {
   let resumeRequests = 0;
   server.use(
     http.get(
@@ -172,11 +189,11 @@ function renderResumedSession() {
   );
   renderHost({
     sessionOverride: {
-      messages: HYDRATED_SESSION_MESSAGES,
+      messages,
       active_stream: {
         turn_id: "turn-1",
-        last_message_id: "db-4",
-        started_at: "2026-05-13T00:04:00Z",
+        last_message_id: `db-${messages.length}`,
+        started_at: activeStreamStartedAt,
       },
     },
   });
@@ -185,6 +202,10 @@ function renderResumedSession() {
 
 beforeEach(() => {
   resetCopilotChatRegistry();
+  // Message snapshots are keyed by session id in a module-level store, so
+  // without this each case starts by rendering the previous case's
+  // transcript and its assertions pass against stale DOM.
+  useCopilotStreamStore.getState().resetAll();
 });
 
 afterEach(() => {
@@ -232,6 +253,30 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
       expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
       expect(screen.getAllByText(EARLIER_ANSWER)).toHaveLength(1);
+    },
+  );
+
+  it(
+    "keeps the completed answer when the running turn started without a user row",
+    { timeout: 20000 },
+    async () => {
+      renderResumedSession(
+        BACKEND_STARTED_TURN_MESSAGES,
+        "2026-05-13T00:03:00Z",
+      );
+
+      expect(
+        await screen.findByText(REPLAYED_HALF, undefined, { timeout: 10000 }),
+      ).toBeDefined();
+
+      // The answer the user already read belongs to the previous turn, which
+      // the resume never replays — trimming back to the last user message
+      // would erase it for the whole stream.
+      expect(screen.getAllByText(EARLIER_ANSWER)).toHaveLength(1);
+      expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
+      // The running turn's persisted half is still trimmed, so the replay
+      // does not double it.
+      expect(screen.getAllByText(PERSISTED_HALF)).toHaveLength(1);
     },
   );
 });
