@@ -40,7 +40,14 @@ class APIKeySmith:
         Verify an API key against a known hash (+ salt).
         Supports verifying both legacy SHA256 and secure Scrypt hashes.
         """
-        if not provided_key.startswith(self.PREFIX):
+        if (
+            not provided_key
+            or not isinstance(provided_key, str)
+            or not provided_key.startswith(self.PREFIX)
+        ):
+            return False
+
+        if not known_hash or not isinstance(known_hash, str):
             return False
 
         # Handle legacy SHA256 hashes (migration support)
