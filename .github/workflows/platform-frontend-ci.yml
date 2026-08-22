@@ -89,11 +89,15 @@ jobs:
 
   types:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: setup
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -118,7 +122,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: setup
+    permissions:
+      contents: read
+    needs: types
     if: >-
       github.event_name == 'workflow_dispatch'
       || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
@@ -126,6 +132,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
