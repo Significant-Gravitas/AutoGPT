@@ -16727,10 +16727,11 @@
             "title": "Source Platform"
           },
           "origin": {
-            "type": "string",
-            "enum": ["interactive", "automation"],
-            "title": "Origin",
-            "default": "interactive"
+            "anyOf": [
+              { "type": "string", "enum": ["interactive", "automation"] },
+              { "type": "null" }
+            ],
+            "title": "Origin"
           },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
@@ -17676,7 +17677,6 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
-              "origin": "interactive",
               "kind": "normal"
             }
           },
@@ -25028,7 +25028,6 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
-              "origin": "interactive",
               "kind": "normal"
             }
           },
