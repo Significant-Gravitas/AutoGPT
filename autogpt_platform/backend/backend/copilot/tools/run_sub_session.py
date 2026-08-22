@@ -220,10 +220,13 @@ def apply_delegated_expert(
 ) -> SubSessionStatusResponse:
     """Re-badge a sub-session response as a named teammate's delegated run.
 
-    ``response_from_outcome`` speaks in terms of "Sub-AutoPilot" because that
-    is what a same-scope sub is. When ``delegate_to_expert`` routed the work to
-    someone else, both the model-facing message and the ToolChain card should
-    name them instead. No-op for same-scope subs.
+    Only sets the ``expert`` field for the ToolChain card; the message text
+    is already correct when the caller passed ``actor=expert.name`` into
+    ``response_from_outcome`` up front. The ``replace`` below is a fallback
+    for callers that built the message with the default "Sub-AutoPilot"
+    wording and only learn the delegate's identity afterwards — it is a
+    no-op once the message was built with the right actor. No-op entirely
+    for same-scope subs.
     """
     if expert is None:
         return response
@@ -364,9 +367,16 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
+    actor: str = "Sub-AutoPilot",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
+
+    ``actor`` names who ran the turn in the human-readable message — the
+    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    when the caller already knows it (e.g. ``delegate_to_expert``), so the
+    message is built correctly once instead of via a post-hoc string
+    substitution against this function's own wording.
 
     ``completed`` surfaces the aggregated response text + tool calls, plus a
     manifest of any workspace files the sub wrote (SECRT-2377). Pass
@@ -400,7 +410,7 @@ def response_from_outcome(
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
-                f"Sub-AutoPilot is still running after {elapsed:.0f}s."
+                f"{actor} is still running after {elapsed:.0f}s."
                 f"{f' Watch live at {link}.' if link else ''} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
@@ -430,7 +440,7 @@ def response_from_outcome(
 
     if outcome == "failed":
         return SubSessionStatusResponse(
-            message="Sub-AutoPilot failed. See the sub's transcript for details.",
+            message=f"{actor} failed. See the sub's transcript for details.",
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
@@ -443,7 +453,7 @@ def response_from_outcome(
     # fall back to mining the tool-call log when it's unavailable.
     if workspace_files is None:
         workspace_files = _workspace_files_from_tool_calls(result.tool_calls)
-    message = f"Sub-AutoPilot completed.{f' View at {link}.' if link else ''}"
+    message = f"{actor} completed.{f' View at {link}.' if link else ''}"
     if workspace_files:
         # The sub may have put its real output in files and only summarised in
         # `response`. Flag the files explicitly so the parent reads them rather

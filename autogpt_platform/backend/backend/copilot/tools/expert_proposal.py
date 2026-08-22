@@ -169,7 +169,20 @@ async def apply_proposal(
     preview = proposal.preview
     if preview.kind == "hire":
         return await _apply_hire(user_id, session_id, preview)
-    return await _apply_raise(user_id, session_id, preview)
+    if preview.kind == "raise":
+        return await _apply_raise(user_id, session_id, preview)
+    logger.error(
+        "apply_proposal received unsupported preview kind %r for user %s",
+        preview.kind,
+        user_id[:_LOG_ID_PREFIX_LENGTH],
+    )
+    return ErrorResponse(
+        message=(
+            "This proposal kind is not supported by confirm_expert_change. "
+            "Call hire_expert or raise_expert again for a fresh preview."
+        ),
+        session_id=session_id,
+    )
 
 
 async def _apply_hire(

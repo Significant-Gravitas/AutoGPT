@@ -8,7 +8,9 @@ has room, and park the exact proposal under a one-time ``confirmation_id``.
 import uuid
 from typing import Any
 
-from backend.api.features.experts.models import Expert
+from pydantic import BaseModel, Field, ValidationError
+
+from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, Expert
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
@@ -26,6 +28,12 @@ from .models import (
     ExpertChangeProposedResponse,
     ToolResponseBase,
 )
+
+
+class _HireParams(BaseModel):
+    """The rename field, bounded the same way as raise_expert's ``name``."""
+
+    name: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
 
 
 class HireExpertTool(BaseTool):
@@ -85,6 +93,14 @@ class HireExpertTool(BaseTool):
                 message="template_id is required.", session_id=session_id
             )
 
+        try:
+            params = _HireParams(name=" ".join(name.split()))
+        except ValidationError as e:
+            return ErrorResponse(
+                message=f"Invalid expert name — {_validation_detail(e)}",
+                session_id=session_id,
+            )
+
         template = await _find_template(template_id.strip())
         if template is None:
             return ErrorResponse(
@@ -99,7 +115,7 @@ class HireExpertTool(BaseTool):
 
         preview = ExpertChangePreview(
             kind="hire",
-            name=name.strip() or template.name,
+            name=params.name or template.name,
             role=template.role,
             about=template.identity,
             boundaries=template.boundaries,
@@ -134,3 +150,10 @@ class HireExpertTool(BaseTool):
 async def _find_template(template_id: str) -> Expert | None:
     templates = await experts_db().list_templates()
     return next((t for t in templates if t.id == template_id), None)
+
+
+def _validation_detail(error: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}"
+        for err in error.errors()
+    )

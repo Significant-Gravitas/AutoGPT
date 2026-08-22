@@ -87,7 +87,7 @@ class ConfirmExpertChangeTool(BaseTool):
         if not confirmation_id:
             return ErrorResponse(
                 message=(
-                    "A confirmation_id from hire_expert or raise_expert is " "required."
+                    "A confirmation_id from hire_expert or raise_expert is required."
                 ),
                 session_id=session_id,
             )

@@ -61,7 +61,7 @@ class UpdateExpertTool(BaseTool):
                 "name": {
                     "type": "string",
                     "description": (
-                        "New personal first name; omit to keep the current " "one."
+                        "New personal first name; omit to keep the current one."
                     ),
                 },
                 "about": {
@@ -82,7 +82,7 @@ class UpdateExpertTool(BaseTool):
                 "voice_preferences": {
                     "type": "string",
                     "description": (
-                        "Replacement voice; empty string clears it. Omit to " "keep."
+                        "Replacement voice; empty string clears it. Omit to keep."
                     ),
                 },
             },
@@ -159,9 +159,7 @@ class UpdateExpertTool(BaseTool):
                 session_id=session_id,
             )
         return ExpertChangeAppliedResponse(
-            message=(
-                f"{updated.name} is updated. Tell the user exactly what " "changed."
-            ),
+            message=f"{updated.name} is updated. Tell the user exactly what changed.",
             session_id=session_id,
             kind="update",
             expert=ExpertSummary(

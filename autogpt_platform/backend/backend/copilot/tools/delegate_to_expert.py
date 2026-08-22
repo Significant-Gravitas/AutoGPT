@@ -102,7 +102,7 @@ class DelegateToExpertTool(BaseTool):
                 "delegated_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue a prior delegation to this teammate; " "empty = new."
+                        "Continue a prior delegation to this teammate; empty = new."
                     ),
                     "default": "",
                 },
@@ -184,6 +184,7 @@ class DelegateToExpertTool(BaseTool):
                 parent_session_id=session.session_id,
                 elapsed=elapsed,
                 workspace_files=workspace_files,
+                actor=target.name,
             ),
             DelegatedExpertInfo(
                 id=target.id,
@@ -256,6 +257,7 @@ class DelegateToExpertTool(BaseTool):
             or prior.user_id != user_id
             or prior.expert_id != target.id
             or prior.metadata.delegated_by_session_id != session.session_id
+            or prior.metadata.handed_off_from_expert_id is not None
         ):
             return self._error(
                 f"delegated_session_id {delegated_session_id} is not a "

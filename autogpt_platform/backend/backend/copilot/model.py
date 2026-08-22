@@ -259,8 +259,18 @@ async def clear_pending_question(session: "ChatSession") -> None:
     """Resolve the session's Home "Needs You" question — the user replied.
 
     Answering in chat is the only resolution path, so this runs on every
-    user turn. Best-effort: a stale row on Home is not worth failing a turn
-    the user is waiting on.
+    user-role turn. Best-effort: a stale row on Home is not worth failing a
+    turn the user is waiting on.
+
+    Caveat: callers gate this on ``is_user_message`` only, which marks a
+    turn's *role* (user vs assistant), not its *origin*. A programmatically
+    injected user-role turn — a re-delegation via ``delegate_to_expert``, a
+    ``run_sub_session`` follow-up, or an ``AutoPilotBlock`` run — also
+    clears the pending question even though the human never actually saw
+    or answered it. There is currently no discriminator available at this
+    call site (or its callers) to tell a human reply apart from an
+    injected one; fixing that would require plumbing a new signal through
+    the queue/executor layer.
     """
     if session.metadata.pending_question is None:
         return
