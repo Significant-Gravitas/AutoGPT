@@ -15,6 +15,18 @@ class BaseOAuthHandler(ABC):
     DEFAULT_SCOPES: ClassVar[list[str]] = []
     # --8<-- [end:BaseOAuthHandler1]
 
+    REPORTS_GRANTED_SCOPES: ClassVar[bool] = False
+    """Whether ``exchange_code_for_tokens`` populates ``scopes`` from the
+    provider's own report of what it granted.
+
+    Set this True only when the provider is contractually required to return
+    a ``scope`` field on the authorization-code exchange. It licenses the
+    post-connect check to read an *empty* scope list as "the provider granted
+    nothing" rather than "the provider told us nothing" — the difference
+    between catching a silently zero-scope token and false-alarming on every
+    handler that simply echoes back the requested scopes or hardcodes ``[]``.
+    """
+
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler2]
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str): ...

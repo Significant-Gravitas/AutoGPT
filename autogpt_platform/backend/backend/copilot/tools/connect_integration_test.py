@@ -1,12 +1,24 @@
 """Tests for ConnectIntegrationTool."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from . import connect_integration as connect_integration_module
 from ._test_data import make_session
 from .connect_integration import ConnectIntegrationTool
 from .models import ErrorResponse, SetupRequirementsResponse
 
 _TEST_USER_ID = "test-user-connect-integration"
+
+
+@pytest.fixture(autouse=True)
+def stub_pending_connect():
+    """The card write-through to Redis is asserted in its own tests below."""
+    with patch.object(
+        connect_integration_module, "record_pending_connect", new=AsyncMock()
+    ) as stub:
+        yield stub
 
 
 class TestConnectIntegrationTool:
@@ -133,3 +145,90 @@ class TestConnectIntegrationTool:
         output = json.loads(raw) if isinstance(raw, str) else raw
         assert output.get("type") == "need_login"
         assert result.success is False
+
+
+class TestScopeMerge:
+    """The card carries the scopes the OAuth flow will actually request, so
+    what lands here is what the post-connect check diffs the grant against."""
+
+    def _scopes(self, response: SetupRequirementsResponse) -> list[str]:
+        return response.setup_info.requirements["credentials"][0]["scopes"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_defaults_used_when_the_model_asks_for_nothing(self):
+        result = await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=make_session(user_id=_TEST_USER_ID),
+            provider="github",
+        )
+        assert isinstance(result, SetupRequirementsResponse)
+        assert self._scopes(result) == ["repo"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_requested_scopes_are_merged_on_top_of_the_defaults(self):
+        result = await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=make_session(user_id=_TEST_USER_ID),
+            provider="github",
+            scopes=["workflow", "read:org"],
+        )
+        assert isinstance(result, SetupRequirementsResponse)
+        assert set(self._scopes(result)) == {"repo", "workflow", "read:org"}
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_duplicate_and_blank_scopes_are_dropped(self, stub_pending_connect):
+        result = await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=make_session(user_id=_TEST_USER_ID),
+            provider="github",
+            scopes=["repo", "  ", "workflow", "workflow"],
+        )
+        assert isinstance(result, SetupRequirementsResponse)
+        assert set(self._scopes(result)) == {"repo", "workflow"}
+        # Order-preserving dedupe, defaults first.
+        recorded = stub_pending_connect.await_args.kwargs["requested_scopes"]
+        assert recorded == ["repo", "workflow"]
+
+
+class TestPendingConnectRecord:
+    """Rendering the card records what it asked for, so the OAuth callback
+    can report a shortfall back into this chat."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_card_records_the_merged_scopes_against_the_session(
+        self, stub_pending_connect
+    ):
+        session = make_session(user_id=_TEST_USER_ID)
+        await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            provider="github",
+            scopes=["workflow"],
+        )
+
+        stub_pending_connect.assert_awaited_once()
+        kwargs = stub_pending_connect.await_args.kwargs
+        assert kwargs["user_id"] == _TEST_USER_ID
+        assert kwargs["provider"] == "github"
+        assert kwargs["session_id"] == session.session_id
+        assert kwargs["requested_scopes"] == ["repo", "workflow"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provider_slug_is_normalized_before_recording(
+        self, stub_pending_connect
+    ):
+        await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=make_session(user_id=_TEST_USER_ID),
+            provider="GitHub",
+        )
+        assert stub_pending_connect.await_args.kwargs["provider"] == "github"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_unknown_provider_records_nothing(self, stub_pending_connect):
+        await ConnectIntegrationTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=make_session(user_id=_TEST_USER_ID),
+            provider="nonexistent",
+        )
+        stub_pending_connect.assert_not_awaited()

@@ -25,6 +25,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = ProviderName.GOOGLE
+    REPORTS_GRANTED_SCOPES = True
     EMAIL_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
     DEFAULT_SCOPES = [
         "https://www.googleapis.com/auth/userinfo.email",

@@ -12,6 +12,10 @@ It carries:
 * ``pending_followups`` — count and a compact list (max 5; older ones
   collapsed into ``... +K more``) of the follow-ups currently queued
   against this session.
+* ``credential_scope_shortfall`` — one line per provider this session
+  asked the user to connect where the OAuth grant that came back was
+  narrower than requested, so the model explains the gap instead of
+  re-firing ``connect_integration`` into the same wall.
 
 When there are zero pending follow-ups the block is rendered as a
 single-line summary to save tokens — the model only needs the count
@@ -25,6 +29,7 @@ cache.  The system prompt itself is unchanged across sessions.
 
 import logging
 
+from backend.copilot.oauth_scope_check import scope_status_lines
 from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -87,6 +92,19 @@ async def is_followups_feature_enabled(user_id: str | None) -> bool:
 async def build_session_context(session_id: str, user_id: str) -> str:
     """Return the body of the ``<session_context>`` block for this turn.
 
+    Followup awareness plus any outstanding OAuth scope shortfall for this
+    session (see ``copilot.oauth_scope_check``) — the latter is what stops
+    the model re-firing ``connect_integration`` against a provider that
+    already handed back a token too narrow to use.
+    """
+    lines = await _followup_lines(session_id, user_id)
+    lines.extend(await scope_status_lines(user_id, session_id))
+    return "\n".join(lines)
+
+
+async def _followup_lines(session_id: str, user_id: str) -> list[str]:
+    """Render the session id and any follow-ups queued against this session.
+
     Calls the polymorphic ``get_execution_schedules`` endpoint with
     ``kind="copilot_turn"`` + ``session_id`` so only follow-ups bound
     to *this* session are returned (other-session followups for the
@@ -98,16 +116,14 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     session it is in, and the turn never fails because of a transient
     scheduler RPC issue.
 
-    The return value is the **body** of the block (no surrounding
-    ``<session_context>`` tags); the caller wraps it.
-
     When the ``COPILOT_SCHEDULED_FOLLOWUPS`` LD flag is off for this
     user, the followup awareness collapses to just ``pending_followups:
     0`` — we keep the ``session_id`` line so the model still knows
     which session it is in, and we skip the scheduler RPC entirely.
     """
+    collapsed = [f"session_id: {session_id}; pending_followups: 0"]
     if not await is_followups_feature_enabled(user_id):
-        return f"session_id: {session_id}; pending_followups: 0"
+        return collapsed
     try:
         raw_jobs = await get_scheduler_client().get_execution_schedules(
             user_id=user_id,
@@ -124,7 +140,7 @@ async def build_session_context(session_id: str, user_id: str) -> str:
             session_id,
             e,
         )
-        return f"session_id: {session_id}; pending_followups: 0"
+        return collapsed
 
     # The endpoint already narrows by ``kind`` server-side; the isinstance
     # filter is a belt-and-braces guard against a legacy untyped row that
@@ -134,11 +150,11 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     if not jobs:
         # Zero-follow-up sessions are the common case — collapse to one
         # line to keep the per-turn prefix small.
-        return f"session_id: {session_id}; pending_followups: 0"
+        return collapsed
 
     lines = [
         f"session_id: {session_id}",
         f"pending_followups: {len(jobs)}",
     ]
     lines.extend(_format_followup_list(jobs))
-    return "\n".join(lines)
+    return lines

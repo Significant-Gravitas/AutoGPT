@@ -20,6 +20,7 @@ class DiscordOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName.DISCORD
+    REPORTS_GRANTED_SCOPES = True
     DEFAULT_SCOPES = ["identify"]  # Basic user information
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):

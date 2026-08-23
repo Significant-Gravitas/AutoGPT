@@ -21,6 +21,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.copilot.oauth_scope_check import schedule_scope_check
 from backend.data.db_accessors import experts_db
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
@@ -73,6 +74,11 @@ from backend.integrations.oauth import (
     HANDLERS_BY_NAME,
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
+from backend.integrations.oauth.scopes import (
+    ScopeCoverage,
+    evaluate_scope_coverage,
+    normalize_scopes,
+)
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import (
@@ -348,17 +354,27 @@ async def callback(
 
         logger.debug(f"Received credentials with final scopes: {credentials.scopes}")
 
-        # Linear returns scopes as a single string with spaces, so we need to split them
-        # TODO: make a bypass of this part of the OAuth handler
-        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
-            credentials.scopes = credentials.scopes[0].split(" ")
+        # Providers disagree on the `scope` separator — comma (GitHub),
+        # space (Linear, Discord) or an already-split list (Google). Flatten
+        # them all here rather than adding a fourth per-provider fixup, and
+        # drop the empty fragments that made `"".split(...)` look like a
+        # credential holding one nameless scope.
+        credentials.scopes = normalize_scopes(credentials.scopes)
 
-        # Check if the granted scopes are sufficient for the requested scopes
-        if not set(scopes).issubset(set(credentials.scopes)):
-            # For now, we'll just log the warning and continue
+        coverage = evaluate_scope_coverage(
+            scopes,
+            credentials.scopes,
+            provider_reports_scopes=handler.REPORTS_GRANTED_SCOPES,
+        )
+        if coverage.is_shortfall:
             logger.warning(
                 f"Granted scopes {credentials.scopes} for provider {provider.value} "
                 f"do not include all requested scopes {scopes}"
+            )
+        elif coverage.coverage is ScopeCoverage.UNKNOWN:
+            logger.debug(
+                "Provider %s does not report granted scopes; skipping coverage check",
+                provider.value,
             )
 
     except Exception as e:
@@ -373,6 +389,17 @@ async def callback(
     # TODO: Allow specifying `title` to set on `credentials`
     credentials = await _merge_or_create_credential(
         user_id, provider, credentials, valid_state.credential_id
+    )
+
+    # Detached: reconciles this grant against whatever a copilot setup card
+    # asked for, and surfaces a shortfall in the chat that asked. Never
+    # blocks or fails the callback — the credential is already stored.
+    schedule_scope_check(
+        user_id=user_id,
+        provider=provider.value,
+        granted_scopes=credentials.scopes,
+        provider_reports_scopes=handler.REPORTS_GRANTED_SCOPES,
+        username=credentials.username,
     )
 
     logger.debug(

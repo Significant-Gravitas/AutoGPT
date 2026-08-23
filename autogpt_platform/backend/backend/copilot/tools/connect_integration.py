@@ -9,6 +9,7 @@ without configured credentials.
 from typing import Any, cast
 
 from backend.copilot.model import ChatSession
+from backend.copilot.oauth_scope_check import record_pending_connect
 from backend.copilot.providers import SUPPORTED_PROVIDERS, get_provider_auth_types
 from backend.copilot.tools.models import (
     ErrorResponse,
@@ -97,8 +98,8 @@ class ConnectIntegrationTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         # Require auth so only authenticated users can trigger the setup card.
-        # The card itself is user-agnostic (no per-user data needed), so
-        # user_id is intentionally unused in _execute.
+        # The card contents are user-agnostic, but the pending-connect record
+        # written alongside it is keyed by user.
         return True
 
     async def _execute(
@@ -119,7 +120,6 @@ class ConnectIntegrationTool(BaseTool):
 
         Returns an :class:`ErrorResponse` if *provider* is unknown.
         """
-        _ = user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider = (provider or "").strip().lower()
         reason = (reason or "").strip()[:500]  # cap LLM-controlled text
@@ -180,6 +180,17 @@ class ConnectIntegrationTool(BaseTool):
         # generic serializer produces from `field_key`.
         missing_credentials[field_key]["title"] = f"{display_name} Credentials"
         missing_credentials[field_key]["provider_name"] = display_name
+
+        # Remember what this card asked for, so the OAuth callback can tell
+        # whether the grant that comes back actually covers it and report
+        # back into *this* chat. See ``copilot.oauth_scope_check``.
+        if user_id and session_id:
+            await record_pending_connect(
+                user_id=user_id,
+                provider=provider,
+                session_id=session_id,
+                requested_scopes=merged_scopes,
+            )
 
         return SetupRequirementsResponse(
             type=ResponseType.SETUP_REQUIREMENTS,

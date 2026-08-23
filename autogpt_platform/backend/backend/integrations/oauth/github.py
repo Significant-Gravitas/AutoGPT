@@ -7,6 +7,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
+from .scopes import normalize_scopes
 
 
 # --8<-- [start:GithubOAuthHandlerExample]
@@ -25,6 +26,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     """  # noqa
 
     PROVIDER_NAME = ProviderName.GITHUB
+    REPORTS_GRANTED_SCOPES = True
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -106,12 +108,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=username,
             access_token=token_data["access_token"],
-            # Token refresh responses have an empty `scope` property (see docs),
-            # so we have to get the scope from the existing credentials object.
-            scopes=(
-                token_data.get("scope", "").split(",")
-                or (current_credentials.scopes if current_credentials else [])
-            ),
+            scopes=self._resolve_scopes(token_data, current_credentials),
             # Refresh token and expiration intervals are only given if token expiration
             # is enabled in the GitHub App's settings.
             refresh_token=token_data.get("refresh_token"),
@@ -129,6 +126,31 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         if current_credentials:
             new_credentials.id = current_credentials.id
         return new_credentials
+
+    @staticmethod
+    def _resolve_scopes(
+        token_data: dict, current_credentials: Optional[OAuth2Credentials]
+    ) -> list[str]:
+        """Read the granted scopes out of a GitHub token response.
+
+        GitHub delimits `scope` with commas on the authorization-code
+        exchange and with spaces on some app flows, so both are normalized.
+
+        The previous form — ``token_data.get("scope", "").split(",") or
+        (current_credentials.scopes if ... else [])`` — never reached its
+        fallback: ``"".split(",")`` is ``[""]``, which is truthy. A refresh
+        (whose `scope` is documented as empty) therefore dropped the
+        credential's real scopes, and a zero-scope authorization stored the
+        bogus scope ``""`` instead of an honest empty grant. Both are fixed
+        by splitting first and only then deciding the list is empty.
+        """
+        granted = normalize_scopes([str(token_data.get("scope") or "")])
+        if granted:
+            return granted
+        # Empty grant on a *refresh* means "unchanged" (see class docstring);
+        # empty on a first exchange really is a zero-scope token and must be
+        # recorded as such so the post-connect check can flag it.
+        return list(current_credentials.scopes) if current_credentials else []
 
     async def _request_username(self, access_token: str) -> str | None:
         url = "https://api.github.com/user"

@@ -65,6 +65,17 @@ def setup_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def stub_scope_check():
+    """Keep the detached post-connect scope check out of these tests.
+
+    It is fire-and-forget and reaches Redis; the tests that care about it
+    take the mock and assert on it (see ``TestPostConnectScopeCheck``).
+    """
+    with patch("backend.api.features.integrations.router.schedule_scope_check") as stub:
+        yield stub
+
+
 # ==================== OAuthState model tests ==================== #
 
 
@@ -1289,3 +1300,118 @@ class TestExplicitUpgradeScopeGuard:
         assert resp.status_code == 200
         mock_mgr.update.assert_called_once()
         mock_mgr.create.assert_not_called()
+
+
+# ============ Post-connect scope verification (callback) ============ #
+
+
+class TestPostConnectScopeCheck:
+    """The callback must normalize the grant it stores and hand the
+    granted-vs-requested verdict to the copilot-side check."""
+
+    def _state(self, scopes: list[str], provider: str = "github") -> OAuthState:
+        return OAuthState(
+            token="state-token",
+            provider=provider,
+            expires_at=9999999999,
+            scopes=scopes,
+        )
+
+    def _callback(
+        self,
+        *,
+        state: OAuthState,
+        new_cred: OAuth2Credentials,
+        reports_granted_scopes: bool = True,
+        provider: str = "github",
+    ):
+        handler = MagicMock()
+        handler.REPORTS_GRANTED_SCOPES = reports_granted_scopes
+        handler.exchange_code_for_tokens = AsyncMock(return_value=new_cred)
+        handler.handle_default_scopes.return_value = state.scopes
+
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.verify_state_token = AsyncMock(return_value=state)
+            mock_mgr.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_mgr.create = AsyncMock()
+            mock_mgr.update = AsyncMock()
+
+            return client.post(
+                f"/{provider}/callback",
+                json={"code": "auth-code", "state_token": "state-token"},
+            )
+
+    def test_empty_github_scope_is_stored_as_no_scopes(self):
+        """``"".split(",") == [""]`` used to persist a credential claiming one
+        nameless scope; normalization stores the honest empty grant."""
+        new_cred = _make_github_oauth2_cred(scopes=[""])
+        resp = self._callback(state=self._state(["repo"]), new_cred=new_cred)
+
+        assert resp.status_code == 200
+        assert resp.json()["scopes"] == []
+
+    def test_comma_separated_grant_is_split(self):
+        new_cred = _make_github_oauth2_cred(scopes=["repo,workflow"])
+        resp = self._callback(
+            state=self._state(["repo", "workflow"]), new_cred=new_cred
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["scopes"] == ["repo", "workflow"]
+
+    def test_space_separated_grant_is_split(self):
+        """Generalises the old Linear-only fixup to every provider."""
+        new_cred = _make_google_oauth2_cred(scopes=["openid email profile"])
+        resp = self._callback(
+            state=self._state(["openid"], provider="google"),
+            new_cred=new_cred,
+            provider="google",
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["scopes"] == ["openid", "email", "profile"]
+
+    def test_zero_scope_grant_hands_the_shortfall_to_the_copilot_check(
+        self, stub_scope_check
+    ):
+        new_cred = _make_github_oauth2_cred(scopes=[""])
+        resp = self._callback(state=self._state(["repo"]), new_cred=new_cred)
+
+        assert resp.status_code == 200
+        stub_scope_check.assert_called_once()
+        kwargs = stub_scope_check.call_args.kwargs
+        assert kwargs["provider"] == "github"
+        assert kwargs["granted_scopes"] == []
+        assert kwargs["provider_reports_scopes"] is True
+        assert kwargs["username"] == "alice"
+
+    def test_full_grant_still_reports_so_a_stale_warning_can_be_cleared(
+        self, stub_scope_check
+    ):
+        new_cred = _make_github_oauth2_cred(scopes=["repo", "workflow"])
+        resp = self._callback(state=self._state(["repo"]), new_cred=new_cred)
+
+        assert resp.status_code == 200
+        assert stub_scope_check.call_args.kwargs["granted_scopes"] == [
+            "repo",
+            "workflow",
+        ]
+
+    def test_non_reporting_provider_is_passed_through_as_such(self, stub_scope_check):
+        """Notion hardcodes ``scopes=[]``; the callback must forward "this
+        provider does not report" rather than "nothing was granted"."""
+        new_cred = _make_github_oauth2_cred(scopes=[])
+        resp = self._callback(
+            state=self._state(["repo"]),
+            new_cred=new_cred,
+            reports_granted_scopes=False,
+        )
+
+        assert resp.status_code == 200
+        assert stub_scope_check.call_args.kwargs["provider_reports_scopes"] is False

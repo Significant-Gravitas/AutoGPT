@@ -65,6 +65,13 @@ class Flag(str, Enum):
     # the sub-session's result and report to the user.  Off by default —
     # it posts into a chat the user is not necessarily looking at.
     COPILOT_SUBSESSION_WAKE = "copilot-subsession-wake"
+    # Gates only the *user-visible* half of the post-OAuth scope check: the
+    # notice posted into the chat that asked for the connection.  The
+    # model-facing status in <session_context> is unconditional — knowing a
+    # token is narrower than requested stops a blind connect_integration
+    # retry, and costs the user nothing.  Off by default because the notice
+    # posts into a chat the user may have navigated away from.
+    COPILOT_OAUTH_SCOPE_CHECK = "copilot-oauth-scope-check"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
