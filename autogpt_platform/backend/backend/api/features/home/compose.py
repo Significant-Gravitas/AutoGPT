@@ -4,6 +4,7 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
+from backend.copilot.model import ChatSessionInfo
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -27,6 +28,7 @@ def compose_home_dashboard(
     cost_summary: UserExecutionCostSummary,
     credits_balance: int | None,
     timezone_name: str,
+    questions: list[ChatSessionInfo] | None = None,
     persisted_briefing: BriefingContent | None = None,
 ) -> HomeDashboardResponse:
     hired = [
@@ -66,6 +68,7 @@ def compose_home_dashboard(
             reviews=reviews,
             schedules=schedules,
             credits_balance=credits_balance,
+            questions=questions,
         ),
         briefing=compose_briefing(
             now=now,

@@ -57,6 +57,7 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import PooledCodexRuntimeLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotLLMModel, CopilotMode
@@ -82,6 +83,7 @@ from ..moonshot import (
 from ..model import (
     ChatMessage,
     ChatSession,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -102,7 +104,11 @@ from ..permissions import (
     all_known_tool_names,
     apply_tool_permissions,
 )
-from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..prompting import (
+    get_delegation_supplement,
+    get_graphiti_supplement,
+    get_sdk_supplement,
+)
 from ..rate_limit import (
     get_global_rate_limits,
     get_remaining_usd_budget,
@@ -143,7 +149,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, tool_names_in_groups
+from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -1554,6 +1560,7 @@ async def _apply_building_mode_restart(
     state: "_RetryState",
     sdk_options: "ClaudeAgentOptions",
     base_system_prompt: str,
+    delegation_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1582,9 +1589,14 @@ async def _apply_building_mode_restart(
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
+    # Same supplement order as the main assembly. The delegation tools stay
+    # registered across a restart (registration happens once, before it), so
+    # dropping their disclosure rules here would leave the model able to
+    # delegate silently for the rest of the turn.
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
+        + delegation_supplement
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -4085,6 +4097,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     if message:
         message = strip_user_context_tags(message)
 
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     _user_message_appended = maybe_append_user_message(
         session, message, is_user_message
     )
@@ -4306,6 +4324,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # The whole expert-team surface rides the hire-experts flag, failing
+        # closed for anonymous turns.  Resolved here rather than at the
+        # tool-hiding site below so the delegation rules can be gated on the
+        # same boolean — a flag-off turn must not be told to call tools that
+        # were never registered with the MCP server.
+        experts_enabled = bool(user_id) and await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        )
+        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4320,6 +4347,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
+            + delegation_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4364,8 +4392,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
-        if not session.expert_id:
-            disabled_tool_groups.append("experts")
+        # ``experts_enabled`` was resolved with the system-prompt supplements
+        # above; the role split lives in the shared helper.
+        disabled_tool_groups.extend(
+            expert_tool_disabled_groups(
+                experts_enabled=experts_enabled, expert_id=session.expert_id
+            )
+        )
 
         # Hide both permission-denied tools AND group-disabled tools at
         # registration. ``allowed_tools`` filtering alone routes group-
@@ -5037,6 +5070,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state=state,
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
+                    delegation_supplement=delegation_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
