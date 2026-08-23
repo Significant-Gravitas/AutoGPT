@@ -42,6 +42,7 @@ function resetCopilotStore() {
 // swaps async and flaky in jsdom. Render them as plain divs so the swap is
 // synchronous — same approach as ChatContainer.test.tsx.
 vi.mock("framer-motion", () => ({
+  useReducedMotion: () => false,
   AnimatePresence: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),

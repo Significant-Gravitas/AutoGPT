@@ -1,9 +1,27 @@
-import { beforeEach, describe, expect, test } from "vitest";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanel } from "../ContextPanel";
+
+const flagState = vi.hoisted(() => ({ newToolUI: false }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.NEW_TOOL_UI ? flagState.newToolUI : false,
+  };
+});
+
+afterEach(() => {
+  flagState.newToolUI = false;
+});
 
 beforeEach(() => {
   server.use(
@@ -48,6 +66,29 @@ describe("ContextPanel", () => {
     const { container } = render(<ContextPanel sessionId="session-1" />);
     expect(container.querySelector("[data-context-panel]")).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
+  });
+
+  test("leaves a files tab alone and stays undocked so the files card owns it", async () => {
+    flagState.newToolUI = true;
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).toBeNull(),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
+  });
+
+  test("docks for the artifacts tab under the new tool UI", async () => {
+    flagState.newToolUI = true;
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "artifacts" },
+    }));
+    const { container } = render(<ContextPanel sessionId="session-1" />);
+    await waitFor(() =>
+      expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
+      "artifacts",
+    );
   });
 
   test("renders nothing when closed", () => {

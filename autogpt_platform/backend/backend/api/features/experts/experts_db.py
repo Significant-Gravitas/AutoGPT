@@ -11,6 +11,17 @@ from prisma.enums import ResourceVisibility
 from pydantic import JsonValue, ValidationError
 
 from backend.api.features.experts import raise_attachments, scheduling
+from backend.api.features.experts.errors import (
+    ACTIVE_EXPERT_LIMIT,
+    LIFETIME_RAISED_EXPERT_LIMIT,
+    ExpertHireUnavailableError,
+    ExpertLimitExceededError,
+    ExpertPodLimitReachedError,
+    ExpertPodNameTakenError,
+    ExpertPodNotFoundError,
+    ExpertTemplateNotFoundError,
+    RaisedExpertLifetimeLimitExceededError,
+)
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -47,6 +58,7 @@ from backend.util import type as type_utils
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    ExpertWriteNotReadableError,
 )
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -59,57 +71,9 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
-# The active cap bounds team-list fan-out. The lifetime raised-expert cap also
-# bounds durable rows when users repeatedly raise and archive experts.
-ACTIVE_EXPERT_LIMIT = 20
-LIFETIME_RAISED_EXPERT_LIMIT = 100
-
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 _MAX_EXPERT_RUNS = 20
-
-
-class ExpertTemplateNotFoundError(Exception):
-    def __init__(self, template_id: str):
-        super().__init__(f"Expert template {template_id} not found")
-        self.template_id = template_id
-
-
-class ExpertHireUnavailableError(Exception):
-    def __init__(self, expert_id: str):
-        super().__init__(expert_id)
-        self.expert_id = expert_id
-
-
-class ExpertPodNotFoundError(Exception):
-    def __init__(self, pod_id: str):
-        super().__init__(f"Pod {pod_id} not found")
-        self.pod_id = pod_id
-
-
-class ExpertPodNameTakenError(Exception):
-    def __init__(self, name: str):
-        super().__init__(f"A pod named {name!r} already exists")
-        self.name = name
-
-
-class ExpertPodLimitReachedError(Exception):
-    def __init__(self, limit: int):
-        super().__init__(f"You can have at most {limit} pods")
-        self.limit = limit
-
-
-class ExpertLimitExceededError(Exception):
-    def __init__(self, limit: int):
-        super().__init__(f"Active expert limit of {limit} reached")
-        self.limit = limit
-
-
-class RaisedExpertLifetimeLimitExceededError(Exception):
-    def __init__(self, limit: int):
-        super().__init__(f"Raised expert lifetime limit of {limit} reached")
-        self.limit = limit
-
 
 FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 
@@ -234,7 +198,15 @@ async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
     return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
 
 
-async def list_experts(user_id: str) -> list[Expert]:
+async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Expert]:
+    """List the user's hired roster, with workflow names always included.
+
+    Set ``with_metrics=False`` to skip the ``AgentGraphExecution`` lookup and
+    the per-expert Redis spend reads — callers that only render name/role/id
+    and workflow names (e.g. the copilot team-context roster) would otherwise
+    pay for ``latest_run``/``weekly_spend`` data they discard. Those fields
+    come back as their unset defaults (``None`` / ``0``) in that case.
+    """
     rows = await prisma.models.Expert.prisma().find_many(
         where={
             "ownerUserId": user_id,
@@ -244,6 +216,8 @@ async def list_experts(user_id: str) -> list[Expert]:
         },
         include=_WORKFLOW_INCLUDE,
     )
+    if not with_metrics:
+        return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
     return [
@@ -712,6 +686,25 @@ async def _ensure_active_expert_capacity(tx: prisma.Prisma, user_id: str) -> Non
         raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
 
 
+async def count_active_experts(user_id: str) -> int:
+    """Active hired experts. Lock-free, for preview-time capacity checks only;
+    the creation transaction re-enforces the cap."""
+    return await prisma.models.Expert.prisma().count(
+        where={"ownerUserId": user_id, "isTemplate": False, "isArchived": False}
+    )
+
+
+async def count_raised_experts(user_id: str) -> int:
+    """Lifetime raised experts, archived included. Same preview-only caveat."""
+    return await prisma.models.Expert.prisma().count(
+        where={
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "sourceTemplateId": None,
+        }
+    )
+
+
 async def create_raised_expert(
     user_id: str,
     name: str,
@@ -721,6 +714,7 @@ async def create_raised_expert(
     avatar_url: str | None = None,
     color: str | None = None,
     about: str | None = None,
+    boundaries: str | None = None,
     weekly_budget: int | None = None,
     attachments: list[RaiseAttachment] | None = None,
 ) -> RaiseResult:
@@ -740,6 +734,7 @@ async def create_raised_expert(
         avatar_url=avatar_url,
         color=color,
         about=about,
+        boundaries=boundaries,
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
@@ -764,6 +759,7 @@ async def _create_raised_expert_row(
     avatar_url: str | None,
     color: str | None,
     about: str | None,
+    boundaries: str | None = None,
     weekly_budget: int | None = None,
     skills: list[str] | None = None,
 ) -> prisma.models.Expert:
@@ -788,6 +784,7 @@ async def _create_raised_expert_row(
                 "role": role or "",
                 "identity": about or _raised_identity(name),
                 "voicePreferences": voice_preferences or "",
+                "boundaries": boundaries or "",
                 "weeklyBudget": weekly_budget,
                 "skills": skills or [],
             },
@@ -827,6 +824,55 @@ async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> E
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+async def update_soul_if_current(
+    user_id: str,
+    expert_id: str,
+    soul: ExpertSoulUpdate,
+    *,
+    expected_name: str,
+    expected_identity: str,
+    expected_voice_preferences: str,
+    expected_boundaries: str,
+) -> Expert | None:
+    """Whole-soul :func:`update_soul` that only lands while the soul is unchanged.
+
+    Backs the copilot ``update_expert`` confirm step, which rewrites every
+    column from a preview taken minutes earlier — without the comparison a
+    concurrent edit from the team UI would be reverted. ``None`` means the
+    write was refused (the expert is gone or moved); the caller re-previews.
+
+    The rowcount is the only success signal: once it is non-zero the edit is
+    committed, so a read-back that comes up empty must not be reported as a
+    refusal. Archived rows are included for that reason, and a row that is
+    gone outright raises rather than returning ``None``.
+    """
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+            "name": expected_name,
+            "identity": expected_identity,
+            "voicePreferences": expected_voice_preferences,
+            "boundaries": expected_boundaries,
+        },
+        data={
+            "name": soul.name,
+            "identity": soul.identity,
+            "voicePreferences": soul.voice_preferences,
+            "boundaries": soul.boundaries,
+        },
+    )
+    if updated == 0:
+        return None
+    expert = await get_expert(user_id, expert_id, include_archived=True)
+    if expert is None:
+        raise ExpertWriteNotReadableError(expert_id)
     return expert
 
 

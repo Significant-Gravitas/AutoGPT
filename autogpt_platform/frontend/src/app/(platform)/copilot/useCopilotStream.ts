@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useMountEffect } from "@/hooks/useMountEffect";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
@@ -33,6 +34,7 @@ import {
   hasVisibleAssistantContent,
   resolveModeChangedMode,
 } from "./helpers";
+import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
@@ -70,6 +72,9 @@ interface UseCopilotStreamArgs {
   userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
+  /** Id of the first hydrated message of the turn the backend is still
+   *  running — the point the GET-resume replay starts from. */
+  activeTurnStartMessageId?: string | null;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
@@ -82,6 +87,7 @@ export function useCopilotStream({
   userId = null,
   sessionId,
   hydratedMessages,
+  activeTurnStartMessageId = null,
   hasActiveStream,
   refetchSession,
   copilotMode,
@@ -89,6 +95,9 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  // The hydrated-tail trim below ships with the new tool UI; the old UI
+  // keeps its original in-progress-only trim.
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
@@ -113,8 +122,8 @@ export function useCopilotStream({
   const pendingResumeRef = useRef<(() => void) | null>(null);
   // Synchronous flag read inside SDK callbacks — kept as a ref so callbacks
   // don't have to trigger re-renders to observe changes. Scoped to this
-  // mount (= this session), so a boolean is enough; cross-session scoping
-  // is no longer needed because the parent remounts on session switch.
+  // mount (= this session): the parent remounts on session switch, so a
+  // plain boolean can't bleed state across sessions.
   const isUserStoppingRef = useRef(false);
   const pendingEngineSwitchRef = useRef(false);
   // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
@@ -361,6 +370,37 @@ export function useCopilotStream({
       markCopilotChatRuntimeHealthy(sessionId);
     }
     setMessages((prev) => {
+      // The GET-resume replays the active turn from its start as a fresh
+      // assistant message, so any HYDRATED partial of that turn must be
+      // dropped first — keeping it splits one turn into two bubbles with
+      // two tool chains. Trimming only in-progress tails is not enough: a
+      // turn parked between tools (e.g. waiting on a handoff) hydrates
+      // with every persisted part already complete. Only db-hydrated
+      // messages (``-seq-N`` ids) are dropped — a streamed tail belongs
+      // to a finished turn this mount ran (continuation reconnect) and
+      // the resume will NOT replay it.
+      if (isNewToolUI) {
+        // The trim starts at the running turn's first hydrated message, not
+        // at the last user message: a turn the backend started on its own
+        // (engine-switch continuation) has no user row in front of it, so a
+        // user-anchored cut would also delete the completed answer above it
+        // — content the resume never replays. Never cut past the last user
+        // message either, so the prompt itself always survives.
+        const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
+        const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
+        const activeTurnIndex = activeTurnStartMessageId
+          ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
+          : -1;
+        const cutIndex =
+          activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
+        const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
+        if (
+          tail.length > 0 &&
+          tail.every((m) => extractDbSequence(m) !== null)
+        ) {
+          return prev.slice(0, cutIndex);
+        }
+      }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });

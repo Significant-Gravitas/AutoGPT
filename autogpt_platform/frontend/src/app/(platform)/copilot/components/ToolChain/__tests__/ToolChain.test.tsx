@@ -277,6 +277,47 @@ describe("ToolChain", () => {
     expect(screen.getByText("Send Email")).toBeDefined();
   });
 
+  it("keeps the expert approval card on screen for a hire preview", () => {
+    render(
+      <ToolChain
+        parts={[
+          toolPart("web_search", "output-available", {
+            input: { query: "researchers" },
+            output: { results: [] },
+          }),
+          toolPart("hire_expert", "output-available", {
+            output: {
+              type: "expert_change_proposed",
+              applied: false,
+              confirmation_id: "conf-1",
+              preview: {
+                kind: "hire",
+                name: "Otto",
+                role: "Inbox triage",
+                boundaries: "You never send a reply yourself.",
+                weekly_budget: 2000,
+              },
+            },
+          }),
+        ]}
+        isStreaming={false}
+      />,
+    );
+
+    const header = screen.getByRole("button", {
+      name: /approve the new expert/i,
+    });
+    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByText("Inbox triage")).toBeDefined();
+    expect(screen.getByText("Needs your OK")).toBeDefined();
+    expect(
+      screen.getByText("Stops at: You never send a reply yourself."),
+    ).toBeDefined();
+    expect(screen.getByText("Weekly budget: 2000 credits")).toBeDefined();
+  });
+
   it("drafts answered questions into the chat input and dismisses on send", async () => {
     const user = userEvent.setup();
     const pending: PendingQuestions = {

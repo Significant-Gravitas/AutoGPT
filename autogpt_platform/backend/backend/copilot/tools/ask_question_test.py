@@ -1,8 +1,10 @@
 """Tests for AskQuestionTool."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, clear_pending_question
 from backend.copilot.tools.ask_question import AskQuestionTool
 from backend.copilot.tools.models import ClarificationNeededResponse
 
@@ -249,3 +251,82 @@ async def test_rejects_non_list_questions(tool: AskQuestionTool, session: ChatSe
             session=session,
             questions="not-a-list",
         )
+
+
+# ── Home "Needs You" hand-off ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_asking_parks_the_question_on_the_session(
+    tool: AskQuestionTool, session: ChatSession
+):
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock()
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
+    ):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[{"question": "Monday or Friday?"}],
+        )
+
+    assert session.metadata.pending_question is not None
+    assert session.metadata.pending_question.text == "Monday or Friday?"
+    db.set_session_pending_question.assert_awaited_once()
+    assert db.set_session_pending_question.await_args.args[0] == session.session_id
+    assert db.set_session_pending_question.await_args.args[1] == session.user_id
+
+
+@pytest.mark.asyncio
+async def test_a_failed_write_never_costs_the_user_the_question(
+    tool: AskQuestionTool, session: ChatSession
+):
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock(side_effect=RuntimeError("down"))
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
+    ):
+        result = await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[{"question": "Monday or Friday?"}],
+        )
+
+    assert isinstance(result, ClarificationNeededResponse)
+
+
+@pytest.mark.asyncio
+async def test_replying_clears_the_pending_question(
+    tool: AskQuestionTool, session: ChatSession
+):
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock()
+    db.clear_session_pending_question = AsyncMock()
+    with (
+        patch("backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)),
+        patch("backend.copilot.model.chat_db", MagicMock(return_value=db)),
+    ):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[{"question": "Monday or Friday?"}],
+        )
+        await clear_pending_question(session)
+
+    assert session.metadata.pending_question is None
+    db.clear_session_pending_question.assert_awaited_once_with(
+        session.session_id, session.user_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_clearing_a_session_with_no_question_touches_nothing(
+    session: ChatSession,
+):
+    db = MagicMock()
+    db.clear_session_pending_question = AsyncMock()
+    with patch("backend.copilot.model.chat_db", MagicMock(return_value=db)):
+        await clear_pending_question(session)
+
+    db.clear_session_pending_question.assert_not_called()
