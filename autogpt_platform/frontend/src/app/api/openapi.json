@@ -24565,6 +24565,7 @@
           "memory_forget_candidates",
           "memory_forget_confirm",
           "todo_write",
+          "next_steps_suggested",
           "platform_info",
           "chat_platform_channel_list",
           "chat_platform_posted",
