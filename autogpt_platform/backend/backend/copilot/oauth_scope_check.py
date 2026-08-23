@@ -181,37 +181,67 @@ async def _run_scope_check(
 ) -> None:
     try:
         pending = await _drain_pending_connects(user_id, provider)
-        if not pending:
-            return
-
-        for session_id, requested_scopes in _requested_scopes_by_session(
-            pending
-        ).items():
-            result = evaluate_scope_coverage(
-                requested_scopes,
-                granted_scopes,
-                provider_reports_scopes=provider_reports_scopes,
-            )
-            if not result.is_shortfall:
-                # A good reconnect clears whatever the last bad one left
-                # behind, so the model stops warning about a fixed problem.
-                await _clear_status(user_id, session_id, provider)
-                continue
-
-            await _write_status(user_id, session_id, provider, result)
-            await _post_chat_notice(
-                user_id=user_id,
-                session_id=session_id,
-                provider=provider,
-                result=result,
-                username=username,
-            )
     except Exception:
         logger.warning(
-            "post-connect scope check failed for provider=%s; dropping",
+            "could not drain pending %s connects; dropping",
             provider,
             exc_info=True,
         )
+        return
+
+    for session_id, requested_scopes in _requested_scopes_by_session(pending).items():
+        # Contained per session, not around the loop: the drain has already
+        # deleted the records, so a chat we cannot reach is not retried. If
+        # its failure aborted the loop, every later chat would lose its
+        # notice *and* its model-facing status, permanently.
+        try:
+            await _judge_session(
+                user_id=user_id,
+                provider=provider,
+                session_id=session_id,
+                requested_scopes=requested_scopes,
+                granted_scopes=granted_scopes,
+                provider_reports_scopes=provider_reports_scopes,
+                username=username,
+            )
+        except Exception:
+            logger.warning(
+                "post-connect scope check failed for provider=%s session=%s",
+                provider,
+                session_id[:12],
+                exc_info=True,
+            )
+
+
+async def _judge_session(
+    *,
+    user_id: str,
+    provider: str,
+    session_id: str,
+    requested_scopes: list[str],
+    granted_scopes: list[str],
+    provider_reports_scopes: bool,
+    username: str | None,
+) -> None:
+    result = evaluate_scope_coverage(
+        requested_scopes,
+        granted_scopes,
+        provider_reports_scopes=provider_reports_scopes,
+    )
+    if not result.is_shortfall:
+        # A good reconnect clears whatever the last bad one left behind, so
+        # the model stops warning about a fixed problem.
+        await _clear_status(user_id, session_id, provider)
+        return
+
+    await _write_status(user_id, session_id, provider, result)
+    await _post_chat_notice(
+        user_id=user_id,
+        session_id=session_id,
+        provider=provider,
+        result=result,
+        username=username,
+    )
 
 
 def _requested_scopes_by_session(

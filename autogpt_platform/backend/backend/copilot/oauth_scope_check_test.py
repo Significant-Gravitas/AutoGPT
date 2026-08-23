@@ -494,11 +494,14 @@ async def test_session_owned_by_another_user_is_never_posted_into():
 
 
 @pytest.mark.asyncio
-async def test_enqueue_failure_is_swallowed():
+async def test_enqueue_failure_is_swallowed_per_session():
     """The OAuth callback has already stored the credential; nothing here is
-    worth failing that for."""
+    worth failing that for — and a chat we cannot reach must not cost the
+    *next* chat its notice and its model-facing status. The drain has already
+    deleted both records, so whatever this pass drops is dropped for good."""
     redis = _FakeRedis()
     await _seed(redis, _SESSION, ["repo"])
+    await _seed(redis, _OTHER_SESSION, ["repo"])
     enqueue = AsyncMock(side_effect=RuntimeError("rabbit down"))
 
     p1, p2, p3, p4 = _patched(redis, enqueue=enqueue)
@@ -510,8 +513,9 @@ async def test_enqueue_failure_is_swallowed():
             provider_reports_scopes=True,
             username="alice",
         )
+        assert len(await scope_status_lines(_USER, _OTHER_SESSION)) == 1
 
-    enqueue.assert_awaited_once()
+    assert enqueue.await_count == 2
 
 
 @pytest.mark.asyncio
