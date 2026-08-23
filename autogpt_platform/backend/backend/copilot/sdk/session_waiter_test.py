@@ -16,7 +16,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import active_turns
-from backend.copilot.sdk.session_waiter import SessionResult, run_copilot_turn_via_queue
+from backend.copilot.sdk.session_waiter import (
+    SessionResult,
+    run_copilot_turn_via_queue,
+    wait_for_session_result,
+)
 
 _QR = type(
     "QR",
@@ -246,3 +250,48 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_wait_leases_the_session_for_the_duration_of_the_wait():
+    """A real wait must advertise itself so the delegated-task wake stays
+    quiet — this caller is about to report the same result itself."""
+    mark = AsyncMock()
+    clear = AsyncMock()
+
+    with (
+        patch("backend.copilot.sdk.session_waiter.mark_awaited_inline", new=mark),
+        patch("backend.copilot.sdk.session_waiter.clear_awaited_inline", new=clear),
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.subscribe_to_session",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        outcome, _ = await wait_for_session_result(
+            session_id="sub-1", user_id="u1", timeout=5.0
+        )
+
+    assert outcome == "running"
+    mark.assert_awaited_once_with("sub-1", 5.0)
+    clear.assert_awaited_once_with("sub-1")
+
+
+@pytest.mark.asyncio
+async def test_zero_timeout_wait_takes_no_lease():
+    """``timeout=0`` isn't a wait — leasing there would let a fire-and-forget
+    dispatch suppress a wake nobody is waiting to deliver."""
+    mark = AsyncMock()
+    clear = AsyncMock()
+
+    with (
+        patch("backend.copilot.sdk.session_waiter.mark_awaited_inline", new=mark),
+        patch("backend.copilot.sdk.session_waiter.clear_awaited_inline", new=clear),
+        patch(
+            "backend.copilot.sdk.session_waiter.stream_registry.subscribe_to_session",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await wait_for_session_result(session_id="sub-1", user_id="u1", timeout=0)
+
+    mark.assert_not_awaited()
+    clear.assert_not_awaited()

@@ -188,17 +188,18 @@ class TestDelegationWaitingEtiquette:
         assert "`schedule_followup` with this session's `session_id`" in supplement
         assert "60s minimum" in flat(supplement)
 
-    def test_waiting_rule_promises_no_resume_mechanism_that_does_not_exist(self):
-        """Nothing enqueues a turn back onto the parent when a sub finishes —
-        a delegation that outlives its turn resumes only because the model
-        scheduled a followup. Promising an automatic wake-up here would let
-        the model end the turn with no resume at all, which is worse than the
-        babysitting these rules exist to remove. The PR that adds the wake
-        mechanism updates this assertion along with the wording."""
+    def test_the_wake_is_an_accelerator_not_the_resume_path(self):
+        """This commit adds the wake, so the rule may now mention it — but
+        ``copilot-subsession-wake`` is default-off, so a turn that *relied* on
+        being woken would still end with no resume for most users. The
+        scheduled followup stays the unconditional instruction; the wake only
+        lets the model report sooner."""
         supplement = flat(prompting.get_delegation_supplement())
 
-        assert "woken automatically" not in supplement
-        assert "wakes this chat" not in supplement
+        assert "`schedule_followup` with this session's `session_id`" in supplement
+        assert "wakes this chat sooner" in supplement
+        # Never phrased as something to lean on instead of scheduling.
+        assert "rely on being woken" not in supplement
 
     def test_waiting_rule_requires_status_line_with_eta(self):
         supplement = prompting.get_delegation_supplement()

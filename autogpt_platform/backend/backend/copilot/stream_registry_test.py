@@ -18,6 +18,14 @@ def _clear_listener_sessions():
     stream_registry._listener_sessions.clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_subsession_wake():
+    """``mark_session_completed`` spawns a detached delegated-task wake; stub
+    it so these tests don't leave a background task doing real I/O behind."""
+    with patch.object(stream_registry, "schedule_parent_wake"):
+        yield
+
+
 async def _sleep_forever():
     try:
         await asyncio.sleep(3600)

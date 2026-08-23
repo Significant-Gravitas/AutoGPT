@@ -63,6 +63,7 @@ from .response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from .subsession_wake import schedule_parent_wake
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -1009,6 +1010,13 @@ async def mark_session_completed(
                     f"Failed to publish copilot completion notification "
                     f"for session {session_id}: {e}"
                 )
+
+    # If this session was work delegated by another chat, wake that chat so
+    # it reviews the result and reports back on its own. Detached and
+    # self-guarding: the completion path must never wait on it or fail with
+    # it. Reached only on the branch that actually swapped the status, so a
+    # repeat call cannot double-post.
+    schedule_parent_wake(session_id, status)
 
     return True
 

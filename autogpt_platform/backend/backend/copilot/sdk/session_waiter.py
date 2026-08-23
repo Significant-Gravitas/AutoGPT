@@ -32,6 +32,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.subsession_wake import clear_awaited_inline, mark_awaited_inline
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -83,13 +84,22 @@ async def wait_for_session_result(
     result) or at the terminal event (``completed`` / ``failed`` + full
     result). Cleans up the subscriber listener on every exit path so
     long-running polls don't leak listeners (sentry r3105348640).
+
+    For the duration of a real wait this also leases "a turn is blocked on
+    this session" in Redis, which suppresses the delegated-task wake — the
+    caller is about to surface the same result through its own tool call
+    (see :mod:`backend.copilot.subsession_wake`).
     """
+    if timeout > 0:
+        await mark_awaited_inline(session_id, timeout)
     queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
     )
     result = SessionResult()
     if queue is None:
+        if timeout > 0:
+            await clear_awaited_inline(session_id)
         # Session meta not in Redis yet, or the caller doesn't own it.
         # ``subscribe_to_session`` already retried with backoff before
         # returning None.
@@ -119,6 +129,8 @@ async def wait_for_session_result(
             session_id=session_id,
             subscriber_queue=queue,
         )
+        if timeout > 0:
+            await clear_awaited_inline(session_id)
 
     result.response_text = "".join(acc.response_parts)
     result.tool_calls = list(acc.tool_calls)

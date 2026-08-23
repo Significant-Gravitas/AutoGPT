@@ -689,9 +689,10 @@ def get_delegation_supplement() -> str:
 - **Waiting etiquette.** If a sub-session is still running when your turn
   ends: give ONE short status line (include the ETA when you know it), then
   call `schedule_followup` with this session's `session_id` and a sensible
-  delay (60s minimum) so you pick it back up yourself. Never ask the user
-  whether to keep polling, and never tell them to check back later — the
-  waiting is yours to manage.
+  delay (60s minimum) so you pick it back up yourself. If a finished
+  delegation wakes this chat sooner, report then and let the followup find
+  nothing new to add. Never ask the user whether to keep polling, and never
+  tell them to check back later — the waiting is yours to manage.
 - **One status line per wait cycle.** Live progress already renders on the
   sub-session card above, so skip repeated "still working…" filler. Post
   again only when the status actually changes.

@@ -60,6 +60,11 @@ class Flag(str, Enum):
     # current_session_id line stays regardless — only the followup
     # surface is gated.  Default-on.
     COPILOT_SCHEDULED_FOLLOWUPS = "copilot-scheduled-followups"
+    # Wakes the delegating chat when a task it handed to a teammate
+    # finishes: the parent gets one system-framed turn telling it to read
+    # the sub-session's result and report to the user.  Off by default —
+    # it posts into a chat the user is not necessarily looking at.
+    COPILOT_SUBSESSION_WAKE = "copilot-subsession-wake"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
