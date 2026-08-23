@@ -440,9 +440,7 @@ async def test_source_failure_degrades_to_no_block():
             "backend.copilot.tools.returning_context.is_feature_enabled",
             AsyncMock(return_value=True),
         ),
-        patch(
-            "backend.copilot.tools.returning_context.chat_db", return_value=failing
-        ),
+        patch("backend.copilot.tools.returning_context.chat_db", return_value=failing),
         patch(
             "backend.copilot.tools.returning_context.experts_db",
             return_value=AsyncMock(list_experts=AsyncMock(return_value=[])),
@@ -464,9 +462,7 @@ async def test_builds_a_block_when_background_work_finished():
             "backend.copilot.tools.returning_context.is_feature_enabled",
             AsyncMock(return_value=True),
         ),
-        patch(
-            "backend.copilot.tools.returning_context.chat_db", return_value=sources
-        ),
+        patch("backend.copilot.tools.returning_context.chat_db", return_value=sources),
         patch(
             "backend.copilot.tools.returning_context.experts_db",
             return_value=AsyncMock(list_experts=AsyncMock(return_value=[])),
