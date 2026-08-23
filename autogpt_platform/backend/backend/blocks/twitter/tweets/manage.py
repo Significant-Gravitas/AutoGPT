@@ -314,7 +314,7 @@ class TwitterDeleteTweetBlock(Block):
 
 class TwitterSearchRecentTweetsBlock(Block):
     """
-    Searches all public Tweets in Twitter history
+    Searches public Tweets from the last 7 days
     """
 
     class Input(TweetExpansionInputs, TweetTimeWindowInputs):
@@ -361,7 +361,7 @@ class TwitterSearchRecentTweetsBlock(Block):
     def __init__(self):
         super().__init__(
             id="53e5cf8e-a630-11ef-ba85-df6d666fa5d5",
-            description="This block searches all public Tweets in Twitter history.",
+            description="This block searches public Tweets from the last 7 days.",
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterSearchRecentTweetsBlock.Input,
             output_schema=TwitterSearchRecentTweetsBlock.Output,

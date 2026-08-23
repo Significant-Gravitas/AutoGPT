@@ -81,6 +81,7 @@ todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
 uvicorn = { extras = ["standard"], version = "^0.40.0" }
 websockets = "^15.0"
+x-twitter-scraper = "^0.11.2"
 youtube-transcript-api = "^1.2.1"
 yt-dlp = "2025.12.08"
 zerobouncesdk = "^1.1.2"

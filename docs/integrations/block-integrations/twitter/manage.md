@@ -84,7 +84,7 @@ The block supports advanced features like restricting replies to mentioned users
 ## Twitter Search Recent Tweets
 
 ### What it is
-This block searches all public Tweets in Twitter history.
+This block searches public Tweets from the last 7 days.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
