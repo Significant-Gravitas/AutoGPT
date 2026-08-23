@@ -173,10 +173,22 @@ class TestDelegationWaitingEtiquette:
     def test_supplement_contains_waiting_etiquette_rule(self):
         assert "Waiting etiquette." in prompting.get_delegation_supplement()
 
-    def test_waiting_rule_offers_both_resume_paths(self):
+    def test_waiting_rule_names_schedule_followup_as_the_resume_path(self):
         supplement = prompting.get_delegation_supplement()
-        assert "woken automatically with the result" in supplement
         assert "`schedule_followup` with this session's `session_id`" in supplement
+        assert "60s minimum" in flat(supplement)
+
+    def test_waiting_rule_promises_no_resume_mechanism_that_does_not_exist(self):
+        """Nothing enqueues a turn back onto the parent when a sub finishes —
+        a delegation that outlives its turn resumes only because the model
+        scheduled a followup. Promising an automatic wake-up here would let
+        the model end the turn with no resume at all, which is worse than the
+        babysitting these rules exist to remove. The PR that adds the wake
+        mechanism updates this assertion along with the wording."""
+        supplement = flat(prompting.get_delegation_supplement())
+
+        assert "woken automatically" not in supplement
+        assert "wakes this chat" not in supplement
 
     def test_waiting_rule_requires_status_line_with_eta(self):
         supplement = prompting.get_delegation_supplement()

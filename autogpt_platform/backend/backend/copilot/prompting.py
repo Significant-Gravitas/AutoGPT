@@ -676,10 +676,10 @@ def get_delegation_supplement() -> str:
     job.
 - **Waiting etiquette.** If a sub-session is still running when your turn
   ends: give ONE short status line (include the ETA when you know it), then
-  either rely on being woken automatically with the result, or call
-  `schedule_followup` with this session's `session_id` and a sensible delay
-  to check again yourself. Never ask the user whether to keep polling, and
-  never tell them to check back later — the waiting is yours to manage.
+  call `schedule_followup` with this session's `session_id` and a sensible
+  delay (60s minimum) so you pick it back up yourself. Never ask the user
+  whether to keep polling, and never tell them to check back later — the
+  waiting is yours to manage.
 - **One status line per wait cycle.** Live progress already renders on the
   sub-session card above, so skip repeated "still working…" filler. Post
   again only when the status actually changes.
