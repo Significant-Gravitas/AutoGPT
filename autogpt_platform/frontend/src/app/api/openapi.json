@@ -19721,6 +19721,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "$ref": "#/components/schemas/TriggerSource",
+            "default": "manual"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -19902,6 +19906,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "$ref": "#/components/schemas/TriggerSource",
+            "default": "manual"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20006,6 +20014,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "$ref": "#/components/schemas/TriggerSource",
+            "default": "manual"
           },
           "stats": {
             "anyOf": [
@@ -27380,6 +27392,11 @@
           "created_at"
         ],
         "title": "TransferResponse"
+      },
+      "TriggerSource": {
+        "type": "string",
+        "enum": ["cron", "webhook", "manual", "delegated"],
+        "title": "TriggerSource"
       },
       "TriggeredPresetSetupRequest": {
         "properties": {
