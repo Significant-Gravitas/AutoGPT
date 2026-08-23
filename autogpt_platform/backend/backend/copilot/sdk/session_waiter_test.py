@@ -295,3 +295,28 @@ async def test_zero_timeout_wait_takes_no_lease():
 
     mark.assert_not_awaited()
     clear.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failing_subscribe_does_not_strand_the_inline_lease(monkeypatch):
+    """A live lease suppresses the delegated-task wake, so leaking one on a
+    subscribe failure would silently cost the parent chat its report."""
+    cleared: list[str] = []
+
+    monkeypatch.setattr(
+        "backend.copilot.sdk.session_waiter.mark_awaited_inline",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.sdk.session_waiter.clear_awaited_inline",
+        AsyncMock(side_effect=lambda sid: cleared.append(sid)),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.sdk.session_waiter.stream_registry.subscribe_to_session",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    )
+
+    with pytest.raises(RuntimeError):
+        await wait_for_session_result(session_id="sess-1", user_id="user-1", timeout=30)
+
+    assert cleared == ["sess-1"]

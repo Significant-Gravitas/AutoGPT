@@ -92,10 +92,20 @@ async def wait_for_session_result(
     """
     if timeout > 0:
         await mark_awaited_inline(session_id, timeout)
-    queue = await stream_registry.subscribe_to_session(
-        session_id=session_id,
-        user_id=user_id,
-    )
+    try:
+        queue = await stream_registry.subscribe_to_session(
+            session_id=session_id,
+            user_id=user_id,
+        )
+    except BaseException:
+        # The lease is taken before the subscribe, and the try/finally that
+        # normally clears it starts after. Without this, a failing subscribe
+        # strands the lease for its whole TTL — and a live lease suppresses
+        # the delegated-task wake, so the parent chat would silently never be
+        # told its sub finished.
+        if timeout > 0:
+            await clear_awaited_inline(session_id)
+        raise
     result = SessionResult()
     if queue is None:
         if timeout > 0:
