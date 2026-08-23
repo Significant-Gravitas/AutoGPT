@@ -1745,6 +1745,7 @@ class TestOllamaCredentials:
 
         assert ("response", "local response") in outputs
         block.llm_call.assert_awaited_once()
+        assert block.llm_call.await_args is not None
         structured_input, credentials = block.llm_call.await_args.args
         assert credentials is None
         assert structured_input.credentials is None
