@@ -1,9 +1,10 @@
 from datetime import date
 from enum import Enum
-from typing import Any
+from typing import Unpack
 
 from x_twitter_scraper import AsyncXTwitterScraper
 from x_twitter_scraper.types.shared import PaginatedTweets, SearchTweet
+from x_twitter_scraper.types.x.tweet_search_params import TweetSearchParams
 from x_twitter_scraper.types.x.tweet_search_response import TweetSearchResponse
 
 from backend.sdk import (
@@ -17,7 +18,6 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
-from backend.util.exceptions import BlockExecutionError
 
 from ._config import xquik
 
@@ -55,57 +55,6 @@ class XquikTweetResult(BaseModel):
     )
     is_quote_status: bool | None = SchemaField(
         description="Whether this post quotes another post", default=None
-    )
-
-
-def _to_result(tweet: SearchTweet) -> XquikTweetResult:
-    author = tweet.author
-    return XquikTweetResult(
-        id=tweet.id,
-        text=tweet.text,
-        url=tweet.url,
-        created_at=tweet.created_at,
-        language=tweet.lang,
-        author_id=author.id if author else None,
-        author_name=author.name if author else None,
-        author_username=author.username if author else None,
-        bookmark_count=tweet.bookmark_count,
-        like_count=tweet.like_count,
-        quote_count=tweet.quote_count,
-        reply_count=tweet.reply_count,
-        retweet_count=tweet.retweet_count,
-        view_count=tweet.view_count,
-        conversation_id=tweet.conversation_id,
-        in_reply_to_id=tweet.in_reply_to_id,
-        is_reply=tweet.is_reply,
-        is_quote_status=tweet.is_quote_status,
-    )
-
-
-def _test_page() -> PaginatedTweets:
-    tweet = SearchTweet.model_validate(
-        {
-            "id": "1991000000000000000",
-            "text": "AutoGPT workflow example",
-            "url": "https://x.com/example/status/1991000000000000000",
-            "createdAt": "2026-08-20T12:00:00.000Z",
-            "bookmarkCount": 1,
-            "likeCount": 5,
-            "quoteCount": 2,
-            "replyCount": 3,
-            "retweetCount": 4,
-            "viewCount": 100,
-            "author": {
-                "id": "42",
-                "name": "Auto-GPT",
-                "username": "Auto_GPT",
-            },
-        }
-    )
-    return PaginatedTweets(
-        tweets=[tweet],
-        has_next_page=True,
-        next_cursor="next-page",
     )
 
 
@@ -188,7 +137,7 @@ class XquikSearchTweetsBlock(Block):
         )
 
     async def _search(
-        self, credentials: APIKeyCredentials, **kwargs: Any
+        self, credentials: APIKeyCredentials, **kwargs: Unpack[TweetSearchParams]
     ) -> TweetSearchResponse:
         async with AsyncXTwitterScraper(
             api_key=credentials.api_key.get_secret_value()
@@ -198,30 +147,23 @@ class XquikSearchTweetsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        search_args: dict[str, Any] = {
+        search_args: TweetSearchParams = {
             "q": input_data.query,
             "limit": input_data.limit,
             "query_type": input_data.sort_order.value,
         }
-        for name in (
-            "language",
-            "from_user",
-            "since_date",
-            "until_date",
-            "cursor",
-        ):
-            value = getattr(input_data, name)
-            if value is not None:
-                search_args[name] = value
+        if input_data.language is not None:
+            search_args["language"] = input_data.language
+        if input_data.from_user is not None:
+            search_args["from_user"] = input_data.from_user
+        if input_data.since_date is not None:
+            search_args["since_date"] = input_data.since_date
+        if input_data.until_date is not None:
+            search_args["until_date"] = input_data.until_date
+        if input_data.cursor is not None:
+            search_args["cursor"] = input_data.cursor
 
-        try:
-            page = await self._search(credentials, **search_args)
-        except Exception as error:
-            raise BlockExecutionError(
-                message=f"Xquik search failed: {error}",
-                block_name=self.name,
-                block_id=self.id,
-            ) from error
+        page = await self._search(credentials, **search_args)
 
         tweets = [_to_result(tweet) for tweet in page.tweets]
         yield "tweets", tweets
@@ -230,3 +172,54 @@ class XquikSearchTweetsBlock(Block):
         if page.next_cursor:
             yield "next_cursor", page.next_cursor
         yield "has_next_page", page.has_next_page
+
+
+def _to_result(tweet: SearchTweet) -> XquikTweetResult:
+    author = tweet.author
+    return XquikTweetResult(
+        id=tweet.id,
+        text=tweet.text,
+        url=tweet.url,
+        created_at=tweet.created_at,
+        language=tweet.lang,
+        author_id=author.id if author else None,
+        author_name=author.name if author else None,
+        author_username=author.username if author else None,
+        bookmark_count=tweet.bookmark_count,
+        like_count=tweet.like_count,
+        quote_count=tweet.quote_count,
+        reply_count=tweet.reply_count,
+        retweet_count=tweet.retweet_count,
+        view_count=tweet.view_count,
+        conversation_id=tweet.conversation_id,
+        in_reply_to_id=tweet.in_reply_to_id,
+        is_reply=tweet.is_reply,
+        is_quote_status=tweet.is_quote_status,
+    )
+
+
+def _test_page() -> PaginatedTweets:
+    tweet = SearchTweet.model_validate(
+        {
+            "id": "1991000000000000000",
+            "text": "AutoGPT workflow example",
+            "url": "https://x.com/example/status/1991000000000000000",
+            "createdAt": "2026-08-20T12:00:00.000Z",
+            "bookmarkCount": 1,
+            "likeCount": 5,
+            "quoteCount": 2,
+            "replyCount": 3,
+            "retweetCount": 4,
+            "viewCount": 100,
+            "author": {
+                "id": "42",
+                "name": "Auto-GPT",
+                "username": "Auto_GPT",
+            },
+        }
+    )
+    return PaginatedTweets(
+        tweets=[tweet],
+        has_next_page=True,
+        next_cursor="next-page",
+    )

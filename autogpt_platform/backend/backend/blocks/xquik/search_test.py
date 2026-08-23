@@ -10,8 +10,9 @@ from backend.blocks.xquik.search import (
     XquikSortOrder,
     XquikTweetResult,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials
-from backend.util.exceptions import BlockExecutionError
+from backend.util.exceptions import BlockUnknownError
 
 
 def _page(
@@ -153,7 +154,7 @@ async def test_search_omits_empty_cursor_output_and_tolerates_missing_author():
 
 
 @pytest.mark.asyncio
-async def test_search_wraps_sdk_errors_with_block_context():
+async def test_executor_wraps_sdk_errors_with_block_context():
     block = XquikSearchTweetsBlock()
     credentials = _credentials()
     input_data = block.Input(
@@ -161,17 +162,22 @@ async def test_search_wraps_sdk_errors_with_block_context():
         query="AutoGPT",
     )
 
-    with patch.object(
-        block,
-        "_search",
-        new=AsyncMock(side_effect=RuntimeError("upstream unavailable")),
+    with (
+        patch.object(
+            block,
+            "_search",
+            new=AsyncMock(side_effect=RuntimeError("upstream unavailable")),
+        ),
+        pytest.raises(BlockUnknownError, match="upstream unavailable") as error,
     ):
-        with pytest.raises(
-            BlockExecutionError,
-            match="Xquik search failed: upstream unavailable",
+        async for _ in block.execute(
+            input_data.model_dump(),
+            execution_context=ExecutionContext(),
+            credentials=credentials,
         ):
-            async for _ in block.run(input_data, credentials=credentials):
-                pass
+            pass
+
+    assert (error.value.block_name, error.value.block_id) == (block.name, block.id)
 
 
 @pytest.mark.asyncio
