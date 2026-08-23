@@ -428,7 +428,7 @@ def test_wake_prompt_sends_the_model_to_the_criteria_before_declaring_done():
 
 
 def test_wake_prompt_requires_naming_an_unmet_criterion():
-    """"Mostly done" reported as done is the exact failure this closes."""
+    """ "Mostly done" reported as done is the exact failure this closes."""
     message = wake_message(sub_session_id=_SUB, status="completed")
     assert "left any criterion unmet, name that criterion plainly" in message
 
