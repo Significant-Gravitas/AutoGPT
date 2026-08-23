@@ -11,6 +11,7 @@ from backend.blocks.taskmarket.models import (
     TaskMarketMode,
     TaskMarketTaskPreview,
 )
+from backend.blocks.taskmarket.review import consume_approved_review
 from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.sdk import (
     Block,
@@ -22,6 +23,7 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 
+
 class PrepareTaskMarketTaskBlock(Block):
     class Input(BlockSchemaInput):
         description: str = SchemaField(
@@ -31,14 +33,12 @@ class PrepareTaskMarketTaskBlock(Block):
             description="Exact files or outcomes the worker must deliver"
         )
         reward_usdc: Decimal = SchemaField(
-            description="USDC reward to escrow", gt=0
+            description="USDC reward to escrow", ge=0.000001
         )
         maximum_spend_usdc: Decimal = SchemaField(
-            description="Hard operator-approved USDC spend ceiling", gt=0
+            description="Hard operator-approved USDC spend ceiling", ge=0.000001
         )
-        deadline: datetime = SchemaField(
-            description="Timezone-aware task deadline"
-        )
+        deadline: datetime = SchemaField(description="Timezone-aware task deadline")
         mode: TaskMarketMode = SchemaField(
             description="Task selection mode", default=TaskMarketMode.BOUNTY
         )
@@ -109,8 +109,8 @@ class CreateTaskMarketTaskBlock(Block):
         test_preview = TaskMarketTaskPreview.build(
             description="Write an accessibility report",
             deliverables=["report.md"],
-            reward_usdc=Decimal("2"),
-            maximum_spend_usdc=Decimal("2"),
+            reward_usdc=Decimal(2),
+            maximum_spend_usdc=Decimal(2),
             deadline=datetime(2099, 1, 1, tzinfo=timezone.utc),
             mode="bounty",
             tags=["accessibility"],
@@ -191,27 +191,42 @@ class CreateTaskMarketTaskBlock(Block):
             user_id, node_id, node_exec_id, graph_exec_id, graph_id
         )
         payload = preview.model_dump(mode="json")
-        result = await HITLReviewHelper.get_or_create_human_review(
-            user_id=user_id,
+        result = await HITLReviewHelper.check_approval(
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
+            node_id=node_id,
+            user_id=user_id,
             input_data=payload,
-            message="Authorize this exact TaskMarket Base USDC funding request",
-            editable=False,
-            organization_id=execution_context.organization_id,
-            team_id=execution_context.team_id,
         )
         if result is None:
-            await HITLReviewHelper.update_node_execution_status(
-                exec_id=node_exec_id, status=ExecutionStatus.REVIEW
+            result = await HITLReviewHelper.get_or_create_human_review(
+                user_id=user_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                input_data=payload,
+                message="Authorize this exact TaskMarket Base USDC funding request",
+                editable=False,
+                organization_id=execution_context.organization_id,
+                team_id=execution_context.team_id,
             )
-            return None
+            if result is None:
+                await HITLReviewHelper.update_node_execution_status(
+                    exec_id=node_exec_id, status=ExecutionStatus.REVIEW
+                )
+                return None
         if result.node_exec_id != node_exec_id or result.data != payload:
             raise self._execution_error("Review does not match this exact execution")
-        await HITLReviewHelper.update_review_processed_status(node_exec_id, True)
-        return result.status == ReviewStatus.APPROVED
+        if result.status != ReviewStatus.APPROVED:
+            await HITLReviewHelper.update_review_processed_status(node_exec_id, True)
+            return False
+        claimed = await consume_approved_review(node_exec_id, user_id)
+        if not claimed:
+            raise self._execution_error(
+                "Task funding approval was already consumed by another execution"
+            )
+        return True
 
     @staticmethod
     async def create_task(
@@ -225,6 +240,7 @@ class CreateTaskMarketTaskBlock(Block):
             duration_hours=duration,
             mode=preview.mode.value,
             tags=preview.tags,
+            idempotency_key=preview.fingerprint,
         )
 
     def _validate_preview(self, preview: TaskMarketTaskPreview) -> None:

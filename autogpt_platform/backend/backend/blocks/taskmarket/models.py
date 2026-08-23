@@ -62,7 +62,9 @@ class TaskMarketTaskPreview(BaseModel):
             mode=TaskMarketMode(mode),
             tags=tags,
         )
-        return preview.model_copy(update={"fingerprint": preview.calculate_fingerprint()})
+        return preview.model_copy(
+            update={"fingerprint": preview.calculate_fingerprint()}
+        )
 
     def calculate_fingerprint(self) -> str:
         canonical = json.dumps(
@@ -111,6 +113,8 @@ class TaskMarketTaskPreview(BaseModel):
         cleaned = [value.strip() for value in values]
         if any(not value for value in cleaned):
             raise ValueError("List entries must not be empty")
+        if any("," in value for value in cleaned):
+            raise ValueError("List entries must not contain commas")
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("List entries must be unique")
         return cleaned

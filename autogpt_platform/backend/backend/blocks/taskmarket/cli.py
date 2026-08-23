@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 import shutil
 from collections.abc import Awaitable, Callable, Sequence
@@ -36,6 +37,7 @@ class TaskMarketCLI:
     ) -> None:
         self._runner = command_runner or self._run_command
         self._timeout_seconds = timeout_seconds
+        self._write_idempotency_key: str | None = None
 
     async def preflight(self, maximum_spend_usdc: Decimal) -> TaskMarketPreflight:
         deposit = self._expect_object(await self._runner(("deposit",)))
@@ -59,6 +61,7 @@ class TaskMarketCLI:
         duration_hours: Decimal,
         mode: str,
         tags: list[str],
+        idempotency_key: str,
     ) -> str:
         args = (
             "task",
@@ -74,12 +77,19 @@ class TaskMarketCLI:
             "--tags",
             ",".join(tags),
         )
+        self._write_idempotency_key = idempotency_key
         try:
             result = self._expect_object(await self._runner(args))
-        except Exception as error:
+        except asyncio.CancelledError as error:
             raise SettlementUnknownError(
                 "Task creation settlement is unknown and must not be retried"
             ) from error
+        except (OSError, TaskMarketCLIError, TimeoutError) as error:
+            raise SettlementUnknownError(
+                "Task creation settlement is unknown and must not be retried"
+            ) from error
+        finally:
+            self._write_idempotency_key = None
         task_id = str(result.get("taskId", ""))
         if not TASK_ID_PATTERN.fullmatch(task_id):
             raise SettlementUnknownError(
@@ -97,7 +107,10 @@ class TaskMarketCLI:
         duration_hours: Decimal,
         mode: str,
         tags: list[str],
+        idempotency_key: str,
     ) -> TaskMarketCreationResult:
+        if reward_usdc > maximum_spend_usdc:
+            raise TaskMarketCLIError("Reward exceeds the approved maximum spend")
         await self.preflight(maximum_spend_usdc)
         task_id = await self.create_task(
             description=description,
@@ -105,10 +118,11 @@ class TaskMarketCLI:
             duration_hours=duration_hours,
             mode=mode,
             tags=tags,
+            idempotency_key=idempotency_key,
         )
         try:
             status = await self.get_task(task_id)
-        except Exception:
+        except (asyncio.CancelledError, OSError, TaskMarketCLIError):
             status = {
                 "taskId": task_id,
                 "status": "unknown",
@@ -142,18 +156,26 @@ class TaskMarketCLI:
             *arguments,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=self._command_environment(),
         )
         try:
             stdout, _ = await asyncio.wait_for(
                 process.communicate(), timeout=self._timeout_seconds
             )
-        except TimeoutError:
-            process.kill()
-            await process.wait()
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
             raise
         if process.returncode != 0:
             raise TaskMarketCLIError("TaskMarket CLI command failed")
         return self._parse_output(stdout)
+
+    def _command_environment(self) -> dict[str, str]:
+        environment = os.environ.copy()
+        if self._write_idempotency_key:
+            environment["TASKMARKET_IDEMPOTENCY_KEY"] = self._write_idempotency_key
+        return environment
 
     @staticmethod
     def _resolve_executable() -> str:
@@ -199,12 +221,18 @@ class TaskMarketCLI:
         preflight: TaskMarketPreflight, maximum_spend_usdc: Decimal
     ) -> None:
         if not WALLET_PATTERN.fullmatch(preflight.wallet_address):
-            raise TaskMarketCLIError("TaskMarket CLI returned an invalid wallet address")
+            raise TaskMarketCLIError(
+                "TaskMarket CLI returned an invalid wallet address"
+            )
         if preflight.chain_id != BASE_CHAIN_ID:
             raise TaskMarketCLIError("Task creation is restricted to Base chain 8453")
         if preflight.usdc_contract.lower() != BASE_USDC_ADDRESS.lower():
             raise TaskMarketCLIError("Task creation requires canonical Base USDC")
         if not preflight.legal_accepted:
-            raise TaskMarketCLIError("Current TaskMarket terms require operator acceptance")
+            raise TaskMarketCLIError(
+                "Current TaskMarket terms require operator acceptance"
+            )
         if preflight.balance_usdc < maximum_spend_usdc:
-            raise TaskMarketCLIError("Wallet balance is below the approved maximum spend")
+            raise TaskMarketCLIError(
+                "Wallet balance is below the approved maximum spend"
+            )

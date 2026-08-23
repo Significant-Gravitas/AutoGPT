@@ -26,7 +26,8 @@ do not read, return, or log that keystore.
    USDC contract, and maximum spend in AutoGPT. Approve or reject it there.
 4. After approval, the block runs read-only CLI preflights for wallet address,
    chain ID, USDC contract, current legal acceptance, and balance. It then makes
-   one `taskmarket task create` call and reads the new task back.
+   one `taskmarket task create` call and reads the new task back. The reviewed
+   preview fingerprint is supplied as the write's deterministic idempotency key.
 5. Use **Inspect TaskMarket Task** to retrieve live status and submissions. Its
    output always sets `human_review_required` to `true`; it exposes no accept,
    reject, rate, or winner-selection operation.
@@ -35,10 +36,12 @@ do not read, return, or log that keystore.
 
 A timeout, malformed response, non-zero exit, or missing task ID during task
 creation is classified as unknown settlement. The block never retries the
-funding call. Its approval is consumed before the write, so replaying the same
-node execution cannot fund a second task. If a task ID was returned but the
-status read fails, the block preserves the ID and link with an `unknown` status
-so an operator can inspect it manually.
+funding call. Its approval is atomically consumed before the write, so concurrent
+or replayed executions cannot fund a second task. The first-party create command
+is a single write operation, and its deterministic idempotency key is derived
+from the exact reviewed preview. If a task ID was returned but the status read
+fails, the block preserves the ID and link with an `unknown` status so an
+operator can inspect it manually.
 
 ## Reproduction
 
