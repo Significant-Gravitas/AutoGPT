@@ -48,8 +48,8 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
-from backend.copilot.watchers import deliver as watchers
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.copilot.watchers import deliver as watchers
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db

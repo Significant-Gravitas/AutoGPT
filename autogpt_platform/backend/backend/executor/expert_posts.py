@@ -197,9 +197,7 @@ def build_expert_run_message(
         )
         return f"I ran **{agent_name}** in the background.{body}{link}"
     detail = (
-        f"\n\nThe reported error:\n\n{quote_lines(truncate(error))}"
-        if error
-        else ""
+        f"\n\nThe reported error:\n\n{quote_lines(truncate(error))}" if error else ""
     )
     return (
         f"I ran **{agent_name}** in the background, but it didn't finish."
