@@ -867,6 +867,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
     count_raised_experts = d.count_raised_experts
+    # Learned notes: read from the Prisma-less copilot executor (prompt
+    # injection) and written from the Scheduler subprocess (dream promotion).
+    list_learned_notes = d.list_learned_notes
+    promote_learned_notes = d.promote_learned_notes
+    archive_notes_for_rules = d.archive_notes_for_rules
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

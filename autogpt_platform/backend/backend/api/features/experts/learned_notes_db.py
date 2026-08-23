@@ -42,9 +42,11 @@ def _to_model(row: prisma.models.ExpertLearnedNote) -> ExpertLearnedNote:
         learned_at=row.learnedAt,
         source_session_id=row.sourceSessionId,
         source_rule_id=row.sourceRuleId,
-        status="archived"
-        if row.status == prisma.enums.ExpertLearnedNoteStatus.ARCHIVED
-        else "active",
+        status=(
+            "archived"
+            if row.status == prisma.enums.ExpertLearnedNoteStatus.ARCHIVED
+            else "active"
+        ),
     )
 
 

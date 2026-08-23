@@ -164,7 +164,7 @@ RECOMBINE_SYSTEM = (
     '"inferred_fact", "recommendation", "insight") — those '
     "proposals are silently dropped.\n"
     ' * Use "rule" ONLY for a standing instruction the user has '
-    "corrected the assistant into following (\"always send drafts "
+    'corrected the assistant into following ("always send drafts '
     'before publishing"). A rule is written into every future prompt, '
     "so cite every source that supports it and rate confidence "
     "honestly — a one-off request is a finding, not a rule.\n\n"
