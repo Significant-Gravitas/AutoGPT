@@ -81,7 +81,13 @@ const hiredMaria = {
   workflows: [],
 } as unknown as Expert;
 
-function makeNote(over: Partial<ExpertLearnedNote> = {}): ExpertLearnedNote {
+// MSW serves the wire shape, where `learned_at` is still a JSON string; orval's
+// `useDates` only turns it into a Date on the client side of the boundary.
+type LearnedNoteWire = Omit<ExpertLearnedNote, "learned_at"> & {
+  learned_at: string;
+};
+
+function makeNote(over: Partial<LearnedNoteWire> = {}): ExpertLearnedNote {
   return {
     id: "note-1",
     expert_id: "expert-maria",
@@ -189,9 +195,7 @@ describe("SoulDrawer — what I've learned", () => {
     expect(archivedPath).toContain(
       "/api/experts/expert-maria/learned-notes/note-1",
     );
-    expect(
-      await screen.findByText(/Nothing recorded yet/),
-    ).toBeDefined();
+    expect(await screen.findByText(/Nothing recorded yet/)).toBeDefined();
   });
 
   test("keeps the note and explains when forgetting fails", async () => {
