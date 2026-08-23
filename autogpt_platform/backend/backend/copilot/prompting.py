@@ -645,7 +645,8 @@ def get_sdk_supplement(use_e2b: bool) -> str:
 
 
 def get_delegation_supplement() -> str:
-    """Delegation rules, appended only when the expert-team tools are enabled.
+    """Team rules — proposing a roster and delegating — appended only when
+    the expert-team tools are enabled.
 
     Kept out of ``SHARED_TOOL_NOTES`` — that constant is concatenated
     unconditionally by both engines, so leaving these rules there told
@@ -655,6 +656,14 @@ def get_delegation_supplement() -> str:
     is gated on its own tool group.
     """
     return """
+
+### Proposing a whole team
+- When the user needs several experts, propose all of them in ONE turn
+  (one `raise_expert`/`hire_expert` call each) — chat renders them as a
+  single roster card the user confirms once.
+- Read that roster back as one compact table (name, role, what they own,
+  where they stop, weekly budget) and point at the card — never a
+  paragraph of prose or a list of confirmation ids per expert.
 
 ### Delegating to a teammate
 - When a subtask needs a *teammate's* skills, workflows, or integrations

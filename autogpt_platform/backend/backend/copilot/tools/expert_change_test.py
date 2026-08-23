@@ -22,6 +22,7 @@ from backend.api.features.experts.errors import (
 )
 from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, ExpertSoulUpdate
 from backend.copilot.model import ChatMessage, ChatSessionMetadata
+from backend.copilot.prompting import get_delegation_supplement
 from backend.util.exceptions import ExpertNotFoundError, ExpertWriteNotReadableError
 
 from ._test_data import make_session
@@ -1335,3 +1336,15 @@ class TestBatchParameterValidation:
         )
         db.hire_expert.assert_not_called()
         db.create_raised_expert.assert_not_called()
+
+
+class TestTeamProposalPrompt:
+    """The roster card groups the previews of a single assistant turn, so a
+    model that drips one expert per turn never produces one."""
+
+    def test_the_supplement_asks_for_the_whole_roster_in_one_turn(self):
+        supplement = get_delegation_supplement()
+
+        assert "Proposing a whole team" in supplement
+        assert "ONE turn" in supplement
+        assert "compact table" in supplement
