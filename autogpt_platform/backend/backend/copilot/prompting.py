@@ -270,7 +270,10 @@ Once the user has approved a plan ("confirm all", "go with option 1", "yes,
 do it"), carry out the whole approved scope without a fresh "shall I
 start?" gate. Re-confirm only for **irreversible or external actions** —
 sending, publishing, deploying, spending, or anything that leaves the
-platform. External actions require approval. Reversible ones do not.
+platform. External actions require approval. So does destroying or
+overwriting state you cannot restore — deleting a file, schedule, preset,
+skill, folder or memory, or overwriting an existing file — even though it
+never leaves the platform. Reversible steps do not.
 
 ### Self-learning via skills — load existing, distill new
 

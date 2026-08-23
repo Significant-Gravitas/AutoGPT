@@ -151,6 +151,16 @@ class TestGrantedPermissionIsNotReAsked:
         assert "irreversible or external actions" in notes
         assert "sending, publishing, deploying, spending" in notes
 
+    def test_gate_covers_irreversible_actions_that_never_leave_the_platform(self):
+        """These tools have no code-level confirmation flow (`permissions.py`),
+        so this prose IS the gate. Closing on "external actions require
+        approval" alone reads as not-external ⇒ proceed, which would leave
+        every in-platform delete ungated."""
+        notes = flat(prompting.SHARED_TOOL_NOTES)
+
+        assert "destroying or overwriting state you cannot restore" in notes
+        assert "even though it never leaves the platform" in notes
+
     def test_wording_stays_consistent_with_protected_soul_rules(self):
         # "External actions require approval." — restated verbatim so the
         # copilot prompt and the expert soul rules cannot drift apart.
