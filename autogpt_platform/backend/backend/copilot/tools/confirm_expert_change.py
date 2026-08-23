@@ -43,11 +43,28 @@ _PROPOSAL_FIELDS = (
 MAX_BATCH_CONFIRMATIONS = 20
 
 
-class _BatchParams(BaseModel):
-    """Bounds on the batch itself, checked before anything is consumed."""
+_MALFORMED_IDS_MESSAGE = (
+    "confirm_expert_change takes confirmation_id as a single id string or "
+    f"confirmation_ids as a list of 1 to {MAX_BATCH_CONFIRMATIONS} id "
+    "strings, and nothing else. No confirmation was used up."
+)
 
-    confirmation_ids: list[str] = Field(
-        min_length=1, max_length=MAX_BATCH_CONFIRMATIONS
+
+class _ConfirmParams(BaseModel):
+    """Both ids as a model may actually send them, checked before anything
+    is consumed.
+
+    Filling both keys and nulling the unused one is a routine tool-call
+    shape, so ``None`` is a value here rather than a crash. Anything else
+    that is not a string or a list of strings is answered with the guidance
+    below instead of escaping as a traceback, which ``BaseTool.execute``
+    would flatten into "an error occurred" — leaving the model unable to
+    tell whether the ids were consumed.
+    """
+
+    confirmation_id: str | None = None
+    confirmation_ids: list[str] | None = Field(
+        default=None, max_length=MAX_BATCH_CONFIRMATIONS
     )
 
 
@@ -102,8 +119,8 @@ class ConfirmExpertChangeTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         *,
-        confirmation_id: str = "",
-        confirmation_ids: list[str] | None = None,
+        confirmation_id: object = None,
+        confirmation_ids: object = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -121,10 +138,23 @@ class ConfirmExpertChangeTool(BaseTool):
                 session_id=session_id,
             )
 
-        single = confirmation_id.strip()
+        try:
+            params = _ConfirmParams.model_validate(
+                {
+                    "confirmation_id": confirmation_id,
+                    "confirmation_ids": confirmation_ids,
+                }
+            )
+        except ValidationError:
+            return ErrorResponse(
+                message=_MALFORMED_IDS_MESSAGE,
+                session_id=session_id,
+            )
+
+        single = (params.confirmation_id or "").strip()
         # An empty list is "no batch", not "a batch of nothing", so a model
         # that fills both keys but only means one of them still works.
-        batch = confirmation_ids or None
+        batch = params.confirmation_ids or None
         if single and batch:
             return ErrorResponse(
                 message=(
@@ -176,17 +206,7 @@ async def _confirm_batch(
     per-id limit errors and the team can never actually exceed the cap.
     """
     session_id = session.session_id
-    try:
-        params = _BatchParams(confirmation_ids=confirmation_ids)
-    except ValidationError:
-        return ErrorResponse(
-            message=(
-                "confirmation_ids must be a list of 1 to "
-                f"{MAX_BATCH_CONFIRMATIONS} confirmation ids."
-            ),
-            session_id=session_id,
-        )
-    ids = [candidate.strip() for candidate in params.confirmation_ids]
+    ids = [candidate.strip() for candidate in confirmation_ids]
     if not all(ids):
         return ErrorResponse(
             message="confirmation_ids must not contain a blank id.",

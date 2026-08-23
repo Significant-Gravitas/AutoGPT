@@ -1102,6 +1102,59 @@ class TestBatchParameterValidation:
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_null_confirmation_id_beside_a_batch_still_applies_it(self):
+        """Filling both keys and nulling the unused one is a routine tool-call
+        shape. It must read as "no single id", not crash out of the tool and
+        leave the model unable to tell whether the ids were consumed."""
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_id=None,
+                confirmation_ids=[first, second],
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert len(resp.results) == 2
+        db.hire_expert.assert_awaited_once()
+        db.create_raised_expert.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_null_confirmation_id_on_its_own_is_refused(self):
+        with _env() as db:
+            resp = await _confirm(_approve(make_session(_USER)), confirmation_id=None)
+        assert isinstance(resp, ErrorResponse)
+        assert "confirmation_ids" in resp.message
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"confirmation_id": 7},
+            {"confirmation_id": ["c-1"]},
+            {"confirmation_ids": "c-1"},
+            {"confirmation_ids": {"id": "c-1"}},
+            {"confirmation_ids": ["c-1", None]},
+            {"confirmation_ids": ["c-1", 7]},
+        ],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_id_of_the_wrong_shape_is_refused_not_raised(self, params):
+        """Every malformed shape has to come back as the actionable refusal;
+        a traceback becomes "an error occurred" and tells the model nothing
+        about whether its approvals survived."""
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            session = make_session(_USER)
+            first, _ = await _two_previews(session)
+            resp = await _confirm(_approve(session), **params)
+        assert isinstance(resp, ErrorResponse)
+        assert str(MAX_BATCH_CONFIRMATIONS) in resp.message
+        assert proposal_key(first) in redis.store
+        db.hire_expert.assert_not_called()
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_supplying_neither_parameter_is_refused(self):
         with _env() as db:
             resp = await _confirm(_approve(make_session(_USER)))
