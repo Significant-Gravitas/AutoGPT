@@ -600,16 +600,57 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     failed_workflows: list[str] = Field(default_factory=list)
 
 
+ExpertChangeOutcome = Literal["applied", "already_applied", "failed"]
+
+ExpertChangeReason = Literal[
+    "already_applied",
+    "applied_but_expert_gone",
+    "expired",
+    "not_approved",
+    "unwatermarked",
+    "wrong_chat",
+    "expert_moved",
+    "template_gone",
+    "limit_reached",
+    "lifetime_limit_reached",
+    "workspace_unavailable",
+    "proposal_incomplete",
+    "unsupported_kind",
+    "unexpected_failure",
+]
+
+# Reasons that mean the change is on the team, just not because of this
+# call. Counting them as failures tells the user a teammate they have is
+# missing, so the batch treats them as landed.
+EXPERT_CHANGE_LANDED_REASONS: frozenset[str] = frozenset(
+    {"already_applied", "applied_but_expert_gone"}
+)
+
+
+class ExpertChangeError(ErrorResponse):
+    """An expert-change refusal, tagged with a stable reason code.
+
+    ``message`` is written for the model — second person, tool names, what to
+    call next — so it must never reach the chat UI. ``reason`` is the card's
+    vocabulary instead: a stable code it maps to its own copy.
+    """
+
+    reason: ExpertChangeReason
+
+
 class ExpertChangeResult(BaseModel):
     """What one confirmation_id in a batched confirm did.
 
-    Either the teammate it created (``applied``, with ``expert`` set) or the
-    reason it did not, so one bad id in a batch is reported rather than
-    voiding the ids the user approved alongside it.
+    ``outcome`` is three-valued on purpose. An id whose change landed in an
+    earlier confirm did not fail, and reporting it as one makes the batch
+    announce a teammate the user has as missing. ``reason`` is the stable
+    code the card renders from; ``error`` is the model-facing instruction
+    and is not for display.
     """
 
     confirmation_id: str
-    applied: bool
+    outcome: ExpertChangeOutcome
+    reason: ExpertChangeReason | None = None
     kind: ExpertChangeKind | None = None
     expert: ExpertSummary | None = None
     failed_workflows: list[str] = Field(default_factory=list)

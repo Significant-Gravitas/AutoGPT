@@ -124,13 +124,13 @@ describe("expert change cards", () => {
           results: [
             {
               confirmation_id: "c-1",
-              applied: true,
+              outcome: "applied",
               kind: "raise",
               expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
             },
             {
               confirmation_id: "c-2",
-              applied: true,
+              outcome: "applied",
               kind: "hire",
               expert: { id: "exp-scout", name: "Scout", role: "Research" },
             },
@@ -164,13 +164,14 @@ describe("expert change cards", () => {
           results: [
             {
               confirmation_id: "c-1",
-              applied: true,
+              outcome: "applied",
               kind: "raise",
               expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
             },
             {
               confirmation_id: "c-2",
-              applied: false,
+              outcome: "failed",
+              reason: "expired",
               error: "This confirmation_id is unknown or has expired.",
             },
           ],
@@ -184,6 +185,31 @@ describe("expert change cards", () => {
     expect(
       screen.getByText("This confirmation_id is unknown or has expired."),
     ).toBeDefined();
+  });
+
+  it("shows an already-applied approval as done, not as a failure", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "All 1 approved changes are done.",
+          applied: true,
+          results: [
+            {
+              confirmation_id: "c-1",
+              outcome: "already_applied",
+              reason: "already_applied",
+              error:
+                "You already confirmed this change, so there is nothing left to apply — tell the user it is done.",
+            },
+          ],
+          experts: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Already done")).toBeDefined();
+    expect(screen.queryByText("Not added")).toBeNull();
   });
 
   it("renders a handoff as the receiving teammate's sub-session", () => {

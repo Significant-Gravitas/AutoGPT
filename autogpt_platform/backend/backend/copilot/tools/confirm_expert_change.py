@@ -22,9 +22,11 @@ from .expert_proposal import (
     load_bound_proposal,
 )
 from .models import (
+    EXPERT_CHANGE_LANDED_REASONS,
     ErrorResponse,
     ExpertChangeAppliedResponse,
     ExpertChangeBatchAppliedResponse,
+    ExpertChangeError,
     ExpertChangeResult,
     ExpertSummary,
     ToolResponseBase,
@@ -187,7 +189,7 @@ async def _confirm_one(
         user_id,
         session,
     )
-    if isinstance(proposal, ErrorResponse):
+    if isinstance(proposal, ExpertChangeError):
         return proposal
     return await apply_proposal(user_id, session.session_id, proposal)
 
@@ -232,15 +234,11 @@ async def _confirm_batch(
         await _apply_one(user_id, session_id, candidate, proposal)
         for candidate, proposal in zip(ids, loaded)
     ]
-    experts = [
-        result.expert
-        for result in results
-        if result.applied and result.expert is not None
-    ]
+    experts = _created_experts(results)
     return ExpertChangeBatchAppliedResponse(
         message=_batch_message(results),
         session_id=session_id,
-        applied=bool(experts),
+        applied=any(result.outcome != "failed" for result in results),
         results=results,
         experts=experts,
     )
@@ -250,28 +248,47 @@ async def _apply_one(
     user_id: str,
     session_id: str,
     confirmation_id: str,
-    proposal: ExpertChangeProposal | ErrorResponse,
+    proposal: ExpertChangeProposal | ExpertChangeError,
 ) -> ExpertChangeResult:
-    if isinstance(proposal, ErrorResponse):
-        return ExpertChangeResult(
-            confirmation_id=confirmation_id,
-            applied=False,
-            error=proposal.message,
-        )
+    if isinstance(proposal, ExpertChangeError):
+        return _unapplied_result(confirmation_id, proposal)
     applied = await apply_proposal(user_id, session_id, proposal)
     if isinstance(applied, ExpertChangeAppliedResponse):
         return ExpertChangeResult(
             confirmation_id=confirmation_id,
-            applied=True,
+            outcome="applied",
             kind=applied.kind,
             expert=applied.expert,
             failed_workflows=applied.failed_workflows,
         )
+    return _unapplied_result(confirmation_id, applied)
+
+
+def _unapplied_result(
+    confirmation_id: str, error: ExpertChangeError
+) -> ExpertChangeResult:
+    """Not every refusal is a failure.
+
+    ``already_applied`` and ``applied_but_expert_gone`` both mean the change
+    is on the team — the first from an earlier confirm, the second from this
+    one — so folding them in with the genuine failures makes the batch tell
+    the user a teammate they have was never added.
+    """
+    landed = error.reason in EXPERT_CHANGE_LANDED_REASONS
     return ExpertChangeResult(
         confirmation_id=confirmation_id,
-        applied=False,
-        error=applied.message,
+        outcome="already_applied" if landed else "failed",
+        reason=error.reason,
+        error=error.message,
     )
+
+
+def _created_experts(results: list[ExpertChangeResult]) -> list[ExpertSummary]:
+    return [
+        result.expert
+        for result in results
+        if result.outcome == "applied" and result.expert is not None
+    ]
 
 
 def _batch_message(results: list[ExpertChangeResult]) -> str:
@@ -281,21 +298,25 @@ def _batch_message(results: list[ExpertChangeResult]) -> str:
     model announces the whole approval as done, so every failure and every
     half-installed hire gets its own sentence.
     """
-    created: list[ExpertSummary] = [
-        result.expert
-        for result in results
-        if result.applied and result.expert is not None
-    ]
-    failures = [result for result in results if not result.applied]
+    created = _created_experts(results)
+    already = [result for result in results if result.outcome == "already_applied"]
+    failures = [result for result in results if result.outcome == "failed"]
+    landed = len(results) - len(failures)
     names = ", ".join(expert.name for expert in created)
+    named = f": {names}" if names else ""
 
-    if not created:
+    if not landed:
         parts = [f"Nothing was applied — all {len(results)} confirmations failed."]
     elif failures:
-        parts = [f"{len(created)} of {len(results)} applied: {names}."]
+        parts = [f"{landed} of {len(results)} approved changes are done{named}."]
     else:
-        parts = [f"All {len(results)} approved changes applied: {names}."]
+        parts = [f"All {len(results)} approved changes are done{named}."]
 
+    if already:
+        parts.append(
+            f"{len(already)} of them were already applied before this call — "
+            "they are done, do not re-preview or retry them."
+        )
     parts.extend(
         f"{result.confirmation_id} failed: {result.error}" for result in failures
     )

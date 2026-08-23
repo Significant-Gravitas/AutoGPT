@@ -927,7 +927,7 @@ class TestBatchConfirm:
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
         assert resp.applied is True
         assert [result.confirmation_id for result in resp.results] == [first, second]
-        assert all(result.applied for result in resp.results)
+        assert all(result.outcome == "applied" for result in resp.results)
         assert [expert.name for expert in resp.experts] == ["Scout", "Otto"]
         assert "Scout" in resp.message and "Otto" in resp.message
         db.hire_expert.assert_awaited_once()
@@ -946,9 +946,14 @@ class TestBatchConfirm:
             )
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
         assert resp.applied is True
-        assert [result.applied for result in resp.results] == [True, False, True]
+        assert [result.outcome for result in resp.results] == [
+            "applied",
+            "failed",
+            "applied",
+        ]
         failed = resp.results[1]
         assert failed.confirmation_id == "nope"
+        assert failed.reason == "expired"
         assert failed.error is not None
         assert "expired" in failed.error
         assert failed.expert is None
@@ -965,12 +970,71 @@ class TestBatchConfirm:
             resp = await _confirm(_approve(session), confirmation_ids=[first, second])
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
         replayed = resp.results[0]
-        assert replayed.applied is False
+        assert replayed.outcome == "already_applied"
+        assert replayed.reason == "already_applied"
         assert replayed.error is not None
         assert "already confirmed" in replayed.error
-        assert resp.results[1].applied is True
+        assert resp.results[1].outcome == "applied"
         # The replay must not hire a second Scout.
         assert db.hire_expert.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_of_replays_reads_as_done_not_as_a_total_failure(self):
+        """ "Nothing was applied" about changes that are all on the team is the
+        worst thing this tool can say: the model repeats it, and the user is
+        told their team is empty while looking at it."""
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            await _confirm(_approve(session), confirmation_ids=[first, second])
+            resp = await _confirm(_approve(session), confirmation_ids=[first, second])
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is True
+        assert [result.outcome for result in resp.results] == [
+            "already_applied",
+            "already_applied",
+        ]
+        assert "Nothing was applied" not in resp.message
+        assert "already applied" in resp.message
+        # The replay must not hire a second Scout or raise a second Otto.
+        assert db.hire_expert.await_count == 1
+        assert db.create_raised_expert.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_saved_but_unreadable_edit_is_not_reported_as_not_added(self):
+        """``_applied_but_unreadable_error`` says the edit "was saved". The
+        batch must agree with it instead of rendering the same change as a
+        failure."""
+        with _env() as db:
+            db.update_soul_if_current.side_effect = ExpertWriteNotReadableError("exp-2")
+            session = make_session(_USER)
+            preview = await _update(session, expert_id="exp-2", name="Nick")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session), confirmation_ids=[preview.confirmation_id]
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is True
+        assert resp.results[0].outcome == "already_applied"
+        assert resp.results[0].reason == "applied_but_expert_gone"
+        assert "Nothing was applied" not in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_replay_beside_a_failure_still_counts_as_landed(self):
+        with _env():
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            await _confirm(_approve(session), confirmation_id=first)
+            resp = await _confirm(
+                _approve(session), confirmation_ids=[first, second, "nope"]
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert [result.outcome for result in resp.results] == [
+            "already_applied",
+            "applied",
+            "failed",
+        ]
+        assert "2 of 3" in resp.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_an_id_from_another_chat_is_refused_inside_a_batch(self):
@@ -986,10 +1050,11 @@ class TestBatchConfirm:
                 confirmation_ids=[stranger.confirmation_id, mine.confirmation_id],
             )
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
-        assert resp.results[0].applied is False
+        assert resp.results[0].outcome == "failed"
+        assert resp.results[0].reason == "wrong_chat"
         assert resp.results[0].error is not None
         assert "different chat" in resp.results[0].error
-        assert resp.results[1].applied is True
+        assert resp.results[1].outcome == "applied"
         db.hire_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -1025,8 +1090,9 @@ class TestBatchConfirm:
                 confirmation_ids=[first.confirmation_id, second.confirmation_id],
             )
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
-        assert resp.results[0].applied is True
-        assert resp.results[1].applied is False
+        assert resp.results[0].outcome == "applied"
+        assert resp.results[1].outcome == "failed"
+        assert resp.results[1].reason == "limit_reached"
         assert resp.results[1].error is not None
         assert str(ACTIVE_EXPERT_LIMIT) in resp.results[1].error
         assert len(resp.experts) == 1
@@ -1231,7 +1297,7 @@ class TestBatchParameterValidation:
             resp = await _confirm(session, confirmation_ids=[first, second])
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
         assert resp.applied is False
-        assert all(not result.applied for result in resp.results)
+        assert all(result.outcome == "failed" for result in resp.results)
         assert all(
             result.error is not None and "not answered" in result.error
             for result in resp.results

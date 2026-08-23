@@ -37,10 +37,11 @@ from backend.util.exceptions import (
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
+    ExpertChangeError,
     ExpertChangeKind,
     ExpertChangePreview,
+    ExpertChangeReason,
     ExpertSummary,
-    ToolResponseBase,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,9 @@ def _consumed_key(confirmation_id: str) -> str:
     return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
 
 
-def _stale_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _stale_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="expired",
         message=(
             "This confirmation_id is unknown or has expired — previews last "
             f"{PROPOSAL_TTL_MINUTES} minutes. Call {_PREVIEW_TOOLS} again for "
@@ -108,8 +110,9 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _unapproved_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _unapproved_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="not_approved",
         message=(
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
@@ -119,8 +122,9 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _unwatermarked_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="unwatermarked",
         message=(
             "This preview was created before the approval check and carries "
             "no record of the turn it answered, so it cannot be confirmed. "
@@ -131,8 +135,9 @@ def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _already_confirmed_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _already_confirmed_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="already_applied",
         message=(
             "You already confirmed this change, so there is nothing left to "
             "apply — tell the user it is done. Call "
@@ -229,7 +234,7 @@ async def capacity_error(
     user_id: str,
     session_id: str,
     kind: ExpertChangeKind,
-) -> ErrorResponse | None:
+) -> ExpertChangeError | None:
     """Refuse at preview time when the team is already full.
 
     Advisory only — the creation transaction re-enforces both caps. Checking
@@ -240,6 +245,7 @@ async def capacity_error(
             f"The team is already at its limit of {ACTIVE_EXPERT_LIMIT} active "
             "experts. Ask the user to archive someone first.",
             session_id,
+            "limit_reached",
         )
     if kind == "raise":
         raised = await experts_db().count_raised_experts(user_id)
@@ -249,6 +255,7 @@ async def capacity_error(
                 f"{LIFETIME_RAISED_EXPERT_LIMIT} experts. Hiring from the "
                 "roster still works.",
                 session_id,
+                "lifetime_limit_reached",
             )
     return None
 
@@ -258,7 +265,7 @@ async def load_bound_proposal(
     confirmation_id: str,
     user_id: str,
     session: ChatSession,
-) -> ExpertChangeProposal | ErrorResponse:
+) -> ExpertChangeProposal | ExpertChangeError:
     key = proposal_key(confirmation_id)
     raw = await redis.get(key)
     if raw is None:
@@ -277,7 +284,8 @@ async def load_bound_proposal(
         return _stale_preview_error(session.session_id)
 
     if proposal.user_id != user_id or proposal.session_id != session.session_id:
-        return ErrorResponse(
+        return ExpertChangeError(
+            reason="wrong_chat",
             message="This confirmation_id belongs to a different chat.",
             session_id=session.session_id,
         )
@@ -302,7 +310,7 @@ async def apply_proposal(
     user_id: str,
     session_id: str,
     proposal: ExpertChangeProposal,
-) -> ToolResponseBase:
+) -> ExpertChangeAppliedResponse | ExpertChangeError:
     preview = proposal.preview
     if preview.kind == "hire":
         return await _apply_hire(user_id, session_id, preview)
@@ -315,7 +323,8 @@ async def apply_proposal(
         preview.kind,
         user_id[:_LOG_ID_PREFIX_LENGTH],
     )
-    return ErrorResponse(
+    return ExpertChangeError(
+        reason="unsupported_kind",
         message=(
             "This proposal kind is not supported by confirm_expert_change. "
             f"Call {_PREVIEW_TOOLS} again for a fresh preview."
@@ -328,7 +337,7 @@ async def _apply_hire(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
-) -> ToolResponseBase:
+) -> ExpertChangeAppliedResponse | ExpertChangeError:
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
     try:
@@ -370,7 +379,7 @@ async def _apply_raise(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
-) -> ToolResponseBase:
+) -> ExpertChangeAppliedResponse | ExpertChangeError:
     try:
         result: RaiseResult = await experts_db().create_raised_expert(
             user_id,
@@ -399,7 +408,7 @@ async def _apply_update(
     user_id: str,
     session_id: str,
     proposal: ExpertChangeProposal,
-) -> ToolResponseBase:
+) -> ExpertChangeAppliedResponse | ExpertChangeError:
     """Write the soul edit previewed by ``update_expert``.
 
     The preview merged the requested fields over the stored soul, so this
@@ -445,8 +454,9 @@ async def _apply_update(
     )
 
 
-def _stale_expert_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _stale_expert_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="expert_moved",
         message=(
             "That expert is gone or was edited somewhere else since this "
             "preview, so nothing was changed. Call update_expert again to "
@@ -456,14 +466,15 @@ def _stale_expert_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _applied_but_unreadable_error(session_id: str, name: str) -> ErrorResponse:
+def _applied_but_unreadable_error(session_id: str, name: str) -> ExpertChangeError:
     """The edit committed, then the teammate disappeared before the read-back.
 
     Never route this to :func:`_stale_expert_error`: the change did land, so
     telling the model to re-preview would have it re-apply an edit that is
     already saved, or announce it was dropped when it was not.
     """
-    return ErrorResponse(
+    return ExpertChangeError(
+        reason="applied_but_expert_gone",
         message=(
             f"The edit to {name} was saved, but they were removed from the "
             "team before it could be read back. Do not re-preview or retry: "
@@ -474,10 +485,11 @@ def _applied_but_unreadable_error(session_id: str, name: str) -> ErrorResponse:
     )
 
 
-def _hire_failure_response(error: Exception, session_id: str) -> ErrorResponse:
+def _hire_failure_response(error: Exception, session_id: str) -> ExpertChangeError:
     """Map the hire path's typed failures to something the user can act on."""
     if isinstance(error, ExpertTemplateNotFoundError):
-        return ErrorResponse(
+        return ExpertChangeError(
+            reason="template_gone",
             message=(
                 "That expert template no longer exists. List the roster again "
                 "and pick a current one."
@@ -489,6 +501,7 @@ def _hire_failure_response(error: Exception, session_id: str) -> ErrorResponse:
             f"The team is already at its limit of {error.limit} active "
             "experts. Archive someone before hiring.",
             session_id,
+            "limit_reached",
         )
     if isinstance(
         error,
@@ -498,7 +511,8 @@ def _hire_failure_response(error: Exception, session_id: str) -> ErrorResponse:
             ExpertNotFoundError,
         ),
     ):
-        return ErrorResponse(
+        return ExpertChangeError(
+            reason="workspace_unavailable",
             message=(
                 "The expert workspace is temporarily unavailable, so nothing "
                 "was hired. Try again shortly."
@@ -508,31 +522,36 @@ def _hire_failure_response(error: Exception, session_id: str) -> ErrorResponse:
     return _unexpected_failure(error, session_id, "hire_expert")
 
 
-def _raise_failure_response(error: Exception, session_id: str) -> ErrorResponse:
+def _raise_failure_response(error: Exception, session_id: str) -> ExpertChangeError:
     if isinstance(error, ExpertLimitExceededError):
         return _limit_error(
             f"The team is already at its limit of {error.limit} active "
             "experts. Archive someone before raising a new one.",
             session_id,
+            "limit_reached",
         )
     if isinstance(error, RaisedExpertLifetimeLimitExceededError):
         return _limit_error(
             f"This account has raised its lifetime maximum of {error.limit} "
             "experts.",
             session_id,
+            "lifetime_limit_reached",
         )
     return _unexpected_failure(error, session_id, "raise_expert")
 
 
-def _limit_error(message: str, session_id: str) -> ErrorResponse:
-    return ErrorResponse(message=message, session_id=session_id)
+def _limit_error(
+    message: str, session_id: str, reason: ExpertChangeReason
+) -> ExpertChangeError:
+    return ExpertChangeError(reason=reason, message=message, session_id=session_id)
 
 
 def _unexpected_failure(
     error: Exception, session_id: str, tool_name: str
-) -> ErrorResponse:
+) -> ExpertChangeError:
     logger.warning("%s apply failed: %s", tool_name, error, exc_info=True)
-    return ErrorResponse(
+    return ExpertChangeError(
+        reason="unexpected_failure",
         message=(
             "Couldn't complete that change, and the proposal has been "
             f"discarded. Call {tool_name} again to re-preview and retry."
@@ -553,8 +572,9 @@ def _summary(expert: Expert) -> ExpertSummary:
 
 def _discarded_proposal_error(
     session_id: str, missing: str, tool_name: str
-) -> ErrorResponse:
-    return ErrorResponse(
+) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="proposal_incomplete",
         message=(
             f"That proposal is missing the {missing} it referred to and has "
             f"been discarded. Call {tool_name} again to re-preview."
