@@ -293,6 +293,36 @@ async def test_each_open_card_is_judged_against_its_own_request():
 
 
 @pytest.mark.asyncio
+async def test_two_cards_in_one_session_are_judged_against_their_union():
+    """The model re-rendered a widened card into the *same* chat, so that chat
+    has two pending records. The grant satisfies the first card and
+    shortchanges the second — and the second is the one the user clicked.
+    Judging only the older, narrower record would call this a clean connect,
+    erase the warning, and never mention `workflow` again."""
+    redis = _FakeRedis()
+    await _seed(redis, _SESSION, ["repo"])
+    await _seed(redis, _SESSION, ["repo", "workflow"])
+    enqueue = AsyncMock(return_value=("running", MagicMock()))
+
+    p1, p2, p3, p4 = _patched(redis, enqueue=enqueue)
+    with p1, p2, p3, p4:
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        lines = await scope_status_lines(_USER, _SESSION)
+
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args.kwargs["session_id"] == _SESSION
+    assert 'missing="workflow"' in enqueue.await_args.kwargs["message"]
+    assert len(lines) == 1
+    assert "workflow" in lines[0]
+
+
+@pytest.mark.asyncio
 async def test_pending_records_are_drained_so_a_replay_stays_quiet():
     redis = _FakeRedis()
     await _seed(redis, _SESSION, ["repo"])

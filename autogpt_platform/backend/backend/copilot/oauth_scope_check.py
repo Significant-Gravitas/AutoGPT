@@ -22,9 +22,9 @@ frontend and OpenAPI change; a server-written record keyed by
 The obvious hole in a ``(user, provider)`` key is a user with two connect cards
 open for the same provider. Rather than guess which one a callback belongs to,
 the key holds a bounded **list** of pending connects, and the callback drains
-all of them and evaluates each against *its own* requested scopes. Both chats
-learn the truth about the connection they were both waiting on; neither is
-told about scopes it never asked for.
+all of them and judges each *chat* against the union of everything its own
+cards asked for. Both chats learn the truth about the connection they were
+both waiting on; neither is told about scopes it never asked for.
 """
 
 import json
@@ -184,27 +184,24 @@ async def _run_scope_check(
         if not pending:
             return
 
-        handled: set[str] = set()
-        for record in pending:
-            if record.session_id in handled:
-                continue
-            handled.add(record.session_id)
-
+        for session_id, requested_scopes in _requested_scopes_by_session(
+            pending
+        ).items():
             result = evaluate_scope_coverage(
-                record.requested_scopes,
+                requested_scopes,
                 granted_scopes,
                 provider_reports_scopes=provider_reports_scopes,
             )
             if not result.is_shortfall:
                 # A good reconnect clears whatever the last bad one left
                 # behind, so the model stops warning about a fixed problem.
-                await _clear_status(user_id, record.session_id, provider)
+                await _clear_status(user_id, session_id, provider)
                 continue
 
-            await _write_status(user_id, record.session_id, provider, result)
+            await _write_status(user_id, session_id, provider, result)
             await _post_chat_notice(
                 user_id=user_id,
-                session_id=record.session_id,
+                session_id=session_id,
                 provider=provider,
                 result=result,
                 username=username,
@@ -215,6 +212,24 @@ async def _run_scope_check(
             provider,
             exc_info=True,
         )
+
+
+def _requested_scopes_by_session(
+    pending: list[PendingConnect],
+) -> dict[str, list[str]]:
+    """Collapse one session's cards into the union of what they asked for.
+
+    ``record_pending_connect`` runs on every ``connect_integration`` call, so
+    a model that re-renders a widened card leaves a second record for the same
+    session. The user saw both cards and both asked for something, so the
+    honest thing to judge the grant against is everything that was on screen —
+    not whichever card happened to be recorded first, which would let a grant
+    that satisfies the narrow card bury the wider card's shortfall.
+    """
+    grouped: dict[str, list[str]] = {}
+    for record in pending:
+        grouped.setdefault(record.session_id, []).extend(record.requested_scopes)
+    return grouped
 
 
 # --------------------------------------------------------------------------- #
