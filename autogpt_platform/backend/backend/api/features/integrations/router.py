@@ -23,6 +23,7 @@ from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.oauth_scope_check import schedule_scope_check
 from backend.data.db_accessors import experts_db
+from backend.data.execution import TriggerSource
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -1224,6 +1225,7 @@ async def _execute_webhook_node_trigger(
             nodes_input_masks={node.id: {"payload": payload}},
             organization_id=org_id,
             team_id=ws_id,
+            trigger_source=TriggerSource.webhook,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1326,6 +1328,7 @@ async def _execute_webhook_preset_trigger(
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
+            trigger_source=TriggerSource.webhook,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —

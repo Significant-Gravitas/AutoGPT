@@ -19,7 +19,7 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, TriggerSource
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -233,6 +233,10 @@ async def execute_graph(
             graph_version=graph_version,
             organization_id=org_id,
             team_id=team_id,
+            # An external API key call is a caller asking for a run right
+            # now — same provenance as the in-app Run button. `webhook` is
+            # reserved for our own inbound-event plumbing, which this is not.
+            trigger_source=TriggerSource.manual,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:

@@ -39,7 +39,7 @@ from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.db_accessors import experts_db
-from backend.data.execution import GraphExecutionWithNodes
+from backend.data.execution import GraphExecutionWithNodes, TriggerSource
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
@@ -211,6 +211,7 @@ async def _execute_graph(**kwargs):
             organization_id=args.organization_id,
             team_id=args.team_id,
             expert_id=args.expert_id,
+            trigger_source=TriggerSource.cron,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time

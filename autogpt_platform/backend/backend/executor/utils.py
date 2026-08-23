@@ -35,6 +35,7 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
+    TriggerSource,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
@@ -1208,6 +1209,7 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    trigger_source: TriggerSource = TriggerSource.manual,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1230,6 +1232,11 @@ async def add_graph_execution(
             hired expert (schedule or trigger). Expert-attributed executions
             are validated here. Only owner-only PRIVATE experts are supported;
             they run in the owner's personal organization and default team.
+        trigger_source: What caused this run to start (cron / webhook /
+            manual / delegated). Persisted on the row and carried on the
+            runtime ExecutionContext so the proactive watchers can explain
+            *why* a run was going. Ignored on the REQUEUE path, where the
+            persisted row keeps its original provenance.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
         bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
@@ -1405,6 +1412,7 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            trigger_source=trigger_source,
         )
 
         logger.info(
@@ -1473,6 +1481,16 @@ async def add_graph_execution(
                 "organization_id": graph_exec.organization_id,
                 "team_id": graph_exec.team_id,
             }
+        )
+
+    # The persisted row is the single source of truth for provenance. A
+    # caller-supplied context is either inherited from a parent run (a
+    # sub-graph, whose own row says `delegated`) or built before the row
+    # existed (review-resume, admin-requeue, which must keep the *original*
+    # trigger rather than be relabelled by whoever pressed retry).
+    if execution_context.trigger_source != graph_exec.trigger_source:
+        execution_context = execution_context.model_copy(
+            update={"trigger_source": graph_exec.trigger_source}
         )
 
     try:

@@ -18,7 +18,12 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
+from prisma.enums import (
+    AgentExecutionStatus,
+    ResourceVisibility,
+    SharedVia,
+    TriggerSource,
+)
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
@@ -126,6 +131,12 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # Why this run started. Carried at runtime for the same reason expert_id
+    # is: the executor's completion hook is Prisma-less and can't re-read the
+    # row, but the proactive watcher it feeds needs the provenance to say
+    # "while running on its schedule" rather than a vague "a run failed".
+    trigger_source: TriggerSource = TriggerSource.manual
+
 
 # -------------------------- Models -------------------------- #
 
@@ -213,6 +224,10 @@ class GraphExecutionMeta(BaseDbModel):
     # Expert attribution, surfaced from the DB row for the same
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
+
+    # Run provenance, surfaced from the DB row so resume/requeue paths (and
+    # the watchers reading a stored execution) keep the original "why".
+    trigger_source: TriggerSource = TriggerSource.manual
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -365,6 +380,7 @@ class GraphExecutionMeta(BaseDbModel):
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
             expert_id=_graph_exec.expertId,
+            trigger_source=_graph_exec.triggerSource,
         )
 
 
@@ -918,6 +934,7 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    trigger_source: TriggerSource = TriggerSource.manual,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -971,6 +988,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            "triggerSource": trigger_source,
             **({"expertId": expert_id} if expert_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields

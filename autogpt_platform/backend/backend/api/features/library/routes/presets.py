@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, st
 
 from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.data.execution import GraphExecutionMeta
+from backend.data.execution import GraphExecutionMeta, TriggerSource
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
 from backend.util.exceptions import (
@@ -335,6 +335,7 @@ async def execute_preset(
             graph_credentials_inputs=merged_credential_inputs,
             organization_id=exec_org_id,
             team_id=exec_team_id,
+            trigger_source=TriggerSource.manual,
         )
     except ExpertRunPausedError as e:
         # A paused/over-budget expert is a user-visible state, not a server

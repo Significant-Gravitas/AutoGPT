@@ -1099,6 +1099,12 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // Provenance: what caused this run to start. Read back by the proactive
+  // watchers so an "I noticed X" message can say *why* the run was going
+  // ("on its schedule" vs "when your trigger fired") without the reader
+  // having to reconstruct it from presets, parents and schedule tables.
+  triggerSource TriggerSource @default(manual)
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -1147,6 +1153,13 @@ model AgentGraphExecution {
 enum SharedVia {
   USER
   CHAT_LINK
+}
+
+enum TriggerSource {
+  cron
+  webhook
+  manual
+  delegated
 }
 
 // This model describes the execution of an AgentNode.

@@ -11,7 +11,11 @@ from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionWithNodes,
+    TriggerSource,
+)
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -908,6 +912,9 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                # The assistant is running this on the user's behalf from a
+                # chat turn — delegated work, not a button the user pressed.
+                trigger_source=TriggerSource.delegated,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

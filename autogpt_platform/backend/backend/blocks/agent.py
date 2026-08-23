@@ -10,7 +10,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockType,
 )
-from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
+from backend.data.execution import (
+    ExecutionContext,
+    ExecutionStatus,
+    NodesInputMasks,
+    TriggerSource,
+)
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -102,6 +107,10 @@ class AgentExecutorBlock(Block):
             dry_run=execution_context.dry_run,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            # A sub-graph never starts on its own: the parent run delegated
+            # it. Recording the parent's trigger here would make a nested
+            # failure claim it fired on a schedule of its own.
+            trigger_source=TriggerSource.delegated,
         )
 
         logger = execution_utils.LogMetadata(

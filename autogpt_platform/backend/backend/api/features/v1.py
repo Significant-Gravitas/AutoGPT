@@ -99,7 +99,7 @@ from backend.data.credit import (
     sync_subscription_schedule_from_stripe,
     sync_tier_from_checkout_session,
 )
-from backend.data.execution import ExecutionContext
+from backend.data.execution import ExecutionContext, TriggerSource
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
@@ -1998,6 +1998,7 @@ async def execute_graph(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            trigger_source=TriggerSource.manual,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
