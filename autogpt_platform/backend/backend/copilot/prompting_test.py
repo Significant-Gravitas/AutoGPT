@@ -2,6 +2,7 @@
 
 import importlib
 
+from backend.api.features.experts.models import EXTERNAL_ACTION_APPROVAL_RULE
 from backend.copilot import prompting
 
 
@@ -151,8 +152,6 @@ class TestGrantedPermissionIsNotReAsked:
         assert "sending, publishing, deploying, spending" in notes
 
     def test_wording_stays_consistent_with_protected_soul_rules(self):
-        from backend.api.features.experts.models import EXTERNAL_ACTION_APPROVAL_RULE
-
         # "External actions require approval." — restated verbatim so the
         # copilot prompt and the expert soul rules cannot drift apart.
         assert EXTERNAL_ACTION_APPROVAL_RULE in prompting.SHARED_TOOL_NOTES
