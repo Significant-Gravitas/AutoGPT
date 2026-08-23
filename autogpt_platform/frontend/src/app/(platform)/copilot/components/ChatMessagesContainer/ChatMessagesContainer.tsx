@@ -31,6 +31,7 @@ import {
   shouldShowTaskListNotice,
   splitReasoningAndResponse,
 } from "./helpers";
+import { SUGGESTIONS_PART_TYPE } from "../../nextStepSuggestions";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { useCopilotUIStore } from "../../store";
@@ -45,6 +46,7 @@ import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
 import { ExpertSchedulesButton } from "./components/ExpertSchedulesButton/ExpertSchedulesButton";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { NextStepChips } from "./components/NextStepChips/NextStepChips";
 import { QueueBadge } from "./components/QueueBadge";
 import { ReasoningGroup } from "./components/ReasoningGroup";
 import { StepsCollapse } from "./components/StepsCollapse";
@@ -467,6 +469,7 @@ export function ChatMessagesContainer({
       const part = lastMessage.parts[i];
       if (part.type === "data-cursor") continue;
       if (part.type === "data-dream-operations") continue;
+      if (part.type === SUGGESTIONS_PART_TYPE) continue;
       if (part.type === "data-status") {
         const data = (part as { data?: { message?: unknown } }).data;
         return typeof data?.message === "string" ? data.message : null;
@@ -673,11 +676,15 @@ export function ChatMessagesContainer({
               isAssistant &&
               messageIndex <= messages.length - 1 &&
               (!nextMessage || nextMessage.role === "user");
-            // data-cursor / data-status parts are internal bookkeeping —
-            // strip them before any render/split logic so they never reach
-            // the user UI. data-status surfaces via ThinkingIndicator.
+            // data-cursor / data-status / data-suggestions parts are
+            // internal bookkeeping — strip them before any render/split
+            // logic so they never reach the user UI. data-status surfaces
+            // via ThinkingIndicator, data-suggestions via NextStepChips.
             const renderableParts = message.parts.filter(
-              (p) => p.type !== "data-cursor" && p.type !== "data-status",
+              (p) =>
+                p.type !== "data-cursor" &&
+                p.type !== "data-status" &&
+                p.type !== SUGGESTIONS_PART_TYPE,
             );
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
@@ -860,10 +867,13 @@ export function ChatMessagesContainer({
                   />
                 )}
                 {!readOnly && showActions && (
-                  <AssistantMessageActions
-                    message={message}
-                    sessionID={sessionID ?? null}
-                  />
+                  <>
+                    <AssistantMessageActions
+                      message={message}
+                      sessionID={sessionID ?? null}
+                    />
+                    <NextStepChips parts={message.parts} />
+                  </>
                 )}
                 {readOnly && showActions && (
                   <MessageActions
