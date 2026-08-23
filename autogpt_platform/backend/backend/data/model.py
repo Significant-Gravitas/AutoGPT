@@ -624,6 +624,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     discriminator_mapping: Optional[dict[str, CP]] = None
     discriminator_type_mapping: Optional[dict[str, frozenset[CT]]] = None
     discriminator_values: set[Any] = Field(default_factory=set)
+    credential_free_discriminator_values: set[Any] = Field(default_factory=set)
     is_auto_credential: bool = False
     credential_reference_only: bool = False
     input_field_name: Optional[str] = None
@@ -705,6 +706,12 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     if value not in all_discriminator_values:
                         all_discriminator_values.append(value)
 
+            all_credential_free_values = set()
+            for _, field in group:
+                all_credential_free_values.update(
+                    field.credential_free_discriminator_values
+                )
+
             # Generate the key for the combined result
             providers_key, supported_types_key = key
             group_key = (
@@ -726,6 +733,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     discriminator_mapping=combined.discriminator_mapping,
                     discriminator_type_mapping=combined.discriminator_type_mapping,
                     discriminator_values=set(all_discriminator_values),
+                    credential_free_discriminator_values=all_credential_free_values,
                     is_auto_credential=combined.is_auto_credential,
                     credential_reference_only=all(
                         field.credential_reference_only for _, field in group
@@ -740,19 +748,20 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     def requires_credentials(self, discriminator_value: Any) -> bool:
         """Whether this selection needs a credential at all.
 
-        A field may declare a discriminator value that maps to no provider,
-        meaning that choice is credential-free — AutoPilot's `platform`
-        transport runs on platform credits and needs nothing connected.
+        Credential-free choices are explicit so an unknown or retired
+        discriminator value is not silently treated as unauthenticated.
 
         Callers must consult this before resolving, discriminating, or
         enforcing entitlement on a field: `discriminate()` raises on an
-        unmapped value, and resolving a credential the selection will never
-        use can fail a run that was not going to touch that provider.
+        unsupported value, and resolving a credential for an explicitly free
+        selection can fail a run that was not going to touch that provider.
         """
         if not (self.discriminator and self.discriminator_mapping):
             return True
         if discriminator_value is None:
             return True
+        if self.credential_free_discriminator_values:
+            return discriminator_value not in self.credential_free_discriminator_values
         return discriminator_value in self.discriminator_mapping
 
     def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
@@ -784,6 +793,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             discriminator_mapping=self.discriminator_mapping,
             discriminator_type_mapping=self.discriminator_type_mapping,
             discriminator_values=set(self.discriminator_values),
+            credential_free_discriminator_values=set(
+                self.credential_free_discriminator_values
+            ),
             is_auto_credential=self.is_auto_credential,
             credential_reference_only=self.credential_reference_only,
             input_field_name=self.input_field_name,
@@ -797,6 +809,7 @@ def CredentialsField(
     discriminator_mapping: Optional[dict[str, Any]] = None,
     discriminator_type_mapping: Optional[dict[str, Any]] = None,
     discriminator_values: Optional[set[Any]] = None,
+    credential_free_discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -814,6 +827,7 @@ def CredentialsField(
             "discriminator_mapping": discriminator_mapping,
             "discriminator_type_mapping": discriminator_type_mapping,
             "discriminator_values": discriminator_values,
+            "credential_free_discriminator_values": credential_free_discriminator_values,
             "credential_reference_only": kwargs.pop("credential_reference_only", None),
         }.items()
         if v is not None

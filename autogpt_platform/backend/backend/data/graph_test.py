@@ -2525,19 +2525,25 @@ def test_codex_transport_node_merges_with_autopilot_codex_slot():
 
 
 def test_llm_block_union_is_left_intact_without_model():
-    """Regression guard: mapping-only discriminators keep their union slot key.
-    Persisted preset/schedule credentials are keyed by this name, so collapsing
-    it would silently orphan them."""
+    """Remote providers keep their union slot; local Ollama needs no slot."""
     from backend.blocks.llm import AITextGeneratorBlock
 
     graph = _graph_with([_node("n1", AITextGeneratorBlock().id, {"prompt": "hi"})])
 
     slots = _slots(graph)
     assert list(slots) == [
-        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+        "aiml_api-anthropic-groq-llama_api-open_router-openai-v0_api_key_credentials"
     ]
     providers, types, required = slots[list(slots)[0]]
-    assert len(providers) == 8
+    assert providers == {
+        "aiml_api",
+        "anthropic",
+        "groq",
+        "llama_api",
+        "open_router",
+        "openai",
+        "v0",
+    }
     assert types == {"api_key"}
     assert required is True
 
@@ -2552,6 +2558,22 @@ def test_llm_block_with_model_discriminates_normally():
     assert _slots(graph) == {
         "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
     }
+
+
+def test_llm_block_with_ollama_model_contributes_no_credential():
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AITextGeneratorBlock().id,
+                {"prompt": "hi", "model": "llama3.3"},
+            )
+        ]
+    )
+
+    assert _slots(graph) == {}
 
 
 def test_only_known_blocks_use_discriminator_type_mapping():
