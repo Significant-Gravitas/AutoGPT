@@ -54,6 +54,7 @@ import {
   stripBaseFields,
 } from "./resultHelpers";
 import { SubSessionPendingCard } from "./SubSessionLive";
+import { TeamPreviewCard } from "./TeamPreviewCard/TeamPreviewCard";
 import {
   FileCard,
   KeyValueList,
@@ -266,8 +267,14 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         row.tool !== "get_sub_session_result" ? (
         <SubSessionPendingCard input={row.input} />
       ) : null;
+    // Several previews in one turn are one roster card on the last row —
+    // see groupTeamProposalRows.
     case "hire_expert":
     case "raise_expert":
+      if (row.groupedProposal) return null;
+      if (row.teamProposals)
+        return <TeamPreviewCard proposals={row.teamProposals} />;
+      return output ? <ExpertChangeCard output={output} /> : null;
     case "update_expert":
     case "confirm_expert_change":
       return output ? <ExpertChangeCard output={output} /> : null;

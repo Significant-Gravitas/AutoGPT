@@ -6,7 +6,7 @@ import {
   getToolCategory,
 } from "../../tools/GenericTool/helpers";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
-import { asObject, integrationIconSrc } from "./resultHelpers";
+import { asObject, integrationIconSrc, str } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
 
@@ -30,6 +30,19 @@ export interface ChainRow {
    *  row line but renders no card, so one delegation never stacks
    *  duplicate cards down the chain. */
   supersededSubSession?: boolean;
+  /** Every hire/raise preview proposed in this turn, attached to the last
+   *  of them so the whole roster renders as one card. */
+  teamProposals?: TeamProposal[];
+  /** An earlier proposal in a multi-expert turn — the roster card on the
+   *  last row already lists this expert. */
+  groupedProposal?: boolean;
+}
+
+/** One expert a turn proposed: the charter as previewed plus the id that
+ *  confirms it. */
+export interface TeamProposal {
+  confirmationId: string;
+  preview: Record<string, unknown>;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -75,6 +88,47 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
   return rows.map((row) =>
     supersededKeys.has(row.key) ? { ...row, supersededSubSession: true } : row,
   );
+}
+
+const TEAM_PROPOSAL_TOOLS = new Set(["hire_expert", "raise_expert"]);
+
+function teamProposalOf(row: ChainRow): TeamProposal | null {
+  if (!row.tool || !TEAM_PROPOSAL_TOOLS.has(row.tool)) return null;
+  const output = asObject(row.output);
+  if (!output || output.type !== "expert_change_proposed") return null;
+  const confirmationId = str(output, "confirmation_id");
+  const preview = asObject(output.preview);
+  return confirmationId && preview ? { confirmationId, preview } : null;
+}
+
+/** Raising a team is several independent ``raise_expert`` calls in one turn,
+ *  each with its own preview and confirmation id. The last of them carries
+ *  the whole roster so it renders as a single card with one confirm; the
+ *  earlier rows keep their line in the chain but drop their own card and
+ *  their "approve this" claim, which the roster card now owns. */
+export function groupTeamProposalRows(rows: ChainRow[]): ChainRow[] {
+  const proposed = new Map<string, TeamProposal>();
+  for (const row of rows) {
+    const proposal = teamProposalOf(row);
+    if (proposal) proposed.set(row.key, proposal);
+  }
+  if (proposed.size < 2) return rows;
+
+  const proposals = [...proposed.values()];
+  const lastKey = [...proposed.keys()].pop();
+  return rows.map((row) => {
+    const proposal = proposed.get(row.key);
+    if (!proposal) return row;
+    if (row.key === lastKey) {
+      return { ...row, teamProposals: proposals, text: "Review the new team" };
+    }
+    return {
+      ...row,
+      groupedProposal: true,
+      requiresAction: false,
+      text: `Drafted ${str(proposal.preview, "name") ?? "a new expert"}`,
+    };
+  });
 }
 
 const ACTION_RESPONSE_TYPES = new Set([

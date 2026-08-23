@@ -111,6 +111,7 @@ export function ChainRowView({ row, isLast }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
+      !row.groupedProposal &&
       ((row.output !== undefined && row.output !== "") || liveSubSession);
   // Action-required cards (credential setup, review, login) must stay on
   // screen until resolved — the row cannot be collapsed.
