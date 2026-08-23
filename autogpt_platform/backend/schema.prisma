@@ -142,6 +142,7 @@ model User {
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
+  ExpertLearnedNotes   ExpertLearnedNote[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -900,6 +901,7 @@ model Expert {
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
+  LearnedNotes    ExpertLearnedNote[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -964,6 +966,47 @@ model ExpertPauseEvent {
   clearedAt DateTime?
 
   @@index([expertId, createdAt])
+}
+
+enum ExpertLearnedNoteStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// A durable correction the nightly dream pass promoted from a stable,
+// high-confidence Graphiti rule. Machine-curated: it is rendered into the
+// expert's prompt as <what_ive_learned> and shown (read + delete) in the Soul
+// drawer, but is NEVER merged into the user-authored identity/boundaries
+// columns above. A null expertId is the base AutoPilot scope.
+//
+// Archiving is a soft delete so a note can never silently reappear: the
+// archive path also invalidates `sourceRuleId` in Graphiti, which is what
+// stops the next dream pass from re-promoting it.
+model ExpertLearnedNote {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expertId String?
+  Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  text      String
+  learnedAt DateTime @default(now())
+
+  // Chat session the underlying rule was captured in, when known.
+  sourceSessionId String?
+  // Graphiti :RELATES_TO edge uuid the note was promoted from.
+  sourceRuleId    String?
+
+  status ExpertLearnedNoteStatus @default(ACTIVE)
+
+  // Doubles as the list index (owner + scope + status) and the promotion
+  // dedupe read.
+  @@index([userId, expertId, status])
+  @@index([userId, sourceRuleId])
 }
 
 // A user-owned named group of the user's own experts. Distinct from the

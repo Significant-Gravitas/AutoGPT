@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import learned_notes_db as experts_learned_notes_db
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
     add_store_agent_to_library,
@@ -514,6 +515,11 @@ class DatabaseManager(AppService):
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
+    # Learned notes: read from the Prisma-less copilot executor (prompt
+    # injection) and written from the Scheduler subprocess (dream promotion).
+    list_learned_notes = _(experts_learned_notes_db.list_learned_notes)
+    promote_learned_notes = _(experts_learned_notes_db.promote_learned_notes)
+    archive_notes_for_rules = _(experts_learned_notes_db.archive_notes_for_rules)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through

@@ -151,6 +151,34 @@ class ExpertPod(BaseModel):
     created_at: datetime
 
 
+LearnedNoteStatus = Literal["active", "archived"]
+
+# Ceiling on ACTIVE notes per scope. The active set is rendered verbatim into
+# every expert turn's system prompt, so it has to stay a small, bounded block;
+# promotion archives the oldest notes past this cap.
+MAX_ACTIVE_LEARNED_NOTES = 20
+LEARNED_NOTE_TEXT_MAX_LENGTH = 500
+
+
+class ExpertLearnedNote(BaseModel):
+    """One machine-curated "what I've learned" note for an expert scope.
+
+    Promoted by the nightly dream pass from a stable, high-confidence Graphiti
+    rule — never written by hand, and never merged into the user-authored Soul
+    fields. ``source_rule_id`` is the Graphiti edge the note came from; it is
+    what the archive path invalidates so the note cannot be re-promoted.
+    """
+
+    id: str
+    # None = the base AutoPilot scope rather than a hired expert.
+    expert_id: str | None
+    text: str
+    learned_at: datetime
+    source_session_id: str | None
+    source_rule_id: str | None
+    status: LearnedNoteStatus
+
+
 class ExpertRun(BaseModel):
     """One expert-attributed execution, for the /team Work surface."""
 

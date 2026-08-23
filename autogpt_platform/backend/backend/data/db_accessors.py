@@ -27,6 +27,19 @@ def experts_db():
     return experts_db
 
 
+def expert_learned_notes_db():
+    if db.is_connected():
+        from backend.api.features.experts import learned_notes_db as _notes_db
+
+        notes_db = _notes_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        notes_db = get_database_manager_async_client()
+
+    return notes_db
+
+
 def graph_db():
     if db.is_connected():
         from backend.data import graph as _graph_db

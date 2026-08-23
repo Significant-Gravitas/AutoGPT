@@ -172,6 +172,15 @@ class Flag(str, Enum):
     # get dreams, period — degraded on local, full on cloud. See
     # ``dream/p0-spec.md`` §13.
 
+    # Durable corrections: the dream pass promotes stable, high-confidence
+    # rules into per-expert "learned notes", which render as the
+    # ``<what_ive_learned>`` prompt block and back the Soul drawer's list +
+    # delete. One flag gates promotion, injection, and the list/archive
+    # endpoints together — a stale frontend must not read notes the prompt
+    # isn't using, and promotion must not quietly accumulate rows for a
+    # cohort that has the feature off. Fail-closed (default False).
+    EXPERT_LEARNED_NOTES = "expert-learned-notes"
+
     GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),
     # top_up_intent uses inline product_data (creates ephemeral Stripe products
