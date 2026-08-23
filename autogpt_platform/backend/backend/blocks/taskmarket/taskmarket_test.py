@@ -6,7 +6,11 @@ import pytest
 from prisma.enums import ReviewStatus
 
 from backend.blocks.taskmarket.blocks import CreateTaskMarketTaskBlock
-from backend.blocks.taskmarket.cli import SettlementUnknownError, TaskMarketCLI
+from backend.blocks.taskmarket.cli import (
+    SettlementUnknownError,
+    TaskMarketCLI,
+    TaskMarketCLIError,
+)
 from backend.blocks.taskmarket.models import BASE_USDC_ADDRESS, TaskMarketTaskPreview
 from backend.blocks.taskmarket.review import consume_approved_review
 from backend.data.human_review import ReviewResult
@@ -65,6 +69,61 @@ async def test_create_preflight_enforces_base_usdc_and_balance():
     assert preflight.chain_id == 8453
     assert preflight.balance_usdc == Decimal("5.000000")
     assert runner.await_count == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("deposit", "legal", "balance", "message"),
+    [
+        (
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 1,
+                "usdcContract": BASE_USDC_ADDRESS,
+            },
+            {"accepted": True},
+            {"balanceUsdc": "3"},
+            "Base chain",
+        ),
+        (
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 8453,
+                "usdcContract": "0x" + "0" * 40,
+            },
+            {"accepted": True},
+            {"balanceUsdc": "3"},
+            "canonical Base USDC",
+        ),
+        (
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 8453,
+                "usdcContract": BASE_USDC_ADDRESS,
+            },
+            {"accepted": False},
+            {"balanceUsdc": "3"},
+            "operator acceptance",
+        ),
+        (
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 8453,
+                "usdcContract": BASE_USDC_ADDRESS,
+            },
+            {"accepted": True},
+            {"balanceUsdc": "1"},
+            "below the approved maximum",
+        ),
+    ],
+)
+async def test_preflight_rejects_unsafe_configuration(
+    deposit: dict, legal: dict, balance: dict, message: str
+):
+    cli = TaskMarketCLI(command_runner=AsyncMock(side_effect=[deposit, legal, balance]))
+
+    with pytest.raises(TaskMarketCLIError, match=message):
+        await cli.preflight(Decimal(2))
 
 
 @pytest.mark.asyncio
@@ -135,6 +194,27 @@ async def test_create_and_read_preserves_task_id_when_status_read_fails():
     assert result.task_id == task_id
     assert result.live_status["taskId"] == task_id
     assert result.live_status["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_submissions_accepts_cli_envelope():
+    task_id = "0x" + "e" * 64
+    runner = AsyncMock(return_value={"submissions": [{"id": "sub-1"}]})
+    cli = TaskMarketCLI(command_runner=runner)
+
+    submissions = await cli.get_submissions(task_id)
+
+    assert submissions == [{"id": "sub-1"}]
+    runner.assert_awaited_once_with(("task", "submissions", task_id))
+
+
+def test_cli_output_parser_accepts_success_and_rejects_invalid_json():
+    assert TaskMarketCLI._parse_output(b'{"ok":true,"data":{"status":"open"}}') == {
+        "status": "open"
+    }
+
+    with pytest.raises(TaskMarketCLIError, match="invalid JSON"):
+        TaskMarketCLI._parse_output(b"not-json")
 
 
 @pytest.mark.asyncio
