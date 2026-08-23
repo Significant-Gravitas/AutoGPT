@@ -243,7 +243,9 @@ async def _write_status(
 
 async def _clear_status(user_id: str, session_id: str, provider: str) -> None:
     redis = await get_redis_async()
-    await redis.hdel(status_key(user_id, session_id), provider.lower())
+    await cast(
+        Awaitable[int], redis.hdel(status_key(user_id, session_id), provider.lower())
+    )
 
 
 async def scope_status_lines(user_id: str, session_id: str) -> list[str]:
@@ -259,7 +261,11 @@ async def scope_status_lines(user_id: str, session_id: str) -> list[str]:
     try:
         redis = await get_redis_async()
         entries = cast(
-            dict[str, str], await redis.hgetall(status_key(user_id, session_id))
+            dict[str, str],
+            await cast(
+                Awaitable[dict[Any, Any]],
+                redis.hgetall(status_key(user_id, session_id)),
+            ),
         )
     except Exception:
         logger.debug("could not read oauth scope status", exc_info=True)
