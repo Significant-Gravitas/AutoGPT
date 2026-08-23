@@ -6198,9 +6198,7 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ExpertLearnedNote"
-                  },
+                  "items": { "$ref": "#/components/schemas/ExpertLearnedNote" },
                   "title": "Response List Expert Learned Notes"
                 }
               }
@@ -6225,7 +6223,7 @@
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Archive Expert Learned Note",
-        "description": "Delete a learned note for good.\n\nTwo steps, in this order: archive the row so the note stops being\ninjected, then demote the Graphiti rule behind it so the nightly dream\npass cannot promote it back. The graph half is best-effort \u2014 a note the\nuser deleted must disappear even when the memory store is unreachable.",
+        "description": "Delete a learned note for good.\n\nTwo steps, in this order: archive the row so the note stops being\ninjected, then demote the Graphiti rule behind it so the nightly dream\npass cannot promote it back. The graph half is best-effort — a note the\nuser deleted must disappear even when the memory store is unreachable.",
         "operationId": "archive_expert_learned_note",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -19206,7 +19204,7 @@
           "status"
         ],
         "title": "ExpertLearnedNote",
-        "description": "One machine-curated \"what I've learned\" note for an expert scope.\n\nPromoted by the nightly dream pass from a stable, high-confidence Graphiti\nrule \u2014 never written by hand, and never merged into the user-authored Soul\nfields. ``source_rule_id`` is the Graphiti edge the note came from; it is\nwhat the archive path invalidates so the note cannot be re-promoted."
+        "description": "One machine-curated \"what I've learned\" note for an expert scope.\n\nPromoted by the nightly dream pass from a stable, high-confidence Graphiti\nrule — never written by hand, and never merged into the user-authored Soul\nfields. ``source_rule_id`` is the Graphiti edge the note came from; it is\nwhat the archive path invalidates so the note cannot be re-promoted."
       },
       "ExpertPod": {
         "properties": {
