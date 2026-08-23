@@ -84,9 +84,7 @@ def test_suggestions_drop_blanks_and_duplicates_and_clamp_length():
 def test_suggestions_survive_redis_round_trip():
     """Replayed chunks are rebuilt with ``model_validate`` on stream resume;
     normalisation must apply there too."""
-    raw = StreamSuggestions(
-        suggestions=["A", "B", "C", "D"]
-    ).model_dump_json()
+    raw = StreamSuggestions(suggestions=["A", "B", "C", "D"]).model_dump_json()
     restored = StreamSuggestions.model_validate_json(raw)
     assert restored.suggestions == ["A", "B", "C"]
     assert restored.type.value == "data-suggestions"
