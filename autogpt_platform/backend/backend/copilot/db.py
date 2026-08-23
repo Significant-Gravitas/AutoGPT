@@ -1375,15 +1375,53 @@ async def update_chat_session_status(
     return updated > 0
 
 
+async def get_expert_post_session_id(user_id: str, expert_id: str) -> str | None:
+    """The expert's most recent *user-visible* thread, or ``None`` if she has
+    none yet.
+
+    This is the resolver for anything that wants to post into "the thread the
+    user talks to this expert in". It is deliberately a separate call from
+    :func:`append_expert_run_message`: the poster takes an explicit target, so
+    the choice of thread is made — and can be reasoned about — at the call
+    site rather than implied by whatever row happened to sort first.
+
+    Dream-pass sessions are excluded for the same reason
+    :func:`append_plain_session_message` excludes them: they are hidden from
+    every listing surface, so a message posted into one lands somewhere the
+    user can never open.
+    """
+    sessions = await db.query_raw_with_schema(
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
+        f'AND "expertId" = $2 AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
+        'ORDER BY "updatedAt" DESC LIMIT 1',
+        user_id,
+        expert_id,
+        model=PrismaChatSession,
+    )
+    return sessions[0].id if sessions else None
+
+
 async def append_expert_run_message(
     user_id: str,
     expert_id: str,
     content: str,
     message_id: str,
+    *,
+    session_id: str | None,
     metadata: dict[str, Any] | None = None,
 ) -> str | None:
-    """Post an assistant message into the expert's latest thread, creating a
-    thread when none exists — run results land in her workspace, not a void.
+    """Post an assistant message into *session_id*, the expert's thread.
+
+    ``session_id`` is required and explicit — pass ``None`` as the sentinel
+    for "mint a fresh thread for this expert", the same contract the
+    scheduler's ``CopilotTurnJobArgs.session_id`` uses. Callers that mean
+    "wherever the user is already talking to her" resolve it first with
+    :func:`get_expert_post_session_id`.
+
+    A supplied session is verified to belong to *user_id* and to carry this
+    *expert_id*; a session that fails the check (deleted, or re-scoped since
+    the caller resolved it) falls back to a fresh thread rather than leaking
+    one expert's work into another's memory scope.
 
     Deduplicates on *message_id* (deterministic per event at the caller), so
     executor retries and double-fires never produce duplicate posts.
@@ -1395,47 +1433,57 @@ async def append_expert_run_message(
     if existing is not None:
         return None
 
-    session = await PrismaChatSession.prisma().find_first(
-        where={"userId": user_id, "expertId": expert_id},
-        order={"updatedAt": "desc"},
-    )
-    if session is not None:
-        session_id = session.id
-    else:
-        created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+    target_session_id = None
+    if session_id is not None:
+        owned = await PrismaChatSession.prisma().find_first(
+            where={"id": session_id, "userId": user_id, "expertId": expert_id},
         )
-        session_id = created.session_id
+        if owned is not None:
+            target_session_id = owned.id
+        else:
+            logger.warning(
+                f"Expert post target session {session_id[:12]} is not an owned "
+                f"thread of expert #{expert_id}; posting to a fresh thread"
+            )
+    if target_session_id is None:
+        # An automation writes the first message, but the thread itself is a
+        # chat between the user and this expert — the same reasoning as
+        # append_plain_session_message. Leaving it at the unset-metadata
+        # default ("automation") would hand the user a thread whose staffing
+        # tools refuse to work.
+        created = await create_chat_session(
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            expert_id=expert_id,
+            metadata=ChatSessionMetadata(origin="interactive"),
+        )
+        target_session_id = created.session_id
+
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=target_session_id,
+            role="assistant",
+            sequence=await get_next_sequence(target_session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
 
     # Same Redis NX lock as turn_queue.append_and_save_message: the
     # sequence read + insert must not interleave with a concurrent turn
     # writer picking the same sequence and PK-colliding on
     # (sessionId, sequence).
-    async with _get_session_lock(session_id):
+    async with _get_session_lock(target_session_id):
         try:
-            await add_chat_message(
-                session_id=session_id,
-                role="assistant",
-                sequence=await get_next_sequence(session_id),
-                content=content,
-                message_id=message_id,
-                metadata=metadata,
-            )
+            await write_with_fresh_sequence()
         except UniqueViolationError as e:
             if is_duplicate_chat_message_id_error(e):
                 return None
             # Reachable only in lock-degraded mode (Redis down yields the
             # lock without acquiring); one retry with a fresh sequence is
             # enough at this write volume.
-            await add_chat_message(
-                session_id=session_id,
-                role="assistant",
-                sequence=await get_next_sequence(session_id),
-                content=content,
-                message_id=message_id,
-                metadata=metadata,
-            )
-    return session_id
+            await write_with_fresh_sequence()
+    return target_session_id
 
 
 async def append_plain_session_message(

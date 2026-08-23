@@ -379,6 +379,7 @@ async def _post_budget_message(
             expert_id=expert.id,
             content=content,
             message_id=message_id,
+            session_id=await chat_db.get_expert_post_session_id(user_id, expert.id),
         )
     except Exception as e:
         logger.warning(

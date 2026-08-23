@@ -114,6 +114,9 @@ def _post_run_result(
             message_id=str(
                 uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")
             ),
+            session_id=db_client.get_expert_post_session_id(
+                graph_exec.user_id, expert_id
+            ),
             metadata={
                 "kind": RUN_METADATA_KIND,
                 "execution_id": graph_exec.graph_exec_id,

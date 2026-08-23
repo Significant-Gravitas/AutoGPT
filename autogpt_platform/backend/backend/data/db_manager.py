@@ -526,6 +526,7 @@ class DatabaseManager(AppService):
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
+    get_expert_post_session_id = _(chat_db.get_expert_post_session_id)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
@@ -609,6 +610,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
+    get_expert_post_session_id = _(d.get_expert_post_session_id)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
@@ -859,6 +861,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
     append_expert_run_message = d.append_expert_run_message
+    get_expert_post_session_id = d.get_expert_post_session_id
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question

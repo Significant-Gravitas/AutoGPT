@@ -147,6 +147,27 @@ def test_post_skips_dry_runs_and_non_terminal_statuses():
     db_client.append_expert_run_message.assert_not_called()
 
 
+def test_post_targets_the_experts_visible_thread():
+    """The post is routed by an explicit, resolved session id — not left to
+    whichever of the user's threads was touched last."""
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    db_client.get_expert_post_session_id.return_value = "sess-expert"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+        )
+    db_client.get_expert_post_session_id.assert_called_once_with("user-1", "expert-1")
+    assert (
+        db_client.append_expert_run_message.call_args.kwargs["session_id"]
+        == "sess-expert"
+    )
+
+
 def test_post_uses_deterministic_message_id_for_retries():
     db_client = MagicMock()
     db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")

@@ -1189,7 +1189,11 @@ async def test_append_expert_run_message_dedupes_on_message_id() -> None:
         patch("backend.copilot.db.add_chat_message", new=add_message),
     ):
         result = await append_expert_run_message(
-            user_id="u1", expert_id="e1", content="done", message_id="m1"
+            user_id="u1",
+            expert_id="e1",
+            content="done",
+            message_id="m1",
+            session_id="sess-1",
         )
 
     assert result is None
@@ -1197,11 +1201,13 @@ async def test_append_expert_run_message_dedupes_on_message_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_append_expert_run_message_uses_latest_expert_session() -> None:
+async def test_append_expert_run_message_posts_to_the_session_it_was_given() -> None:
+    """Regression: the target is the *explicit* session, not whichever of the
+    expert's threads happened to be touched most recently."""
     from backend.copilot.db import append_expert_run_message
 
     find_unique = AsyncMock(return_value=None)
-    find_first = AsyncMock(return_value=_make_session(session_id="sess-latest"))
+    find_first = AsyncMock(return_value=_make_session(session_id="sess-target"))
     add_message = AsyncMock()
     create_session = AsyncMock()
     with (
@@ -1216,24 +1222,35 @@ async def test_append_expert_run_message_uses_latest_expert_session() -> None:
         patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=7)),
     ):
         result = await append_expert_run_message(
-            user_id="u1", expert_id="e1", content="done", message_id="m1"
+            user_id="u1",
+            expert_id="e1",
+            content="done",
+            message_id="m1",
+            session_id="sess-target",
         )
 
-    assert result == "sess-latest"
+    assert result == "sess-target"
     create_session.assert_not_awaited()
+    # The lookup is a scoped point-read of the requested row — no ordering,
+    # so there is no "latest thread wins" behaviour left to fall back on.
+    lookup_where = find_first.call_args.kwargs["where"]
+    assert lookup_where == {"id": "sess-target", "userId": "u1", "expertId": "e1"}
+    assert "order" not in find_first.call_args.kwargs
     call_kwargs = add_message.call_args.kwargs
-    assert call_kwargs["session_id"] == "sess-latest"
+    assert call_kwargs["session_id"] == "sess-target"
     assert call_kwargs["role"] == "assistant"
     assert call_kwargs["sequence"] == 7
     assert call_kwargs["message_id"] == "m1"
 
 
 @pytest.mark.asyncio
-async def test_append_expert_run_message_creates_session_when_none_exists() -> None:
+async def test_append_expert_run_message_mints_fresh_thread_on_none_sentinel() -> None:
+    """``session_id=None`` is the explicit "start a new thread" sentinel, the
+    same contract the scheduler's copilot-turn jobs use."""
     from backend.copilot.db import append_expert_run_message
 
     find_unique = AsyncMock(return_value=None)
-    find_first = AsyncMock(return_value=None)
+    find_first = AsyncMock()
     add_message = AsyncMock()
     created = AsyncMock()
     created_info = AsyncMock()
@@ -1251,9 +1268,118 @@ async def test_append_expert_run_message_creates_session_when_none_exists() -> N
         patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
     ):
         result = await append_expert_run_message(
-            user_id="u1", expert_id="e1", content="done", message_id="m1"
+            user_id="u1",
+            expert_id="e1",
+            content="done",
+            message_id="m1",
+            session_id=None,
         )
 
     assert result == "sess-new"
+    # The sentinel means "mint one" — it must not go looking for an existing
+    # thread to reuse.
+    find_first.assert_not_awaited()
     assert created.call_args.kwargs["expert_id"] == "e1"
     assert add_message.call_args.kwargs["session_id"] == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_new_thread_is_interactive() -> None:
+    """Regression: a minted thread is a chat between the user and the expert.
+    Left at the unset-metadata default ("automation") its staffing tools
+    refuse to work, so the user is handed a thread they can't act in."""
+    from backend.copilot.db import append_expert_run_message
+
+    created = AsyncMock()
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+    created.return_value = created_info
+    with (
+        patch.object(
+            PrismaChatMessage,
+            "prisma",
+            return_value=AsyncMock(find_unique=AsyncMock(return_value=None)),
+        ),
+        patch.object(PrismaChatSession, "prisma", return_value=AsyncMock()),
+        patch("backend.copilot.db.add_chat_message", new=AsyncMock()),
+        patch("backend.copilot.db.create_chat_session", new=created),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        await append_expert_run_message(
+            user_id="u1",
+            expert_id="e1",
+            content="done",
+            message_id="m1",
+            session_id=None,
+        )
+
+    assert created.call_args.kwargs["metadata"].origin == "interactive"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_rejects_session_of_another_expert() -> None:
+    """Regression: a target that isn't this expert's owned thread must never
+    receive the post — it falls back to a fresh thread rather than leaking
+    one expert's work into another's memory scope."""
+    from backend.copilot.db import append_expert_run_message
+
+    add_message = AsyncMock()
+    created = AsyncMock()
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+    created.return_value = created_info
+    with (
+        patch.object(
+            PrismaChatMessage,
+            "prisma",
+            return_value=AsyncMock(find_unique=AsyncMock(return_value=None)),
+        ),
+        patch.object(
+            PrismaChatSession,
+            "prisma",
+            # The scoped where-clause matches nothing: the row belongs to a
+            # different expert (or was deleted since the caller resolved it).
+            return_value=AsyncMock(find_first=AsyncMock(return_value=None)),
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=created),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1",
+            expert_id="e1",
+            content="done",
+            message_id="m1",
+            session_id="sess-other-expert",
+        )
+
+    assert result == "sess-new"
+    assert add_message.call_args.kwargs["session_id"] == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_get_expert_post_session_id_excludes_hidden_threads() -> None:
+    """Regression: the resolver must not hand back a dream-pass session.
+    Those are hidden from every listing surface, so a post that lands in one
+    is invisible to the user forever."""
+    from backend.copilot.db import get_expert_post_session_id
+
+    query = AsyncMock(return_value=[_make_session(session_id="sess-visible")])
+    with patch("backend.copilot.db.db.query_raw_with_schema", new=query):
+        result = await get_expert_post_session_id("u1", "e1")
+
+    assert result == "sess-visible"
+    sql = query.call_args.args[0]
+    assert '"expertId" = $2' in sql
+    assert "'dream'" in sql
+    assert query.call_args.args[1:] == ("u1", "e1")
+
+
+@pytest.mark.asyncio
+async def test_get_expert_post_session_id_returns_none_without_a_thread() -> None:
+    from backend.copilot.db import get_expert_post_session_id
+
+    with patch(
+        "backend.copilot.db.db.query_raw_with_schema", new=AsyncMock(return_value=[])
+    ):
+        assert await get_expert_post_session_id("u1", "e1") is None
