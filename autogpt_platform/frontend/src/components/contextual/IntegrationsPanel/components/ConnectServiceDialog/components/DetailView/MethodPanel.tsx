@@ -36,7 +36,7 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
           provider={authProvider}
           providerName={isChatGPT ? "ChatGPT" : provider.name}
           buttonLabel={isChatGPT ? "Sign in with ChatGPT" : undefined}
-          termsNotice={isChatGPT}
+          termsNotice={isChatGPT ? "OpenAI" : undefined}
           onSuccess={onSuccess}
         />
       </div>
