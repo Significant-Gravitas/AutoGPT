@@ -18,7 +18,7 @@ Three guardrails, in order:
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Awaitable, cast
 
 from prisma.enums import TriggerSource
 from prisma.models import AgentGraphExecution
@@ -262,9 +262,14 @@ async def _under_daily_cap(key: str) -> bool:
     things going wrong — which is exactly when staying quiet is worse."""
     try:
         redis = await get_redis_async()
-        count = await redis.incr(key)
-        await redis.expire(key, _CAP_KEY_TTL_SECONDS)
-        return count <= _DAILY_WATCHER_CAP
+        # INCR and EXPIRE in one transaction: a failure between them leaves the
+        # key with no TTL, which caps that user forever instead of until the
+        # date rolls over.
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, _CAP_KEY_TTL_SECONDS)
+            results = await cast(Awaitable[list[Any]], pipe.execute())
+        return int(results[0]) <= _DAILY_WATCHER_CAP
     except Exception as e:
         logger.warning(
             f"Proactive-watcher cap check failed for {key}: {type(e).__name__}: {e}"

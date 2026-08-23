@@ -19,10 +19,20 @@ _MODULE = "backend.copilot.watchers.deliver"
 
 
 def _redis(count: int = 1) -> MagicMock:
+    """The cap does INCR+EXPIRE in one transaction, so the fake records the
+    queued commands and returns their results in order, like a real pipeline."""
     client = MagicMock()
     client.incr = AsyncMock(return_value=count)
     client.expire = AsyncMock()
     client.decr = AsyncMock()
+
+    pipe = MagicMock()
+    pipe.incr = client.incr
+    pipe.expire = client.expire
+    pipe.execute = AsyncMock(return_value=[count, True])
+    pipe.__aenter__ = AsyncMock(return_value=pipe)
+    pipe.__aexit__ = AsyncMock(return_value=None)
+    client.pipeline = MagicMock(return_value=pipe)
     return client
 
 
