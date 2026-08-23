@@ -7,10 +7,7 @@ from prisma.enums import ReviewStatus
 
 from backend.blocks.taskmarket.blocks import CreateTaskMarketTaskBlock
 from backend.blocks.taskmarket.cli import SettlementUnknownError, TaskMarketCLI
-from backend.blocks.taskmarket.models import (
-    BASE_USDC_ADDRESS,
-    TaskMarketTaskPreview,
-)
+from backend.blocks.taskmarket.models import BASE_USDC_ADDRESS, TaskMarketTaskPreview
 from backend.blocks.taskmarket.review import consume_approved_review
 from backend.data.human_review import ReviewResult
 from backend.util.exceptions import BlockExecutionError

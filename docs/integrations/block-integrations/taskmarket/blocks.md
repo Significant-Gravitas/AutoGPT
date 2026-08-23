@@ -23,10 +23,10 @@ Consumes an approved review atomically, verifies the reviewed preview fingerprin
 
 | Output | Description | Type |
 |--------|-------------|------|
+| error | Error message if the operation failed | str |
 | task_id | Created TaskMarket task ID | str |
 | task_url | Canonical TaskMarket task link | str |
 | live_status | Live task state read back after creation | Dict[str, Any] |
-| error | Error message if the operation failed | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -55,10 +55,10 @@ Uses read-only TaskMarket CLI operations to retrieve the current task state and 
 
 | Output | Description | Type |
 |--------|-------------|------|
+| error | Error message if the operation failed | str |
 | task | Current live task state | Dict[str, Any] |
 | submissions | Submissions presented for human review | List[Dict[str, Any]] |
 | human_review_required | Always true; this block cannot accept or reject work | bool |
-| error | Error message if the operation failed | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -93,9 +93,9 @@ Validates the description, deliverables, reward, hard spend ceiling, deadline, B
 
 | Output | Description | Type |
 |--------|-------------|------|
+| error | Error message if the operation failed | str |
 | preview | Immutable Base task preview for human authorization | TaskMarketTaskPreview |
 | fingerprint | SHA-256 binding for every preview and spend field | str |
-| error | Error message if the operation failed | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
