@@ -16,6 +16,7 @@ from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
+from backend.copilot.watchers import deliver as watchers
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError
@@ -335,7 +336,14 @@ async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
             expert_id,
             reason=f"Weekly credit budget reached ({spent}/{budget})",
         )
-        await _post_budget_message(user_id, expert, spent, budget, breached=True)
+        # The proactive watcher owns the pause announcement when it's on for
+        # this user — its copy says the same thing with the attention-card
+        # framing. Only fall back to the legacy in-thread message when it
+        # isn't, so the user never reads the pause twice.
+        if not await watchers.deliver_expert_paused(
+            user_id=user_id, expert_id=expert_id, spent=spent, budget=budget
+        ):
+            await _post_budget_message(user_id, expert, spent, budget, breached=True)
         raise ExpertRunPausedError(
             f"{expert.name} hit her weekly credit budget ({spent}/{budget}); "
             "schedules are paused until you resume them.",

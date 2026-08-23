@@ -72,6 +72,11 @@ class Flag(str, Enum):
     # retry, and costs the user nothing.  Off by default because the notice
     # posts into a chat the user may have navigated away from.
     COPILOT_OAUTH_SCOPE_CHECK = "copilot-oauth-scope-check"
+    # Proactive "I noticed X" watchers: a run failed, an expert paused
+    # itself on budget, a run stopped for a decision. Fail-closed
+    # (default False) — these are unprompted messages, so a flag lookup
+    # failure has to mean silence rather than a surprise post.
+    COPILOT_PROACTIVE_WATCHERS = "copilot-proactive-watchers"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"

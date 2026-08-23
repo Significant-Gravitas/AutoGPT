@@ -48,6 +48,7 @@ from backend.api.features.store.db import (
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
+from backend.copilot.watchers import deliver as watchers
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
@@ -527,6 +528,13 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_expert_post_session_id = _(chat_db.get_expert_post_session_id)
+
+    # ============ Proactive watchers ============ #
+    # Exposed so the Prisma-less executor can hand a failed run to the
+    # watcher without needing LaunchDarkly, Redis and Prisma of its own.
+    deliver_run_failed_watcher = _(
+        watchers.deliver_run_failed, name="deliver_run_failed_watcher"
+    )
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
@@ -611,6 +619,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
     get_expert_post_session_id = _(d.get_expert_post_session_id)
+    deliver_run_failed_watcher = _(d.deliver_run_failed_watcher)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
@@ -862,6 +871,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_messages_batch = d.add_chat_messages_batch
     append_expert_run_message = d.append_expert_run_message
     get_expert_post_session_id = d.get_expert_post_session_id
+    deliver_run_failed_watcher = d.deliver_run_failed_watcher
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question

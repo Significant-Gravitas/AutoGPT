@@ -28,6 +28,7 @@ from backend.copilot.constants import (
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
+from backend.copilot.watchers import deliver as watchers
 from backend.data.execution import get_graph_execution_meta
 from backend.util.json import SafeJson
 
@@ -237,6 +238,17 @@ async def get_or_create_human_review(
 
     # If pending, return None to continue waiting, otherwise return the review result
     if review.status == ReviewStatus.WAITING:
+        # Tell the user their expert is stuck waiting on them. Gated on the
+        # just-created signal because this function is also the polling path
+        # a paused execution re-enters — without it every poll would re-ask
+        # the watcher (which would dedupe, but only after burning the work).
+        if review.createdAt == review.updatedAt:
+            await watchers.deliver_review_waiting(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                node_exec_id=node_exec_id,
+                instructions=message,
+            )
         return None
     else:
         return ReviewResult(

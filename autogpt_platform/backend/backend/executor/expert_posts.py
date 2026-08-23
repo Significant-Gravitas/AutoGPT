@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME
+from backend.copilot.watchers.events import quote_lines, truncate
 from backend.data.execution import ExecutionStatus, GraphExecutionEntry
 from backend.data.expert_run_output import (
     OutputType,
@@ -31,7 +32,6 @@ logger = logging.getLogger(__name__)
 _POST_NAMESPACE = uuid.UUID("0b7c8a52-3d1e-4f6a-9c0d-7e5b2a91c4d8")
 _DAILY_POST_CAP = 10
 _CAP_KEY_TTL_SECONDS = 2 * 24 * 3600
-_MAX_ERROR_LENGTH = 500
 
 # Discriminator the frontend keys on to render a WorkCard instead of a raw
 # markdown wall. Rides in the message's per-row JSONB metadata bag.
@@ -70,6 +70,15 @@ def _post_run_result(
     if context and context.parent_execution_id is not None:
         return
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+        return
+    # A failure is an attention event, not a work result. Hand it to the
+    # proactive watcher, which has its own copy, its own per-user cap, and
+    # the trigger provenance needed to say *why* the run was going. Fall
+    # through to the completion post below only when the watcher is off for
+    # this user — otherwise the same failure gets told twice.
+    if status == ExecutionStatus.FAILED and _watcher_took_the_failure(
+        db_client, graph_exec, expert_id, exec_stats
+    ):
         return
     # The key is captured once at admission and reused for release — a UTC
     # midnight rollover between the two must not decrement the new day's
@@ -135,6 +144,32 @@ def _post_run_result(
         _release_cap_slot(cap_key, expert_id)
 
 
+def _watcher_took_the_failure(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    expert_id: str,
+    exec_stats: GraphExecutionStats,
+) -> bool:
+    """Best-effort handoff. A watcher that can't be reached hasn't taken
+    anything, so we say so and let the legacy completion post run — the user
+    hears about the failure either way."""
+    try:
+        return db_client.deliver_run_failed_watcher(
+            user_id=graph_exec.user_id,
+            expert_id=expert_id,
+            graph_exec_id=graph_exec.graph_exec_id,
+            graph_id=graph_exec.graph_id,
+            trigger_source=graph_exec.execution_context.trigger_source,
+            error=str(exec_stats.error) if exec_stats.error else None,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Proactive failure watcher unavailable for run "
+            f"#{graph_exec.graph_exec_id}: {type(e).__name__}: {e}"
+        )
+        return False
+
+
 def build_expert_run_message(
     agent_name: str,
     succeeded: bool,
@@ -156,13 +191,13 @@ def build_expert_run_message(
     )
     if succeeded:
         body = (
-            f"\n\nHere's the summary it generated:\n\n{_quote(summary)}"
+            f"\n\nHere's the summary it generated:\n\n{quote_lines(summary)}"
             if summary
             else " It finished without any problems."
         )
         return f"I ran **{agent_name}** in the background.{body}{link}"
     detail = (
-        f"\n\nThe reported error:\n\n{_quote(_truncate(error, _MAX_ERROR_LENGTH))}"
+        f"\n\nThe reported error:\n\n{quote_lines(truncate(error))}"
         if error
         else ""
     )
@@ -197,14 +232,6 @@ def _resolve_run_output(
             f"{type(e).__name__}: {e}"
         )
         return "unknown", None
-
-
-def _quote(text: str) -> str:
-    return "\n".join(f"> {line}" for line in text.splitlines() or [""])
-
-
-def _truncate(text: str, limit: int) -> str:
-    return text if len(text) <= limit else f"{text[:limit]}… (truncated)"
 
 
 def _cap_key(user_id: str, expert_id: str) -> str:

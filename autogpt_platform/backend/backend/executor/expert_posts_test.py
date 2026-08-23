@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from prisma.enums import TriggerSource
+
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -24,6 +26,7 @@ def _entry(
     expert_id: str | None = None,
     dry_run: bool = False,
     parent_execution_id: str | None = None,
+    trigger_source: TriggerSource = TriggerSource.cron,
 ) -> GraphExecutionEntry:
     return GraphExecutionEntry(
         user_id="user-1",
@@ -34,6 +37,7 @@ def _entry(
             expert_id=expert_id,
             dry_run=dry_run,
             parent_execution_id=parent_execution_id,
+            trigger_source=trigger_source,
         ),
     )
 
@@ -42,6 +46,14 @@ def _redis_allowing_posts() -> MagicMock:
     redis = MagicMock()
     redis.incr.return_value = 1
     return redis
+
+
+def _db_client_watcher_off() -> MagicMock:
+    """The default in these tests: the watcher flag is off, so the legacy
+    completion post keeps owning failures."""
+    db_client = MagicMock()
+    db_client.deliver_run_failed_watcher.return_value = False
+    return db_client
 
 
 def _output_node(name: str, value: object) -> SimpleNamespace:
@@ -207,7 +219,7 @@ def test_post_respects_daily_cap():
 
 
 def test_post_never_raises_on_client_failure():
-    db_client = MagicMock()
+    db_client = _db_client_watcher_off()
     db_client.get_graph_metadata.side_effect = RuntimeError("rpc down")
     with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
         handle_expert_run_post(
@@ -303,7 +315,7 @@ def test_post_attaches_run_metadata_with_output_type():
 
 
 def test_failed_post_skips_output_fetch():
-    db_client = MagicMock()
+    db_client = _db_client_watcher_off()
     db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
     db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
     with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
@@ -342,7 +354,7 @@ def test_release_uses_admission_key_across_midnight():
     """The slot released must be the slot reserved: the key is captured once
     at admission, so a UTC date rollover between reservation and release
     cannot decrement the new day's counter."""
-    db_client = MagicMock()
+    db_client = _db_client_watcher_off()
     db_client.get_graph_metadata.side_effect = RuntimeError("rpc down")
     redis = _redis_allowing_posts()
     with patch(f"{_MODULE}.get_redis", return_value=redis):
@@ -355,3 +367,85 @@ def test_release_uses_admission_key_across_midnight():
     incr_key = redis.incr.call_args.args[0]
     decr_key = redis.decr.call_args.args[0]
     assert incr_key == decr_key
+
+
+def test_failure_is_handed_to_the_proactive_watcher():
+    """A failed run is an attention event: the watcher gets it, with the
+    provenance needed to say why the run was going."""
+    db_client = MagicMock()
+    db_client.deliver_run_failed_watcher.return_value = True
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1", trigger_source=TriggerSource.webhook),
+            ExecutionStatus.FAILED,
+            GraphExecutionStats(error="boom"),
+        )
+    kwargs = db_client.deliver_run_failed_watcher.call_args.kwargs
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["expert_id"] == "expert-1"
+    assert kwargs["graph_exec_id"] == "exec-1"
+    assert kwargs["trigger_source"] == TriggerSource.webhook
+    assert kwargs["error"] == "boom"
+
+
+def test_watcher_owned_failure_suppresses_the_legacy_post():
+    """Otherwise the user reads about the same failure twice."""
+    db_client = MagicMock()
+    db_client.deliver_run_failed_watcher.return_value = True
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.FAILED,
+            GraphExecutionStats(error="boom"),
+        )
+    db_client.append_expert_run_message.assert_not_called()
+
+
+def test_legacy_post_still_runs_when_the_watcher_is_off():
+    db_client = _db_client_watcher_off()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.FAILED,
+            GraphExecutionStats(error="boom"),
+        )
+    assert (
+        db_client.append_expert_run_message.call_args.kwargs["metadata"]["status"]
+        == "failed"
+    )
+
+
+def test_unreachable_watcher_falls_back_to_the_legacy_post():
+    """An RPC that can't be reached hasn't taken the event — the user still
+    has to hear that the run failed."""
+    db_client = MagicMock()
+    db_client.deliver_run_failed_watcher.side_effect = RuntimeError("rpc down")
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.FAILED,
+            GraphExecutionStats(error="boom"),
+        )
+    db_client.append_expert_run_message.assert_called_once()
+
+
+def test_completed_runs_never_reach_the_failure_watcher():
+    db_client = MagicMock()
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Morning Brief")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(),
+        )
+    db_client.deliver_run_failed_watcher.assert_not_called()
