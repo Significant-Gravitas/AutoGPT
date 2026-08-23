@@ -16746,6 +16746,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Delegated By Session Id"
           },
+          "estimated_minutes": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Estimated Minutes"
+          },
+          "success_criteria": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Success Criteria"
+          },
           "handed_off_from_expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
