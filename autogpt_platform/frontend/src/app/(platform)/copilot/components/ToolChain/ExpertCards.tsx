@@ -84,11 +84,42 @@ function ExpertNoticeRow({ result, done }: NoticeProps) {
         )}
         {done ? "Already done" : "Not added"}
       </p>
-      <p className="mt-1 text-xs text-zinc-500">
-        {str(result, "error") ?? "This approval could no longer be applied."}
-      </p>
+      <p className="mt-1 text-xs text-zinc-500">{noticeCopy(result, done)}</p>
     </div>
   );
+}
+
+/** The card has its own vocabulary on purpose. ``result.error`` is written
+ *  for the model — second person, tool names, "tell the user it is done" —
+ *  so it is never shown; the stable ``reason`` code is mapped here instead
+ *  and the model-facing text stays model-facing. */
+const REASON_COPY: Record<string, string> = {
+  already_applied: "This was already added earlier — nothing to redo.",
+  applied_but_expert_gone:
+    "The change was saved, but this teammate is no longer on the team.",
+  expired: "This preview expired before it was confirmed. Ask for a fresh one.",
+  not_approved: "This one wasn't confirmed. Ask again and it'll go through.",
+  unwatermarked: "This preview is too old to apply. Ask for a fresh one.",
+  wrong_chat: "This one belongs to a different chat.",
+  expert_moved: "This teammate changed somewhere else, so nothing was updated.",
+  template_gone: "That expert is no longer available.",
+  limit_reached: "Your team is already at its limit — archive someone first.",
+  lifetime_limit_reached:
+    "You've reached the maximum number of experts you can raise.",
+  workspace_unavailable:
+    "The expert workspace was busy, so nothing was created. Try again shortly.",
+  proposal_incomplete: "Some details were missing, so nothing was applied.",
+  unsupported_kind: "This kind of change can't be applied here.",
+  unexpected_failure: "Something went wrong, so nothing was applied.",
+};
+
+function noticeCopy(result: Record<string, unknown>, done: boolean): string {
+  const reason = str(result, "reason");
+  const copy = reason ? REASON_COPY[reason] : undefined;
+  if (copy) return copy;
+  return done
+    ? "This change was already applied."
+    : "This approval could no longer be applied.";
 }
 
 /** An expert inside the chain — either a hire/raise preview awaiting the

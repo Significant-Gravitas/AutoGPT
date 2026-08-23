@@ -172,7 +172,8 @@ describe("expert change cards", () => {
               confirmation_id: "c-2",
               outcome: "failed",
               reason: "expired",
-              error: "This confirmation_id is unknown or has expired.",
+              error:
+                "This confirmation_id is unknown or has expired - previews last 15 minutes. Call hire_expert, raise_expert or update_expert again for a fresh preview.",
             },
           ],
           experts: [{ id: "exp-otto", name: "Otto", role: "Inbox triage" }],
@@ -183,8 +184,13 @@ describe("expert change cards", () => {
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Not added")).toBeDefined();
     expect(
-      screen.getByText("This confirmation_id is unknown or has expired."),
+      screen.getByText(
+        "This preview expired before it was confirmed. Ask for a fresh one.",
+      ),
     ).toBeDefined();
+    // result.error is written for the model; it must never reach the chat.
+    expect(screen.queryByText(/confirmation_id/)).toBeNull();
+    expect(screen.queryByText(/hire_expert/)).toBeNull();
   });
 
   it("shows an already-applied approval as done, not as a failure", () => {
@@ -210,6 +216,36 @@ describe("expert change cards", () => {
 
     expect(screen.getByText("Already done")).toBeDefined();
     expect(screen.queryByText("Not added")).toBeNull();
+    expect(
+      screen.getByText("This was already added earlier — nothing to redo."),
+    ).toBeDefined();
+    expect(screen.queryByText(/tell the user it is done/)).toBeNull();
+  });
+
+  it("falls back to neutral copy for a reason it does not know", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "Nothing was applied.",
+          applied: false,
+          results: [
+            {
+              confirmation_id: "c-1",
+              outcome: "failed",
+              reason: "some_future_reason",
+              error: "Call hire_expert again for a fresh preview.",
+            },
+          ],
+          experts: [],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("This approval could no longer be applied."),
+    ).toBeDefined();
+    expect(screen.queryByText(/hire_expert/)).toBeNull();
   });
 
   it("renders a handoff as the receiving teammate's sub-session", () => {
