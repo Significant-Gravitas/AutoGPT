@@ -23,12 +23,14 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
+    SubSessionPhase,
     SubSessionStatusResponse,
     WorkspaceFileInfoData,
 )
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     RunSubSessionTool,
+    _phase_note,
     apply_delegated_expert,
     response_from_outcome,
 )
@@ -1395,3 +1397,52 @@ class TestPhaseTimeline:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.estimated_minutes == 20
         assert r.success_criteria == ["runs clean"]
+
+
+class TestPhaseNoteOrdering:
+    """The phase number and the phase label must always describe the SAME
+    item. Deriving the number from a count of completed todos assumed the
+    model emits them in status order, which nothing enforces."""
+
+    @staticmethod
+    def _phases(*pairs: tuple[str, str]) -> list[SubSessionPhase]:
+        return [SubSessionPhase(content=c, status=s) for c, s in pairs]  # type: ignore[arg-type]
+
+    def test_position_follows_the_in_progress_item_not_the_completed_count(self):
+        # Out-of-order plan: the in-progress item is last, but only one item
+        # is completed. Counting completions would say "Phase 2/3" while
+        # naming the third phase.
+        note = _phase_note(
+            self._phases(
+                ("Draft the outline", "completed"),
+                ("Collect sources", "pending"),
+                ("Write the report", "in_progress"),
+            )
+        )
+
+        assert note == " Phase 3/3: Write the report."
+
+    def test_in_order_plan_is_unchanged(self):
+        note = _phase_note(
+            self._phases(
+                ("Draft the outline", "completed"),
+                ("Collect sources", "in_progress"),
+                ("Write the report", "pending"),
+            )
+        )
+
+        assert note == " Phase 2/3: Collect sources."
+
+    def test_nothing_in_progress_falls_back_to_the_completed_count(self):
+        note = _phase_note(
+            self._phases(
+                ("Draft the outline", "completed"),
+                ("Collect sources", "pending"),
+            )
+        )
+
+        assert note == " Phase 2/2."
+
+    def test_no_phases_renders_nothing(self):
+        assert _phase_note(None) == ""
+        assert _phase_note([]) == ""

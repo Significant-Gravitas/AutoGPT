@@ -564,10 +564,18 @@ def _estimate_note(estimated_minutes: int | None) -> str:
 
 def _phase_note(phases: list[SubSessionPhase] | None) -> str:
     """Where in its own plan the sub currently is — a more useful thing to
-    relay than another elapsed-seconds reading."""
+    relay than another elapsed-seconds reading.
+
+    The position comes from the in-progress item's own index, not from a count
+    of completed items: nothing makes the model emit its todos in status order,
+    and counting completions can print a number that names a different phase
+    than the label beside it.
+    """
     if not phases:
         return ""
+    total = len(phases)
+    current = next((i for i, p in enumerate(phases) if p.status == "in_progress"), None)
+    if current is not None:
+        return f" Phase {current + 1}/{total}: {phases[current].content}."
     done = sum(1 for p in phases if p.status == "completed")
-    current = next((p for p in phases if p.status == "in_progress"), None)
-    label = f": {current.content}" if current else ""
-    return f" Phase {min(done + 1, len(phases))}/{len(phases)}{label}."
+    return f" Phase {min(done + 1, total)}/{total}."
