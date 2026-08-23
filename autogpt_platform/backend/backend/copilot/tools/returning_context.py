@@ -14,6 +14,21 @@ The block lands in the **per-turn user message** (after the last
 cache_control breakpoint) alongside ``<session_context>``, so injecting it
 never busts the prefix cache.
 
+Two entry points, because the engines assemble that message two different
+ways and the block must appear **exactly once** per turn:
+
+* :func:`build_returning_context` returns the bare body for the first turn of
+  a session, where the engines call ``inject_user_context``;
+* :func:`build_returning_context_prefix` returns the wrapped, ready-to-prepend
+  block for every *later* turn, where ``inject_user_context`` is skipped
+  (SDK ``has_history``, baseline ``is_first_turn``) and the per-turn prefix is
+  the only way in. It refuses to build when the first-turn path already ran,
+  which is what makes the two mutually exclusive.
+
+The resume path is the one that matters: a user reopening a thread they left
+is the whole point of the feature, and it is the only path where the away-gap
+is ever non-zero.
+
 Two guards keep it cheap. The whole computation is skipped unless the user
 has actually been away (:data:`_RETURNING_GAP`) or the session is brand new,
 and it emits **no block at all** when there is nothing to report — the common
@@ -34,6 +49,7 @@ from backend.copilot.model import (
     ChatSession,
     ChatSessionInfo,
 )
+from backend.copilot.service import RETURNING_CONTEXT_TAG
 from backend.data.db_accessors import chat_db, experts_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -123,6 +139,33 @@ async def build_returning_context(session: ChatSession, user_id: str | None) -> 
     )
 
 
+async def build_returning_context_prefix(
+    session: ChatSession,
+    user_id: str | None,
+    *,
+    is_user_message: bool,
+    already_injected: bool,
+) -> str:
+    """The wrapped block for a turn that does NOT go through
+    ``inject_user_context``, or ``""``.
+
+    ``already_injected`` is the engines' own first-turn predicate (SDK: ``not
+    has_history``; baseline: ``should_inject_user_context``). Refusing to
+    build when it is true is the single guarantee that a turn can never carry
+    two ``<returning_context>`` blocks — the first-turn path and this one are
+    exact complements of each other, checked before any work happens.
+
+    Non-user turns (tool continuations, scheduled follow-ups) get nothing:
+    there is no returning user to greet.
+    """
+    if already_injected or not is_user_message:
+        return ""
+    body = await build_returning_context(session, user_id)
+    if not body:
+        return ""
+    return f"<{RETURNING_CONTEXT_TAG}>\n{body}\n</{RETURNING_CONTEXT_TAG}>\n\n"
+
+
 def should_recap(*, now: datetime, last_seen: datetime | None) -> bool:
     """Whether the user has been away long enough for a recap to be news.
 
@@ -137,15 +180,30 @@ def should_recap(*, now: datetime, last_seen: datetime | None) -> bool:
 def previous_user_activity(messages: list[ChatMessage]) -> datetime | None:
     """When the user last typed in this session *before* the current turn.
 
-    The turn-starting message is already persisted by the time the prompt is
-    assembled, so the last user row is the message being answered right now —
-    the one before it is the actual "last seen". ``None`` when there is no
-    earlier user message (fresh session) or when timestamps are missing.
+    The current turn is the **trailing run of user rows**, not just the last
+    one. By the time the prompt is assembled the turn-starting message is
+    already persisted, and the SDK path may have drained queued "pending"
+    chips into their own user rows behind it — indexing back a fixed one row
+    would read one of those chips (sent seconds ago) and suppress every
+    recap. A run ends at the first non-user row, which in a real transcript
+    is the assistant reply to the previous message.
+
+    ``None`` when nothing precedes that run (fresh session) or when the rows
+    that do precede it carry no timestamp.
+
+    Truncation-safe: ``get_chat_messages_paginated`` fills a session from the
+    **newest** end (``MAX_LOADED_CHAT_MESSAGES``), so a capped transcript
+    keeps its tail intact and only loses ancient history. Losing older rows
+    can only push ``last_seen`` further back, which is the safe direction —
+    it never invents recency the user did not have.
     """
-    stamped = [m.created_at for m in messages if m.role == "user" and m.created_at]
-    if len(stamped) < 2:
-        return None
-    return as_utc(stamped[-2])
+    index = len(messages)
+    while index > 0 and messages[index - 1].role == "user":
+        index -= 1
+    for message in reversed(messages[:index]):
+        if message.role == "user" and message.created_at:
+            return as_utc(message.created_at)
+    return None
 
 
 def compose_returning_context(

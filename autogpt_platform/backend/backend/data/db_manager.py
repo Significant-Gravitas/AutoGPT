@@ -530,7 +530,6 @@ class DatabaseManager(AppService):
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
     get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
-    get_background_sessions_since = _(chat_db.get_background_sessions_since)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
@@ -548,6 +547,8 @@ class DatabaseManager(AppService):
     update_chat_session_status = _(chat_db.update_chat_session_status)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
+    # Source for the copilot "while you were away" recap.
+    get_background_sessions_since = _(chat_db.get_background_sessions_since)
 
     # ============ Morning Briefing ============ #
     # Exposed so the Prisma-less scheduler process can compose, store and
@@ -863,7 +864,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question
     get_sessions_with_pending_question = d.get_sessions_with_pending_question
-    get_background_sessions_since = d.get_background_sessions_since
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
@@ -879,4 +879,5 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session_status = d.update_chat_session_status
     get_chat_session_status = d.get_chat_session_status
     get_latest_user_message_in_session = d.get_latest_user_message_in_session
+    get_background_sessions_since = d.get_background_sessions_since
     add_chat_message = d.add_chat_message

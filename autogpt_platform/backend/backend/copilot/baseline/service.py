@@ -117,7 +117,10 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
 )
-from backend.copilot.tools.returning_context import build_returning_context
+from backend.copilot.tools.returning_context import (
+    build_returning_context,
+    build_returning_context_prefix,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -2042,6 +2045,27 @@ async def stream_chat_completion_baseline(
                     if isinstance(existing, str):
                         msg["content"] = builder_block + existing
                     break
+
+    # "While you were away" recap for a RESUMED turn.  On a first turn the
+    # block already went in via inject_user_context above, and
+    # ``already_injected`` makes the helper refuse to build a second one, so
+    # a turn can never carry two <returning_context> blocks.  Like
+    # builder_context this is prepended to the wire message only — never to
+    # ``user_message_for_transcript``, because the recap is stale the moment
+    # the turn ends.
+    returning_block = await build_returning_context_prefix(
+        session,
+        user_id,
+        is_user_message=is_user_message,
+        already_injected=should_inject_user_context,
+    )
+    if returning_block:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    msg["content"] = returning_block + existing
+                break
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,

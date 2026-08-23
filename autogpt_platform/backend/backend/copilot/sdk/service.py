@@ -151,7 +151,10 @@ from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
-from ..tools.returning_context import build_returning_context
+from ..tools.returning_context import (
+    build_returning_context,
+    build_returning_context_prefix,
+)
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context
@@ -4807,6 +4810,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
+        # "While you were away" recap for a RESUMED turn.  The first-turn
+        # path above routes it through inject_user_context instead, so
+        # ``already_injected`` makes the two mutually exclusive — a turn can
+        # never carry two <returning_context> blocks.  Computed once here and
+        # reused by the retry path below so a retry cannot re-query for it.
+        returning_prefix = await build_returning_context_prefix(
+            session,
+            user_id,
+            is_user_message=is_user_message,
+            already_injected=not has_history,
+        )
+
         query_message, was_compacted = await _build_query_message(
             current_message,
             session,
@@ -4838,6 +4853,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         query_message = await _maybe_prepend_builder_context(
             session, user_id, is_user_message, query_message
         )
+        # Prepend the recap onto the freshly-built query message.  Like
+        # builder_context this is NOT persisted to the transcript — the recap
+        # is stale the moment the turn ends.  ``returning_prefix`` is "" on
+        # every turn that went through inject_user_context.
+        query_message = returning_prefix + query_message
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -5002,6 +5022,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 state.query_message = await _maybe_prepend_builder_context(
                     session, user_id, is_user_message, state.query_message
                 )
+                # Re-prepend the SAME recap string the first attempt used.
+                # ``_build_query_message`` rebuilt state.query_message from
+                # scratch just above, so this is a re-application onto a clean
+                # base, not a second block stacked on the first.
+                state.query_message = returning_prefix + state.query_message
                 prior_adapter = state.adapter
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id,

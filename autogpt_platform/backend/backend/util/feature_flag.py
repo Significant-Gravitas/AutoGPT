@@ -72,14 +72,14 @@ class Flag(str, Enum):
     # retry, and costs the user nothing.  Off by default because the notice
     # posts into a chat the user may have navigated away from.
     COPILOT_OAUTH_SCOPE_CHECK = "copilot-oauth-scope-check"
+    COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
+    COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
+    COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     # "While you were away" recap — the ``<returning_context>`` block
     # listing sub-sessions that finished, follow-ups that fired, and work
     # still waiting on the user.  Costs extra reads on the turn-start
     # path, so it ships fail-closed (default False) and ramps per-cohort.
     COPILOT_RETURNING_CONTEXT = "copilot-returning-context"
-    COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
-    COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
-    COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
