@@ -6,6 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -21,6 +22,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertLearnedNote,
     ExpertPod,
     ExpertRun,
     ExpertSoulUpdate,
@@ -1323,3 +1325,119 @@ def test_assign_pod_unknown_pod_returns_404(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Expert or pod not found"
+
+
+_ROUTES = "backend.api.features.experts.routes"
+
+
+def _learned_note(**overrides) -> ExpertLearnedNote:
+    values = {
+        "id": "note-1",
+        "expert_id": "expert-1",
+        "text": "Always send drafts before publishing.",
+        "learned_at": datetime(2026, 8, 1, tzinfo=timezone.utc),
+        "source_session_id": None,
+        "source_rule_id": "edge-1",
+        "status": "active",
+    }
+    values.update(overrides)
+    return ExpertLearnedNote(**values)
+
+
+@pytest.fixture
+def learned_notes_on(mocker: pytest_mock.MockerFixture):
+    mocker.patch(
+        f"{_ROUTES}.is_feature_enabled", new_callable=AsyncMock, return_value=True
+    )
+    mocker.patch(
+        f"{_ROUTES}.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+
+def test_list_learned_notes_returns_active_notes(
+    mocker: pytest_mock.MockerFixture, learned_notes_on
+) -> None:
+    mocker.patch(
+        f"{_ROUTES}.learned_notes_db.list_learned_notes",
+        new_callable=AsyncMock,
+        return_value=[_learned_note()],
+    )
+
+    response = client.get("/experts/expert-1/learned-notes")
+
+    assert response.status_code == 200
+    assert response.json()[0]["text"] == "Always send drafts before publishing."
+
+
+def test_list_learned_notes_404s_when_the_flag_is_off(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        f"{_ROUTES}.is_feature_enabled", new_callable=AsyncMock, return_value=False
+    )
+    mocker.patch(
+        f"{_ROUTES}.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    listed = mocker.patch(
+        f"{_ROUTES}.learned_notes_db.list_learned_notes", new_callable=AsyncMock
+    )
+
+    response = client.get("/experts/expert-1/learned-notes")
+
+    assert response.status_code == 404
+    listed.assert_not_awaited()
+
+
+def test_list_learned_notes_404s_for_someone_elses_expert(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        f"{_ROUTES}.is_feature_enabled", new_callable=AsyncMock, return_value=True
+    )
+    mocker.patch(
+        f"{_ROUTES}.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.get("/experts/expert-1/learned-notes")
+
+    assert response.status_code == 404
+
+
+def test_archive_learned_note_also_invalidates_the_source_rule(
+    mocker: pytest_mock.MockerFixture, learned_notes_on
+) -> None:
+    mocker.patch(
+        f"{_ROUTES}.learned_notes_db.archive_learned_note",
+        new_callable=AsyncMock,
+        return_value=_learned_note(status="archived"),
+    )
+    invalidate = mocker.patch(
+        f"{_ROUTES}.invalidate_learned_rule", new_callable=AsyncMock, return_value=True
+    )
+
+    response = client.delete("/experts/expert-1/learned-notes/note-1")
+
+    assert response.status_code == 204
+    invalidate.assert_awaited_once_with("test-user-id", "expert-1", "edge-1")
+
+
+def test_archive_learned_note_unknown_note_returns_404(
+    mocker: pytest_mock.MockerFixture, learned_notes_on
+) -> None:
+    mocker.patch(
+        f"{_ROUTES}.learned_notes_db.archive_learned_note",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+    invalidate = mocker.patch(f"{_ROUTES}.invalidate_learned_rule", new_callable=AsyncMock)
+
+    response = client.delete("/experts/expert-1/learned-notes/nope")
+
+    assert response.status_code == 404
+    invalidate.assert_not_awaited()

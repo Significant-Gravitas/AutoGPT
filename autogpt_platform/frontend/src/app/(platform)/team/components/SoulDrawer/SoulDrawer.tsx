@@ -19,6 +19,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { LockIcon } from "@hugeicons/core-free-icons";
 import { ReactNode, useState } from "react";
+import { LearnedNotes } from "./components/LearnedNotes/LearnedNotes";
 import { useSoulDrawer } from "./useSoulDrawer";
 
 interface Props {
@@ -68,7 +69,12 @@ export function SoulDrawer({ expert, onClose }: Props) {
           <div className="flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 sm:px-8">
             <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
               <SoulFields soul={soul} updateField={updateField} />
-              <LearnedNotes />
+              <LearnedNotes
+                expertId={displayedExpert?.id}
+                title={
+                  <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
+                }
+              />
               <ProtectedRules
                 rules={displayedExpert?.protected_soul_rules ?? []}
               />
@@ -150,17 +156,6 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         onChange={(event) => updateField("boundaries", event.target.value)}
       />
     </div>
-  );
-}
-
-function LearnedNotes() {
-  return (
-    <section className="mb-8">
-      <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      <Text variant="small" className="text-zinc-500">
-        Nothing recorded yet. What this expert learns will appear here.
-      </Text>
-    </section>
   );
 }
 

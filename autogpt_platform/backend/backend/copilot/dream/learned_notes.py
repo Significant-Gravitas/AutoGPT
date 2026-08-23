@@ -211,11 +211,12 @@ async def promote_pass_learned_notes(
         # Demote first, then read: a note archived above must not count as an
         # existing note that blocks a fresh promotion of the same rule.
         existing = await notes_db.list_learned_notes(user_id, expert_id)
-        candidates = dedupe_candidates(
+        deduped = dedupe_candidates(
             select_rule_candidates(ops, snapshot), [note.text for note in existing]
         )[:MAX_PROMOTIONS_PER_PASS]
-        for candidate in candidates:
-            candidate.source_session_id = session_id
+        candidates = [
+            c.model_copy(update={"source_session_id": session_id}) for c in deduped
+        ]
 
         created = await notes_db.promote_learned_notes(user_id, expert_id, candidates)
         if created or archived:

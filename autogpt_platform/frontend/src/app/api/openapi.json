@@ -6176,6 +6176,89 @@
         }
       }
     },
+    "/api/experts/{expert_id}/learned-notes": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Learned Notes",
+        "description": "Active \"what I've learned\" notes shown in the expert's Soul drawer.",
+        "operationId": "list_expert_learned_notes",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertLearnedNote"
+                  },
+                  "title": "Response List Expert Learned Notes"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found, or the feature is off" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/learned-notes/{note_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Archive Expert Learned Note",
+        "description": "Delete a learned note for good.\n\nTwo steps, in this order: archive the row so the note stops being\ninjected, then demote the Graphiti rule behind it so the nightly dream\npass cannot promote it back. The graph half is best-effort \u2014 a note the\nuser deleted must disappear even when the memory store is unreachable.",
+        "operationId": "archive_expert_learned_note",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Note Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Note not found, or the feature is off" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -19084,6 +19167,46 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertLearnedNote": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "text": { "type": "string", "title": "Text" },
+          "learned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Learned At"
+          },
+          "source_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Session Id"
+          },
+          "source_rule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Rule Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "archived"],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expert_id",
+          "text",
+          "learned_at",
+          "source_session_id",
+          "source_rule_id",
+          "status"
+        ],
+        "title": "ExpertLearnedNote",
+        "description": "One machine-curated \"what I've learned\" note for an expert scope.\n\nPromoted by the nightly dream pass from a stable, high-confidence Graphiti\nrule \u2014 never written by hand, and never merged into the user-authored Soul\nfields. ``source_rule_id`` is the Graphiti edge the note came from; it is\nwhat the archive path invalidates so the note cannot be re-promoted."
       },
       "ExpertPod": {
         "properties": {
