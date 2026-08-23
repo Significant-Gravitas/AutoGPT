@@ -34,6 +34,7 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStart
+from backend.util.feature_flag import Flag
 
 _SVC = "backend.copilot.sdk.service"
 
@@ -160,6 +161,11 @@ def _make_patches(*, hire_experts_enabled: bool):
     return patches, mcp_server_mock, is_feature_enabled_mock
 
 
+def _await_count(mock, flag) -> int:
+    """How many times *flag* specifically was resolved."""
+    return sum(1 for call in mock.await_args_list if call.args and call.args[0] is flag)
+
+
 async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
@@ -210,7 +216,10 @@ class TestSdkExpertsFlagGuard:
             user_id="test-user", hire_experts_enabled=True
         )
 
-        is_feature_enabled_mock.assert_awaited_once()
+        # Assert on the HIRE_EXPERTS lookup specifically: a turn legitimately
+        # resolves other per-turn flags too, so a bare await count would break
+        # every time an unrelated flag is added.
+        assert _await_count(is_feature_enabled_mock, Flag.HIRE_EXPERTS) == 1
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
         # Plain Autopilot session (no session.expert_id): loses the
         # expert-session tools, keeps the staffing ("expert_admin") tools.

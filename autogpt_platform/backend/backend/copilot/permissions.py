@@ -130,6 +130,7 @@ ToolName = Literal[
     "search_feature_requests",
     "setup_agent_webhook_trigger",
     "store_skill",
+    "suggest_next_steps",
     "update_expert",
     "update_expert_soul",
     "update_folder",

@@ -48,6 +48,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util.feature_flag import Flag
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
@@ -2971,7 +2972,15 @@ class TestBaselineExpertsFlagGuard:
         is_feature_enabled_mock = await _run_baseline_until_experts_gate(
             user_id="user-1", hire_experts_enabled=True
         )
-        is_feature_enabled_mock.assert_awaited_once()
+        # Assert on the HIRE_EXPERTS lookup specifically: a turn legitimately
+        # resolves other per-turn flags too, so a bare await count would break
+        # every time an unrelated flag is added.
+        hire_experts_awaits = [
+            call
+            for call in is_feature_enabled_mock.await_args_list
+            if call.args and call.args[0] is Flag.HIRE_EXPERTS
+        ]
+        assert len(hire_experts_awaits) == 1
 
 
 class TestBaselineToolExecutorForwardsDisabledGroups:
