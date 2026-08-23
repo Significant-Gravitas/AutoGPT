@@ -530,6 +530,7 @@ class DatabaseManager(AppService):
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
     get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
+    get_background_sessions_since = _(chat_db.get_background_sessions_since)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
@@ -862,6 +863,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question
     get_sessions_with_pending_question = d.get_sessions_with_pending_question
+    get_background_sessions_since = d.get_background_sessions_since
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence

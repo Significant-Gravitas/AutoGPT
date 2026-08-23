@@ -151,6 +151,7 @@ from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
+from ..tools.returning_context import build_returning_context
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context
@@ -4741,6 +4742,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
                 )
+            # "While you were away" recap.  Self-gating: returns "" unless
+            # the flag is on AND the user has actually been away AND
+            # something happened, so the common case costs one timestamp
+            # comparison and no queries.
+            returning_ctx_content = await build_returning_context(session, user_id)
             # Pass warm_ctx and env_ctx to inject_user_context so they are
             # prepended AFTER sanitize_user_supplied_context runs — preventing
             # trusted server-injected blocks from being stripped by the sanitizer.
@@ -4753,6 +4759,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 warm_ctx=warm_ctx,
                 env_ctx=env_ctx_content,
                 session_ctx=session_ctx_content,
+                returning_ctx=returning_ctx_content,
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
                 expert_id=session.expert_id,

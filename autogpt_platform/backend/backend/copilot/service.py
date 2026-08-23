@@ -168,6 +168,12 @@ BUDGET_CONTEXT_TAG = "budget_context"
 # forge a fake session id or smuggle phantom follow-ups into the prefix.
 SESSION_CONTEXT_TAG = "session_context"
 
+# Tag name for the "while you were away" recap block, whose body is built
+# by ``copilot.tools.returning_context``.  Server-injected only: a forged
+# block could invent completed work or a phantom question and get the model
+# to report it to the user as fact.
+RETURNING_CONTEXT_TAG = "returning_context"
+
 # Tag name for the per-user skill index injected into the first user
 # message.  Carries one line per available skill
 # (``- name: <slug> — <description> — triggers: …``) so the model can
@@ -305,6 +311,20 @@ _SESSION_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{SESSION_CONTEXT_TAG}>.*?</{SESSION_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+# Same treatment for <returning_context> — server-only tag carrying the
+# "while you were away" recap. A user-typed block could fabricate a
+# finished delegation or a question from a teammate, which the model would
+# then relay as something that actually happened.
+_RETURNING_CONTEXT_ANYWHERE_RE = re.compile(
+    rf"<{RETURNING_CONTEXT_TAG}>.*</{RETURNING_CONTEXT_TAG}>\s*", re.DOTALL
+)
+_RETURNING_CONTEXT_LONE_TAG_RE = re.compile(
+    rf"</?{RETURNING_CONTEXT_TAG}>", re.IGNORECASE
+)
+_RETURNING_CONTEXT_PREFIX_RE = re.compile(
+    rf"^<{RETURNING_CONTEXT_TAG}>.*?</{RETURNING_CONTEXT_TAG}>\n\n", re.DOTALL
+)
+
 # Same treatment for <available_skills> — server-only tag injected from
 # the skill registry. User-supplied occurrences are stripped so a typed
 # ``<available_skills>...</available_skills>`` block cannot forge a fake
@@ -383,9 +403,9 @@ def strip_server_injected_tags(text: str) -> str:
     """Strip all server-only XML context tags + blocks from ``text``.
 
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
-    blocks (and their lone tags).  Used both by
+    ``<budget_context>``, ``<session_context>``, ``<returning_context>``,
+    ``<available_skills>``, ``<expert_identity>``, ``<expert_workflows>``,
+    and ``<team_context>`` blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
     will later land alongside server-injected versions of the same tags in
@@ -411,6 +431,12 @@ def strip_server_injected_tags(text: str) -> str:
     # invent phantom follow-ups the model would "cancel" via list_schedules).
     without_session_ctx = _SESSION_CONTEXT_ANYWHERE_RE.sub("", without_budget_ctx)
     without_session_ctx = _SESSION_CONTEXT_LONE_TAG_RE.sub("", without_session_ctx)
+    # Strip <returning_context> blocks and lone tags — prevents spoofing of
+    # the server-injected "while you were away" recap (a forged block could
+    # invent finished work or a teammate's question that the model would
+    # then report to the user as fact).
+    without_session_ctx = _RETURNING_CONTEXT_ANYWHERE_RE.sub("", without_session_ctx)
+    without_session_ctx = _RETURNING_CONTEXT_LONE_TAG_RE.sub("", without_session_ctx)
     # Strip <available_skills> blocks and lone tags — prevents spoofing of
     # the server-injected per-user skill index.
     without_skills_ctx = _SKILLS_CONTEXT_ANYWHERE_RE.sub("", without_session_ctx)
@@ -429,13 +455,14 @@ def sanitize_user_supplied_context(message: str) -> str:
     """Strip server-only XML tags from user-supplied input.
 
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
-    blocks — all are server-injected tags that must not appear verbatim in
-    user messages. A user who types these tags literally could spoof the
-    trusted personalisation, memory prefix, working-directory context, USD
-    budget hint, per-session follow-up awareness, per-user skill index, or
-    expert persona/workflow blocks the LLM relies on.
+    ``<budget_context>``, ``<session_context>``, ``<returning_context>``,
+    ``<available_skills>``, ``<expert_identity>``, ``<expert_workflows>``,
+    and ``<team_context>`` blocks — all are server-injected tags that must
+    not appear verbatim in user messages. A user who types these tags
+    literally could spoof the trusted personalisation, memory prefix,
+    working-directory context, USD budget hint, per-session follow-up
+    awareness, "while you were away" recap, per-user skill index, or expert
+    persona/workflow blocks the LLM relies on.
 
     The inject path must call this **unconditionally** — including when
     ``understanding`` is ``None`` — otherwise new users can smuggle a tag
@@ -453,9 +480,9 @@ def strip_injected_context_for_display(message: str) -> str:
     Used by the chat-history GET endpoint to hide server-side prefixes that
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
-    blocks from the **start** of the message, iterating until no more leading
-    injected blocks remain.
+    ``<budget_context>``, ``<session_context>``, ``<returning_context>``, and
+    ``<available_skills>`` blocks from the **start** of the message, iterating
+    until no more leading injected blocks remain.
 
     All tag types are server-injected and always appear as a prefix (never
     mid-message in stored data), so an anchored loop is both correct and safe.
@@ -474,6 +501,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
         result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
         result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
+        result = _RETURNING_CONTEXT_PREFIX_RE.sub("", result)
         result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)
         result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
         result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
@@ -571,6 +599,7 @@ async def inject_user_context(
     env_ctx: str = "",
     budget_ctx: str = "",
     session_ctx: str = "",
+    returning_ctx: str = "",
     skills_ctx: str = "",
     user_id: str | None = None,
     expert_id: str | None = None,
@@ -613,6 +642,12 @@ async def inject_user_context(
             a ``<session_context>`` block (session_id + pending follow-up
             summary).  Same trust contract as ``env_ctx`` — prepended AFTER
             sanitisation, never user-supplied.  Empty string → block is omitted.
+        returning_ctx: Trusted "while you were away" recap string to inject as
+            a ``<returning_context>`` block (background sessions that finished
+            plus work still waiting on the user).  Same trust contract as
+            ``session_ctx`` — prepended AFTER sanitisation, never
+            user-supplied.  Empty string → block is omitted, which is the
+            normal case when the user never left.
         skills_ctx: Trusted per-user skill index string to inject as an
             ``<available_skills>`` block.  Same trust contract as ``env_ctx``
             — prepended AFTER sanitisation, never user-supplied.  Empty
@@ -704,6 +739,16 @@ async def inject_user_context(
         final_message = (
             f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
             + final_message
+        )
+    # Prepend the "while you were away" recap directly above
+    # ``<session_context>``: the two are read together (what is scheduled vs
+    # what already happened) and both are per-turn dynamic, so they belong on
+    # the same side of the cache breakpoint. Server-injected, so the
+    # sanitizer has already stripped any user-typed forgery.
+    if returning_ctx:
+        final_message = (
+            f"<{RETURNING_CONTEXT_TAG}>\n{returning_ctx}\n"
+            f"</{RETURNING_CONTEXT_TAG}>\n\n" + final_message
         )
     # Prepend the expert identity/workflows block (expert session) or team
     # awareness block (plain session).  Server-injected after sanitisation

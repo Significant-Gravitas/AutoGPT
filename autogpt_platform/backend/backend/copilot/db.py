@@ -961,6 +961,63 @@ async def get_sessions_with_pending_question(
     return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
+# Bounds the "while you were away" recap source. The block renders at most a
+# handful of lines, so a wider read is paid for and then thrown away.
+BACKGROUND_SESSION_LIMIT = 6
+
+
+async def get_background_sessions_since(
+    user_id: str,
+    parent_session_id: str,
+    since: datetime,
+    limit: int = BACKGROUND_SESSION_LIMIT,
+) -> list[ChatSessionInfo]:
+    """Sessions that ran *without* the user watching, touched since ``since``.
+
+    Two kinds, deliberately fetched in one query so the recap costs a single
+    round-trip:
+
+    * **Delegated sub-threads** — ``metadata.delegated_by_session_id`` equals
+      ``parent_session_id``. These are the threads *this* chat spawned via
+      ``delegate_to_expert`` / ``handoff_to_expert``, so their outcome is
+      this chat's business. Scoped to the parent rather than the user so an
+      unrelated chat's delegations never leak into this recap.
+    * **Automation-origin sessions with no delegator** — a scheduled
+      follow-up with no pinned ``session_id`` mints a fresh chat at fire time
+      (see ``_execute_copilot_turn``), and that chat is the only artifact of
+      the follow-up having fired. User-scoped by necessity: the new session
+      carries no back-pointer to the chat that scheduled it.
+
+    ``parent_session_id`` itself is excluded — a follow-up that fired into
+    *this* chat is already in the transcript the model is reading.
+    """
+    sessions = await db.query_raw_with_schema(
+        f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
+        'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        # ``::timestamptz`` because the raw-query layer hands parameters to
+        # Postgres as JSON scalars — without the cast the comparison is
+        # ``timestamptz > text`` and errors at plan time.
+        + ' AND "id" <> $2 AND "updatedAt" > $3::timestamptz '
+        # ``->>`` collapses "key absent" and "explicit JSON null" to SQL NULL,
+        # so neither arm matches an ordinary interactive chat (same reasoning
+        # as the pending-question filter above).
+        "AND (\"metadata\" ->> 'delegated_by_session_id' = $2 "
+        # The automation arm excludes anything with a delegating session:
+        # a sub-thread spawned by a *different* chat is that chat's business,
+        # not a follow-up firing on its own.
+        "OR (\"metadata\" ->> 'origin' = 'automation' "
+        "AND \"metadata\" ->> 'delegated_by_session_id' IS NULL)) "
+        'ORDER BY "updatedAt" DESC LIMIT $4',
+        user_id,
+        parent_session_id,
+        since,
+        limit,
+        model=PrismaChatSession,
+    )
+    return [ChatSessionInfo.from_db(s) for s in sessions]
+
+
 def _escape_like(value: str) -> str:
     """Escape LIKE wildcards so ``title_contains`` matches literally.
 

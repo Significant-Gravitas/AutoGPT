@@ -117,6 +117,7 @@ from backend.copilot.tools import (
     expert_tool_disabled_groups,
     get_available_tools,
 )
+from backend.copilot.tools.returning_context import build_returning_context
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -1942,6 +1943,10 @@ async def stream_chat_completion_baseline(
             logger.exception(
                 "[skills] failed to build skills_ctx — proceeding without it"
             )
+        # "While you were away" recap — same contract as the SDK path: the
+        # helper self-gates on the flag, the away-gap, and having anything to
+        # report, so a mid-conversation turn pays nothing for it.
+        returning_ctx = await build_returning_context(session, user_id)
         prefixed = await inject_user_context(
             understanding,
             message or "",
@@ -1949,6 +1954,7 @@ async def stream_chat_completion_baseline(
             session.messages,
             budget_ctx=budget_ctx,
             session_ctx=session_ctx_content,
+            returning_ctx=returning_ctx,
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,

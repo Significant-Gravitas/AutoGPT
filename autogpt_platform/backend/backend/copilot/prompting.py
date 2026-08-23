@@ -434,6 +434,14 @@ required fields — never executes, never renders picker cards, never
 charges credits. Use it when you're unsure whether a block has
 required inputs, or to plan multi-step work without committing.
 
+### `<returning_context>` — while the user was away
+
+When a server-injected `<returning_context>` block is present and relevant,
+open with ONE short sentence recapping what changed since the user last
+wrote, then answer their actual message. Never dump the block's list
+verbatim, and skip the recap entirely when it has no bearing on what they
+just asked.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.
