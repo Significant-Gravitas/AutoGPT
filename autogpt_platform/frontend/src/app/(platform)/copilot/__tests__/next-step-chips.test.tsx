@@ -52,11 +52,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const SUGGESTIONS = [
-  "Email the report",
-  "Post on r/SaaS",
-  "Fix the criticals",
-];
+const SUGGESTIONS = ["Email the report", "Post on r/SaaS", "Fix the criticals"];
 
 function turnWithSuggestions(
   text: string,
@@ -146,7 +142,9 @@ describe("next-step chips", () => {
 
     const chips = await screen.findByTestId("next-step-chips");
     const user = userEvent.setup();
-    await user.click(within(chips).getByRole("button", { name: SUGGESTIONS[0] }));
+    await user.click(
+      within(chips).getByRole("button", { name: SUGGESTIONS[0] }),
+    );
 
     await waitFor(
       () => {
