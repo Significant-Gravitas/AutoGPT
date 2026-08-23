@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { SubSessionPhases, toPhases } from "./SubSessionPhases";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -179,6 +180,11 @@ export function SubSessionCard({ output }: OutputCardProps) {
   const status = useSubSessionEffectiveStatus(subSessionId, frozenStatus);
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
+  const estimate =
+    typeof output.estimated_minutes === "number" && output.estimated_minutes > 0
+      ? output.estimated_minutes
+      : null;
+  const phases = toPhases(output.phases);
   const expert = asObject(output.expert);
   const avatarUrl = expert && str(expert, "avatar_url");
   const role = expert && str(expert, "role");
@@ -193,6 +199,11 @@ export function SubSessionCard({ output }: OutputCardProps) {
             <span className="ml-1.5 font-normal text-zinc-400">{role}</span>
           )}
         </p>
+        {estimate !== null && (
+          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
+            ~{estimate}m est
+          </span>
+        )}
         {elapsed !== null && (
           <span className="shrink-0 text-[11px] text-zinc-400">
             {elapsed >= 60
@@ -208,6 +219,7 @@ export function SubSessionCard({ output }: OutputCardProps) {
           {response}
         </p>
       )}
+      <SubSessionPhases phases={phases} />
       {/* Keyed to the FROZEN status on purpose: once mounted for a running
           output, the live view stays up after completion showing the final
           steps + answer (it stops polling on its own). */}

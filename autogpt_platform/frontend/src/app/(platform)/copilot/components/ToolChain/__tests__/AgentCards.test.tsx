@@ -197,4 +197,92 @@ describe("SubSessionCard", () => {
     expect(screen.getByText("45s")).toBeDefined();
     expect(screen.queryByLabelText("Open sub-session")).toBeNull();
   });
+
+  // A running delegation used to show only a ticking clock. It now reads as a
+  // tracked job: an up-front estimate, the elapsed time, and which phase of
+  // the delegate's own plan the work has reached.
+  it("shows the estimate, the elapsed time and the phase timeline together", () => {
+    render(
+      <SubSessionCard
+        output={{
+          status: "RUNNING",
+          elapsed_seconds: 125,
+          estimated_minutes: 25,
+          sub_autopilot_session_link: "/copilot?sessionId=sub-1",
+          phases: [
+            { content: "Scaffold the agent", status: "completed" },
+            { content: "Wire the integrations", status: "in_progress" },
+            { content: "Run a smoke test", status: "pending" },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("~25m est")).toBeDefined();
+    expect(screen.getByText("2m 5s")).toBeDefined();
+    expect(screen.getByText("1 of 3 steps done")).toBeDefined();
+    expect(screen.getByText("Scaffold the agent")).toBeDefined();
+    expect(screen.getByText("Wire the integrations")).toBeDefined();
+    expect(screen.getByText("Run a smoke test")).toBeDefined();
+    expect(screen.getByLabelText("completed")).toBeDefined();
+    expect(screen.getByLabelText("in progress")).toBeDefined();
+    expect(screen.getByLabelText("pending")).toBeDefined();
+    // The deep link survives the extra chrome.
+    expect(screen.getByLabelText("Open sub-session").getAttribute("href")).toBe(
+      "/copilot?sessionId=sub-1",
+    );
+  });
+
+  it("renders no estimate chip and no timeline when the backend sent neither", () => {
+    render(
+      <SubSessionCard output={{ status: "RUNNING", elapsed_seconds: 45 }} />,
+    );
+
+    expect(screen.queryByText(/est$/)).toBeNull();
+    expect(screen.queryByText(/steps done$/)).toBeNull();
+  });
+
+  it("ignores a non-positive estimate instead of promising 0 minutes", () => {
+    render(
+      <SubSessionCard
+        output={{ status: "RUNNING", estimated_minutes: 0, elapsed_seconds: 5 }}
+      />,
+    );
+
+    expect(screen.queryByText(/est$/)).toBeNull();
+  });
+
+  it("drops malformed phase entries rather than rendering blank rows", () => {
+    render(
+      <SubSessionCard
+        output={{
+          status: "RUNNING",
+          phases: [
+            { content: "Real step", status: "completed" },
+            { content: "   ", status: "pending" },
+            { status: "pending" },
+            "junk",
+            null,
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("1 of 1 steps done")).toBeDefined();
+    expect(screen.getByText("Real step")).toBeDefined();
+  });
+
+  it("treats an unknown phase status as pending", () => {
+    render(
+      <SubSessionCard
+        output={{
+          status: "RUNNING",
+          phases: [{ content: "Mystery step", status: "wat" }],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Mystery step")).toBeDefined();
+    expect(screen.getByLabelText("pending")).toBeDefined();
+  });
 });
