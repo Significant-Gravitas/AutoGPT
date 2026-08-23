@@ -5,8 +5,10 @@ Covers the contract:
 * a shortfall reaches the chat that asked for the connection, and nothing else
 * a clean connect produces no chat noise and clears any stale warning
 * two cards open for one provider are each judged against their own request
+* the fix the notice prescribes can actually retire the warning it produced
 * the model-facing status is emitted regardless of the notice feature flag
-* a failure anywhere is swallowed — the credential is already stored
+* a failure anywhere is swallowed, and contained to the session it hit —
+  the credential is already stored
 """
 
 import asyncio
@@ -38,18 +40,21 @@ class _FakeRedis:
         self.lists: dict[str, list[str]] = {}
         self.hashes: dict[str, dict[str, str]] = {}
         self.strings: dict[str, str] = {}
+        self.zsets: dict[str, dict[str, float]] = {}
+
+    @staticmethod
+    def _rank_slice(members: list[str], start: int, stop: int) -> list[str]:
+        return members[start:] if stop == -1 else members[start : stop + 1]
 
     async def rpush(self, key: str, *values: str) -> int:
         self.lists.setdefault(key, []).extend(values)
         return len(self.lists[key])
 
     async def ltrim(self, key: str, start: int, stop: int) -> None:
-        values = self.lists.get(key, [])
-        self.lists[key] = values[start:] if stop == -1 else values[start : stop + 1]
+        self.lists[key] = self._rank_slice(self.lists.get(key, []), start, stop)
 
     async def lrange(self, key: str, start: int, stop: int) -> list[str]:
-        values = self.lists.get(key, [])
-        return list(values[start:] if stop == -1 else values[start : stop + 1])
+        return list(self._rank_slice(self.lists.get(key, []), start, stop))
 
     async def expire(self, key: str, seconds: int) -> int:
         return 1
@@ -59,6 +64,7 @@ class _FakeRedis:
             self.lists.pop(key, None)
             self.hashes.pop(key, None)
             self.strings.pop(key, None)
+            self.zsets.pop(key, None)
         return len(keys)
 
     async def hset(self, key: str, field: str, value: str) -> int:
@@ -69,8 +75,35 @@ class _FakeRedis:
         entries = self.hashes.get(key, {})
         return sum(1 for field in fields if entries.pop(field, None) is not None)
 
+    async def hget(self, key: str, field: str) -> str | None:
+        return self.hashes.get(key, {}).get(field)
+
     async def hgetall(self, key: str) -> dict[str, str]:
         return dict(self.hashes.get(key, {}))
+
+    def _ordered(self, key: str) -> list[str]:
+        entries = self.zsets.get(key, {})
+        return [member for member, _ in sorted(entries.items(), key=lambda i: i[1])]
+
+    async def zadd(self, key: str, mapping: dict[str, float]) -> int:
+        entries = self.zsets.setdefault(key, {})
+        added = sum(1 for member in mapping if member not in entries)
+        entries.update(mapping)
+        return added
+
+    async def zrem(self, key: str, *members: str) -> int:
+        entries = self.zsets.get(key, {})
+        return sum(1 for member in members if entries.pop(member, None) is not None)
+
+    async def zrange(self, key: str, start: int, stop: int) -> list[str]:
+        return self._rank_slice(self._ordered(key), start, stop)
+
+    async def zremrangebyrank(self, key: str, start: int, stop: int) -> int:
+        doomed = self._rank_slice(self._ordered(key), start, stop)
+        entries = self.zsets.get(key, {})
+        for member in doomed:
+            entries.pop(member, None)
+        return len(doomed)
 
     async def set(self, key: str, value: str, *, nx: bool = False, ex: Any = None):
         if nx and key in self.strings:
@@ -417,6 +450,101 @@ async def test_a_clean_reconnect_clears_a_stale_shortfall():
             username="alice",
         )
         assert await scope_status_lines(_USER, _SESSION) == []
+
+
+@pytest.mark.asyncio
+async def test_the_prescribed_fix_clears_the_warning_it_produced():
+    """The notice tells the user to revoke at GitHub and press Connect again.
+    That button calls ``/login`` straight from the setup card already on
+    screen — no ``connect_integration``, so the callback has nothing to
+    drain. The warning it was meant to retire must go anyway, or the copilot
+    keeps insisting a now-fully-granted credential is broken."""
+    redis = _FakeRedis()
+    await _seed(redis, _SESSION, ["repo", "workflow"])
+    enqueue = AsyncMock(return_value=("running", MagicMock()))
+
+    p1, p2, p3, p4 = _patched(redis, enqueue=enqueue)
+    with p1, p2, p3, p4:
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        assert len(await scope_status_lines(_USER, _SESSION)) == 1
+
+        # No _seed: the user pressed Connect on the card that was already there.
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo", "workflow"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        assert await scope_status_lines(_USER, _SESSION) == []
+
+
+@pytest.mark.asyncio
+async def test_a_fix_from_one_chat_retires_the_warning_in_every_chat():
+    """Two chats asked for github and both were shortchanged. The user fixes
+    it once; neither chat may be left telling the model it is still broken."""
+    redis = _FakeRedis()
+    await _seed(redis, _SESSION, ["repo", "workflow"])
+    await _seed(redis, _OTHER_SESSION, ["repo", "workflow"])
+    enqueue = AsyncMock(return_value=("running", MagicMock()))
+
+    p1, p2, p3, p4 = _patched(redis, enqueue=enqueue)
+    with p1, p2, p3, p4:
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo", "workflow"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+
+        assert await scope_status_lines(_USER, _SESSION) == []
+        assert await scope_status_lines(_USER, _OTHER_SESSION) == []
+
+
+@pytest.mark.asyncio
+async def test_a_cardless_reconnect_that_is_still_short_stays_flagged():
+    """Clearing on *any* cardless callback would forgive a reconnect that is
+    still narrow. The stored request is re-diffed against the new grant, so
+    the warning survives — with a refreshed diff."""
+    redis = _FakeRedis()
+    await _seed(redis, _SESSION, ["repo", "workflow"])
+    enqueue = AsyncMock(return_value=("running", MagicMock()))
+
+    p1, p2, p3, p4 = _patched(redis, enqueue=enqueue)
+    with p1, p2, p3, p4:
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=[],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        await _run_scope_check(
+            user_id=_USER,
+            provider="github",
+            granted_scopes=["repo"],
+            provider_reports_scopes=True,
+            username="alice",
+        )
+        lines = await scope_status_lines(_USER, _SESSION)
+
+    assert len(lines) == 1
+    assert "missing workflow" in lines[0]
+    assert "granted: repo" in lines[0]
 
 
 @pytest.mark.asyncio

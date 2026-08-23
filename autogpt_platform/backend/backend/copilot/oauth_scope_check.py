@@ -25,9 +25,16 @@ the key holds a bounded **list** of pending connects, and the callback drains
 all of them and judges each *chat* against the union of everything its own
 cards asked for. Both chats learn the truth about the connection they were
 both waiting on; neither is told about scopes it never asked for.
+
+A warning must also be retirable by the fix it prescribes. The setup card's
+Connect button calls ``/login`` directly, so the natural remedy — revoke at
+the provider, press Connect again on the card already on screen — never
+re-runs ``connect_integration`` and leaves nothing to drain. Every callback
+therefore also re-judges the sessions listed in a small per-provider reverse
+index against the new grant, so a fix in one chat retires the warning in all
+of them.
 """
 
-import json
 import logging
 import time
 from typing import Any, Awaitable, cast
@@ -55,6 +62,13 @@ _MAX_PENDING_PER_PROVIDER = 5
 # provider. Read once per turn by ``build_session_context``.
 _STATUS_PREFIX = "copilot:oauth_scope_status:"
 _STATUS_TTL_SECONDS = 24 * 60 * 60
+
+# Reverse index: which sessions currently warn about (user, provider). A
+# sorted set scored by write time so it self-bounds to the newest N. It exists
+# only so a later callback can find the warnings it should retire, and is never
+# touched by the per-turn read path — that stays one HGETALL.
+_STATUS_SESSIONS_PREFIX = "copilot:oauth_scope_sessions:"
+_MAX_STATUS_SESSIONS_PER_PROVIDER = 20
 
 # Claim marker so a replayed callback cannot post the same notice twice.
 _NOTICE_CLAIM_PREFIX = "copilot:oauth_scope_notice:"
@@ -92,7 +106,15 @@ def _pending_key(user_id: str, provider: str) -> str:
 
 
 def status_key(user_id: str, session_id: str) -> str:
-    return f"{_STATUS_PREFIX}{user_id}:{session_id}"
+    # Hash-tagged on the user so every one of that user's status keys and the
+    # per-provider reverse index land on one Redis Cluster slot and can share
+    # a transaction; without the braces the multi-key writes below would
+    # CROSSSLOT in production.
+    return f"{_STATUS_PREFIX}{{{user_id}}}:{session_id}"
+
+
+def _status_sessions_key(user_id: str, provider: str) -> str:
+    return f"{_STATUS_SESSIONS_PREFIX}{{{user_id}}}:{provider.lower()}"
 
 
 async def record_pending_connect(
@@ -189,7 +211,8 @@ async def _run_scope_check(
         )
         return
 
-    for session_id, requested_scopes in _requested_scopes_by_session(pending).items():
+    requested_by_session = _requested_scopes_by_session(pending)
+    for session_id, requested_scopes in requested_by_session.items():
         # Contained per session, not around the loop: the drain has already
         # deleted the records, so a chat we cannot reach is not retried. If
         # its failure aborted the loop, every later chat would lose its
@@ -211,6 +234,59 @@ async def _run_scope_check(
                 session_id[:12],
                 exc_info=True,
             )
+
+    if not provider_reports_scopes:
+        return
+    try:
+        await _retire_stale_statuses(
+            user_id=user_id,
+            provider=provider,
+            granted_scopes=granted_scopes,
+            already_judged=set(requested_by_session),
+        )
+    except Exception:
+        logger.warning(
+            "could not retire stale %s scope statuses", provider, exc_info=True
+        )
+
+
+async def _retire_stale_statuses(
+    *,
+    user_id: str,
+    provider: str,
+    granted_scopes: list[str],
+    already_judged: set[str],
+) -> None:
+    """Re-judge every chat still warning about this provider but holding no card.
+
+    The remediation the notice prescribes — revoke at the provider, then press
+    Connect on the setup card already on screen — goes straight to
+    ``/login`` and never re-runs ``connect_integration``, so it produces a
+    callback with no pending record at all. Same for a reconnect from
+    Settings → Integrations. Without this pass the user does exactly what
+    they were told and the warning they just fixed keeps telling the model
+    the credential is broken for the rest of the day, here and in every other
+    chat that asked.
+
+    Each stale status is re-diffed against the *new* grant rather than
+    cleared outright, so a reconnect that is still short stays flagged — with
+    a refreshed diff — instead of being silently forgiven.
+    """
+    for session_id in await _status_sessions(user_id, provider):
+        if session_id in already_judged:
+            continue
+        stored = await _read_status(user_id, session_id, provider)
+        if stored is None:
+            await _forget_status_session(user_id, provider, session_id)
+            continue
+
+        result = evaluate_scope_coverage(
+            stored.requested, granted_scopes, provider_reports_scopes=True
+        )
+        if result.is_shortfall:
+            await _write_status(user_id, session_id, provider, result)
+        else:
+            await _clear_status(user_id, session_id, provider)
 
 
 async def _judge_session(
@@ -270,26 +346,56 @@ def _requested_scopes_by_session(
 async def _write_status(
     user_id: str, session_id: str, provider: str, result: ScopeCoverageResult
 ) -> None:
-    payload = json.dumps(
-        {
-            "coverage": result.coverage.value,
-            "requested": result.requested,
-            "granted": result.granted,
-            "missing": result.missing,
-        }
-    )
     key = status_key(user_id, session_id)
+    sessions = _status_sessions_key(user_id, provider)
     redis = await get_redis_async()
     async with redis.pipeline(transaction=True) as pipe:
-        pipe.hset(key, provider.lower(), payload)
+        pipe.hset(key, provider.lower(), result.model_dump_json())
         pipe.expire(key, _STATUS_TTL_SECONDS)
+        pipe.zadd(sessions, {session_id: time.time()})
+        pipe.zremrangebyrank(sessions, 0, -_MAX_STATUS_SESSIONS_PER_PROVIDER - 1)
+        pipe.expire(sessions, _STATUS_TTL_SECONDS)
         await cast(Awaitable[list[Any]], pipe.execute())
 
 
 async def _clear_status(user_id: str, session_id: str, provider: str) -> None:
     redis = await get_redis_async()
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.hdel(status_key(user_id, session_id), provider.lower())
+        pipe.zrem(_status_sessions_key(user_id, provider), session_id)
+        await cast(Awaitable[list[Any]], pipe.execute())
+
+
+async def _read_status(
+    user_id: str, session_id: str, provider: str
+) -> ScopeCoverageResult | None:
+    redis = await get_redis_async()
+    raw = await cast(
+        Awaitable[Any], redis.hget(status_key(user_id, session_id), provider.lower())
+    )
+    if not raw:
+        return None
+    try:
+        return ScopeCoverageResult.model_validate_json(raw)
+    except Exception:
+        logger.warning("discarding unreadable %s scope status", provider)
+        return None
+
+
+async def _status_sessions(user_id: str, provider: str) -> list[str]:
+    redis = await get_redis_async()
+    members = await cast(
+        Awaitable[list[Any]],
+        redis.zrange(_status_sessions_key(user_id, provider), 0, -1),
+    )
+    return [str(member) for member in members]
+
+
+async def _forget_status_session(user_id: str, provider: str, session_id: str) -> None:
+    redis = await get_redis_async()
     await cast(
-        Awaitable[int], redis.hdel(status_key(user_id, session_id), provider.lower())
+        Awaitable[int],
+        redis.zrem(_status_sessions_key(user_id, provider), session_id),
     )
 
 
@@ -319,11 +425,11 @@ async def scope_status_lines(user_id: str, session_id: str) -> list[str]:
     lines: list[str] = []
     for provider, raw in sorted(entries.items()):
         try:
-            data = json.loads(raw)
+            status = ScopeCoverageResult.model_validate_json(raw)
         except Exception:
             continue
-        missing = ", ".join(data.get("missing") or []) or "(all requested)"
-        granted = ", ".join(data.get("granted") or []) or "none"
+        missing = ", ".join(status.missing) or "(all requested)"
+        granted = ", ".join(status.granted) or "none"
         lines.append(
             f"credential_scope_shortfall: {provider} is connected but the "
             f"granted token is missing {missing} (granted: {granted}). "
