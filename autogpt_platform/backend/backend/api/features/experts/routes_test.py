@@ -1410,7 +1410,7 @@ def test_list_learned_notes_404s_for_someone_elses_expert(
 
 
 def test_archive_learned_note_also_invalidates_the_source_rule(
-    mocker: pytest_mock.MockerFixture, learned_notes_on
+    mocker: pytest_mock.MockerFixture, learned_notes_on, test_user_id: str
 ) -> None:
     mocker.patch(
         f"{_ROUTES}.learned_notes_db.archive_learned_note",
@@ -1424,7 +1424,7 @@ def test_archive_learned_note_also_invalidates_the_source_rule(
     response = client.delete("/experts/expert-1/learned-notes/note-1")
 
     assert response.status_code == 204
-    invalidate.assert_awaited_once_with("test-user-id", "expert-1", "edge-1")
+    invalidate.assert_awaited_once_with(test_user_id, "expert-1", "edge-1")
 
 
 def test_archive_learned_note_unknown_note_returns_404(
@@ -1435,7 +1435,9 @@ def test_archive_learned_note_unknown_note_returns_404(
         new_callable=AsyncMock,
         side_effect=experts_db.ExpertNotFoundError("nope"),
     )
-    invalidate = mocker.patch(f"{_ROUTES}.invalidate_learned_rule", new_callable=AsyncMock)
+    invalidate = mocker.patch(
+        f"{_ROUTES}.invalidate_learned_rule", new_callable=AsyncMock
+    )
 
     response = client.delete("/experts/expert-1/learned-notes/nope")
 

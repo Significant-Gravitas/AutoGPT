@@ -242,15 +242,25 @@ class TestPromotePassLearnedNotes:
         _, _, written = notes_db.promote_learned_notes.await_args.args
         assert written == []
 
+    # Each rule must be genuinely unrelated, not a numbered template: two
+    # sentences differing only by an index share ~0.71 of their content words
+    # and are correctly collapsed by the dedupe pass, which would mask the cap.
+    _UNRELATED_RULES = (
+        "Always deploy through the staging pipeline first.",
+        "Never email investors without a second reviewer.",
+        "Prefer Codex over Claude for refactoring work.",
+        "Keep weekly spend under two hundred credits.",
+        "Write release notes in British English.",
+        "Schedule standups at nine in the morning.",
+        "Archive Zendesk tickets once a fortnight.",
+        "Use Postgres advisory locks for cron jobs.",
+    )
+
     @pytest.mark.asyncio
     async def test_caps_promotions_per_pass(self):
         notes_db = self._notes_db()
-        ops = DreamOperations(
-            proposals=[
-                _rule(f"Rule number {i} about distinct topic {i}.")
-                for i in range(MAX_PROMOTIONS_PER_PASS + 3)
-            ]
-        )
+        assert len(self._UNRELATED_RULES) > MAX_PROMOTIONS_PER_PASS
+        ops = DreamOperations(proposals=[_rule(text) for text in self._UNRELATED_RULES])
         with (
             patch(f"{_LN}.is_feature_enabled", AsyncMock(return_value=True)),
             patch(f"{_LN}.expert_learned_notes_db", MagicMock(return_value=notes_db)),
