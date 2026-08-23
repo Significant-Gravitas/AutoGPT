@@ -68,6 +68,76 @@ async def test_create_preflight_enforces_base_usdc_and_balance():
 
 
 @pytest.mark.asyncio
+async def test_create_and_read_runs_one_complete_idempotent_write():
+    task_id = "0x" + "a" * 64
+    runner = AsyncMock(
+        side_effect=[
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 8453,
+                "usdcContract": BASE_USDC_ADDRESS,
+            },
+            {"accepted": True},
+            {"balanceUsdc": "3"},
+            {"taskId": task_id},
+            {"taskId": task_id, "status": "open"},
+        ]
+    )
+    cli = TaskMarketCLI(command_runner=runner)
+
+    result = await cli.create_and_read(
+        description="Write a report\n\nDeliverables:\n- report.md",
+        reward_usdc=Decimal(2),
+        maximum_spend_usdc=Decimal(3),
+        duration_hours=Decimal(4),
+        mode="bounty",
+        tags=["report"],
+        idempotency_key="b" * 64,
+    )
+
+    assert result.task_id == task_id
+    assert result.task_url.endswith(task_id)
+    assert result.live_status == {"taskId": task_id, "status": "open"}
+    assert runner.await_count == 5
+    assert runner.await_args_list[3].args[0][:2] == ("task", "create")
+    assert runner.await_args_list[4].args[0] == ("task", "get", task_id)
+    assert cli._write_idempotency_key is None
+
+
+@pytest.mark.asyncio
+async def test_create_and_read_preserves_task_id_when_status_read_fails():
+    task_id = "0x" + "c" * 64
+    runner = AsyncMock(
+        side_effect=[
+            {
+                "address": "0x38fA0E8373649d90c34E7D4228254B4795a5a8b5",
+                "chainId": 8453,
+                "usdcContract": BASE_USDC_ADDRESS,
+            },
+            {"accepted": True},
+            {"balanceUsdc": "2"},
+            {"taskId": task_id},
+            OSError("status endpoint unavailable"),
+        ]
+    )
+    cli = TaskMarketCLI(command_runner=runner)
+
+    result = await cli.create_and_read(
+        description="Write a report\n\nDeliverables:\n- report.md",
+        reward_usdc=Decimal(2),
+        maximum_spend_usdc=Decimal(2),
+        duration_hours=Decimal(4),
+        mode="bounty",
+        tags=[],
+        idempotency_key="d" * 64,
+    )
+
+    assert result.task_id == task_id
+    assert result.live_status["taskId"] == task_id
+    assert result.live_status["status"] == "unknown"
+
+
+@pytest.mark.asyncio
 async def test_create_timeout_is_unknown_and_never_retried():
     runner = AsyncMock(side_effect=TimeoutError("relayer timed out"))
     cli = TaskMarketCLI(command_runner=runner)
