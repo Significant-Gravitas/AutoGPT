@@ -5,6 +5,11 @@ import importlib
 from backend.copilot import prompting
 
 
+def flat(text: str) -> str:
+    """Collapse wrapped prose so assertions survive re-flowed paragraphs."""
+    return " ".join(text.split())
+
+
 class TestGetSdkSupplementStaticPlaceholder:
     """get_sdk_supplement must return a static string so the system prompt is
     identical for all users and sessions, enabling cross-user prompt-cache hits.
@@ -79,6 +84,155 @@ class TestToolDiscoveryPriorityAntiPattern:
         # has a concrete template to follow, not just a prohibition.
         assert "Correct flow" in result
         assert 'find_block(query="<service> <action>")' in result
+
+
+class TestDriveToCompletionIsAlwaysOn:
+    """The general "never hand back half-done work" rules must live in
+    ``SHARED_TOOL_NOTES`` so they reach BOTH engines on every turn — the
+    baseline path concatenates the constant directly and the SDK path
+    embeds it via ``get_sdk_supplement``. Keeping them in the delegation
+    supplement would gate them behind ``Flag.HIRE_EXPERTS``.
+    """
+
+    def setup_method(self):
+        importlib.reload(prompting)
+
+    def test_shared_notes_contain_finishing_the_job_section(self):
+        assert (
+            "Finishing the job — never hand back half-done work"
+            in prompting.SHARED_TOOL_NOTES
+        )
+
+    def test_shared_notes_name_next_actor_for_pending_work(self):
+        assert "what happens next and who acts next" in flat(
+            prompting.SHARED_TOOL_NOTES
+        )
+
+    def test_shared_notes_forbid_check_back_later_endings(self):
+        assert '"check back later"' in prompting.SHARED_TOOL_NOTES
+
+    def test_local_sdk_supplement_includes_finishing_the_job(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "Finishing the job — never hand back half-done work" in result
+
+    def test_e2b_sdk_supplement_includes_finishing_the_job(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert "Finishing the job — never hand back half-done work" in result
+
+    def test_drive_to_completion_is_not_gated_behind_delegation(self):
+        # The general rule must NOT be confined to the flagged supplement.
+        assert (
+            "Finishing the job — never hand back half-done work"
+            not in prompting.get_delegation_supplement()
+        )
+
+
+class TestGrantedPermissionIsNotReAsked:
+    """After the user approves a plan, reversible next steps proceed without a
+    fresh confirmation gate; only irreversible/external actions re-gate. The
+    wording tracks ``PROTECTED_SOUL_RULES.EXTERNAL_ACTION_APPROVAL_RULE``.
+    """
+
+    def setup_method(self):
+        importlib.reload(prompting)
+
+    def test_shared_notes_contain_no_re_ask_section(self):
+        assert (
+            "Permission already granted — do not re-ask" in prompting.SHARED_TOOL_NOTES
+        )
+
+    def test_shared_notes_list_approval_phrases(self):
+        assert '"confirm all"' in prompting.SHARED_TOOL_NOTES
+        assert '"go with option 1"' in prompting.SHARED_TOOL_NOTES
+
+    def test_shared_notes_keep_gate_for_irreversible_actions(self):
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "irreversible or external actions" in notes
+        assert "sending, publishing, deploying, spending" in notes
+
+    def test_wording_stays_consistent_with_protected_soul_rules(self):
+        from backend.api.features.experts.models import EXTERNAL_ACTION_APPROVAL_RULE
+
+        # "External actions require approval." — restated verbatim so the
+        # copilot prompt and the expert soul rules cannot drift apart.
+        assert EXTERNAL_ACTION_APPROVAL_RULE in prompting.SHARED_TOOL_NOTES
+
+    def test_rule_reaches_the_sdk_supplement(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "Permission already granted — do not re-ask" in result
+
+
+class TestDelegationWaitingEtiquette:
+    """While a sub-session is still running the model owns the wait: one short
+    status line, then either an automatic wake-up or a self-scheduled
+    ``schedule_followup`` — never a question to the user about polling.
+    """
+
+    def setup_method(self):
+        importlib.reload(prompting)
+
+    def test_supplement_contains_waiting_etiquette_rule(self):
+        assert "Waiting etiquette." in prompting.get_delegation_supplement()
+
+    def test_waiting_rule_offers_both_resume_paths(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "woken automatically with the result" in supplement
+        assert "`schedule_followup` with this session's `session_id`" in supplement
+
+    def test_waiting_rule_requires_status_line_with_eta(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "ONE short status line" in supplement
+        assert "include the ETA when you know it" in supplement
+
+    def test_waiting_rule_forbids_asking_the_user_to_wait(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "Never ask the user whether to keep polling" in flat(supplement)
+        assert "never tell them to check back later" in flat(supplement)
+
+    def test_supplement_caps_poll_narration(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "One status line per wait cycle." in supplement
+        assert 'skip repeated "still working…" filler' in supplement
+
+    def test_poll_cap_points_at_the_sub_session_card(self):
+        assert "Live progress already renders on the sub-session card above" in flat(
+            prompting.get_delegation_supplement()
+        )
+
+
+class TestDurablePreferenceCapture:
+    """A mid-task correction with lasting intent ("always use X") is a rule to
+    persist immediately, not a one-off instruction to follow and forget.
+    """
+
+    def setup_method(self):
+        importlib.reload(prompting)
+
+    def test_store_triggers_include_mid_task_corrections(self):
+        assert "Mid-task corrections" in prompting.get_graphiti_supplement()
+
+    def test_trigger_lists_the_durable_intent_phrases(self):
+        supplement = prompting.get_graphiti_supplement()
+        assert '"always use X"' in supplement
+        assert '"never do Y"' in supplement
+        assert '"from now on…"' in supplement
+
+    def test_trigger_specifies_the_real_memory_store_schema(self):
+        supplement = prompting.get_graphiti_supplement()
+        assert '`memory_kind="rule"`' in supplement
+        assert "`instruction`" in supplement
+        assert "`actor`/`trigger`/`negation`" in supplement
+
+    def test_trigger_requires_a_one_line_acknowledgement(self):
+        supplement = prompting.get_graphiti_supplement()
+        assert "acknowledge in ONE line" in supplement
+        assert "Noted — Codex for all code tasks from now on." in supplement
+
+    def test_trigger_forbids_deferring_the_write(self):
+        assert (
+            "store immediately, do not batch to the end"
+            in prompting.get_graphiti_supplement()
+        )
 
 
 class TestGraphitiMemoryScope:
