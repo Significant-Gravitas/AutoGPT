@@ -112,7 +112,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 62_000 for the shared estimated_minutes + success_criteria
+# params on run_sub_session and delegate_to_expert (~950 chars total). Both are
+# decision-critical: without the ETA the model reports open-ended waits, and
+# without the criteria it relays a teammate's "done" unverified. Descriptions
+# are already trimmed to the minimum viable copy; ~1.4k headroom retained.
+_CHAR_BUDGET = 62_000
 
 
 @pytest.fixture(scope="module")

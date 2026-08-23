@@ -37,8 +37,12 @@ def _session(
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
-    # assertion would pass even if the kwarg were dropped.
+    # assertion would pass even if the kwarg were dropped. The delegation
+    # context below additionally has to hold a *real* value — it is read back
+    # onto a pydantic response, which would reject a MagicMock outright.
     sess.metadata.origin = origin
+    sess.metadata.estimated_minutes = None
+    sess.metadata.success_criteria = None
     sess.expert_id = expert_id
     return sess
 
@@ -107,6 +111,8 @@ def mock_sessions(monkeypatch):
         sess.metadata.handed_off_from_expert_id = kwargs.get(
             "handed_off_from_expert_id"
         )
+        sess.metadata.estimated_minutes = kwargs.get("estimated_minutes")
+        sess.metadata.success_criteria = kwargs.get("success_criteria")
         sess.messages = []
         created.append(sess)
         return sess
@@ -125,6 +131,10 @@ def mock_sessions(monkeypatch):
     )
     monkeypatch.setattr(
         "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+    )
+    # The phase-timeline lookup binds its own copy of the loader.
+    monkeypatch.setattr(
+        "backend.copilot.tools.sub_session_context.get_chat_session", fake_get
     )
     return created
 
@@ -711,3 +721,104 @@ class TestCallerNameFraming:
         )
 
         assert "from a teammate," in mock_turn.await_args.kwargs["message"]
+
+
+class TestDelegationTrackingContext:
+    """A delegation is a tracked job: it carries an up-front estimate and an
+    explicit definition of done, both recorded on the sub so a later poll can
+    state the ETA and verify the outcome."""
+
+    @pytest.mark.asyncio
+    async def test_criteria_are_prepended_to_the_handoff_prompt(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            system_context="Q3 numbers are final",
+            success_criteria=["covers every region", "under 400 words"],
+            wait_for_result=0,
+        )
+        message = mock_turn.await_args.kwargs["message"]
+        assert "Done means ALL of the following are true" in message
+        assert "- covers every region" in message
+        assert "- under 400 words" in message
+        # Order matters: teammate framing, then context, then the criteria
+        # immediately before the task itself.
+        assert message.index("Delegated task from") < message.index("[Context:")
+        assert message.index("[Context:") < message.index("Done means")
+        assert message.index("Done means") < message.index("draft the ops update")
+
+    @pytest.mark.asyncio
+    async def test_tracking_context_is_stored_on_the_delegated_session(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            estimated_minutes=25,
+            success_criteria=["covers every region"],
+            wait_for_result=0,
+        )
+        sub = mock_sessions[0]
+        assert sub.metadata.estimated_minutes == 25
+        assert sub.metadata.success_criteria == ["covers every region"]
+
+    @pytest.mark.asyncio
+    async def test_estimate_reaches_the_response_and_its_message(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            estimated_minutes=25,
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.estimated_minutes == 25
+        assert "Estimated ~25 min" in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_no_criteria_leaves_the_handoff_prompt_untouched(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            wait_for_result=0,
+        )
+        assert "Done means" not in mock_turn.await_args.kwargs["message"]
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.success_criteria is None
+        assert r.estimated_minutes is None
+
+    @pytest.mark.asyncio
+    async def test_a_poll_of_the_delegation_reports_its_criteria_back(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """The parent turn that reads the result may be a wake-up that never
+        saw the delegating call, so the criteria come off the sub itself."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+            success_criteria=["covers every region"],
+            wait_for_result=0,
+        )
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.success_criteria == ["covers every region"]

@@ -43,9 +43,19 @@ from .base import BaseTool
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
+    SubSessionPhase,
     SubSessionStatusResponse,
     ToolResponseBase,
     WorkspaceFileInfoData,
+)
+from .sub_session_context import (
+    ESTIMATED_MINUTES_PARAM,
+    SUCCESS_CRITERIA_PARAM,
+    completion_criteria_reminder,
+    criteria_preamble,
+    latest_sub_phases,
+    normalize_estimated_minutes,
+    normalize_success_criteria,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +119,8 @@ class RunSubSessionTool(BaseTool):
                     ),
                     "default": 60,
                 },
+                "estimated_minutes": ESTIMATED_MINUTES_PARAM,
+                "success_criteria": SUCCESS_CRITERIA_PARAM,
             },
             "required": ["prompt"],
         }
@@ -122,6 +134,8 @@ class RunSubSessionTool(BaseTool):
         system_context: str = "",
         sub_autopilot_session_id: str = "",
         wait_for_result: int = 60,
+        estimated_minutes: Any = None,
+        success_criteria: Any = None,
         **kwargs,
     ) -> ToolResponseBase:
         if not prompt.strip():
@@ -134,6 +148,9 @@ class RunSubSessionTool(BaseTool):
                 message="Authentication required",
                 session_id=session.session_id,
             )
+
+        estimate = normalize_estimated_minutes(estimated_minutes)
+        criteria = normalize_success_criteria(success_criteria)
 
         # Resolve the sub's ChatSession id — either resume an owned one or
         # create a fresh session that inherits the parent's dry_run so a
@@ -207,12 +224,17 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                estimated_minutes=estimate,
+                success_criteria=criteria,
             )
             inner_session_id = new_session.session_id
 
         effective_prompt = prompt
         if system_context.strip():
             effective_prompt = f"[System Context: {system_context.strip()}]\n\n{prompt}"
+        preamble = criteria_preamble(criteria)
+        if preamble:
+            effective_prompt = f"{preamble}\n\n{effective_prompt}"
 
         cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
         started_at = time.monotonic()
@@ -238,6 +260,15 @@ class RunSubSessionTool(BaseTool):
             parent_session_id=session.session_id,
             elapsed=elapsed,
             workspace_files=workspace_files,
+            estimated_minutes=estimate,
+            success_criteria=criteria,
+            # Only worth a lookup while the work is unfinished: that is when a
+            # phase timeline is all the parent (and its card) has to show.
+            phases=(
+                await latest_sub_phases(inner_session_id)
+                if outcome == "running"
+                else None
+            ),
         )
 
 
@@ -395,6 +426,9 @@ def response_from_outcome(
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
     actor: str = "Sub-AutoPilot",
+    estimated_minutes: int | None = None,
+    success_criteria: list[str] | None = None,
+    phases: list[SubSessionPhase] | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -404,6 +438,11 @@ def response_from_outcome(
     when the caller already knows it (e.g. ``delegate_to_expert``), so the
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
+
+    ``estimated_minutes``, ``success_criteria`` and ``phases`` are the
+    delegation's tracking context. They ride *every* branch, not just the
+    happy one: a poll that lands on a failure or a queue-up still has to be
+    judged against the definition of done that was set for it.
 
     ``completed`` surfaces the aggregated response text + tool calls, plus a
     manifest of any workspace files the sub wrote (SECRT-2377). Pass
@@ -417,6 +456,11 @@ def response_from_outcome(
     the existing turn on its next drain.
     """
     link = _sub_session_link(inner_session_id)
+    context: dict[str, Any] = {
+        "estimated_minutes": estimated_minutes,
+        "success_criteria": success_criteria,
+        "phases": phases or None,
+    }
     if outcome == "queued":
         return SubSessionStatusResponse(
             message=(
@@ -432,12 +476,14 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
+            **context,
         )
 
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
                 f"{actor} is still running after {elapsed:.0f}s."
+                f"{_estimate_note(estimated_minutes)}{_phase_note(phases)}"
                 f"{f' Watch live at {link}.' if link else ''} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
@@ -448,6 +494,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
+            **context,
         )
 
     if outcome == "rejected_concurrent_turn_cap":
@@ -463,6 +510,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
+            **context,
         )
 
     if outcome == "failed":
@@ -474,6 +522,7 @@ def response_from_outcome(
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
+            **context,
         )
 
     # completed — prefer the authoritative listing supplied by the caller;
@@ -489,6 +538,7 @@ def response_from_outcome(
             f" It wrote {len(workspace_files)} workspace file(s); read them via "
             "read_workspace_file(path=<read_path>) — see sub_workspace_files."
         )
+    message += completion_criteria_reminder(success_criteria)
     return SubSessionStatusResponse(
         message=message,
         session_id=parent_session_id,
@@ -500,4 +550,24 @@ def response_from_outcome(
         tool_calls=[tc.model_dump() for tc in result.tool_calls],
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
+        **context,
     )
+
+
+def _estimate_note(estimated_minutes: int | None) -> str:
+    """The ETA, stated on the running message so the parent can promise a time
+    rather than an open-ended wait."""
+    if not estimated_minutes:
+        return ""
+    return f" Estimated ~{estimated_minutes} min in total."
+
+
+def _phase_note(phases: list[SubSessionPhase] | None) -> str:
+    """Where in its own plan the sub currently is — a more useful thing to
+    relay than another elapsed-seconds reading."""
+    if not phases:
+        return ""
+    done = sum(1 for p in phases if p.status == "completed")
+    current = next((p for p in phases if p.status == "in_progress"), None)
+    label = f": {current.content}" if current else ""
+    return f" Phase {min(done + 1, len(phases))}/{len(phases)}{label}."

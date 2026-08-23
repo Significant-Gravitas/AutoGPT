@@ -222,6 +222,51 @@ class TestDelegationWaitingEtiquette:
         )
 
 
+class TestDelegationEtaAndDoneCondition:
+    """Delegation is a tracked job: an estimate stated once up front, and a
+    definition of done that must be checked before success is reported.
+    """
+
+    def setup_method(self):
+        importlib.reload(prompting)
+
+    def test_supplement_requires_an_up_front_estimate(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "Give an ETA up front." in supplement
+        assert "`estimated_minutes`" in supplement
+
+    def test_estimate_is_stated_once_not_re_narrated(self):
+        """Repeating the clock on every poll is the dead-air problem the ETA
+        was meant to fix, so the rule names the phase as the thing to report
+        instead."""
+        supplement = prompting.get_delegation_supplement()
+        assert "State it ONCE" in supplement
+        assert "not a fresh elapsed-time reading" in supplement
+
+    def test_supplement_asks_for_concrete_success_criteria(self):
+        supplement = prompting.get_delegation_supplement()
+        assert 'Say what "done" means.' in supplement
+        assert "2-5 concrete, checkable `success_criteria`" in supplement
+
+    def test_completion_must_be_verified_against_the_criteria(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "Verify before declaring success." in supplement
+        assert "result against every criterion before telling the user" in supplement
+
+    def test_verification_rule_covers_the_wake_up_path(self):
+        """A chat woken by the delegated-task notice is a *fresh* turn — it is
+        exactly the one that would otherwise relay "done" unchecked."""
+        assert (
+            "when this chat is woken by a `<delegated_task_completed />` notice"
+            in prompting.get_delegation_supplement()
+        )
+
+    def test_unmet_criteria_must_be_named_rather_than_glossed(self):
+        supplement = prompting.get_delegation_supplement()
+        assert "unmet, name it and take the next step yourself" in supplement
+        assert 'never report "done" on the' in supplement
+
+
 class TestDurablePreferenceCapture:
     """A mid-task correction with lasting intent ("always use X") is a rule to
     persist immediately, not a one-off instruction to follow and forget.

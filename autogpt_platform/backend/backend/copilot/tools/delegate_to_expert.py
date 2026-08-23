@@ -52,6 +52,14 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
+from .sub_session_context import (
+    ESTIMATED_MINUTES_PARAM,
+    SUCCESS_CRITERIA_PARAM,
+    criteria_preamble,
+    latest_sub_phases,
+    normalize_estimated_minutes,
+    normalize_success_criteria,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +128,8 @@ class DelegateToExpertTool(BaseTool):
                     ),
                     "default": 60,
                 },
+                "estimated_minutes": ESTIMATED_MINUTES_PARAM,
+                "success_criteria": SUCCESS_CRITERIA_PARAM,
             },
             "required": ["expert_id", "prompt"],
         }
@@ -134,6 +144,8 @@ class DelegateToExpertTool(BaseTool):
         system_context: str = "",
         delegated_session_id: str = "",
         wait_for_result: int = 60,
+        estimated_minutes: Any = None,
+        success_criteria: Any = None,
         **kwargs,
     ) -> ToolResponseBase:
         target_id = expert_id.strip()
@@ -158,11 +170,15 @@ class DelegateToExpertTool(BaseTool):
         if refusal is not None:
             return self._error(refusal, session)
 
+        estimate = normalize_estimated_minutes(estimated_minutes)
+        criteria = normalize_success_criteria(success_criteria)
         inner_session_id = await self._resolve_session(
             user_id=user_id,
             session=session,
             target=target,
             delegated_session_id=delegated_session_id.strip(),
+            estimated_minutes=estimate,
+            success_criteria=criteria,
         )
         if isinstance(inner_session_id, ErrorResponse):
             return inner_session_id
@@ -172,7 +188,7 @@ class DelegateToExpertTool(BaseTool):
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
-            message=_handoff_message(caller, system_context, prompt),
+            message=_handoff_message(caller, system_context, prompt, criteria),
             timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
             permissions=get_current_permissions(),
             tool_call_id=(
@@ -195,6 +211,13 @@ class DelegateToExpertTool(BaseTool):
                 elapsed=elapsed,
                 workspace_files=workspace_files,
                 actor=target.name,
+                estimated_minutes=estimate,
+                success_criteria=criteria,
+                phases=(
+                    await latest_sub_phases(inner_session_id)
+                    if outcome == "running"
+                    else None
+                ),
             ),
             DelegatedExpertInfo(
                 id=target.id,
@@ -242,12 +265,20 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
+        estimated_minutes: int | None = None,
+        success_criteria: list[str] | None = None,
     ) -> str | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
         Resuming is restricted to threads this session itself delegated, so a
         session can never read or steer another scope's conversation by
         guessing an id.
+
+        The estimate and criteria are recorded on a *new* thread's metadata.
+        A resumed thread keeps the ones it was opened with — a re-delegation
+        still carries its own criteria in the prompt, and rewriting the stored
+        pair would mean a full session upsert on the hot path to change what a
+        later poll reports about work already underway.
         """
         if not delegated_session_id:
             new_session = await create_chat_session(
@@ -259,6 +290,8 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 origin=child_session_origin(session.metadata),
+                estimated_minutes=estimated_minutes,
+                success_criteria=success_criteria,
             )
             return new_session.session_id
 
@@ -303,12 +336,21 @@ class DelegateToExpertTool(BaseTool):
         return caller.name if caller else "a teammate"
 
 
-def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
+def _handoff_message(
+    caller: str,
+    system_context: str,
+    prompt: str,
+    success_criteria: list[str] | None = None,
+) -> str:
     """Frame the task so the teammate knows a colleague — not the user — asked.
 
     Without this the delegated prompt reads as the user speaking, and the
     teammate would address them directly and ask follow-up questions nobody
     is there to answer.
+
+    The criteria go last, immediately before the task itself, so "done means
+    X" is the final instruction the teammate reads rather than a header it
+    scrolls past.
     """
     name = safe_caller_name(caller)
     preamble = (
@@ -319,4 +361,7 @@ def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
     )
     if system_context.strip():
         preamble += f"\n\n[Context: {system_context.strip()}]"
+    criteria_block = criteria_preamble(success_criteria)
+    if criteria_block:
+        preamble += f"\n\n{criteria_block}"
     return f"{preamble}\n\n{prompt}"

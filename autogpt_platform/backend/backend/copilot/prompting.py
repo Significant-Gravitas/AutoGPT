@@ -696,6 +696,18 @@ def get_delegation_supplement() -> str:
 - **One status line per wait cycle.** Live progress already renders on the
   sub-session card above, so skip repeated "still working…" filler. Post
   again only when the status actually changes.
+- **Give an ETA up front.** Always pass `estimated_minutes` on a build or
+  research delegation — your own honest guess. State it ONCE, in the line
+  where you first say you delegated. On later polls report the *phase* the
+  work has reached, not a fresh elapsed-time reading.
+- **Say what "done" means.** Pass 2-5 concrete, checkable `success_criteria`
+  for any build or research delegation. They are handed to the teammate up
+  front and returned to you alongside the result.
+- **Verify before declaring success.** When a delegation completes — including
+  when this chat is woken by a `<delegated_task_completed />` notice — check the
+  result against every criterion before telling the user it is done. If one is
+  unmet, name it and take the next step yourself; never report "done" on the
+  teammate's say-so alone.
 """
 
 

@@ -140,6 +140,14 @@ class ChatSessionMetadata(BaseModel):
     delegated_by_expert_id: str | None = None
     delegated_by_session_id: str | None = None
 
+    # The delegating model's own up-front estimate and its definition of done,
+    # recorded when the sub is opened. Both are read back by
+    # ``get_sub_session_result`` so a poll (or a wake-up turn that never saw
+    # the original tool call) can state the ETA and verify the result against
+    # the criteria instead of taking "done" on faith.
+    estimated_minutes: int | None = None
+    success_criteria: list[str] | None = None
+
     # Set by ``handoff_to_expert`` alongside the delegation fields: a handoff
     # transfers ownership rather than borrowing a teammate, so the receiving
     # expert can tell "this is now mine" from "report back to whoever asked".
@@ -484,6 +492,8 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        estimated_minutes: int | None = None,
+        success_criteria: list[str] | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -504,6 +514,8 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                estimated_minutes=estimated_minutes,
+                success_criteria=success_criteria,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1302,6 +1314,8 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    estimated_minutes: int | None = None,
+    success_criteria: list[str] | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1326,6 +1340,9 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        estimated_minutes: The delegating model's own estimate for this work.
+        success_criteria: Testable conditions the delegated work must meet,
+            read back on poll so completion can be verified rather than assumed.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1352,6 +1369,8 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        estimated_minutes=estimated_minutes,
+        success_criteria=success_criteria,
     )
 
     # Create in database first - fail fast if this fails

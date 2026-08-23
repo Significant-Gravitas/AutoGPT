@@ -48,6 +48,7 @@ from .run_sub_session import (
     list_sub_workspace_files,
     response_from_outcome,
 )
+from .sub_session_context import phases_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,9 @@ class GetSubSessionResultTool(BaseTool):
                 "include_progress": {
                     "type": "boolean",
                     "description": (
-                        "Populate progress.last_messages when status=running. "
-                        "Ignored for a teammate's delegated thread."
+                        "Populate progress.last_messages and progress.phases "
+                        "when status=running. Ignored for a teammate's "
+                        "delegated thread."
                     ),
                     "default": False,
                 },
@@ -155,6 +157,16 @@ class GetSubSessionResultTool(BaseTool):
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
         borrowed = _is_borrowed_thread(sub, session)
+        # The delegation's own tracking context, read back off the sub instead
+        # of expected in the caller's context: a turn woken by
+        # ``subsession_wake`` never saw the tool call that set these, and it is
+        # exactly that turn which has to judge whether the work is really done.
+        estimate = sub.metadata.estimated_minutes
+        criteria = sub.metadata.success_criteria
+        # Phases follow the same rule as ``include_progress``: a borrowed
+        # thread is the teammate's own user-facing chat, so its live plan may
+        # describe something the user asked them directly, not this delegation.
+        phases = None if borrowed else phases_from_messages(sub.messages) or None
 
         if cancel:
             if borrowed:
@@ -182,6 +194,9 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_id=inner_session_id,
                     sub_autopilot_session_link=_sub_session_link(inner_session_id),
                     elapsed_seconds=0.0,
+                    estimated_minutes=estimate,
+                    success_criteria=criteria,
+                    phases=phases,
                 ),
                 delegate,
             )
@@ -234,6 +249,9 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_link=link,
                     elapsed_seconds=round(elapsed, 2),
                     progress=progress,
+                    estimated_minutes=estimate,
+                    success_criteria=criteria,
+                    phases=(progress.phases or None) if progress else phases,
                 ),
                 delegate,
             )
@@ -255,6 +273,9 @@ class GetSubSessionResultTool(BaseTool):
                 parent_session_id=session.session_id,
                 elapsed=elapsed,
                 workspace_files=workspace_files,
+                estimated_minutes=estimate,
+                success_criteria=criteria,
+                phases=phases,
             ),
             delegate,
         )
@@ -358,7 +379,8 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
 async def _build_progress_snapshot(
     inner_session_id: str | None,
 ) -> SubSessionProgressSnapshot | None:
-    """Read the sub's ChatSession and return a preview of recent messages.
+    """Read the sub's ChatSession and return a preview of recent messages plus
+    the phase timeline mined from its latest ``TodoWrite``.
 
     Returns ``None`` silently on lookup failure — progress is best-effort;
     missing progress shouldn't abort the normal ``still running`` response.
@@ -398,4 +420,5 @@ async def _build_progress_snapshot(
     return SubSessionProgressSnapshot(
         message_count=len(messages),
         last_messages=previews,
+        phases=phases_from_messages(messages),
     )

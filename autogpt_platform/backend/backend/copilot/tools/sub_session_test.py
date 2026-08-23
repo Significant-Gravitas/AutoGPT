@@ -49,8 +49,53 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.origin = origin
+    # Real values, not bare MagicMock attributes: the delegation context is
+    # read straight onto a pydantic response, which rejects a MagicMock.
+    sess.metadata.estimated_minutes = None
+    sess.metadata.success_criteria = None
     sess.expert_id = expert_id
     return sess
+
+
+def _sub(
+    *,
+    user_id: str = "alice",
+    expert_id: str | None = None,
+    messages: list | None = None,
+) -> MagicMock:
+    """A pollable sub-session.
+
+    ``metadata`` is populated with real values rather than left as bare
+    MagicMock attributes: ``get_sub_session_result`` reads the delegation
+    context straight onto a pydantic response, which a MagicMock would fail.
+    """
+    sub = MagicMock(user_id=user_id, expert_id=expert_id, messages=messages or [])
+    sub.metadata.estimated_minutes = None
+    sub.metadata.success_criteria = None
+    return sub
+
+
+def _todo(content: str, status: str) -> dict:
+    return {"content": content, "activeForm": f"{content}…", "status": status}
+
+
+def _todo_message(todos: list[dict]) -> MagicMock:
+    """An assistant message carrying a persisted ``TodoWrite`` call, in the
+    OpenAI shape the DB stores (``arguments`` is a JSON string)."""
+    message = MagicMock()
+    message.role = "assistant"
+    message.content = ""
+    message.tool_calls = [
+        {
+            "id": "call-todo",
+            "type": "function",
+            "function": {
+                "name": "TodoWrite",
+                "arguments": json.dumps({"todos": todos}),
+            },
+        }
+    ]
+    return message
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +199,8 @@ def mock_model(monkeypatch):
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
         origin: str = "interactive",
+        estimated_minutes: int | None = None,
+        success_criteria: list[str] | None = None,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
@@ -164,6 +211,8 @@ def mock_model(monkeypatch):
         sess.team_id = team_id
         sess.metadata.llm_auth_provider = llm_auth_provider
         sess.metadata.llm_credential_id = llm_credential_id
+        sess.metadata.estimated_minutes = estimated_minutes
+        sess.metadata.success_criteria = success_criteria
         sess.expert_id = expert_id
         sess.messages = []
         created.append(sess)
@@ -185,6 +234,10 @@ def mock_model(monkeypatch):
     )
     monkeypatch.setattr(
         "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+    )
+    # The phase-timeline lookup binds its own copy of the loader.
+    monkeypatch.setattr(
+        "backend.copilot.tools.sub_session_context.get_chat_session", fake_get
     )
     return {"created": created, "get": fake_get}
 
@@ -587,7 +640,7 @@ class TestGetSubSessionResult:
 
     @pytest.mark.asyncio
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub = _sub()
 
         async def fake_get(_sid):
             return sub
@@ -619,9 +672,7 @@ class TestGetSubSessionResult:
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
         """'completed' outcome surfaces the SessionResult directly."""
 
-        sub = MagicMock(
-            user_id="alice", expert_id=None, messages=[]
-        )  # not terminal-looking
+        sub = _sub()  # not terminal-looking
 
         async def fake_get(_sid):
             return sub
@@ -658,7 +709,7 @@ class TestGetSubSessionResult:
         in flight, the tool returns 'completed' without ever calling
         wait_for_session_result — it rebuilds the response from the
         persisted message instead."""
-        sub = MagicMock(user_id="alice", expert_id=None)
+        sub = _sub()
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "already done"
@@ -704,7 +755,7 @@ class TestGetSubSessionResult:
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
+        sub = _sub(messages=[prior])
 
         async def fake_get(_sid):
             return sub
@@ -743,7 +794,7 @@ class TestGetSubSessionResult:
     ):
         """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
         without waiting for the sub to finish (the worker will finalise)."""
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub = _sub()
 
         async def fake_get(_sid):
             return sub
@@ -773,7 +824,7 @@ class TestGetSubSessionResult:
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
 
-        sub = MagicMock(user_id="alice", expert_id=None)
+        sub = _sub()
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
@@ -1009,3 +1060,338 @@ class TestActorParameter:
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
         assert "Sub-AutoPilot" not in (result.message or "")
+
+
+# ---------------------------------------------------------------------------
+# Delegation tracking — up-front ETA, definition of done, phase timeline.
+# ---------------------------------------------------------------------------
+
+
+class TestDelegationEstimate:
+    """The estimate is the model's own guess, carried on the response so the
+    parent can promise a time instead of an open-ended wait."""
+
+    @pytest.mark.asyncio
+    async def test_estimate_rides_the_running_response(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            estimated_minutes=12,
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running"
+        assert r.estimated_minutes == 12
+        assert "Estimated ~12 min" in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_estimate_is_stored_on_the_sub_session(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """Persisted so a later poll — or a wake-up turn that never saw the
+        original tool call — can still state the ETA."""
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            estimated_minutes=12,
+            wait_for_result=0,
+        )
+        assert mock_model["created"][0].metadata.estimated_minutes == 12
+
+    @pytest.mark.asyncio
+    async def test_no_estimate_means_no_invented_one(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.estimated_minutes is None
+        assert "Estimated" not in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_unusable_estimate_is_dropped_not_surfaced(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """A garbage value must not reach the user as a time promise."""
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            estimated_minutes="soon",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.estimated_minutes is None
+
+
+class TestSuccessCriteria:
+    """Criteria go two places: into the delegated prompt so the worker knows
+    what it is measured against, and onto the response so the parent can
+    verify the outcome instead of relaying "done" on faith."""
+
+    @pytest.mark.asyncio
+    async def test_criteria_are_prepended_to_the_delegated_prompt(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            success_criteria=["runs clean", "has tests"],
+            wait_for_result=0,
+        )
+        sent = mock_waiter.await_args.kwargs["message"]
+        assert "Done means ALL of the following are true" in sent
+        assert "- runs clean" in sent
+        assert "- has tests" in sent
+        # The task itself still lands last, after the framing.
+        assert sent.rstrip().endswith("build it")
+
+    @pytest.mark.asyncio
+    async def test_criteria_are_stored_on_the_sub_session(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            success_criteria=["runs clean", "has tests"],
+            wait_for_result=0,
+        )
+        assert mock_model["created"][0].metadata.success_criteria == [
+            "runs clean",
+            "has tests",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_criteria_round_trip_onto_the_response(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            success_criteria=["runs clean"],
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.success_criteria == ["runs clean"]
+
+    @pytest.mark.asyncio
+    async def test_completion_demands_verification_against_the_criteria(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        done = SessionResult()
+        done.response_text = "all set"
+        mock_waiter.return_value = ("completed", done)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            success_criteria=["runs clean", "has tests"],
+            wait_for_result=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        message = r.message or ""
+        assert "check the result against the 2 success criteria" in message
+        assert "runs clean; has tests" in message
+
+    @pytest.mark.asyncio
+    async def test_completion_without_criteria_adds_no_reminder(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        done = SessionResult()
+        done.response_text = "all set"
+        mock_waiter.return_value = ("completed", done)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            wait_for_result=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.success_criteria is None
+        assert "success criteria" not in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_unusable_criteria_are_dropped(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            success_criteria="runs clean",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.success_criteria is None
+        assert "Done means" not in mock_waiter.await_args.kwargs["message"]
+
+
+class TestPhaseTimeline:
+    """``TodoWrite`` is stateless — its latest arguments in the transcript are
+    the canonical plan — so a poll reports phases by mining the sub's own
+    messages rather than reading any separate progress store."""
+
+    @pytest.mark.asyncio
+    async def test_poll_reports_the_subs_phases(self, monkeypatch, mock_waiter):
+        sub = _sub(
+            messages=[
+                _todo_message(
+                    [
+                        _todo("Scaffold", "completed"),
+                        _todo("Wire it up", "in_progress"),
+                        _todo("Test", "pending"),
+                    ]
+                ),
+                # A trailing tool row keeps the last message non-terminal, so
+                # the poll takes the running path rather than short-circuiting.
+                MagicMock(role="tool", content="ok", tool_calls=None),
+            ]
+        )
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running"
+        assert r.phases is not None
+        assert [(p.content, p.status) for p in r.phases] == [
+            ("Scaffold", "completed"),
+            ("Wire it up", "in_progress"),
+            ("Test", "pending"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_include_progress_carries_the_same_phases(
+        self, monkeypatch, mock_waiter
+    ):
+        sub = _sub(
+            messages=[
+                _todo_message([_todo("Scaffold", "in_progress")]),
+                MagicMock(role="tool", content="ok", tool_calls=None),
+            ]
+        )
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        for target in (
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            "backend.copilot.tools.sub_session_context.get_chat_session",
+        ):
+            monkeypatch.setattr(target, fake_get)
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+            include_progress=True,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.progress is not None
+        assert [p.content for p in r.progress.phases] == ["Scaffold"]
+        assert r.phases is not None
+        assert [p.content for p in r.phases] == ["Scaffold"]
+
+    @pytest.mark.asyncio
+    async def test_a_sub_without_a_plan_reports_no_phases(
+        self, monkeypatch, mock_waiter
+    ):
+        """Absent is absent — an unplanned sub must not render an empty
+        timeline on the parent's card."""
+        sub = _sub(messages=[MagicMock(role="tool", content="ok", tool_calls=None)])
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.phases is None
+
+    @pytest.mark.asyncio
+    async def test_stored_context_is_read_back_on_a_cold_poll(
+        self, monkeypatch, mock_waiter
+    ):
+        """The turn that polls may be a wake-up that never saw the delegating
+        tool call, so the ETA and criteria come off the sub itself."""
+        sub = _sub(messages=[MagicMock(role="tool", content="ok", tool_calls=None)])
+        sub.metadata.estimated_minutes = 20
+        sub.metadata.success_criteria = ["runs clean"]
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.estimated_minutes == 20
+        assert r.success_criteria == ["runs clean"]

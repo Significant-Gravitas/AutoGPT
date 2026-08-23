@@ -16,7 +16,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot import stream_registry, subsession_wake
-from backend.copilot.subsession_wake import _wake_parent, schedule_parent_wake
+from backend.copilot.subsession_wake import (
+    _wake_parent,
+    schedule_parent_wake,
+    wake_message,
+)
 
 _SUB = "sub-session-1"
 _PARENT = "parent-session-1"
@@ -408,3 +412,34 @@ async def test_mark_session_completed_schedules_the_wake_once_per_swap():
         assert await stream_registry.mark_session_completed("sess-1") is False
 
     schedule.assert_called_once_with("sess-1", "completed")
+
+
+# ---------------------------------------------------------------------------
+# The wake prompt itself. A woken turn is a *fresh* turn: it never saw the
+# tool call that set the delegation's success criteria, so the prompt has to
+# point it at them rather than assume they are in context.
+# ---------------------------------------------------------------------------
+
+
+def test_wake_prompt_sends_the_model_to_the_criteria_before_declaring_done():
+    message = wake_message(sub_session_id=_SUB, status="completed")
+    assert "`success_criteria`" in message
+    assert "check the result against every one of them before you call" in message
+
+
+def test_wake_prompt_requires_naming_an_unmet_criterion():
+    """"Mostly done" reported as done is the exact failure this closes."""
+    message = wake_message(sub_session_id=_SUB, status="completed")
+    assert "left any criterion unmet, name that criterion plainly" in message
+
+
+def test_wake_prompt_keeps_its_original_reporting_contract():
+    """The criteria check is layered onto the existing instructions, not
+    swapped in for them."""
+    message = wake_message(sub_session_id=_SUB, status="failed")
+    assert message.startswith("[System notice")
+    assert f'sub_session_id="{_SUB}"' in message
+    assert 'status="failed"' in message
+    assert "get_sub_session_result" in message
+    assert "report the outcome to the user in your own voice" in message
+    assert "rather than handing the chase back to the user" in message

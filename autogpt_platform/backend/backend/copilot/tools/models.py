@@ -331,6 +331,22 @@ class ErrorResponse(ToolResponseBase):
     details: dict[str, Any] | None = None
 
 
+class SubSessionPhase(BaseModel):
+    """One step of a sub-AutoPilot's plan, mined from its latest ``TodoWrite``.
+
+    ``TodoWrite`` is stateless — the model's most recent ``todos`` argument in
+    the transcript *is* the canonical list (see ``tools/todo_write.py``) — so a
+    phase timeline is read back from the sub's persisted tool calls rather than
+    from any separate store. ``activeForm`` is not mirrored: the parent renders
+    a static timeline, not the sub's own live label.
+    """
+
+    content: str = Field(description="Imperative description of the step.")
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
 class SubSessionProgressSnapshot(BaseModel):
     """Mid-flight snapshot of a running sub-AutoPilot.
 
@@ -346,6 +362,14 @@ class SubSessionProgressSnapshot(BaseModel):
         description=(
             "Up to the last 5 messages (role + truncated content) from the "
             "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+    phases: list[SubSessionPhase] = Field(
+        default_factory=list,
+        description=(
+            "The sub's latest task list (completed / in_progress / pending), "
+            "so progress can be reported as a named phase instead of a message "
+            "count. Empty when the sub has not planned with TodoWrite."
         ),
     )
 
@@ -458,6 +482,28 @@ class SubSessionStatusResponse(ToolResponseBase):
     elapsed_seconds: float | None = Field(
         default=None,
         description="How long the sub-AutoPilot has been running (or took).",
+    )
+    estimated_minutes: int | None = Field(
+        default=None,
+        description=(
+            "Up-front estimate supplied when the work was delegated. State it "
+            "to the user once; do not restate elapsed time on every poll."
+        ),
+    )
+    success_criteria: list[str] | None = Field(
+        default=None,
+        description=(
+            "The completion criteria this delegation was given. On completion "
+            "check the result against every one of them before reporting "
+            "success, and name any that is unmet."
+        ),
+    )
+    phases: list[SubSessionPhase] | None = Field(
+        default=None,
+        description=(
+            "The sub's latest task list, so the parent can report which phase "
+            "the work is in instead of only how long it has been running."
+        ),
     )
     progress: SubSessionProgressSnapshot | None = Field(
         default=None,

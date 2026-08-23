@@ -151,9 +151,11 @@ def wake_message(*, sub_session_id: str, status: TerminalStatus) -> str:
         f'<delegated_task_completed sub_session_id="{sub_session_id}" '
         f'status="{status}" />\n\n'
         "Call `get_sub_session_result` with that sub_session_id to read what "
-        "came back, then report the outcome to the user in your own voice: "
-        "what you had asked for, what you got, and what happens next. If it "
-        "failed or came back short of the goal, say so plainly and take the "
+        "came back. It returns the `success_criteria` this delegation was "
+        "given — check the result against every one of them before you call "
+        "it done. Then report the outcome to the user in your own voice: what "
+        "you had asked for, what you got, and what happens next. If it failed "
+        "or left any criterion unmet, name that criterion plainly and take the "
         "next step yourself rather than handing the chase back to the user."
     )
 
