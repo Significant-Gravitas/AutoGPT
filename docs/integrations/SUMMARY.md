@@ -127,6 +127,7 @@
 * [Stripe Link Spend Request](block-integrations/stripe_link/spend_request.md)
 * [System Library Operations](block-integrations/system/library_operations.md)
 * [System Store Operations](block-integrations/system/store_operations.md)
+* [Taskmarket Blocks](block-integrations/taskmarket/blocks.md)
 * [Tavily Crawl](block-integrations/tavily/crawl.md)
 * [Tavily Extract](block-integrations/tavily/extract.md)
 * [Tavily Map](block-integrations/tavily/map.md)

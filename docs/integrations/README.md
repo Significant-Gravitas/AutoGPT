@@ -644,6 +644,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
 | [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
+| [Create Task Market Task](block-integrations/taskmarket/blocks.md#create-task-market-task) | Creates one Base-funded TaskMarket task only after a fresh, exact human review |
+| [Inspect Task Market Task](block-integrations/taskmarket/blocks.md#inspect-task-market-task) | Reads a TaskMarket task and its submissions without deciding outcomes |
+| [Prepare Task Market Task](block-integrations/taskmarket/blocks.md#prepare-task-market-task) | Builds an immutable TaskMarket requester preview without moving funds |
 
 ## CRM Services
 
