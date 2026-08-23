@@ -5,7 +5,11 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionWithNodes,
+    TriggerSource,
+)
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -356,6 +360,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -443,6 +448,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        trigger_source=TriggerSource.manual,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -456,6 +462,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec_2.trigger_source = TriggerSource.manual
     mock_graph_exec_2.organization_id = None
     mock_graph_exec_2.expert_id = None
     mock_graph_exec_2.team_id = None
@@ -516,6 +523,8 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -607,6 +616,8 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.organization_id = "org-rpc"
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-rpc"
@@ -834,6 +845,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
 
     # Mock the graph execution object
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
@@ -927,6 +939,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
 
     # Existing row carries org/team; the resume caller's context does not.
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.id = "exec-resume-1"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -996,6 +1009,7 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
 
     # Mock graph execution in REVIEW status
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.id = graph_exec_id
     mock_graph_exec.status = ExecutionStatus.REVIEW
 
@@ -1063,6 +1077,7 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
 
     # Mock graph execution in REVIEW status
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.id = graph_exec_id
     mock_graph_exec.status = ExecutionStatus.REVIEW
 
@@ -1132,11 +1147,13 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Mock parent execution in RUNNING status
     mock_parent_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_parent_exec.trigger_source = TriggerSource.manual
     mock_parent_exec.id = parent_exec_id
     mock_parent_exec.status = ExecutionStatus.RUNNING
 
     # Mock child execution in REVIEW status
     mock_child_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_child_exec.trigger_source = TriggerSource.manual
     mock_child_exec.id = child_exec_id
     mock_child_exec.status = ExecutionStatus.REVIEW
 
@@ -2003,6 +2020,8 @@ def _mock_add_graph_execution_create_path(
     mock_graph.version = 1
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    mock_graph_exec.trigger_source = TriggerSource.manual
     mock_graph_exec.organization_id = org_id
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = team_id
@@ -2094,6 +2113,8 @@ def _mock_add_graph_execution_requeue_path(
     from backend.data.execution import GraphExecutionWithNodes
 
     graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+
+    graph_exec.trigger_source = TriggerSource.manual
     graph_exec.id = "existing-execution"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED

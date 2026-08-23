@@ -17,6 +17,7 @@ def _db_execution(*, status: ExecutionStatus, stats: dict):
         nodesInputMasks=None,
         agentPresetId=None,
         executionStatus=status,
+        triggerSource="manual",
         startedAt=None,
         endedAt=None,
         stats=stats,
