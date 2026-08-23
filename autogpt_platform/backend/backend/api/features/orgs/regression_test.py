@@ -69,6 +69,7 @@ def _make_execution_row(
     agentGraphId=GRAPH_ID,
     agentGraphVersion=GRAPH_VERSION,
     executionStatus="COMPLETED",
+    triggerSource="manual",
 ):
     m = MagicMock()
     m.id = id
@@ -76,6 +77,7 @@ def _make_execution_row(
     m.agentGraphId = agentGraphId
     m.agentGraphVersion = agentGraphVersion
     m.executionStatus = executionStatus
+    m.triggerSource = triggerSource
     m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
     m.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
     m.startedAt = None

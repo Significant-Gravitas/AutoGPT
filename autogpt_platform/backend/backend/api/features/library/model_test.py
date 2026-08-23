@@ -90,6 +90,7 @@ def test_from_db_execution_count_override_covers_success_rate():
         agentGraphVersion=1,
         userId="u1",
         executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        triggerSource=prisma.enums.TriggerSource.manual,
         createdAt=now,
         updatedAt=now,
         isDeleted=False,
