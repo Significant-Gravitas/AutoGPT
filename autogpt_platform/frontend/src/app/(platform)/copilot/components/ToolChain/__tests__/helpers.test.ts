@@ -8,6 +8,7 @@ import {
   getChainHeading,
   isChainPart,
   isLiftedSetupRow,
+  markSupersededSubSessionRows,
   toChainRow,
   type ChainRow,
 } from "../helpers";
@@ -238,6 +239,19 @@ describe("isLiftedSetupRow", () => {
     expect(lifted && isLiftedSetupRow(lifted)).toBe(true);
     expect(notLifted && isLiftedSetupRow(notLifted)).toBe(false);
   });
+
+  it("does not lift an expert approval, whose card never registers", () => {
+    const row = toChainRow(
+      toolPart(
+        "hire_expert",
+        {},
+        { type: "expert_change_proposed", preview: { name: "Otto" } },
+      ),
+      0,
+    );
+
+    expect(row && isLiftedSetupRow(row)).toBe(false);
+  });
 });
 
 describe("isChainPart", () => {
@@ -449,5 +463,70 @@ describe("buildChainSegments edge cases", () => {
       { kind: "part", part: parts[0], index: 0 },
       { kind: "chain", parts: [parts[1]], index: 1 },
     ]);
+  });
+});
+
+describe("markSupersededSubSessionRows", () => {
+  function subRow(key: string, tool: string, subSessionId: string): ChainRow {
+    return {
+      key,
+      category: "agent",
+      text: tool,
+      state: "done",
+      tool,
+      output: { status: "running", sub_session_id: subSessionId },
+    };
+  }
+
+  it("keeps the card only on the last row per sub-session", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it("keeps the answer of a run a re-delegation reuses the session for", () => {
+    // Re-delegation deliberately reuses the sub-session, so keying on the id
+    // alone would drop the first run's response from the transcript.
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "delegate_to_expert", "sub-1"),
+      subRow("d", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it("leaves unrelated sessions and tools untouched", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "delegate_to_expert", "sub-2"),
+      {
+        key: "c",
+        category: "web",
+        text: "Searched",
+        state: "done",
+        tool: "web_search",
+        output: { sub_session_id: "sub-1" },
+      } as ChainRow,
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.every((r) => !r.supersededSubSession)).toBe(true);
   });
 });

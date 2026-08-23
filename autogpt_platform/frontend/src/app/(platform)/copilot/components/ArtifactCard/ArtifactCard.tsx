@@ -2,12 +2,17 @@
 
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
-import { ArrowRight01Icon, Download04Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  Download01Icon,
+  Download04Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -57,6 +62,9 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
     artifact.title,
     artifact.sizeBytes,
   );
+  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+  const cardShapeClass = isNewToolUI ? "min-w-0 rounded-2xl" : "rounded-lg";
+  const downloadIcon = isNewToolUI ? Download01Icon : Download04Icon;
 
   function handleDownloadOnly() {
     downloadArtifact(artifact).catch(() => {
@@ -73,7 +81,10 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       <button
         type="button"
         onClick={handleDownloadOnly}
-        className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50"
+        className={cn(
+          "my-1 flex w-full items-center gap-3 border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
+          cardShapeClass,
+        )}
       >
         <Icon
           icon={classification.icon}
@@ -92,7 +103,7 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
           </p>
         </div>
         <Icon
-          icon={Download04Icon}
+          icon={downloadIcon}
           size={16}
           className="shrink-0 text-zinc-400"
         />
@@ -105,7 +116,8 @@ export function ArtifactCard({ artifact, readOnly }: Props) {
       type="button"
       onClick={() => openArtifact(artifact)}
       className={cn(
-        "my-1 flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
+        "my-1 flex w-full items-center gap-3 border bg-white px-3 py-2.5 text-left transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:500ms] hover:bg-zinc-50",
+        cardShapeClass,
         isActive ? "border-violet-300 bg-violet-50/50" : "border-zinc-200",
       )}
     >

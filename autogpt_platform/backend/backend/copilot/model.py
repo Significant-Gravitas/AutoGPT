@@ -56,6 +56,14 @@ RoutingSource = Literal[
     "account_available",
 ]
 
+# Who opened a session. ``interactive`` means a human is typing into it (web
+# chat, a linked chat platform); ``automation`` means a graph block or a
+# scheduler opened it, so every prompt in it is machine-authored and may
+# carry data the user never read. Tools that restaff the user's team require
+# an interactive origin — "has no expert_id" only means "not an expert chat",
+# which an AutoPilotBlock session also satisfies.
+ChatSessionOrigin = Literal["interactive", "automation"]
+
 
 # Redis cache key prefix for chat sessions
 CHAT_SESSION_CACHE_PREFIX = "chat:session:"
@@ -80,6 +88,13 @@ CHAT_STATUS_RUNNING = "running"
 # ===================== Chat data models ===================== #
 
 
+class PendingQuestion(BaseModel):
+    """The last unanswered question a session asked the user."""
+
+    text: str
+    asked_at: datetime
+
+
 class ChatSessionMetadata(BaseModel):
     """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
 
@@ -98,6 +113,15 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
 
+    # ``None`` means the row was persisted before this field existed, and is
+    # NOT a synonym for either value: session metadata is immutable after
+    # creation, so a legacy row can never gain the key, and every writer goes
+    # through ``create_chat_session``, which always supplies a concrete
+    # origin. Readers must decide deliberately which way an unknown origin
+    # falls — see ``blocks/autopilot.py`` (legacy resumes) and
+    # ``autopilot_session_guard`` (legacy cannot staff).
+    origin: ChatSessionOrigin | None = None
+
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
     # (and so analytics / retention rules can filter them out).
@@ -108,6 +132,36 @@ class ChatSessionMetadata(BaseModel):
     # When ``kind == "dream"``, the originating pass id so the session
     # links back to the orchestrator run that produced it.
     dream_pass_id: str | None = None
+
+    # Delegation provenance, set by ``delegate_to_expert``: which expert
+    # (None = plain AutoPilot) asked for this work, and from which session.
+    # The session id is the poll capability — ``get_sub_session_result``
+    # accepts a cross-expert sub only when it names the caller here.
+    delegated_by_expert_id: str | None = None
+    delegated_by_session_id: str | None = None
+
+    # Set by ``handoff_to_expert`` alongside the delegation fields: a handoff
+    # transfers ownership rather than borrowing a teammate, so the receiving
+    # expert can tell "this is now mine" from "report back to whoever asked".
+    handed_off_from_expert_id: str | None = None
+
+    # Set by ``ask_question`` when a turn ends waiting on the user, cleared
+    # when they reply. Drives the Home "Needs You" question item; one per
+    # session, latest wins.
+    pending_question: PendingQuestion | None = None
+
+
+def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
+    """Origin for a fresh session a tool opens on *parent*'s behalf.
+
+    A legacy ``None`` must not be copied into a row written today — that would
+    keep minting sessions indistinguishable from pre-deploy ones, and let a
+    legacy chat launder itself through a delegation. It resolves to
+    ``automation`` rather than ``interactive`` because these children are
+    opened by a tool call carrying a model-authored prompt: when the parent
+    cannot prove a human drove it, the child must not claim one did.
+    """
+    return parent.origin or "automation"
 
 
 class ChatMessage(BaseModel):
@@ -229,6 +283,36 @@ def is_message_duplicate(
         else:
             break
     return False
+
+
+async def clear_pending_question(session: "ChatSession") -> None:
+    """Resolve the session's Home "Needs You" question — the user replied.
+
+    Answering in chat is the only resolution path, so this runs on every
+    user-role turn. Best-effort: a stale row on Home is not worth failing a
+    turn the user is waiting on.
+
+    Caveat: callers gate this on ``is_user_message`` only, which marks a
+    turn's *role* (user vs assistant), not its *origin*. A programmatically
+    injected user-role turn — a re-delegation via ``delegate_to_expert``, a
+    ``run_sub_session`` follow-up, or an ``AutoPilotBlock`` run — also
+    clears the pending question even though the human never actually saw
+    or answered it. There is currently no discriminator available at this
+    call site (or its callers) to tell a human reply apart from an
+    injected one; fixing that would require plumbing a new signal through
+    the queue/executor layer.
+    """
+    if session.metadata.pending_question is None:
+        return
+    session.metadata.pending_question = None
+    try:
+        await chat_db().clear_session_pending_question(
+            session.session_id, session.user_id
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not clear pending question for {session.session_id}: {e}"
+        )
 
 
 def maybe_append_user_message(
@@ -391,11 +475,15 @@ class ChatSession(ChatSessionInfo):
         session_id: str | None = None,
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
+        origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
+        delegated_by_expert_id: str | None = None,
+        delegated_by_session_id: str | None = None,
+        handed_off_from_expert_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -410,8 +498,12 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                origin=origin,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
+                delegated_by_expert_id=delegated_by_expert_id,
+                delegated_by_session_id=delegated_by_session_id,
+                handed_off_from_expert_id=handed_off_from_expert_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1203,9 +1295,13 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    origin: ChatSessionOrigin = "interactive",
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
     expert_id: str | None = None,
+    delegated_by_expert_id: str | None = None,
+    delegated_by_session_id: str | None = None,
+    handed_off_from_expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1217,10 +1313,19 @@ async def create_chat_session(
             The builder panel uses this to bind a chat to the currently-
             opened agent and to resume the same session on refresh.
         source_platform: External chat platform that originated the session.
+        origin: Whether a human drives this session or an automation opened
+            it. Machine callers (graph blocks, schedulers) must pass
+            ``"automation"``; the team-staffing tools refuse those sessions.
         expert_id: Private expert this session is scoped to. Expert sessions are
             validated here and pinned to the owner's personal organization, and
             the database re-validates active ownership atomically with session
             persistence — the persisted attribution is authoritative.
+        delegated_by_expert_id: Expert that delegated this session's work
+            (None = plain AutoPilot). Provenance only.
+        delegated_by_session_id: Session that delegated this session's work.
+            Doubles as the poll capability for cross-expert delegation.
+        handed_off_from_expert_id: Expert that handed this work off for good,
+            set only by ``handoff_to_expert``. Provenance only.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1238,11 +1343,15 @@ async def create_chat_session(
         session_id=session_id,
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
+        origin=origin,
         organization_id=organization_id,
         team_id=team_id,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         expert_id=expert_id,
+        delegated_by_expert_id=delegated_by_expert_id,
+        delegated_by_session_id=delegated_by_session_id,
+        handed_off_from_expert_id=handed_off_from_expert_id,
     )
 
     # Create in database first - fail fast if this fails

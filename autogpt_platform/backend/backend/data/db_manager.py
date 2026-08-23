@@ -502,8 +502,17 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    update_soul = _(experts_db.update_soul)
+    update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
+    # Hire / raise from the copilot chat tools, plus the counts their
+    # preview step uses to refuse a change that could never land.
+    list_templates = _(experts_db.list_templates)
+    hire_expert = _(experts_db.hire_expert)
+    create_raised_expert = _(experts_db.create_raised_expert)
+    count_active_experts = _(experts_db.count_active_experts)
+    count_raised_experts = _(experts_db.count_raised_experts)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -518,6 +527,9 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    set_session_pending_question = _(chat_db.set_session_pending_question)
+    clear_session_pending_question = _(chat_db.clear_session_pending_question)
+    get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
@@ -827,8 +839,15 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    update_soul = d.update_soul
+    update_soul_if_current = d.update_soul_if_current
     update_soul_fields = d.update_soul_fields
     update_soul_fields_if_current = d.update_soul_fields_if_current
+    list_templates = d.list_templates
+    hire_expert = d.hire_expert
+    create_raised_expert = d.create_raised_expert
+    count_active_experts = d.count_active_experts
+    count_raised_experts = d.count_raised_experts
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
@@ -840,6 +859,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
+    set_session_pending_question = d.set_session_pending_question
+    clear_session_pending_question = d.clear_session_pending_question
+    get_sessions_with_pending_question = d.get_sessions_with_pending_question
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence

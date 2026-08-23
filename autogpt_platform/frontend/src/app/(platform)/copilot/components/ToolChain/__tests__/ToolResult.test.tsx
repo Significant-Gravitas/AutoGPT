@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen } from "@/tests/integrations/test-utils";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
 import type { ChainRow } from "../helpers";

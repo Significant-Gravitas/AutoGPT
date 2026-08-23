@@ -19,13 +19,13 @@ interface Props {
   file: SessionFile;
   onOpen: (file: SessionFile) => void;
   onDownload: (file: SessionFile) => void;
-  onRequestDelete: (file: SessionFile) => void;
+  onRequestDelete?: (file: SessionFile) => void;
 }
 
 export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
   const { item } = file;
   const fileIcon = classifyArtifact(item.mime_type ?? null, item.name).icon;
-  const canDelete = !isUploadedFile(item);
+  const canDelete = !isUploadedFile(item) && !!onRequestDelete;
 
   return (
     <div className="group flex items-center gap-2 rounded-md py-1.5 hover:bg-zinc-50">
@@ -68,7 +68,7 @@ export function FileRow({ file, onOpen, onDownload, onRequestDelete }: Props) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => onRequestDelete(file)}
+                onClick={() => onRequestDelete?.(file)}
                 aria-label={`Delete ${item.name}`}
               >
                 <Icon icon={Delete02Icon} size={16} />
