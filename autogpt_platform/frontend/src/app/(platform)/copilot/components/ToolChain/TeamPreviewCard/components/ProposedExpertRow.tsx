@@ -98,9 +98,7 @@ export function ProposedExpertRow({
               )}
               {voice && <p className="text-zinc-400">Sounds like: {voice}</p>}
               {budget !== null && (
-                <p className="text-zinc-400">
-                  Weekly budget: {budget} credits
-                </p>
+                <p className="text-zinc-400">Weekly budget: {budget} credits</p>
               )}
             </div>
           </div>
