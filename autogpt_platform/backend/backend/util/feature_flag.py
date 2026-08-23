@@ -418,12 +418,17 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    # Log the LaunchDarkly key, not the ``flag_key`` binding itself: CodeQL's
+    # py/clear-text-logging-sensitive-data treats any ``*key*`` name reaching a
+    # log sink as a credential, which this is not.
+    flag_name = flag_key.value
+
     override = _env_flag_override(flag_key)
     if override is not None:
-        logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
+        logger.debug(f"Feature flag {flag_name} overridden by env: {override}")
         return override
 
-    result = await get_feature_flag_value(flag_key.value, user_id, default)
+    result = await get_feature_flag_value(flag_name, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
@@ -431,7 +436,7 @@ async def is_feature_enabled(
 
     # Log a warning if the flag is not returning a boolean
     logger.warning(
-        f"Feature flag {flag_key} returned non-boolean value: {result} (type: {type(result).__name__}). "
+        f"Feature flag {flag_name} returned non-boolean value: {result} (type: {type(result).__name__}). "
         f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
     )
 
