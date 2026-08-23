@@ -699,8 +699,7 @@ async def device_auth_poll(
     if result.status == "approved" and result.credentials:
         credentials = result.credentials
 
-        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
-            credentials.scopes = credentials.scopes[0].split(" ")
+        credentials.scopes = normalize_scopes(credentials.scopes)
 
         try:
             credentials = await _merge_or_create_credential(
