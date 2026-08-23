@@ -134,6 +134,28 @@ class TestBuildVariableInjection:
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
 
+    def test_lone_surrogate_value_is_sanitized(self):
+        """Regression: upstream blocks (e.g. Notion) can hand us a string with
+        an unpaired UTF-16 surrogate from a mis-decoded emoji. That must not
+        reach the env var as-is, since encoding it to UTF-8 later (e.g. the
+        sandbox's own env var setup) raises UnicodeEncodeError.
+        """
+        variables = {"note": "Holidays \ud83c"}  # lone leading surrogate
+
+        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        # Must not raise, and the payload must be safe to encode to UTF-8.
+        envs[VARIABLES_ENV_KEY].encode("utf-8")
+        # The lone surrogate is gone; round-tripping through JSON is lossless.
+        assert json.loads(envs[VARIABLES_ENV_KEY])["note"] != variables["note"]
+
+    def test_lone_surrogate_nested_in_list_and_dict_is_sanitized(self):
+        variables = {"items": [{"label": "party \udc00 time"}]}
+
+        envs, _ = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        envs[VARIABLES_ENV_KEY].encode("utf-8")
+
 
 class TestExecuteCodeBlockRun:
     """run() should inject variables: prefix the code and pass the env var."""
