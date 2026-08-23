@@ -127,6 +127,7 @@ class ResponseType(str, Enum):
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    EXPERT_CHANGE_BATCH_APPLIED = "expert_change_batch_applied"
 
 
 # Base response model
@@ -597,6 +598,37 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
+
+
+class ExpertChangeResult(BaseModel):
+    """What one confirmation_id in a batched confirm did.
+
+    Either the teammate it created (``applied``, with ``expert`` set) or the
+    reason it did not, so one bad id in a batch is reported rather than
+    voiding the ids the user approved alongside it.
+    """
+
+    confirmation_id: str
+    applied: bool
+    kind: ExpertChangeKind | None = None
+    expert: ExpertSummary | None = None
+    failed_workflows: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ExpertChangeBatchAppliedResponse(ToolResponseBase):
+    """Outcome of a ``confirm_expert_change`` call given several ids.
+
+    ``results`` keeps the requested order and holds one entry per id;
+    ``experts`` is the flat list of teammates that actually landed, which is
+    what the roster card renders. ``applied`` is True when at least one id
+    landed — read ``results`` for the rest.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_BATCH_APPLIED
+    applied: bool
+    results: list[ExpertChangeResult]
+    experts: list[ExpertSummary] = Field(default_factory=list)
 
 
 # Agent generation models

@@ -9,7 +9,7 @@ import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { CARD, HALF } from "./ResultCards";
-import { asObject, str } from "./resultHelpers";
+import { asItems, asObject, str } from "./resultHelpers";
 
 interface Props {
   output: Record<string, unknown>;
@@ -29,11 +29,51 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
   );
 }
 
+/** One or several experts inside the chain. A batched confirm carries a
+ *  ``results`` list — one entry per approved preview, each either the
+ *  teammate it created or why it didn't — so a single bad id in the batch
+ *  never hides the ones that landed. */
+export function ExpertChangeCard({ output }: Props) {
+  const results = asItems(output.results);
+  if (!results) return <ExpertRow output={output} />;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {results.map((result, index) =>
+        result.applied === true ? (
+          <ExpertRow key={resultKey(result, index)} output={result} />
+        ) : (
+          <ExpertFailureRow key={resultKey(result, index)} result={result} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function resultKey(result: Record<string, unknown>, index: number): string {
+  return str(result, "confirmation_id") ?? `result-${index}`;
+}
+
+interface FailureProps {
+  result: Record<string, unknown>;
+}
+
+function ExpertFailureRow({ result }: FailureProps) {
+  return (
+    <div className={`${CARD} ${HALF} p-2.5`}>
+      <p className="text-[13px] font-medium text-zinc-800">Not added</p>
+      <p className="mt-1 text-xs text-zinc-500">
+        {str(result, "error") ?? "This approval could no longer be applied."}
+      </p>
+    </div>
+  );
+}
+
 /** An expert inside the chain — either a hire/raise preview awaiting the
  *  user's OK (given in chat, nothing created yet) or the teammate
  *  ``confirm_expert_change`` actually created. Once they exist, the card
  *  offers the two things the user does next: adjust them or talk to them. */
-export function ExpertChangeCard({ output }: Props) {
+function ExpertRow({ output }: Props) {
   const applied = output.applied === true;
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;

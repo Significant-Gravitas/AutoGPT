@@ -230,7 +230,8 @@ class RaiseExpertTool(BaseTool):
                 "user — name, role, color, what this expert owns, where "
                 "they stop, voice and weekly budget — and only after they "
                 "explicitly approve, call confirm_expert_change with this "
-                "confirmation_id."
+                "confirmation_id. If they approve several previews at once, "
+                "confirm them in a single call by passing confirmation_ids."
             ),
             session_id=session_id,
             preview=preview,

@@ -24430,7 +24430,8 @@
           "skill_list",
           "expert_soul_updated",
           "expert_change_proposed",
-          "expert_change_applied"
+          "expert_change_applied",
+          "expert_change_batch_applied"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

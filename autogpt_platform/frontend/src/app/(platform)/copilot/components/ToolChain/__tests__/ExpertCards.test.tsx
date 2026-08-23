@@ -114,6 +114,78 @@ describe("expert change cards", () => {
     expect(screen.queryByText(/Couldn't set up/)).toBeNull();
   });
 
+  it("renders one card per expert when several are confirmed at once", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "All 2 approved changes applied: Otto, Scout.",
+          applied: true,
+          results: [
+            {
+              confirmation_id: "c-1",
+              applied: true,
+              kind: "raise",
+              expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
+            },
+            {
+              confirmation_id: "c-2",
+              applied: true,
+              kind: "hire",
+              expert: { id: "exp-scout", name: "Scout", role: "Research" },
+            },
+          ],
+          experts: [
+            { id: "exp-otto", name: "Otto", role: "Inbox triage" },
+            { id: "exp-scout", name: "Scout", role: "Research" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByText("Scout")).toBeDefined();
+    expect(screen.getByText("Raised")).toBeDefined();
+    expect(screen.getByText("Hired")).toBeDefined();
+    expect(
+      screen
+        .getAllByRole("link", { name: /Chat/ })
+        .map((link) => link.getAttribute("href")),
+    ).toEqual(["/copilot?expertId=exp-otto", "/copilot?expertId=exp-scout"]);
+  });
+
+  it("says which approval did not land in a partly applied batch", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "1 of 2 applied: Otto.",
+          applied: true,
+          results: [
+            {
+              confirmation_id: "c-1",
+              applied: true,
+              kind: "raise",
+              expert: { id: "exp-otto", name: "Otto", role: "Inbox triage" },
+            },
+            {
+              confirmation_id: "c-2",
+              applied: false,
+              error: "This confirmation_id is unknown or has expired.",
+            },
+          ],
+          experts: [{ id: "exp-otto", name: "Otto", role: "Inbox triage" }],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByText("Not added")).toBeDefined();
+    expect(
+      screen.getByText("This confirmation_id is unknown or has expired."),
+    ).toBeDefined();
+  });
+
   it("renders a handoff as the receiving teammate's sub-session", () => {
     render(
       <ToolResult

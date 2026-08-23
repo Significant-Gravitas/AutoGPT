@@ -141,7 +141,9 @@ class HireExpertTool(BaseTool):
                 "Nothing hired yet. Show the user who would join, what they "
                 "own, and that the hire draws on the shared weekly budget. "
                 "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
+                "confirm_expert_change with this confirmation_id. If they "
+                "approve several previews at once, confirm them in a single "
+                "call by passing confirmation_ids."
             ),
             session_id=session_id,
             preview=preview,

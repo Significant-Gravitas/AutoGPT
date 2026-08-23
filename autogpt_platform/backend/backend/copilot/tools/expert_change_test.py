@@ -24,12 +24,13 @@ from backend.copilot.model import ChatMessage, ChatSessionMetadata
 from backend.util.exceptions import ExpertNotFoundError, ExpertWriteNotReadableError
 
 from ._test_data import make_session
-from .confirm_expert_change import ConfirmExpertChangeTool
+from .confirm_expert_change import MAX_BATCH_CONFIRMATIONS, ConfirmExpertChangeTool
 from .expert_proposal import ExpertChangeProposal, apply_proposal, proposal_key
 from .hire_expert import HireExpertTool
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
+    ExpertChangeBatchAppliedResponse,
     ExpertChangePreview,
     ExpertChangeProposedResponse,
 )
@@ -900,3 +901,287 @@ class TestProposalsInFlightAcrossTheDeploy:
             )
             await _confirm(session, confirmation_id="pre-deploy-id")
         assert proposal_key("pre-deploy-id") in redis.store
+
+
+async def _two_previews(session) -> tuple[str, str]:
+    """A hire and a raise the user is about to approve in one breath."""
+    hire = await _hire(session, template_id="tpl-scout")
+    raised = await _raise(session, **_CHARTER)
+    assert isinstance(hire, ExpertChangeProposedResponse)
+    assert isinstance(raised, ExpertChangeProposedResponse)
+    return hire.confirmation_id, raised.confirmation_id
+
+
+class TestBatchConfirm:
+    """A user who approves three previews at once should cost one call, not
+    three round-trips. Every id is still checked against the same gate, and
+    each one reports its own outcome so a single bad id cannot silently void
+    the changes beside it."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_all_valid_batch_applies_every_id(self):
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(_approve(session), confirmation_ids=[first, second])
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is True
+        assert [result.confirmation_id for result in resp.results] == [first, second]
+        assert all(result.applied for result in resp.results)
+        assert [expert.name for expert in resp.experts] == ["Scout", "Otto"]
+        assert "Scout" in resp.message and "Otto" in resp.message
+        db.hire_expert.assert_awaited_once()
+        db.create_raised_expert.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_one_bad_id_does_not_void_the_rest(self):
+        """The whole point of the batch: an id that went stale between the
+        preview and the "yes" must be reported, not turned into a refusal
+        that drops the experts the user actually approved."""
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(
+                _approve(session), confirmation_ids=[first, "nope", second]
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is True
+        assert [result.applied for result in resp.results] == [True, False, True]
+        failed = resp.results[1]
+        assert failed.confirmation_id == "nope"
+        assert failed.error is not None
+        assert "expired" in failed.error
+        assert failed.expert is None
+        assert [expert.name for expert in resp.experts] == ["Scout", "Otto"]
+        assert db.hire_expert.await_count == 1
+        assert db.create_raised_expert.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_replayed_id_reads_as_already_done_beside_a_fresh_one(self):
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            await _confirm(_approve(session), confirmation_id=first)
+            resp = await _confirm(_approve(session), confirmation_ids=[first, second])
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        replayed = resp.results[0]
+        assert replayed.applied is False
+        assert replayed.error is not None
+        assert "already confirmed" in replayed.error
+        assert resp.results[1].applied is True
+        # The replay must not hire a second Scout.
+        assert db.hire_expert.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_id_from_another_chat_is_refused_inside_a_batch(self):
+        with _env() as db:
+            other = make_session(_USER)
+            stranger = await _hire(other, template_id="tpl-scout")
+            assert isinstance(stranger, ExpertChangeProposedResponse)
+            session = make_session(_USER)
+            mine = await _raise(session, **_CHARTER)
+            assert isinstance(mine, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_ids=[stranger.confirmation_id, mine.confirmation_id],
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.results[0].applied is False
+        assert resp.results[0].error is not None
+        assert "different chat" in resp.results[0].error
+        assert resp.results[1].applied is True
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_where_nothing_lands_says_so(self):
+        with _env() as db:
+            resp = await _confirm(
+                _approve(make_session(_USER)), confirmation_ids=["nope", "also-nope"]
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is False
+        assert resp.experts == []
+        assert "Nothing was applied" in resp.message
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_cap_reached_mid_batch_is_reported_per_id(self):
+        """``capacity_error`` only runs at preview time, so N previews that
+        each fit can exceed the cap together. The creation transaction is the
+        real enforcement point — the overflow must surface as that id's error
+        rather than as an over-hired team."""
+        with _env() as db:
+            db.hire_expert.side_effect = [
+                SimpleNamespace(expert=_created(), failed_preloads=[]),
+                ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT),
+            ]
+            session = make_session(_USER)
+            first = await _hire(session, template_id="tpl-scout")
+            second = await _hire(session, template_id="tpl-scout")
+            assert isinstance(first, ExpertChangeProposedResponse)
+            assert isinstance(second, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_ids=[first.confirmation_id, second.confirmation_id],
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.results[0].applied is True
+        assert resp.results[1].applied is False
+        assert resp.results[1].error is not None
+        assert str(ACTIVE_EXPERT_LIMIT) in resp.results[1].error
+        assert len(resp.experts) == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_partial_hire_inside_a_batch_still_names_its_workflows(self):
+        """The single-id path spells the failed workflows out in its message;
+        folding N applies into one message must not drop that warning."""
+        partial = SimpleNamespace(
+            expert=_created(),
+            failed_preloads=["Inbox triage"],
+        )
+        with _env(hire_result=partial):
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(_approve(session), confirmation_ids=[first, second])
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.results[0].failed_workflows == ["Inbox triage"]
+        assert "Inbox triage" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_of_one_is_still_a_batch(self):
+        """The response shape follows the parameter the model used, so a card
+        built for confirmation_ids never has to handle two payload shapes."""
+        with _env():
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session), confirmation_ids=[preview.confirmation_id]
+            )
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert len(resp.results) == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_single_confirmation_id_keeps_the_old_response_shape(self):
+        """Backward compatibility: the single param must still return the
+        applied response the existing card and prompts were written for."""
+        with _env() as db:
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            resp = await _confirm(
+                _approve(session), confirmation_id=preview.confirmation_id
+            )
+        assert isinstance(resp, ExpertChangeAppliedResponse)
+        assert resp.kind == "hire"
+        assert resp.expert.name == "Scout"
+        db.hire_expert.assert_awaited_once()
+
+
+class TestBatchParameterValidation:
+    """Both parameters mean the model is guessing about what the user
+    approved, and neither means it has nothing to apply — either way the
+    right answer is to refuse before any proposal is consumed."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_supplying_both_parameters_is_refused(self):
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_id=first,
+                confirmation_ids=[second],
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert "never both" in resp.message
+        assert proposal_key(first) in redis.store
+        assert proposal_key(second) in redis.store
+        db.hire_expert.assert_not_called()
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_supplying_neither_parameter_is_refused(self):
+        with _env() as db:
+            resp = await _confirm(_approve(make_session(_USER)))
+        assert isinstance(resp, ErrorResponse)
+        assert "confirmation_ids" in resp.message
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_empty_id_list_reads_as_no_id_at_all(self):
+        with _env() as db:
+            resp = await _confirm(_approve(make_session(_USER)), confirmation_ids=[])
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_oversized_batch_is_refused_before_anything_is_consumed(self):
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            session = make_session(_USER)
+            first, _ = await _two_previews(session)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_ids=[first]
+                + [f"filler-{i}" for i in range(MAX_BATCH_CONFIRMATIONS)],
+            )
+        assert isinstance(resp, ErrorResponse)
+        assert str(MAX_BATCH_CONFIRMATIONS) in resp.message
+        assert proposal_key(first) in redis.store
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_blank_id_in_the_batch_is_refused(self):
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            session = make_session(_USER)
+            first, _ = await _two_previews(session)
+            resp = await _confirm(_approve(session), confirmation_ids=[first, "   "])
+        assert isinstance(resp, ErrorResponse)
+        assert proposal_key(first) in redis.store
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_still_refuses_inline_field_values(self):
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            resp = await _confirm(
+                _approve(session),
+                confirmation_ids=[first, second],
+                name="Someone else",
+            )
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_is_refused_in_a_block_origin_session(self):
+        with _env() as db:
+            session = make_session(_USER)
+            first, second = await _two_previews(session)
+            block_session = _automation_session()
+            block_session.session_id = session.session_id
+            resp = await _confirm(block_session, confirmation_ids=[first, second])
+        assert isinstance(resp, ErrorResponse)
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_batch_confirmed_in_the_same_turn_as_its_previews_is_refused(self):
+        """The watermark gate is per id, so batching must not become the way
+        the model previews and confirms inside one uninterrupted turn."""
+        with _env() as db:
+            session = _approve(make_session(_USER))
+            first, second = await _two_previews(session)
+            resp = await _confirm(session, confirmation_ids=[first, second])
+        assert isinstance(resp, ExpertChangeBatchAppliedResponse)
+        assert resp.applied is False
+        assert all(not result.applied for result in resp.results)
+        assert all(
+            result.error is not None and "not answered" in result.error
+            for result in resp.results
+        )
+        db.hire_expert.assert_not_called()
+        db.create_raised_expert.assert_not_called()
