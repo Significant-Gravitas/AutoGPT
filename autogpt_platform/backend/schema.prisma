@@ -996,7 +996,8 @@ model ExpertLearnedNote {
   text      String
   learnedAt DateTime @default(now())
 
-  // Chat session the underlying rule was captured in, when known.
+  // Session the note was recorded from: the dream pass's own session for a
+  // promoted note, the capturing chat session for a directly-stored one.
   sourceSessionId String?
   // Graphiti :RELATES_TO edge uuid the note was promoted from.
   sourceRuleId    String?

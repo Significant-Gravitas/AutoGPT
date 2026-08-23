@@ -37,6 +37,7 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
+from .learned_notes import promote_pass_learned_notes
 from .llm import (
     CompletionUsage,
     DreamLLMError,
@@ -974,6 +975,11 @@ async def _execute_dream_pass_async(
                 known_fact_uuids=input_bundle.known_fact_uuids,
                 lock_handle=dream_lock_handle,
             )
+            # Consolidation step of the durable-corrections loop: the rules
+            # that survived this pass become learned notes, and notes whose
+            # rule this pass retired are archived. Runs after apply so it can
+            # read the durable edge uuids apply minted; never raises.
+            await promote_pass_learned_notes(user_id, expert_id, ops, apply_stats)
             # Apply succeeded (even as a no-op) — stamp the marker so the
             # next nightly pass can skip when nothing new has landed.
             # Stamped with the gather-window end so episodes that arrived

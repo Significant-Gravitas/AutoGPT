@@ -162,7 +162,12 @@ RECOMBINE_SYSTEM = (
     ' * ``memory_kind`` MUST be one of: "finding", "rule", '
     '"preference", "plan". Do NOT invent new values (e.g. '
     '"inferred_fact", "recommendation", "insight") — those '
-    "proposals are silently dropped.\n\n"
+    "proposals are silently dropped.\n"
+    ' * Use "rule" ONLY for a standing instruction the user has '
+    "corrected the assistant into following (\"always send drafts "
+    'before publishing"). A rule is written into every future prompt, '
+    "so cite every source that supports it and rate confidence "
+    "honestly — a one-off request is a finding, not a rule.\n\n"
     "JSON SCHEMA (your response MUST match this shape):\n"
     '{ "proposals": [ { "content": str, "scope": str, "memory_kind": str, '
     '"confidence": float, "rationale": str, "source_episode_uuids": [str, ...], '
@@ -242,6 +247,11 @@ SANITIZE_SYSTEM = (
     "are not memories ABOUT THE USER. Keep a fact only when its subject "
     "is the user, their projects, the people/orgs they work with, or "
     "their stated preferences.\n"
+    ' * A proposal kept as memory_kind="rule" becomes a standing '
+    "instruction the assistant reads on every future turn. Keep one "
+    "only when the recent material shows the user actually correcting "
+    "the assistant's behaviour, and downgrade a speculative one to "
+    '"finding" instead of dropping it.\n'
     " * Write a short ``summary_for_user`` (1-3 sentences) describing "
     "what the pass found.\n"
     " * ``summary_for_user`` MUST ALWAYS be non-empty — even when there "

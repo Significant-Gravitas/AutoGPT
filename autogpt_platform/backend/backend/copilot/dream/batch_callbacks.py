@@ -646,6 +646,7 @@ async def _finalize_complete(
             apply_operations,
             drain_status_from_stats,
         )
+        from .learned_notes import promote_pass_learned_notes
         from .orchestrator import _clamp_operations
     except Exception:
         logger.exception("Failed to import dream apply for pass=%s", pass_id)
@@ -770,6 +771,11 @@ async def _finalize_complete(
             error=f"apply: {type(exc).__name__}: {exc}",
         )
         return
+
+    # Same learned-note consolidation the sync path runs after apply — the
+    # batch path applies here instead, hours later, so the hook has to be
+    # mirrored or batch cohorts would silently never learn anything.
+    await promote_pass_learned_notes(user_id, expert_id, ops, apply_stats)
 
     # Per-phase usage log on the success path. Failure paths record the
     # same usage via ``_fail_pass`` (we incurred those provider tokens
