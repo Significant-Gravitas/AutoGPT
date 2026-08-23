@@ -12,11 +12,10 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot.model import ChatSession
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
 
 from .base import BaseTool
 from .expert_proposal import (
-    ExpertChangeProposal,
     apply_proposal,
     autopilot_session_guard,
     load_bound_proposal,
@@ -215,24 +214,10 @@ async def _confirm_batch(
             session_id=session_id,
         )
 
-    # Every id is resolved and bound-checked before a single write happens,
-    # so a stale or foreign id in the batch is reported instead of deciding
-    # what the ids beside it are allowed to do.
-    #
-    # ``load_bound_proposal`` consumes as it checks, so this pass burns the
-    # ids it accepts. That is deliberate: it makes one batch behave exactly
-    # like N sequential single-id confirms, where a proposal that fails at
-    # apply time is likewise discarded and re-previewed. Splitting the check
-    # from the consume would give the batch path its own, weaker single-use
-    # guarantee than the single-id path it has to match.
     redis = await get_redis_async()
-    loaded = [
-        await load_bound_proposal(redis, candidate, user_id, session)
-        for candidate in ids
-    ]
     results = [
-        await _apply_one(user_id, session_id, candidate, proposal)
-        for candidate, proposal in zip(ids, loaded)
+        await _confirm_and_apply(redis, user_id, session, candidate)
+        for candidate in ids
     ]
     experts = _created_experts(results)
     return ExpertChangeBatchAppliedResponse(
@@ -244,15 +229,25 @@ async def _confirm_batch(
     )
 
 
-async def _apply_one(
+async def _confirm_and_apply(
+    redis: AsyncRedisClient,
     user_id: str,
-    session_id: str,
+    session: ChatSession,
     confirmation_id: str,
-    proposal: ExpertChangeProposal | ExpertChangeError,
 ) -> ExpertChangeResult:
+    """Consume one id and apply it before the next id is touched.
+
+    ``load_bound_proposal`` tombstones as it checks, so consuming all N up
+    front and applying afterwards means an interrupted call — a Stop or a
+    disconnect, both of which cancel the turn mid-tool — permanently burns
+    every approval it never got to, with nothing created. Because no apply
+    reads the ids beside it, interleaving costs nothing and leaves the ids
+    past the interruption still valid and re-confirmable.
+    """
+    proposal = await load_bound_proposal(redis, confirmation_id, user_id, session)
     if isinstance(proposal, ExpertChangeError):
         return _unapplied_result(confirmation_id, proposal)
-    applied = await apply_proposal(user_id, session_id, proposal)
+    applied = await apply_proposal(user_id, session.session_id, proposal)
     if isinstance(applied, ExpertChangeAppliedResponse):
         return ExpertChangeResult(
             confirmation_id=confirmation_id,

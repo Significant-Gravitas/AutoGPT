@@ -6,6 +6,7 @@ produced it, confirm must apply exactly what was previewed, and only a
 session a human is actually driving may reach any of it.
 """
 
+import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1112,6 +1113,36 @@ class TestBatchConfirm:
         assert isinstance(resp, ExpertChangeBatchAppliedResponse)
         assert resp.results[0].failed_workflows == ["Inbox triage"]
         assert "Inbox triage" in resp.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_interrupted_batch_leaves_the_ids_it_never_reached(self):
+        """A Stop or a disconnect cancels the turn mid-tool, and a 20-hire
+        batch is a long call. Consuming every id up front would tombstone
+        approvals the call never acted on: the user loses them all, and the
+        replay tells the model to say a team that does not exist is done."""
+        redis = _FakeRedis()
+        with _env(redis=redis) as db:
+            db.hire_expert.side_effect = [
+                SimpleNamespace(expert=_created(), failed_preloads=[]),
+                asyncio.CancelledError(),
+            ]
+            session = make_session(_USER)
+            previews = [await _hire(session, template_id="tpl-scout") for _ in range(3)]
+            ids = [
+                preview.confirmation_id
+                for preview in previews
+                if isinstance(preview, ExpertChangeProposedResponse)
+            ]
+            assert len(ids) == 3
+            with pytest.raises(asyncio.CancelledError):
+                await _confirm(_approve(session), confirmation_ids=ids)
+
+        assert proposal_key(ids[0]) not in redis.store
+        assert proposal_key(ids[1]) not in redis.store
+        # The one the cancelled call never reached is still the user's to
+        # confirm — it was neither applied nor burned.
+        assert proposal_key(ids[2]) in redis.store
+        assert db.hire_expert.await_count == 2
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_batch_of_one_is_still_a_batch(self):
