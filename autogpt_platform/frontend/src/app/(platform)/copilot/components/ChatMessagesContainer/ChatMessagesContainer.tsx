@@ -420,14 +420,16 @@ export function ChatMessagesContainer({
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
-    // data-status is transient copy for the Thinking indicator; neither
-    // counts as "real" content that hides the indicator.
+    // Ignore bookkeeping parts. data-cursor is legacy resume metadata,
+    // data-status is transient copy for the Thinking indicator, and
+    // data-suggestions arrives before the final summary finishes streaming;
+    // none counts as "real" content that hides the indicator.
     const parts = lastMessage.parts.filter(
       (p) =>
         p.type !== "data-cursor" &&
         p.type !== "data-status" &&
-        p.type !== "data-dream-operations",
+        p.type !== "data-dream-operations" &&
+        p.type !== SUGGESTIONS_PART_TYPE,
     );
     if (parts.length === 0) return false;
 
