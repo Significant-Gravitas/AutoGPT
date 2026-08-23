@@ -50,7 +50,7 @@ describe("MethodPanel", () => {
     expect(screen.getByText("What you get.")).toBeDefined();
     expect(screen.getByText("Stay in control.")).toBeDefined();
     expect(screen.getByText(/spend zero AutoGPT credits/i)).toBeDefined();
-    expect(screen.getByText(/follow ChatGPT's terms/i)).toBeDefined();
+    expect(screen.getByText(/follow OpenAI's terms/i)).toBeDefined();
   });
 
   test("claims nothing it cannot back up", () => {
