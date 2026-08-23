@@ -55,6 +55,7 @@ from .response_model import (
     StreamStart,
     StreamStartStep,
     StreamStatus,
+    StreamSuggestions,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -1179,6 +1180,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
         ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
         ResponseType.MODE_CHANGED.value: StreamModeChanged,
+        ResponseType.SUGGESTIONS.value: StreamSuggestions,
     }
 
     chunk_type = chunk_data.get("type")

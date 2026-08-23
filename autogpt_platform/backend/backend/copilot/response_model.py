@@ -10,7 +10,7 @@ import logging
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.util.json import dumps as json_dumps
 from backend.util.truncate import truncate
@@ -62,6 +62,10 @@ class ResponseType(str, Enum):
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
     MODE_CHANGED = "data-mode-changed"
+    # Next-step chips proposed by the model at the end of a substantive
+    # turn.  Supplied via the ``suggest_next_steps`` tool and re-emitted
+    # here so the client gets a typed part instead of sniffing tool output.
+    SUGGESTIONS = "data-suggestions"
 
 
 class StreamBaseResponse(BaseModel):
@@ -408,5 +412,50 @@ class StreamPendingDrained(StreamBaseResponse):
         data = {
             "type": self.type.value,
             "data": {"drainedCount": self.drainedCount},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+MAX_SUGGESTIONS = 3
+MAX_SUGGESTION_LENGTH = 60
+
+
+class StreamSuggestions(StreamBaseResponse):
+    """Up to three one-tap next actions offered after a substantive turn.
+
+    The model supplies these through the ``suggest_next_steps`` tool; this
+    event re-publishes them as an AI SDK v5 data part so the client renders
+    chips from a typed ``message.parts`` entry instead of parsing tool
+    output.  Labels are normalised here rather than at the call site so the
+    same guarantees hold for events replayed from Redis on stream resume.
+    """
+
+    type: ResponseType = ResponseType.SUGGESTIONS
+    suggestions: list[str] = Field(
+        default_factory=list,
+        description=f"Short imperative labels, at most {MAX_SUGGESTIONS}.",
+    )
+
+    @field_validator("suggestions", mode="after")
+    @classmethod
+    def _normalize(cls, value: list[str]) -> list[str]:
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for raw in value:
+            label = " ".join(raw.split())[:MAX_SUGGESTION_LENGTH].strip()
+            key = label.casefold()
+            if not label or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(label)
+            if len(cleaned) == MAX_SUGGESTIONS:
+                break
+        return cleaned
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part (``type='data-suggestions'``)."""
+        data = {
+            "type": self.type.value,
+            "data": {"suggestions": self.suggestions},
         }
         return f"data: {json.dumps(data)}\n\n"

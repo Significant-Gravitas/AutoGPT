@@ -719,6 +719,22 @@ def get_delegation_supplement() -> str:
 """
 
 
+def get_next_step_chips_supplement() -> str:
+    """Next-step chip rules, appended only when the chips flag is on.
+
+    Deliberately two sentences: these tokens ship on every turn, and the
+    argument schema on ``suggest_next_steps`` already carries the shape.
+    """
+    return """
+
+### Next steps
+After finishing substantive work, call `suggest_next_steps` just before your
+closing summary with up to 3 short imperative follow-ups you could carry out
+yourself if tapped. Skip it entirely for chit-chat, clarifications, or any turn
+that produced no result worth building on.
+"""
+
+
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 

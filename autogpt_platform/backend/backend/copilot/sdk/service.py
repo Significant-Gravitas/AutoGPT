@@ -107,6 +107,7 @@ from ..permissions import (
 from ..prompting import (
     get_delegation_supplement,
     get_graphiti_supplement,
+    get_next_step_chips_supplement,
     get_sdk_supplement,
 )
 from ..rate_limit import (
@@ -4337,6 +4338,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             Flag.HIRE_EXPERTS, user_id, default=False
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        # Next-step chips ride their own flag, failing closed for anonymous
+        # turns.  Same reasoning as the expert gate above: the prompt rule
+        # and the MCP tool must be enabled or disabled together.
+        next_step_chips_enabled = bool(user_id) and await is_feature_enabled(
+            Flag.COPILOT_NEXT_STEP_CHIPS, user_id, default=False
+        )
+        next_step_chips_supplement = (
+            get_next_step_chips_supplement() if next_step_chips_enabled else ""
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4352,6 +4362,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
+            + next_step_chips_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix
@@ -4396,6 +4407,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
+        if not next_step_chips_enabled:
+            disabled_tool_groups.append("next_step_chips")
         # ``experts_enabled`` was resolved with the system-prompt supplements
         # above; the role split lives in the shared helper.
         disabled_tool_groups.extend(

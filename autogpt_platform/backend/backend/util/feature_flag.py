@@ -77,6 +77,11 @@ class Flag(str, Enum):
     # (default False) — these are unprompted messages, so a flag lookup
     # failure has to mean silence rather than a surprise post.
     COPILOT_PROACTIVE_WATCHERS = "copilot-proactive-watchers"
+    # Next-step chips after a completed task (suggest_next_steps tool +
+    # the prompt rule that asks for them + the chips under the final
+    # assistant message).  Fail-closed: when off the tool is not offered
+    # to the model and the prompt rule is omitted entirely.
+    COPILOT_NEXT_STEP_CHIPS = "copilot-next-step-chips"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"

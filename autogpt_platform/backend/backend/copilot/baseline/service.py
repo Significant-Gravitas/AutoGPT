@@ -78,6 +78,7 @@ from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
     get_delegation_supplement,
     get_graphiti_supplement,
+    get_next_step_chips_supplement,
 )
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
@@ -1848,6 +1849,15 @@ async def stream_chat_completion_baseline(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    # Next-step chips ride their own flag, failing closed for anonymous
+    # turns.  Same reasoning as the expert gate above: the prompt rule and
+    # the tool must be enabled or disabled together.
+    next_step_chips_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.COPILOT_NEXT_STEP_CHIPS, user_id, default=False
+    )
+    next_step_chips_supplement = (
+        get_next_step_chips_supplement() if next_step_chips_enabled else ""
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1858,6 +1868,7 @@ async def stream_chat_completion_baseline(
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
+        + next_step_chips_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -2130,6 +2141,8 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
+    if not next_step_chips_enabled:
+        disabled_tool_groups.append("next_step_chips")
     # ``experts_enabled`` was resolved with the system-prompt supplements
     # above; the role split lives in the shared helper.
     disabled_tool_groups.extend(

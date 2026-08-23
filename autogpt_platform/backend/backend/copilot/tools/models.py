@@ -109,6 +109,7 @@ class ResponseType(str, Enum):
 
     # Planning
     TODO_WRITE = "todo_write"
+    NEXT_STEPS_SUGGESTED = "next_steps_suggested"
 
     # Platform info
     PLATFORM_INFO = "platform_info"
@@ -1293,6 +1294,18 @@ class TodoWriteResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TODO_WRITE
     todos: list[TodoItem] = Field(default_factory=list)
+
+
+class SuggestNextStepsResponse(ToolResponseBase):
+    """Ack returned by ``suggest_next_steps``.
+
+    Echoes the normalised labels back so the model sees exactly what the
+    user was offered — the chips themselves reach the client through the
+    ``data-suggestions`` stream part emitted while the tool runs.
+    """
+
+    type: ResponseType = ResponseType.NEXT_STEPS_SUGGESTED
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class PlatformInfoResponse(ToolResponseBase):

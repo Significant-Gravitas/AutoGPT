@@ -61,6 +61,7 @@ from .schedule_followup import ScheduleFollowupTool
 from .search_docs import SearchDocsTool
 from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
+from .suggest_next_steps import SuggestNextStepsTool
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -124,6 +125,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
     "TodoWrite": TodoWriteTool(),
+    "suggest_next_steps": SuggestNextStepsTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
@@ -185,7 +187,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "delegation", "next_step_chips"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -211,6 +215,10 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # Chips are gated on ``copilot-next-step-chips``; when the flag is off
+    # the engines disable this group so the model is never told to call a
+    # tool whose UI surface is hidden.
+    "suggest_next_steps": "next_step_chips",
 }
 
 
