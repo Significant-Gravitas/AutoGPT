@@ -161,9 +161,39 @@ describe("TeamPreviewCard", () => {
       screen.getByRole("button", { name: /review the new team/i }),
     );
 
-    expect(screen.getAllByText("Drafted Otto").length).toBeGreaterThan(0);
+    // Otto's row is the carrier — it holds the roster and reads "Review the
+    // new team"; every other draft keeps its own name in the chain.
     expect(screen.getAllByText("Drafted Scout").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Drafted Bea").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Drafted Otto")).toBeNull();
     expect(screen.getAllByRole("button", { name: "Hire all" })).toHaveLength(1);
+  });
+
+  it("keeps a removal when a later proposal streams in", async () => {
+    // Regression: the roster used to hang off the LAST proposal row, so each
+    // new proposal moved the card to a different row, remounting it and
+    // silently restoring experts the user had already removed.
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain parts={TEAM.slice(0, 2).map(raisePart)} isStreaming />
+      </CopilotChatActionsProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove Scout" }));
+
+    rerender(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain parts={TEAM.map(raisePart)} isStreaming={false} />
+      </CopilotChatActionsProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Hire all" }));
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend.mock.calls[0][0]).not.toContain("c-2");
+    expect(onSend.mock.calls[0][0]).toContain("c-3");
   });
 
   it("keeps the single-expert card when only one is proposed", () => {

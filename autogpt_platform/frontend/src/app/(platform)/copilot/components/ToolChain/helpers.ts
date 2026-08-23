@@ -115,11 +115,16 @@ export function groupTeamProposalRows(rows: ChainRow[]): ChainRow[] {
   if (proposed.size < 2) return rows;
 
   const proposals = [...proposed.values()];
-  const lastKey = [...proposed.keys()].pop();
+  // The card hangs off the FIRST proposal row, not the last. Proposals stream
+  // in one at a time, so a last-row carrier moves on every new proposal —
+  // React then unmounts and remounts the card, silently resetting which
+  // experts the user had removed. The first row's key is stable as the rest
+  // append.
+  const carrierKey = [...proposed.keys()][0];
   return rows.map((row) => {
     const proposal = proposed.get(row.key);
     if (!proposal) return row;
-    if (row.key === lastKey) {
+    if (row.key === carrierKey) {
       return { ...row, teamProposals: proposals, text: "Review the new team" };
     }
     return {
