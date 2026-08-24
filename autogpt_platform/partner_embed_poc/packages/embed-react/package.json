@@ -1,0 +1,43 @@
+{
+  "name": "@autogpt/embedded-chat",
+  "version": "0.1.0",
+  "description": "White-label AutoGPT chat component for partner applications",
+  "type": "module",
+  "files": [
+    "dist/AutoGPTEmbeddedChat.d.ts",
+    "dist/AutoGPTEmbeddedChat.js",
+    "dist/embedded-chat.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/AutoGPTEmbeddedChat.d.ts",
+      "import": "./dist/AutoGPTEmbeddedChat.js"
+    },
+    "./styles.css": "./dist/embedded-chat.css"
+  },
+  "scripts": {
+    "build": "vite build && tsc --project tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0",
+    "react-dom": "^18.3.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "3.0.61",
+    "ai": "6.0.134"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "@vitejs/plugin-react": "5.1.2",
+    "happy-dom": "20.8.9",
+    "typescript": "5.9.3",
+    "vite": "7.2.2",
+    "vitest": "4.1.0"
+  }
+}

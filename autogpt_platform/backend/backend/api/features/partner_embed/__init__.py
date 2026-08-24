@@ -1,0 +1,1 @@
+"""Partner-embedded platform API."""

@@ -46,6 +46,7 @@ import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
 import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
+import backend.api.features.partner_embed.routes as partner_embed_routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
@@ -501,6 +502,7 @@ app.include_router(
     tags=["v2", "mcp"],
     prefix="/api/mcp",
 )
+app.include_router(partner_embed_routes.router)
 app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
