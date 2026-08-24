@@ -207,6 +207,8 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                delegated_by_session_id=session.session_id,
+                delegated_by_expert_id=session.expert_id,
             )
             inner_session_id = new_session.session_id
 
