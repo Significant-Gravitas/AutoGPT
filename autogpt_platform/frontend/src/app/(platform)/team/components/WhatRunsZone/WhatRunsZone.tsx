@@ -51,11 +51,13 @@ export function WhatRunsZone({ experts, schedules }: Props) {
 
   return (
     <section aria-label="What runs" className="flex flex-col gap-4">
-      <div className={cn("flex flex-col gap-1", SECTION_INSET_CLASS)}>
-        <Text variant="h3">What runs</Text>
-        <Text variant="body" className="max-w-prose text-zinc-600">
-          Workflows installed on your experts, plus agents you can adopt.
-        </Text>
+      <div
+        className={cn(
+          "mb-2 border-b border-zinc-100 pb-4",
+          SECTION_INSET_CLASS,
+        )}
+      >
+        <Text variant="h4">What runs</Text>
       </div>
 
       <div className={SECTION_INSET_CLASS}>
