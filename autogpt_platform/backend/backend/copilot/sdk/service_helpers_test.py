@@ -18,6 +18,7 @@ from backend.copilot.config import ChatConfig
 
 from ..model import ChatMessage
 from ..model_router import ResolvedModel
+from .compaction import CompactionStats
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
@@ -31,6 +32,7 @@ from .service import (
     _reduce_context,
     _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
+    _retry_reduced_context,
     _TokenUsage,
     _will_compact,
 )
@@ -1851,4 +1853,51 @@ class TestExpectPreQueryCompaction:
                 session_msg_ceiling=len(messages),
             )
             is False
+        )
+
+
+# ---------------------------------------------------------------------------
+# _retry_reduced_context
+# ---------------------------------------------------------------------------
+
+
+class TestRetryReducedContext:
+    """The retry row must only persist when something actually shrank.
+
+    ``_reduce_context`` is called after the row is already open, so the
+    close is a claim about work that may not have happened.
+    """
+
+    def test_live_transcript_counts_even_without_compressed_history(self):
+        # First retry: the transcript is summarized or dropped wholesale —
+        # a real reduction the row can honestly report.
+        assert (
+            _retry_reduced_context(had_live_transcript=True, compaction_stats=None)
+            is True
+        )
+
+    def test_compressed_history_counts_without_a_transcript(self):
+        assert (
+            _retry_reduced_context(
+                had_live_transcript=False,
+                compaction_stats=CompactionStats(tokens_before=100, tokens_after=10),
+            )
+            is True
+        )
+
+    def test_nothing_reduced_retires_the_row(self):
+        # A later retry whose transcript was already dropped and whose
+        # history already fits reduces nothing.
+        assert (
+            _retry_reduced_context(had_live_transcript=False, compaction_stats=None)
+            is False
+        )
+
+    def test_both_signals_still_reports_a_reduction(self):
+        assert (
+            _retry_reduced_context(
+                had_live_transcript=True,
+                compaction_stats=CompactionStats(messages_before=9, messages_after=2),
+            )
+            is True
         )

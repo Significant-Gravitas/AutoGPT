@@ -2678,6 +2678,25 @@ def _expect_pre_query_compaction(
     return False
 
 
+def _retry_reduced_context(
+    *,
+    had_live_transcript: bool,
+    compaction_stats: "CompactionStats | None",
+) -> bool:
+    """Did a context-reduction retry actually shrink anything?
+
+    The retry opens its compaction row optimistically, before
+    ``_reduce_context`` runs.  Real reduction happens when a transcript
+    that was still in play gets summarized or dropped, or when
+    ``_build_query_message`` compresses DB history — the latter surfaces
+    as ``compaction_stats``.  A later retry whose transcript was already
+    dropped and whose history already fits the halved budget reduces
+    nothing, so its row must be retired rather than persisted: the user
+    is never told the conversation was condensed when it wasn't.
+    """
+    return had_live_transcript or compaction_stats is not None
+
+
 async def _compress_messages(
     messages: list[ChatMessage],
     target_tokens: int | None = None,
@@ -5058,6 +5077,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 for ev in compaction.emit_pre_query_start():
                     yield ev
 
+                # Captured before ``_reduce_context`` flips ``tried_compaction``:
+                # a transcript is only reduced on the retry that first
+                # summarizes or drops it.
+                had_live_transcript = bool(transcript_content) and not tried_compaction
+
                 ctx = await _reduce_context(
                     transcript_content,
                     tried_compaction,
@@ -5119,10 +5143,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         target_tokens=state.target_tokens,
                     )
                 )
-                for ev in compaction.emit_pre_query_end(
-                    session, state.compaction_stats
+                if _retry_reduced_context(
+                    had_live_transcript=had_live_transcript,
+                    compaction_stats=state.compaction_stats,
                 ):
-                    yield ev
+                    for ev in compaction.emit_pre_query_end(
+                        session, state.compaction_stats
+                    ):
+                        yield ev
+                else:
+                    for ev in compaction.abort_pre_query(session):
+                        yield ev
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
