@@ -104,7 +104,6 @@ export function ChatInput({
     setIsDryRun,
   } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const showDryRunToggle = showModeToggle;
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -187,23 +186,19 @@ export function ChatInput({
   } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceFiles } = partitionAttachments(attachments);
-      // New tool UI clears eagerly for the same reason the text clears
-      // eagerly (see useChatInput.handleSend); a failed send restores the
-      // chips unless the user already attached new ones. The old UI keeps
-      // its clear-after-successful-send behaviour.
+      // Chips clear eagerly for the same reason the text does (see
+      // useChatInput.handleSend); a failed send restores them unless the
+      // user already attached new ones in the meantime.
       const sent = attachments;
-      if (isNewToolUI) setAttachments([]);
+      setAttachments([]);
       try {
         await onSend(
           message,
           localFiles.length > 0 ? localFiles : undefined,
           workspaceFiles.length > 0 ? workspaceFiles : undefined,
         );
-        if (!isNewToolUI) setAttachments([]);
       } catch (error) {
-        if (isNewToolUI) {
-          setAttachments((prev) => (prev.length > 0 ? prev : sent));
-        }
+        setAttachments((prev) => (prev.length > 0 ? prev : sent));
         throw error;
       }
     },
