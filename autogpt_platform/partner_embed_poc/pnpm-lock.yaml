@@ -63,6 +63,58 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(happy-dom@20.8.9)(vite@7.2.2(@types/node@24.10.1)(tsx@4.21.0))
 
+  apps/mock-forwarding-digital-multitenant:
+    dependencies:
+      "@autogpt/embedded-chat":
+        specifier: workspace:*
+        version: link:../../packages/embed-react
+      "@fastify/cookie":
+        specifier: 11.0.2
+        version: 11.0.2
+      "@fastify/static":
+        specifier: 9.0.0
+        version: 9.0.0
+      fastify:
+        specifier: 5.7.4
+        version: 5.7.4
+      jose:
+        specifier: 6.1.3
+        version: 6.1.3
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: 18.3.1
+        version: 18.3.1(react@18.3.1)
+    devDependencies:
+      "@types/node":
+        specifier: 24.10.1
+        version: 24.10.1
+      "@types/react":
+        specifier: 18.3.17
+        version: 18.3.17
+      "@types/react-dom":
+        specifier: 18.3.5
+        version: 18.3.5(@types/react@18.3.17)
+      "@vitejs/plugin-react":
+        specifier: 5.1.2
+        version: 5.1.2(vite@7.2.2(@types/node@24.10.1)(tsx@4.21.0))
+      concurrently:
+        specifier: 9.2.1
+        version: 9.2.1
+      tsx:
+        specifier: 4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 7.2.2
+        version: 7.2.2(@types/node@24.10.1)(tsx@4.21.0)
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(happy-dom@20.8.9)(vite@7.2.2(@types/node@24.10.1)(tsx@4.21.0))
+
   packages/embed-react:
     dependencies:
       "@ai-sdk/react":

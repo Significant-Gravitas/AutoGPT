@@ -16,11 +16,14 @@ docker compose \
 
 Open <http://127.0.0.1:8787>, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant. The local compose overlay uses AutoGPT's deterministic copilot test engine, so this path does not need an LLM key or spend tokens.
 
+Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
+
 The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published:
 
 | URL                     | Purpose                                        |
 | ----------------------- | ---------------------------------------------- |
 | `http://127.0.0.1:8787` | Mock Forwarding Digital host and BFF           |
+| `http://127.0.0.1:8788` | Multi-tenant Forwarding Digital host and BFF   |
 | `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange         |
 | `http://127.0.0.1:8006` | AutoGPT backend; exposed for local diagnostics |
 
@@ -66,7 +69,9 @@ The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `p
 ## Components
 
 - `packages/embed-react` builds the publishable `@autogpt/embedded-chat` React package. It owns chat state and AI SDK streaming but delegates token retrieval to the host.
-- `apps/mock-forwarding-digital` is a representative freight dashboard and partner BFF. Its opaque, HTTP-only cookie is the only login used by the browser.
+- `apps/mock-forwarding-digital` is the minimal representative freight dashboard and partner BFF.
+- `apps/mock-forwarding-digital-multitenant` owns partner users, organizations, role/tool memberships, sessions, and a durable mapping ledger. Switching tenant remounts chat, and its BFF checks every chat token against the active user and organization before proxying.
+- Each host uses an opaque, HTTP-only partner session cookie. The browser never receives a partner signing key and never signs into AutoGPT.
 - `frontend/src/app/api/embed/token` is the Better Auth-side assertion exchange and token broker.
 - `backend/api/features/partner_embed` is the restricted FastAPI façade plus deterministic JIT provisioning.
 - `docker-compose.poc.yml` enables the credential-free copilot test engine and joins the mock partner to the platform network.
@@ -115,7 +120,7 @@ No package is published by this PoC.
 
 ## Production work after the PoC
 
-1. Replace the single environment-configured partner with a partner registry containing issuer, JWKS URL, audiences, allowed algorithms, status, and key-rotation metadata.
+1. Replace the environment-configured issuer allowlist with a managed partner registry containing issuer, JWKS URL, audiences, allowed algorithms, status, and key-rotation metadata.
 2. Store consumed assertion `jti` values in Redis or Postgres until `exp` and reject replay atomically across broker replicas.
 3. Replace in-memory partner sessions and the ephemeral demo signing key with Forwarding Digital's real session store and managed signing keys.
 4. Add customer and user lifecycle hooks for suspension, account moves, offboarding, role changes, and audit export. JIT provisioning must not grant permissions beyond the partner assertion.
@@ -126,8 +131,8 @@ No package is published by this PoC.
 
 ## Deliberate PoC limitations
 
-- One mock partner, one customer account, and one user.
-- Ephemeral partner signing key and in-memory Forwarding Digital sessions.
+- Two mock hosts represent one partner. The multi-tenant app seeds two customer accounts and two users but is not a full production forwarding system.
+- Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - No distributed `jti` replay store yet; assertions expire after 60 seconds.
 - Chat only. Scheduling and the real 72-tool Forwarding Digital MCP are architectural follow-ons.
 - AutoGPT's deterministic local test response stands in for a billable model call.

@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { verifyPartnerAssertion } from "@/lib/partner-embed/assertion";
-import { getPartnerEmbedConfig } from "@/lib/partner-embed/config";
+import {
+  getPartnerEmbedConfig,
+  PartnerEmbedConfigurationError,
+} from "@/lib/partner-embed/config";
 import {
   mintPartnerEmbedToken,
   PARTNER_EMBED_TOKEN_TTL_SECONDS,
@@ -30,11 +33,13 @@ export async function POST(request: Request) {
 
   let config;
   try {
-    config = getPartnerEmbedConfig();
-  } catch {
+    config = getPartnerEmbedConfig(parsed.data.assertion);
+  } catch (error) {
     return Response.json(
-      { error: "Partner embedding is not configured" },
-      { status: 503 },
+      error instanceof PartnerEmbedConfigurationError
+        ? { error: "Partner embedding is not configured" }
+        : { error: "Invalid partner assertion" },
+      { status: error instanceof PartnerEmbedConfigurationError ? 503 : 401 },
     );
   }
 

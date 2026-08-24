@@ -6,7 +6,8 @@ const provisionIdentityMock = vi.fn();
 const mintTokenMock = vi.fn();
 
 vi.mock("@/lib/partner-embed/config", () => ({
-  getPartnerEmbedConfig: () => getConfigMock(),
+  getPartnerEmbedConfig: (...args: unknown[]) => getConfigMock(...args),
+  PartnerEmbedConfigurationError: class extends Error {},
 }));
 vi.mock("@/lib/partner-embed/assertion", () => ({
   verifyPartnerAssertion: (...args: unknown[]) => verifyAssertionMock(...args),
@@ -73,6 +74,7 @@ describe("POST /api/embed/token", () => {
       token_type: "Bearer",
       expires_in: 300,
     });
+    expect(getConfigMock).toHaveBeenCalledWith("partner-jwt");
     expect(verifyAssertionMock).toHaveBeenCalledWith("partner-jwt", config);
     expect(provisionIdentityMock).toHaveBeenCalledWith(identity);
     expect(mintTokenMock).toHaveBeenCalledWith(identity, provisioned);
@@ -86,6 +88,17 @@ describe("POST /api/embed/token", () => {
     expect(response.status).toBe(401);
     expect(provisionIdentityMock).not.toHaveBeenCalled();
     expect(mintTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an issuer that is not configured before verification", async () => {
+    getConfigMock.mockImplementation(() => {
+      throw new Error("Partner assertion issuer is not configured");
+    });
+
+    const response = await POST(request({ assertion: "unknown-issuer" }));
+
+    expect(response.status).toBe(401);
+    expect(verifyAssertionMock).not.toHaveBeenCalled();
   });
 
   it("rejects a missing assertion", async () => {

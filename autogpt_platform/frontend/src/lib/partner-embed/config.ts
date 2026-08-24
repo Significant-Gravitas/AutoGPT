@@ -1,32 +1,66 @@
+import { decodeJwt } from "jose";
+import { z } from "zod";
+
 import type { PartnerEmbedConfig } from "./types";
 
-export function getPartnerEmbedConfig(): PartnerEmbedConfig {
-  const local = process.env.NODE_ENV !== "production";
-  return {
-    partnerID: readConfig(
-      "PARTNER_EMBED_ID",
-      local ? "forwarding-digital" : undefined,
-    ),
-    issuer: readConfig(
-      "PARTNER_EMBED_ISSUER",
-      local ? "http://localhost:8787" : undefined,
-    ),
-    jwksURL: readConfig(
-      "PARTNER_EMBED_JWKS_URL",
-      local ? "http://localhost:8787/.well-known/jwks.json" : undefined,
-    ),
-    audience: readConfig(
-      "PARTNER_EMBED_AUDIENCE",
-      local ? "autogpt-partner-exchange" : undefined,
-    ),
-    algorithms: ["RS256"],
-  };
+const configSchema = z.object({
+  partnerID: z.string().min(1),
+  issuer: z.string().url(),
+  jwksURL: z.string().url(),
+  audience: z.string().min(1),
+  algorithms: z.array(z.literal("RS256")).default(["RS256"]),
+});
+
+const localConfigs: PartnerEmbedConfig[] = [8787, 8788].map((port) => ({
+  partnerID: "forwarding-digital",
+  issuer: `http://localhost:${port}`,
+  jwksURL: `http://localhost:${port}/.well-known/jwks.json`,
+  audience: "autogpt-partner-exchange",
+  algorithms: ["RS256"],
+}));
+
+export class PartnerEmbedConfigurationError extends Error {}
+
+export function getPartnerEmbedConfig(assertion: string): PartnerEmbedConfig {
+  let configs: PartnerEmbedConfig[];
+  try {
+    configs = readConfigs();
+  } catch {
+    throw new PartnerEmbedConfigurationError(
+      "Partner embedding is not configured",
+    );
+  }
+
+  let issuer: string | undefined;
+  try {
+    issuer = decodeJwt(assertion).iss;
+  } catch {
+    throw new Error("Partner assertion is malformed");
+  }
+  if (!issuer) throw new Error("Partner assertion is missing an issuer");
+
+  const config = configs.find((candidate) => candidate.issuer === issuer);
+  if (!config) throw new Error("Partner assertion issuer is not configured");
+  return config;
 }
 
-function readConfig(name: string, fallback?: string): string {
-  const value = process.env[name]?.trim() || fallback;
-  if (!value) {
-    throw new Error(`${name} is required for partner embedding`);
+function readConfigs(): PartnerEmbedConfig[] {
+  const serialized = process.env.PARTNER_EMBED_CONFIGS?.trim();
+  if (serialized) {
+    return z.array(configSchema).min(1).parse(JSON.parse(serialized));
   }
-  return value;
+
+  const legacy = readLegacyConfig();
+  if (legacy) return [legacy];
+  if (process.env.NODE_ENV !== "production") return localConfigs;
+  throw new Error("PARTNER_EMBED_CONFIGS is required for partner embedding");
+}
+
+function readLegacyConfig(): PartnerEmbedConfig | undefined {
+  const partnerID = process.env.PARTNER_EMBED_ID?.trim();
+  const issuer = process.env.PARTNER_EMBED_ISSUER?.trim();
+  const jwksURL = process.env.PARTNER_EMBED_JWKS_URL?.trim();
+  const audience = process.env.PARTNER_EMBED_AUDIENCE?.trim();
+  if (!partnerID && !issuer && !jwksURL && !audience) return undefined;
+  return configSchema.parse({ partnerID, issuer, jwksURL, audience });
 }
