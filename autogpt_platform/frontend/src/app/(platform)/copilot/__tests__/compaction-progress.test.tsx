@@ -341,6 +341,16 @@ const INTERRUPTED_HOLD_INDEX = INTERRUPTED_OPEN_ROW_TURN.findIndex(
   (c) => c.type === "finish",
 );
 
+// The rebuild phase is emitted AFTER the tool row closes — it covers the
+// transcript upload, CLI restart and uncached prefill, which is the silence
+// this feature exists to narrate. Holding on the chunk that follows it keeps
+// that window observable: settling the row on `output-available` would erase
+// the phase entirely.
+const REBUILDING_HOLD_INDEX =
+  COMPACTION_TURN.findIndex(
+    (c) => c.type === "data-compaction" && c.data?.phase === "rebuilding",
+  ) + 1;
+
 // `COMPACTION_TURN`'s chunk index of `tool-output-available` — the delay
 // applied *before* this chunk is what keeps the turn parked in the
 // "summarizing" phase long enough for `waitFor` to observe it (see below).
@@ -520,6 +530,30 @@ describe("context compaction progress", () => {
         screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
       ).toBeDefined();
     });
+  });
+
+  it("keeps the bar live through the rebuild that follows the closed row", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: COMPACTION_TURN,
+        perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
+          i === REBUILDING_HOLD_INDEX ? 600 : 15,
+        ),
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise this");
+
+    // The tool row has already closed with its JSON output by this point;
+    // the row must still be live and narrating the rebuild.
+    await waitFor(() => {
+      expect(screen.getByText("Reloading context…")).toBeDefined();
+    });
+    expect(screen.getByRole("progressbar")).toBeDefined();
   });
 
   it("renders nothing for a row left open when the stream is interrupted", async () => {
