@@ -4,14 +4,16 @@ services:
       CHAT_TEST_MODE: "false"
       FORWARDING_DIGITAL_MCP_URL: http://mock-forwarding-digital-mcp:8790/mcp
       FORWARDING_DIGITAL_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
-      PARTNER_EMBED_CODEX_CREDENTIAL_ID: 7d7ac4ed-4b90-49e4-8a9c-e1a3613f48a2
 
   copilot_executor:
     environment:
       CHAT_TEST_MODE: "false"
+      CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "true"
       FORWARDING_DIGITAL_MCP_URL: http://mock-forwarding-digital-mcp:8790/mcp
       FORWARDING_DIGITAL_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
 
+    volumes:
+      - ${PARTNER_CLAUDE_CONFIG_DIR:?Set PARTNER_CLAUDE_CONFIG_DIR to a private copy of ~/.claude}:/root/.claude
   frontend:
     environment:
       PARTNER_EMBED_CONFIGS: >-

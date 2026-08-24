@@ -4,9 +4,13 @@ This project demonstrates Forwarding Digital users opening an AutoGPT-powered ch
 
 ## Run it
 
-From `autogpt_platform`:
+The compose overlay explicitly disables `CHAT_TEST_MODE`. For local development it runs AutoGPT's Claude Agent SDK using a Claude Code subscription login. From `autogpt_platform`, create a private writable copy of your Claude config and then start the stack:
 
 ```bash
+partner_claude_dir="$(mktemp -d)"
+install -m 600 ~/.claude/.credentials.json "$partner_claude_dir/.credentials.json"
+export PARTNER_CLAUDE_CONFIG_DIR="$partner_claude_dir"
+
 docker compose \
   -f docker-compose.yml \
   -f partner_embed_poc/docker-compose.poc.yml \
@@ -14,13 +18,13 @@ docker compose \
   up -d --build
 ```
 
+The copy lets Claude refresh OAuth without modifying the desktop credential file. It must never be committed. A production deployment would use managed organization credentials, budgets, metering, and rotation instead of a personal subscription.
+
 Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant.
 
 Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
 
 Open <http://127.0.0.1:8789> for the separate Angular 22 host. It uses the publishable `@autogpt/embedded-chat-element` custom element and the same BFF, token exchange, tenant mapping, real Autopilot, and MCP path.
-
-The compose overlay explicitly disables `CHAT_TEST_MODE`. This checkout selects a user-owned Codex credential through `PARTNER_EMBED_CODEX_CREDENTIAL_ID`; the credential must exist in AutoGPT's credential store for the mapped partner user. It is never committed to the repository. A production deployment would supply its managed model transport instead.
 
 The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published; the mock MCP service is Docker-internal:
 
@@ -84,7 +88,7 @@ The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `p
 - `apps/mock-forwarding-digital-mcp` is an internal Streamable HTTP MCP server with three tools and separate Northstar/Harbour datasets.
 - Each host uses an opaque, HTTP-only partner session cookie. The browser never receives a partner signing key and never signs into AutoGPT.
 - `frontend/src/app/api/embed/token` is the Better Auth-side assertion exchange and token broker.
-- `backend/api/features/partner_embed` is the restricted FastAPI façade, deterministic JIT provisioning, external-account session anchor, and user-owned model-credential selector.
+- `backend/api/features/partner_embed` is the restricted FastAPI façade, deterministic JIT provisioning, external-account session anchor, and server-owned model-transport selector.
 - `backend/copilot/tools/forwarding_digital.py` is the Autopilot-to-MCP bridge. The model selects only a report; the server derives the tenant.
 - `docker-compose.poc.yml` disables the dummy engine and joins the hosts and internal MCP service to the platform network.
 - `docker-compose.isolation.yml` avoids global container names, dedicated network collisions, and nonessential host ports.
@@ -173,5 +177,5 @@ No package is published by this PoC.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - No distributed `jti` replay store yet; assertions expire after 60 seconds.
 - Chat only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
-- Real Autopilot calls use a locally imported user-owned Codex credential. Production must use managed organization credentials, budgets, metering, and rotation.
+- Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Production must use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.
