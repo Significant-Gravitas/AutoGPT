@@ -1103,7 +1103,7 @@ class TestRetryStateObservedModel:
         return _RetryState(
             options=options,
             query_message="",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -1545,7 +1545,7 @@ class TestConsumeSdkUntilDone:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -2099,7 +2099,7 @@ class TestStreamEndedWithoutResultMessage:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
