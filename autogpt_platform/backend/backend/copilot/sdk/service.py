@@ -117,6 +117,7 @@ from ..rate_limit import (
 )
 from ..response_model import (
     StreamBaseResponse,
+    StreamCompactionProgress,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -1075,6 +1076,9 @@ _EPHEMERAL_EVENT_TYPES = (
     StreamToolInputStart,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    # The compaction row's live progress phases ride along with those UI
+    # events on the SDK-internal path, inside the attempt loop.
+    StreamCompactionProgress,
     # Transient StreamError and StreamStatus are ephemeral notifications,
     # not content.  Counting them would prevent the backoff retry from
     # firing because _next_transient_backoff() returns None when
