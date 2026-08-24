@@ -29,7 +29,7 @@ class TestStreamCompactionProgress:
 
     def test_to_sse_wraps_fields_in_data_envelope(self):
         evt = StreamCompactionProgress(
-            phase="done",
+            phase="rebuilding",
             tokensBefore=128_000,
             tokensAfter=31_000,
             messagesBefore=412,
@@ -41,7 +41,7 @@ class TestStreamCompactionProgress:
         payload = json.loads(line[len("data: ") : -2])
         assert payload["type"] == "data-compaction"
         assert payload["data"] == {
-            "phase": "done",
+            "phase": "rebuilding",
             "tokensBefore": 128_000,
             "tokensAfter": 31_000,
             "messagesBefore": 412,
@@ -52,3 +52,19 @@ class TestStreamCompactionProgress:
         evt = StreamCompactionProgress(phase="summarizing")
         payload = json.loads(evt.to_sse()[len("data: ") : -2])
         assert payload["data"] == {"phase": "summarizing"}
+
+    def test_phase_is_constrained_to_the_emitted_stages(self):
+        """The wire contract is typed, not prose.
+
+        ``done`` was documented for a long time but never emitted; the
+        frontend indexes a curve table by this value, so an unmodelled
+        phase reaching it is a client-side crash rather than a no-op.
+        """
+        import pytest
+        from pydantic import ValidationError
+
+        for phase in ("summarizing", "rebuilding"):
+            assert StreamCompactionProgress(phase=phase).phase == phase
+
+        with pytest.raises(ValidationError):
+            StreamCompactionProgress(phase="done")
