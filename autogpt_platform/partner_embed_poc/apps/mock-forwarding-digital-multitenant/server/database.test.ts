@@ -61,6 +61,13 @@ describe("PartnerDatabase", () => {
       accountID: "fd-account-77",
       accountName: "Northstar Freight",
       roles: ["manager"],
+      capabilities: [
+        "jobs.read",
+        "reports.read",
+        "documents.read",
+        "documents.write",
+        "autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      ],
     });
   });
 });

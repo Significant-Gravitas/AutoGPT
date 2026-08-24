@@ -78,6 +78,32 @@ The partner assertion contains `sub`, `account_id`, `email`, `name`, `account_na
 
 The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `partner_embed` token type, and `embed:chat` scope. A normal AutoGPT user token cannot call these routes, and request bodies cannot select another organization, team, user, or partner.
 
+## Capability and session boundary
+
+Forwarding Digital assigns capabilities from its own user membership. They are signed into the partner assertion, copied into the short-lived embed token, frozen onto the AutoGPT chat session, and checked again before either AutoPilot or the MCP server exposes a tool. The PoC uses these capability names:
+
+- `jobs.read` enables arrivals and exceptions MCP reports.
+- `reports.read` enables the operations summary MCP report.
+- `documents.read` enables workspace reads and the session artifact list/download APIs.
+- `documents.write` enables workspace file creation.
+- `autogpt:block:<block-id-or-name>` enables only that AutoGPT block plus the find/run/continue block tools.
+- `autogpt:tool:<tool-name>` explicitly enables one additional AutoPilot tool.
+
+Capabilities are part of session identity, not mutable UI preferences. A token with a different partner, organization, account, user, or capability set cannot resume the session. The MCP service independently verifies the tenant and capability set in its 60-second service token, filters `tools/list`, and rejects an unauthorized `tools/call` even if a model attempts it.
+
+The restricted BFF/API surface used by the component is:
+
+| Method | Route                                                              | Purpose                                     |
+| ------ | ------------------------------------------------------------------ | ------------------------------------------- |
+| `POST` | `/api/embed/v1/sessions`                                           | Create a capability-bound chat session      |
+| `GET`  | `/api/embed/v1/sessions`                                           | List the signed-in user's matching sessions |
+| `GET`  | `/api/embed/v1/sessions/:sessionId`                                | Restore sanitized messages and capabilities |
+| `POST` | `/api/embed/v1/sessions/:sessionId/stream`                         | Stream a real AutoPilot turn                |
+| `GET`  | `/api/embed/v1/sessions/:sessionId/artifacts`                      | List session-owned artifacts                |
+| `GET`  | `/api/embed/v1/sessions/:sessionId/artifacts/:artifactId/download` | Download a session-owned artifact           |
+
+The UI renders persisted and streaming Markdown, reasoning disclosures, native-style tool call cards, session navigation, and artifact downloads. Artifact access additionally requires `documents.read`; paths are checked against the selected session before download.
+
 ## Components
 
 - `packages/embed-react` builds the publishable `@autogpt/embedded-chat` React package. It owns chat state and AI SDK streaming but delegates token retrieval to the host.
@@ -147,6 +173,41 @@ export class App {
 
 The callback is invoked for session creation and every chat turn, so the host can refresh short-lived tokens without exposing partner signing keys to the browser. The `apiBaseURL` can be empty for a same-origin BFF or point at an explicitly allowed API origin.
 
+### Theming and feature switches
+
+React hosts can enable the session/artifact surfaces independently and use either the light/dark defaults or a typed semantic theme:
+
+```tsx
+<AutoGPTEmbeddedChat
+  apiBaseURL=""
+  getAccessToken={getAccessToken}
+  sessionsEnabled
+  artifactsEnabled
+  appearance="light"
+  theme={{
+    background: "#f5f7f2",
+    accent: "#087f5b",
+    radius: "14px",
+  }}
+/>
+```
+
+The custom element exposes the same switches without framework coupling:
+
+- `appearance`, `sessions-enabled`, and `artifacts-enabled` configure presentation.
+- `api-base-url`, `brand-name`, `chat-title`, and `tenant-key` configure the host integration and remount boundary.
+
+Both packages accept `--agpt-embed-background`, `--agpt-embed-foreground`, `--agpt-embed-surface`, `--agpt-embed-surface-muted`, `--agpt-embed-accent`, `--agpt-embed-accent-foreground`, `--agpt-embed-border`, `--agpt-embed-danger`, `--agpt-embed-radius`, `--agpt-embed-font`, and `--agpt-embed-shadow` CSS variables.
+
+```css
+autogpt-embedded-chat {
+  --agpt-embed-accent: #005b96;
+  --agpt-embed-radius: 12px;
+}
+```
+
+Stable `data-slot`, `data-role`, and `data-state` attributes are available for host-level testing and carefully scoped overrides. Capability switches still come only from the signed identity chain; hiding a UI surface never grants or revokes a server permission.
+
 Build, test, or prepare a registry artifact independently:
 
 ```bash
@@ -176,6 +237,6 @@ No package is published by this PoC.
 - Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - No distributed `jti` replay store yet; assertions expire after 60 seconds.
-- Chat only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
+- Interactive chat, session history, and artifacts only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
 - Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Production must use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.

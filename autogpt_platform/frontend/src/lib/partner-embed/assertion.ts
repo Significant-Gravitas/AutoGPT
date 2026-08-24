@@ -12,6 +12,7 @@ const partnerClaimsSchema = z.object({
   name: z.string().min(1),
   account_name: z.string().min(1),
   roles: z.array(z.string()).default([]),
+  capabilities: z.array(z.string()).default([]),
   jti: z.string().min(1),
   exp: z.number().int().positive(),
   iat: z.number().int().positive(),
@@ -37,6 +38,7 @@ export async function verifyPartnerAssertion(
     displayName: claims.name,
     accountName: claims.account_name,
     isAdmin: claims.roles.includes("admin"),
+    capabilities: [...new Set(claims.capabilities)].sort(),
     jwtID: claims.jti,
     expiresAt: claims.exp,
   };

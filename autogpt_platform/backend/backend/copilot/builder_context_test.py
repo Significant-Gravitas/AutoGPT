@@ -20,8 +20,13 @@ from backend.copilot.builder_context import (
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
+    resolve_session_permissions,
 )
 from backend.copilot.model import ChatMessage, ChatSession
+
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    yield
 
 
 def _session(
@@ -53,6 +58,51 @@ def _agent_json(
     }
     base.update(overrides)
     return base
+
+
+def test_partner_session_permissions_are_capability_whitelists():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="forwarding-digital",
+        external_account_id="fd-account-77",
+        external_capabilities=[
+            "reports.read",
+            "documents.read",
+            "autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+        ],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools_exclude is False
+    assert permissions.blocks_exclude is False
+    assert permissions.blocks == ["b1ab9b19-67a6-406d-abf5-2dba76d00c79"]
+    assert set(permissions.tools) == {
+        "query_forwarding_digital",
+        "list_workspace_files",
+        "read_workspace_file",
+        "find_block",
+        "run_block",
+        "continue_run_block",
+    }
+
+
+def test_partner_without_block_capability_cannot_run_blocks():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="forwarding-digital",
+        external_account_id="fd-account-88",
+        external_capabilities=["jobs.read"],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools == ["query_forwarding_digital"]
+    assert permissions.blocks == []
 
 
 # ---------------------------------------------------------------------------

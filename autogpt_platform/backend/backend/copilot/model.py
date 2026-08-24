@@ -113,6 +113,7 @@ class ChatSessionMetadata(BaseModel):
     builder_graph_id: str | None = None
     source_platform: str | None = None
     external_account_id: str | None = None
+    external_capabilities: list[str] = Field(default_factory=list)
 
     # ``None`` means the row was persisted before this field existed, and is
     # NOT a synonym for either value: session metadata is immutable after
@@ -477,6 +478,7 @@ class ChatSession(ChatSessionInfo):
         builder_graph_id: str | None = None,
         source_platform: str | None = None,
         external_account_id: str | None = None,
+        external_capabilities: list[str] | None = None,
         origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
@@ -501,6 +503,7 @@ class ChatSession(ChatSessionInfo):
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
                 external_account_id=external_account_id,
+                external_capabilities=sorted(set(external_capabilities or [])),
                 origin=origin,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
@@ -1299,6 +1302,7 @@ async def create_chat_session(
     team_id: str | None = None,
     source_platform: str | None = None,
     external_account_id: str | None = None,
+    external_capabilities: list[str] | None = None,
     origin: ChatSessionOrigin = "interactive",
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -1349,6 +1353,7 @@ async def create_chat_session(
         builder_graph_id=builder_graph_id,
         source_platform=source_platform,
         external_account_id=external_account_id,
+        external_capabilities=external_capabilities,
         origin=origin,
         organization_id=organization_id,
         team_id=team_id,

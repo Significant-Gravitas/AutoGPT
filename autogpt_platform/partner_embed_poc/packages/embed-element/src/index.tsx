@@ -9,8 +9,11 @@ const DEFAULT_TAG_NAME = "autogpt-embedded-chat";
 export class AutoGPTEmbeddedChatElement extends HTMLElement {
   static readonly observedAttributes = [
     "api-base-url",
+    "appearance",
+    "artifacts-enabled",
     "brand-name",
     "chat-title",
+    "sessions-enabled",
     "tenant-key",
   ];
 
@@ -54,9 +57,14 @@ export class AutoGPTEmbeddedChatElement extends HTMLElement {
       <AutoGPTEmbeddedChat
         key={this.getAttribute("tenant-key") ?? "default"}
         apiBaseURL={this.getAttribute("api-base-url") ?? ""}
+        appearance={
+          this.getAttribute("appearance") === "dark" ? "dark" : "light"
+        }
+        artifactsEnabled={this.getAttribute("artifacts-enabled") !== "false"}
         brandName={this.getAttribute("brand-name") ?? "AI assistant"}
         getAccessToken={this.tokenProvider}
         title={this.getAttribute("chat-title") ?? "Assistant"}
+        sessionsEnabled={this.getAttribute("sessions-enabled") !== "false"}
       />,
     );
   }

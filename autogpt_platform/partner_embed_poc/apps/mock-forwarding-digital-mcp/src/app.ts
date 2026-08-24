@@ -51,6 +51,12 @@ const TOOLS = [
   },
 ];
 
+const TOOL_CAPABILITIES: Record<ReportName, string> = {
+  get_operations_summary: "reports.read",
+  list_arrivals: "jobs.read",
+  list_exceptions: "jobs.read",
+};
+
 export function buildApp(options: MCPServerOptions) {
   if (options.sharedSecret.length < 16) {
     throw new Error("MCP shared secret must contain at least 16 characters");
@@ -73,7 +79,7 @@ export function buildApp(options: MCPServerOptions) {
 
     if (body.method === "initialize") {
       const sessionID = randomUUID();
-      sessions.set(sessionID, claims.external_account_id);
+      sessions.set(sessionID, sessionBinding(claims));
       return reply.header("Mcp-Session-Id", sessionID).send(
         rpcResult(body.id ?? null, {
           protocolVersion: "2025-03-26",
@@ -90,7 +96,7 @@ export function buildApp(options: MCPServerOptions) {
     if (!sessionID || !sessions.has(sessionID)) {
       return reply.code(400).send({ error: "Valid MCP session required" });
     }
-    if (sessions.get(sessionID) !== claims.external_account_id) {
+    if (sessions.get(sessionID) !== sessionBinding(claims)) {
       return reply.code(403).send({ error: "MCP session tenant mismatch" });
     }
 
@@ -98,7 +104,15 @@ export function buildApp(options: MCPServerOptions) {
       return reply.code(202).send();
     }
     if (body.method === "tools/list") {
-      return reply.send(rpcResult(body.id ?? null, { tools: TOOLS }));
+      return reply.send(
+        rpcResult(body.id ?? null, {
+          tools: TOOLS.filter((tool) =>
+            claims.capabilities.includes(
+              TOOL_CAPABILITIES[tool.name as ReportName],
+            ),
+          ),
+        }),
+      );
     }
     if (body.method === "tools/call") {
       return callTool(reply, body, claims);
@@ -110,7 +124,7 @@ export function buildApp(options: MCPServerOptions) {
     const claims = authenticate(request, reply, options.sharedSecret);
     if (!claims) return;
     const sessionID = sessionHeader(request);
-    if (!sessionID || sessions.get(sessionID) !== claims.external_account_id) {
+    if (!sessionID || sessions.get(sessionID) !== sessionBinding(claims)) {
       return reply.code(404).send({ error: "MCP session not found" });
     }
     sessions.delete(sessionID);
@@ -134,6 +148,9 @@ function callTool(
   };
   if (!isReportName(params.name) || !isEmptyObject(params.arguments)) {
     return rpcError(reply, request.id ?? null, -32602, "Invalid params");
+  }
+  if (!claims.capabilities.includes(TOOL_CAPABILITIES[params.name])) {
+    return rpcError(reply, request.id ?? null, -32001, "Capability denied");
   }
   const result = report(claims.external_account_id, params.name);
   return reply.send(
@@ -162,6 +179,13 @@ function authenticate(
 function sessionHeader(request: FastifyRequest): string | undefined {
   const value = request.headers["mcp-session-id"];
   return typeof value === "string" ? value : value?.[0];
+}
+
+function sessionBinding(claims: PartnerMCPClaims): string {
+  return JSON.stringify([
+    claims.external_account_id,
+    [...new Set(claims.capabilities)].sort(),
+  ]);
 }
 
 function isReportName(value: unknown): value is ReportName {

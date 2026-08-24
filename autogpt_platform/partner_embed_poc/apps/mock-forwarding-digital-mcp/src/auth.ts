@@ -6,6 +6,7 @@ export interface PartnerMCPClaims {
   user_id: string;
   organization_id: string;
   external_account_id: string;
+  capabilities: string[];
   exp: number;
 }
 
@@ -74,6 +75,7 @@ function isClaims(value: unknown): value is PartnerMCPClaims {
     isNonEmptyString(claims.user_id) &&
     isNonEmptyString(claims.organization_id) &&
     isNonEmptyString(claims.external_account_id) &&
+    isStringArray(claims.capabilities) &&
     typeof claims.exp === "number" &&
     Number.isInteger(claims.exp)
   );
@@ -81,4 +83,11 @@ function isClaims(value: unknown): value is PartnerMCPClaims {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "string" && item.length > 0)
+  );
 }

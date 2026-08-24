@@ -309,6 +309,13 @@ a:focus-visible {
 
 .assistant-panel autogpt-embedded-chat {
   display: block;
+  --agpt-embed-accent: var(--fd-accent);
+  --agpt-embed-accent-foreground: white;
+  --agpt-embed-background: #f7faf8;
+  --agpt-embed-border: var(--fd-border);
+  --agpt-embed-radius: 0;
+  --agpt-embed-shadow: none;
+  --agpt-embed-surface: white;
 }
 
 .assistant-panel .agpt-embed {

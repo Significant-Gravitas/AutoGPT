@@ -28,6 +28,7 @@ def session():
         metadata=SimpleNamespace(
             source_platform="forwarding-digital",
             external_account_id="fd-account-77",
+            external_capabilities=["jobs.read", "reports.read"],
         ),
     )
 
@@ -38,6 +39,7 @@ def test_token_contains_server_derived_tenant_claims():
         user_id="user-1",
         organization_id="org-1",
         external_account_id="fd-account-77",
+        capabilities=["reports.read", "jobs.read"],
         now=1_000,
     )
     payload = json.loads(
@@ -50,6 +52,7 @@ def test_token_contains_server_derived_tenant_claims():
         "user_id": "user-1",
         "organization_id": "org-1",
         "external_account_id": "fd-account-77",
+        "capabilities": ["jobs.read", "reports.read"],
         "exp": 1_060,
     }
 
@@ -118,6 +121,7 @@ async def test_queries_mcp_with_session_tenant(session, monkeypatch):
     )
     assert payload["external_account_id"] == "fd-account-77"
     assert payload["organization_id"] == "autogpt-org-77"
+    assert payload["capabilities"] == ["jobs.read", "reports.read"]
 
 
 @pytest.mark.asyncio

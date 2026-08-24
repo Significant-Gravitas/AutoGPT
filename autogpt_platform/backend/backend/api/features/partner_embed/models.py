@@ -30,6 +30,43 @@ class CreateEmbedSessionResponse(BaseModel):
     created_at: str
 
 
+class EmbedSessionSummary(BaseModel):
+    id: str
+    title: str | None
+    created_at: str
+    updated_at: str
+    chat_status: str
+
+
+class ListEmbedSessionsResponse(BaseModel):
+    sessions: list[EmbedSessionSummary]
+
+
+class EmbedSessionDetailResponse(BaseModel):
+    id: str
+    title: str | None
+    created_at: str
+    updated_at: str
+    chat_status: str
+    messages: list[dict]
+    has_more_messages: bool
+    oldest_sequence: int | None
+    capabilities: list[str]
+
+
+class EmbedArtifact(BaseModel):
+    id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+    created_at: str
+
+
+class ListEmbedArtifactsResponse(BaseModel):
+    artifacts: list[EmbedArtifact]
+
+
 class EmbedTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=64_000)
     message_id: str | None = Field(default=None, max_length=64)

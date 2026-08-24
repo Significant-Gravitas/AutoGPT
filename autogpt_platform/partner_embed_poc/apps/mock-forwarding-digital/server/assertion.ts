@@ -15,6 +15,7 @@ export interface PartnerUser {
   name: string;
   accountName: string;
   roles: string[];
+  capabilities: string[];
 }
 
 export interface PartnerAssertionIssuer {
@@ -43,6 +44,7 @@ export async function createPartnerAssertionIssuer(
         name: user.name,
         account_name: user.accountName,
         roles: user.roles,
+        capabilities: user.capabilities,
       })
         .setProtectedHeader({ alg: "RS256", kid: keyID, typ: "JWT" })
         .setIssuer(issuer)

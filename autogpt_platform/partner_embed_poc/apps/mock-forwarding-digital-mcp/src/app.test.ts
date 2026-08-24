@@ -27,6 +27,7 @@ function token(
       user_id: "autogpt-user-1",
       organization_id: "autogpt-org-1",
       external_account_id: externalAccountID,
+      capabilities: ["jobs.read", "reports.read"],
       exp: Math.floor(Date.now() / 1000) + 60,
       ...overrides,
     },
@@ -166,5 +167,28 @@ describe("Forwarding Digital MCP", () => {
       const initialized = await initialize(instance, bearer);
       expect(initialized.response.statusCode).toBe(401);
     }
+  });
+
+  it("filters and rejects tools outside the signed user capabilities", async () => {
+    const instance = app();
+    const bearer = token("fd-account-77", { capabilities: ["jobs.read"] });
+    const initialized = await initialize(instance, bearer);
+    const listed = await instance.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: "Bearer " + bearer,
+        "mcp-session-id": initialized.sessionID,
+      },
+      payload: { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    });
+    const called = await callSummary(instance, bearer, initialized.sessionID);
+
+    expect(
+      listed.json().result.tools.map((tool: { name: string }) => tool.name),
+    ).toEqual(["list_arrivals", "list_exceptions"]);
+    expect(called.json()).toMatchObject({
+      error: { code: -32001, message: "Capability denied" },
+    });
   });
 });

@@ -21,6 +21,7 @@ class EmbedPrincipal(BaseModel):
     team_id: str | None
     external_account_id: str
     scopes: list[str]
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class _EmbedTokenClaims(BaseModel):
@@ -31,6 +32,7 @@ class _EmbedTokenClaims(BaseModel):
     team_id: str | None = None
     external_account_id: str = Field(min_length=1)
     scope: str = ""
+    capabilities: list[str] = Field(default_factory=list)
 
 
 async def requires_embed_principal(
@@ -76,6 +78,7 @@ async def requires_embed_principal(
         team_id=claims.team_id,
         external_account_id=claims.external_account_id,
         scopes=claims.scope.split(),
+        capabilities=sorted(set(claims.capabilities)),
     )
 
 

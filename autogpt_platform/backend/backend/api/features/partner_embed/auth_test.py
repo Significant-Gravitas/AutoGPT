@@ -71,6 +71,7 @@ def embed_payload() -> dict:
         "team_id": "600e3708-3a7a-54c7-b527-53d2c62b8d5b",
         "external_account_id": "forwarder-42",
         "scope": "embed:chat embed:schedules",
+        "capabilities": ["reports.read", "jobs.read"],
         "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
     }
 
@@ -90,6 +91,7 @@ def test_valid_embed_token_returns_locked_principal(jwks_config):
         "team_id": "600e3708-3a7a-54c7-b527-53d2c62b8d5b",
         "external_account_id": "forwarder-42",
         "scopes": ["embed:chat", "embed:schedules"],
+        "capabilities": ["jobs.read", "reports.read"],
     }
 
 

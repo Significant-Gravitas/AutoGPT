@@ -42,8 +42,11 @@ describe("AutoGPTEmbeddedChatElement", () => {
   it("observes public branding and tenant attributes", () => {
     expect(AutoGPTEmbeddedChatElement.observedAttributes).toEqual([
       "api-base-url",
+      "appearance",
+      "artifacts-enabled",
       "brand-name",
       "chat-title",
+      "sessions-enabled",
       "tenant-key",
     ]);
   });

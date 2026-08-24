@@ -29,6 +29,7 @@ export async function mintPartnerEmbedToken(
       team_id: provisioned.teamID,
       external_account_id: identity.externalAccountID,
       scope: "embed:chat",
+      capabilities: identity.capabilities,
       iat: issuedAt,
       exp: issuedAt + PARTNER_EMBED_TOKEN_TTL_SECONDS,
     },

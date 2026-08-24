@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession, ChatSessionInfo
+from backend.copilot.partner_context import FORWARDING_DIGITAL_PARTNER_ID
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
@@ -30,6 +31,20 @@ BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
     "get_agent_building_guide",
 )
 
+_PARTNER_CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
+    "jobs.read": ("query_forwarding_digital",),
+    "reports.read": ("query_forwarding_digital",),
+    "documents.read": ("list_workspace_files", "read_workspace_file"),
+    "documents.write": ("write_workspace_file",),
+}
+_PARTNER_BLOCK_PREFIX = "autogpt:block:"
+_PARTNER_TOOL_PREFIX = "autogpt:tool:"
+_PARTNER_BLOCK_TOOLS: tuple[str, ...] = (
+    "find_block",
+    "run_block",
+    "continue_run_block",
+)
+
 
 def resolve_session_permissions(
     session: ChatSessionInfo | None,
@@ -40,7 +55,35 @@ def resolve_session_permissions(
     Reads ``metadata.builder_graph_id`` only — works on either the bare
     ``ChatSessionInfo`` (no messages) or the full ``ChatSession``.
     """
-    if session is None or not session.metadata.builder_graph_id:
+    if session is None:
+        return None
+    if session.metadata.source_platform == FORWARDING_DIGITAL_PARTNER_ID:
+        capabilities = set(session.metadata.external_capabilities)
+        tools = {
+            tool
+            for capability, allowed_tools in _PARTNER_CAPABILITY_TOOLS.items()
+            if capability in capabilities
+            for tool in allowed_tools
+        }
+        tools.update(
+            capability.removeprefix(_PARTNER_TOOL_PREFIX)
+            for capability in capabilities
+            if capability.startswith(_PARTNER_TOOL_PREFIX)
+        )
+        blocks = sorted(
+            capability.removeprefix(_PARTNER_BLOCK_PREFIX)
+            for capability in capabilities
+            if capability.startswith(_PARTNER_BLOCK_PREFIX)
+        )
+        if blocks:
+            tools.update(_PARTNER_BLOCK_TOOLS)
+        return CopilotPermissions(
+            tools=sorted(tools),
+            tools_exclude=False,
+            blocks=blocks,
+            blocks_exclude=False,
+        )
+    if not session.metadata.builder_graph_id:
         return None
     return CopilotPermissions(
         tools=list(BUILDER_BLOCKED_TOOLS),

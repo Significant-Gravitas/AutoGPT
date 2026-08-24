@@ -139,6 +139,7 @@ export class PartnerDatabase {
       name: view.user.name,
       accountName: view.activeOrganization.name,
       roles: [view.activeOrganization.role],
+      capabilities: view.activeOrganization.tools,
     };
   }
 
@@ -232,19 +233,25 @@ export class PartnerDatabase {
     insertUser.run("fd-user-2077", "priya@northstarfreight.com", "Priya Shah");
 
     const insertMembership = this.database.prepare(
-      "INSERT OR IGNORE INTO memberships (user_id, organization_id, role, tools_json) VALUES (?, ?, ?, ?)",
+      "INSERT INTO memberships (user_id, organization_id, role, tools_json) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, organization_id) DO UPDATE SET role = excluded.role, tools_json = excluded.tools_json",
     );
     insertMembership.run(
       "fd-user-1042",
       "fd-account-77",
       "manager",
-      JSON.stringify(["jobs.read", "reports.read", "documents.write"]),
+      JSON.stringify([
+        "jobs.read",
+        "reports.read",
+        "documents.read",
+        "documents.write",
+        "autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      ]),
     );
     insertMembership.run(
       "fd-user-1042",
       "fd-account-88",
       "operator",
-      JSON.stringify(["jobs.read", "documents.read"]),
+      JSON.stringify(["jobs.read", "reports.read", "documents.read"]),
     );
     insertMembership.run(
       "fd-user-2077",

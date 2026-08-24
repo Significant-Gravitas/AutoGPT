@@ -39,6 +39,7 @@ const identity = {
   displayName: "Jon Heavyside",
   accountName: "Acme Forwarding",
   isAdmin: true,
+  capabilities: ["jobs.read", "reports.read"],
   jwtID: "assertion-1",
   expiresAt: 1_788_000_000,
 };

@@ -105,6 +105,49 @@ app.post("/api/autogpt/sync", async (request, reply) => {
   return { sync: exchange.mapping };
 });
 
+app.get("/api/embed/v1/sessions", async (request, reply) => {
+  return proxyPlatformRequest(request, reply, "/api/embed/v1/sessions");
+});
+
+app.get<{ Params: { sessionID: string } }>(
+  "/api/embed/v1/sessions/:sessionID",
+  async (request, reply) => {
+    return proxyPlatformRequest(
+      request,
+      reply,
+      "/api/embed/v1/sessions/" + encodeURIComponent(request.params.sessionID),
+    );
+  },
+);
+
+app.get<{ Params: { sessionID: string } }>(
+  "/api/embed/v1/sessions/:sessionID/artifacts",
+  async (request, reply) => {
+    return proxyPlatformRequest(
+      request,
+      reply,
+      "/api/embed/v1/sessions/" +
+        encodeURIComponent(request.params.sessionID) +
+        "/artifacts",
+    );
+  },
+);
+
+app.get<{ Params: { sessionID: string; fileID: string } }>(
+  "/api/embed/v1/sessions/:sessionID/artifacts/:fileID/download",
+  async (request, reply) => {
+    return proxyPlatformRequest(
+      request,
+      reply,
+      "/api/embed/v1/sessions/" +
+        encodeURIComponent(request.params.sessionID) +
+        "/artifacts/" +
+        encodeURIComponent(request.params.fileID) +
+        "/download",
+    );
+  },
+);
+
 app.post("/api/embed/v1/sessions", async (request, reply) => {
   return proxyPlatformRequest(request, reply, "/api/embed/v1/sessions");
 });
@@ -232,17 +275,24 @@ async function proxyPlatformRequest(
       .send({ error: "Embed token does not match the active tenant" });
   }
 
-  const response = await fetch(platformBackendURL + path, {
-    method: "POST",
+  const queryIndex = request.url.indexOf("?");
+  const query = queryIndex >= 0 ? request.url.slice(queryIndex) : "";
+  const response = await fetch(platformBackendURL + path + query, {
+    method: request.method,
     headers: {
       authorization,
       "content-type": "application/json",
     },
-    body: request.body === undefined ? undefined : JSON.stringify(request.body),
+    body:
+      request.method === "GET" || request.body === undefined
+        ? undefined
+        : JSON.stringify(request.body),
   });
   reply.code(response.status);
   for (const header of [
     "content-type",
+    "content-disposition",
+    "content-length",
     "cache-control",
     "x-vercel-ai-ui-message-stream",
   ]) {

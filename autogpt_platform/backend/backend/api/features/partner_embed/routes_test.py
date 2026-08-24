@@ -19,6 +19,7 @@ PRINCIPAL = EmbedPrincipal(
     organization_id="70d89c3b-2af3-5f56-8a21-2951b469ba95",
     team_id="600e3708-3a7a-54c7-b527-53d2c62b8d5b",
     external_account_id="forwarder-42",
+    capabilities=["jobs.read", "reports.read"],
     scopes=["embed:chat"],
 )
 
@@ -96,6 +97,7 @@ def test_create_session_uses_token_locked_tenancy(mocker):
         "team_id": PRINCIPAL.team_id,
         "source_platform": PRINCIPAL.partner_id,
         "external_account_id": PRINCIPAL.external_account_id,
+        "external_capabilities": PRINCIPAL.capabilities,
         "llm_auth_provider": "codex",
         "llm_credential_id": "credential-1",
     }
@@ -155,6 +157,7 @@ def test_stream_forwards_locked_identity_to_autopilot(mocker):
             metadata=SimpleNamespace(
                 source_platform=PRINCIPAL.partner_id,
                 external_account_id=PRINCIPAL.external_account_id,
+                external_capabilities=PRINCIPAL.capabilities,
             ),
         ),
     )

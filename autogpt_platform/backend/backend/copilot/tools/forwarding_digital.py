@@ -28,6 +28,12 @@ _REPORT_TO_MCP_TOOL: dict[Report, str] = {
     "exceptions": "list_exceptions",
 }
 
+_REPORT_CAPABILITY: dict[Report, str] = {
+    "operations_summary": "reports.read",
+    "arrivals": "jobs.read",
+    "exceptions": "jobs.read",
+}
+
 
 class ForwardingDigitalTool(BaseTool):
     """Queries partner data without allowing the model to select a tenant."""
@@ -94,6 +100,15 @@ class ForwardingDigitalTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        required_capability = _REPORT_CAPABILITY[report]
+        capabilities = session.metadata.external_capabilities
+        if required_capability not in capabilities:
+            return ErrorResponse(
+                message="You do not have access to this Forwarding Digital report.",
+                error="partner_capability_required",
+                session_id=session.session_id,
+            )
+
         server_url = os.getenv(_MCP_URL_ENV, "")
         secret = os.getenv(_MCP_SECRET_ENV, "")
         if not server_url or not secret:
@@ -108,6 +123,7 @@ class ForwardingDigitalTool(BaseTool):
             user_id=user_id,
             organization_id=session.organization_id,
             external_account_id=session.metadata.external_account_id,
+            capabilities=capabilities,
         )
         tool_name = _REPORT_TO_MCP_TOOL[report]
         client = MCPClient(
@@ -146,6 +162,7 @@ def _create_access_token(
     user_id: str,
     organization_id: str,
     external_account_id: str,
+    capabilities: list[str],
     now: int | None = None,
 ) -> str:
     issued_at = int(time.time()) if now is None else now
@@ -155,6 +172,7 @@ def _create_access_token(
         "user_id": user_id,
         "organization_id": organization_id,
         "external_account_id": external_account_id,
+        "capabilities": sorted(set(capabilities)),
         "exp": issued_at + _TOKEN_TTL_SECONDS,
     }
     encoded_payload = _base64url(

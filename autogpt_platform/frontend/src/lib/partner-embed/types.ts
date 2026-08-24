@@ -14,6 +14,7 @@ export interface VerifiedPartnerIdentity {
   displayName: string;
   accountName: string;
   isAdmin: boolean;
+  capabilities: string[];
   jwtID: string;
   expiresAt: number;
 }
