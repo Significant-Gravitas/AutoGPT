@@ -1228,7 +1228,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).getByText("My Private Agent")).toBeDefined();
     expect(within(agents).getByRole("button", { name: "Adopt" })).toBeDefined();
@@ -1256,7 +1258,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("My Private Agent")).toBeNull();
     expect(
@@ -1289,7 +1293,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-maria"));
@@ -1326,7 +1332,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
     expect(screen.queryByText(/undo anytime/i)).toBeNull();
     await user.click(
@@ -1381,7 +1389,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
@@ -1404,7 +1414,9 @@ describe("TeamPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Agents" }));
     expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
-    expect(screen.getByRole("region", { name: "Your workflows" })).toBeDefined();
+    expect(
+      screen.getByRole("region", { name: "Your workflows" }),
+    ).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Members" }));
     expect(screen.getByRole("region", { name: "Maria runs" })).toBeDefined();
@@ -1547,7 +1559,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() =>
@@ -1574,7 +1588,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() =>
@@ -1615,7 +1631,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     const rows = within(agents).getAllByTestId("what-runs-agent-row");
     const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
     const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
@@ -1642,7 +1660,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(
-      await screen.findByText(/could not load your agents/i),
+      await screen.findByText(/could not load your workflows/i),
     ).toBeDefined();
 
     server.use(
@@ -1652,7 +1670,9 @@ describe("TeamPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
   });
 
@@ -1677,7 +1697,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(
       await within(agents).findByText("No available agents to adopt."),
     ).toBeDefined();
@@ -1708,7 +1730,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("Second-page Agent")).toBeNull();
     expect(requestedPages).toEqual(["1"]);
@@ -1738,7 +1762,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(
       within(agents).queryByText("Every agent is already on your team."),
     ).toBeNull();
@@ -1773,14 +1799,16 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your workflows" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     await user.click(
       within(agents).getByRole("button", { name: "Load more agents" }),
     );
 
     expect(
-      await within(agents).findByText("We could not load more agents."),
+      await within(agents).findByText("We could not load more workflows."),
     ).toBeDefined();
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
 

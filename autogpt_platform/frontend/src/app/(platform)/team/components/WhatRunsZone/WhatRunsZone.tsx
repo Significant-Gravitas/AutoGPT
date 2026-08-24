@@ -87,7 +87,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
           ) : isErrorAgents ? (
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
               <Text variant="small" className="text-zinc-500">
-                We could not load your agents.
+                We could not load your workflows.
               </Text>
               <Button variant="secondary" size="small" onClick={retryAgents}>
                 Retry

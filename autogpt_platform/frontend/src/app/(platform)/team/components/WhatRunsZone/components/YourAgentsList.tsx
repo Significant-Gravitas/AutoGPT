@@ -112,7 +112,7 @@ export function YourAgentsList({
       {isErrorLoadingMoreAgents ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2">
           <Text variant="small" className="text-zinc-500">
-            We could not load more agents.
+            We could not load more workflows.
           </Text>
           <Button variant="secondary" size="small" onClick={onLoadMore}>
             Retry loading more
