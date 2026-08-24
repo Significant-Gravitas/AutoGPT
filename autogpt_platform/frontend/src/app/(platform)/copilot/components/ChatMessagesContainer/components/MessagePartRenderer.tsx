@@ -157,6 +157,10 @@ interface Props {
    *  live phase applies to. Earlier (settled) rows render as history even
    *  while a later cycle streams its phases. */
   liveCompactionCallId?: string | null;
+  /** Whether the enclosing message is still streaming. A compaction row
+   *  only animates while it is; once the stream ends the row is history,
+   *  however it was left. */
+  isCurrentlyStreaming?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -169,6 +173,7 @@ export function MessagePartRenderer({
   readOnly,
   compactionPhase,
   liveCompactionCallId,
+  isCurrentlyStreaming,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -295,6 +300,11 @@ export function MessagePartRenderer({
         typeof toolPart.output === "string" &&
         toolPart.output.trim() === "";
       if (isAbortedRow) return null;
+      // A row still open when the stream is over never completed — the
+      // user stopped the turn or the connection dropped mid-compaction.
+      // Claiming "Condensed the conversation" would report work that
+      // never finished, so render nothing, like the abort sentinel.
+      if (!isCurrentlyStreaming && !settled) return null;
       const phase =
         liveCompactionCallId != null &&
         toolPart.toolCallId === liveCompactionCallId
@@ -308,7 +318,10 @@ export function MessagePartRenderer({
           key={key}
           phase={phase}
           stats={stats}
-          isSettled={settled && phase === null}
+          // While streaming, an open row with no phase yet is still live —
+          // settling on `phase === null` alone would flash the settled copy
+          // in the gap before the first progress part lands.
+          isSettled={!isCurrentlyStreaming || (settled && phase === null)}
         />
       );
     }

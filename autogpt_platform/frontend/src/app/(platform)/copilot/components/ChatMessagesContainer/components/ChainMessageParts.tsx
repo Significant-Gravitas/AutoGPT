@@ -60,6 +60,7 @@ export function ChainMessageParts({
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}
+        isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );
   });

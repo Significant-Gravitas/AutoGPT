@@ -312,6 +312,35 @@ const DEAD_STREAM_HOLD_INDEX = DEAD_STREAM_TURN.findIndex(
   (c) => c.type === "finish",
 );
 
+// A turn interrupted while the compaction row is still OPEN — no
+// `tool-output-available` ever arrives, so the row stays `input-available`.
+// Nothing may keep animating once the stream closes, and the card must not
+// claim a compaction that never reported completion.
+const INTERRUPTED_OPEN_ROW_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 128000 },
+  },
+  { type: "finish" },
+];
+
+const INTERRUPTED_HOLD_INDEX = INTERRUPTED_OPEN_ROW_TURN.findIndex(
+  (c) => c.type === "finish",
+);
+
 // `COMPACTION_TURN`'s chunk index of `tool-output-available` — the delay
 // applied *before* this chunk is what keeps the turn parked in the
 // "summarizing" phase long enough for `waitFor` to observe it (see below).
@@ -491,6 +520,35 @@ describe("context compaction progress", () => {
         screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
       ).toBeDefined();
     });
+  });
+
+  it("renders nothing for a row left open when the stream is interrupted", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: INTERRUPTED_OPEN_ROW_TURN,
+        perChunkDelaysMs: INTERRUPTED_OPEN_ROW_TURN.map((_, i) =>
+          i === INTERRUPTED_HOLD_INDEX ? 600 : 15,
+        ),
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise this");
+
+    // Live while the connection is open.
+    await waitFor(() => {
+      expect(screen.getByRole("progressbar")).toBeDefined();
+    });
+    // The row never closed, so once the stream is gone it is neither a live
+    // bar nor a "Condensed…" claim — it disappears.
+    await waitFor(() => {
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
+    expect(screen.queryByText(/Condensed/)).toBeNull();
+    expect(screen.queryByText(/Condensing/)).toBeNull();
   });
 });
 

@@ -115,6 +115,7 @@ interface RenderSegmentOptions {
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
+  isCurrentlyStreaming?: boolean;
 }
 
 function renderSegments(
@@ -129,6 +130,7 @@ function renderSegments(
     readOnly,
     compactionPhase,
     liveCompactionCallId,
+    isCurrentlyStreaming,
   } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
@@ -154,6 +156,7 @@ function renderSegments(
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}
+        isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );
   });
@@ -807,6 +810,7 @@ export function ChatMessagesContainer({
                       readOnly,
                       compactionPhase,
                       liveCompactionCallId,
+                      isCurrentlyStreaming,
                     })
                   ) : (
                     (() => {
@@ -822,6 +826,7 @@ export function ChatMessagesContainer({
                           readOnly={readOnly}
                           compactionPhase={compactionPhase}
                           liveCompactionCallId={liveCompactionCallId}
+                          isCurrentlyStreaming={isCurrentlyStreaming}
                         />
                       ));
                       return isNewToolUI ? (
