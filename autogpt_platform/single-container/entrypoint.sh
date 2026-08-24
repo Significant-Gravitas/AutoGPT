@@ -135,6 +135,15 @@ configure_environment() {
   # The appliance bundles no antivirus daemon. Force the scanner off so uploads
   # short-circuit as clean instead of failing on an unreachable ClamAV service.
   export CLAMAV_SERVICE_ENABLED=false
+  # mem0 and graphiti-core ship their own PostHog keys and report anonymous
+  # usage to their vendors by default. A self-hosted appliance must not phone
+  # home to third parties the operator never chose, so opt both out.
+  #
+  # This suppresses the events, not the client. mem0 constructs its PostHog
+  # client at import and only sets .disabled afterwards, so its atexit join
+  # still costs seconds on every service shutdown regardless of this flag.
+  export MEM0_TELEMETRY=false
+  export GRAPHITI_TELEMETRY_ENABLED=false
 
   export PYRO_HOST=127.0.0.1
   export AGENTSERVER_HOST=127.0.0.1 SCHEDULER_HOST=127.0.0.1
@@ -157,7 +166,18 @@ configure_environment() {
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
-  export APP_ENV=dev BEHAVE_AS=local ENABLE_AUTH=true
+  # BEHAVE_AS defaults to local (self-hosted product behavior) but stays
+  # overridable: entitlement policies with allow_local=True grant every user
+  # access under `local`, so gating cannot be exercised without injecting
+  # `cloud`. APP_ENV stays dev to keep LOCAL-only API docs and asyncio debug
+  # mode off the public REST process.
+  #
+  # ⚠️ OPERATORS: `local` disables entitlement gating for EVERY user — the
+  # allow_local carve-out grants plan-gated features (e.g. the ChatGPT/Codex
+  # transport) regardless of subscription tier. That is correct for a
+  # single-tenant self-hosted install. Any multi-tenant or hosted deployment
+  # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
 
   export BETTER_AUTH_URL="${AUTOGPT_PUBLIC_URL}"
   export BETTER_AUTH_INTERNAL_URL=http://127.0.0.1:3001

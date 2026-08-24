@@ -1,7 +1,13 @@
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import {
+  getArchiveExpertMockHandler,
+  getGetExpertDetachPreviewMockHandler,
   getGetExpertMockHandler,
+  getListExpertRunsMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -37,10 +43,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const notFoundMock = vi.hoisted(() => vi.fn());
+const { notFoundMock, pushMock } = vi.hoisted(() => ({
+  notFoundMock: vi.fn(),
+  pushMock: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
@@ -111,15 +120,46 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
+const mariaRuns: ExpertRun[] = [
+  {
+    execution_id: "run-1",
+    graph_id: "graph-1",
+    agent_name: "Weekly Report",
+    library_agent_id: "lib-1",
+    status: "completed",
+    output_type: "table",
+    output_key: "result",
+    needs_review: false,
+    started_at: null,
+    ended_at: null,
+    link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
+  },
+  {
+    execution_id: "run-2",
+    graph_id: "graph-2",
+    agent_name: "SEO Audit",
+    library_agent_id: "lib-2",
+    status: "review",
+    output_type: "doc",
+    output_key: "report",
+    needs_review: true,
+    started_at: null,
+    ended_at: null,
+    link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
+  },
+];
+
 beforeEach(() => {
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
+    getListExpertRunsMockHandler([]),
   );
 });
 
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  pushMock.mockReset();
 });
 
 describe("ExpertDetailPage", () => {
@@ -174,6 +214,66 @@ describe("ExpertDetailPage", () => {
     expect(screen.getByText(/No schedules yet/)).toBeDefined();
   });
 
+  test("shows the expert's recent work with honest status chips", async () => {
+    server.use(getListExpertRunsMockHandler(mariaRuns));
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    const workList = await screen.findByRole("list", { name: "Expert work" });
+    expect(within(workList).getByText("Weekly Report")).toBeDefined();
+    expect(within(workList).getByText("Completed")).toBeDefined();
+    // A run paused for review reads "Waiting for review" — never "Completed"
+    // with a contradictory badge next to it.
+    expect(within(workList).getByText("Waiting for review")).toBeDefined();
+    expect(within(workList).queryByText("Needs review")).toBeNull();
+  });
+
+  test("filters work to runs that need review", async () => {
+    server.use(getListExpertRunsMockHandler(mariaRuns));
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await screen.findByRole("list", { name: "Expert work" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Needs review \(1\)/ }));
+
+    const workList = screen.getByRole("list", { name: "Expert work" });
+    expect(within(workList).queryByText("Weekly Report")).toBeNull();
+    expect(within(workList).getByText("SEO Audit")).toBeDefined();
+  });
+
+  test("shows an empty work message when there is no completed work", async () => {
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
+  });
+
+  test("shows a retryable error when recent work fails to load", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/proxy/api/experts/:expertId/runs", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json(mariaRuns);
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<ExpertDetailPage />);
+
+    expect(
+      await screen.findByText("We could not load this expert's recent work."),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText("Weekly Report")).toBeDefined();
+    expect(attempts).toBe(2);
+  });
+
   test("paused expert offers one-click resume", async () => {
     const resumeSpy = vi.fn(() => ({ ...maria, schedules_paused_at: null }));
     server.use(
@@ -189,5 +289,38 @@ describe("ExpertDetailPage", () => {
     await screen.findByText(/Schedules paused/);
     fireEvent.click(screen.getByRole("button", { name: "Resume schedules" }));
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
+  });
+
+  test("fires the expert from the header menu and returns to the team page", async () => {
+    const archiveSpy = vi.fn();
+    server.use(
+      getGetExpertDetachPreviewMockHandler({
+        schedule_names: ["Content Calendar"],
+        trigger_names: [],
+      }),
+      getArchiveExpertMockHandler(archiveSpy),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    fireEvent.pointerDown(screen.getByTestId("expert-detail-actions"), {
+      button: 0,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
+    expect(
+      await within(dialog).findByText("1 automation will pause."),
+    ).toBeDefined();
+
+    const confirm = await screen.findByTestId("fire-expert-confirm");
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/team"));
   });
 });

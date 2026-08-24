@@ -194,7 +194,8 @@ export type CredentialsType =
   | "api_key"
   | "oauth2"
   | "user_password"
-  | "host_scoped";
+  | "host_scoped"
+  | "device_code";
 
 export type Credentials =
   | APIKeyCredentials

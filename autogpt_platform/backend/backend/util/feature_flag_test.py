@@ -6,20 +6,23 @@ import pytest
 from fastapi import HTTPException
 from ldclient import LDClient
 
+import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
     _fetch_user_context_data,
     feature_flag,
+    get_client,
     is_feature_enabled,
     mock_flag_variation,
+    shutdown_launchdarkly,
 )
 
 
 @pytest.fixture
 def ld_client(mocker):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch("ldclient.get", return_value=client)
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     client.is_initialized.return_value = True
     return client
 
@@ -411,3 +414,88 @@ class TestUserContextCacheDegradation:
 
         assert ctx.anonymous is True
         accessor.assert_not_called()
+
+
+class TestShutdown:
+    @pytest.fixture(autouse=True)
+    def reset_module_state(self):
+        initialized = feature_flag_module._is_initialized
+        attempted = feature_flag_module._init_attempted
+        yield
+        feature_flag_module._is_initialized = initialized
+        feature_flag_module._init_attempted = attempted
+
+    @pytest.fixture
+    def sdk_key(self, mocker):
+        return mocker.patch.object(
+            feature_flag_module.settings.secrets,
+            "launch_darkly_sdk_key",
+            "sdk-key",
+        )
+
+    def test_shutdown_is_a_noop_when_never_initialized(self, mocker):
+        # `initialize_launchdarkly` returns early when no SDK key is set, so
+        # `ldclient.set_config` was never called and `ldclient.get()` raises
+        # "set_config was not called". Callers pair init/shutdown on app_env
+        # alone, so this ran on every unconfigured non-LOCAL deployment and
+        # took the exception out through service teardown, leaving the process
+        # alive until it was killed.
+        feature_flag_module._is_initialized = False
+        get_ldclient = mocker.patch("backend.util.feature_flag.ldclient.get")
+
+        shutdown_launchdarkly()
+
+        get_ldclient.assert_not_called()
+
+    def test_shutdown_closes_an_initialized_client(self, ld_client):
+        feature_flag_module._is_initialized = True
+
+        shutdown_launchdarkly()
+
+        ld_client.close.assert_called_once()
+
+    def test_shutdown_closes_a_client_that_never_connected(self, ld_client):
+        # A configured client that never reached LaunchDarkly still has
+        # streaming and event threads running. Skipping close() there leaves
+        # exactly the kind of live thread that holds a process open past its
+        # stop deadline.
+        feature_flag_module._is_initialized = True
+        ld_client.is_initialized.return_value = False
+
+        shutdown_launchdarkly()
+
+        ld_client.close.assert_called_once()
+
+    def test_shutdown_does_not_rearm_lazy_initialization(
+        self, mocker, ld_client, sdk_key
+    ):
+        # `_is_initialized` is never cleared, which is what keeps a flag
+        # evaluation arriving after teardown from rebuilding the client. This
+        # pins that property; it is not a regression test for the gate swap.
+        feature_flag_module._is_initialized = True
+        feature_flag_module._init_attempted = True
+        set_config = mocker.patch("backend.util.feature_flag.ldclient.set_config")
+
+        shutdown_launchdarkly()
+        get_client()
+
+        set_config.assert_not_called()
+
+    def test_unconfigured_deployment_only_attempts_initialization_once(
+        self, mocker, ld_client
+    ):
+        # Without a key `_is_initialized` never becomes True, so gating the
+        # lazy init on it re-entered initialize_launchdarkly on every flag
+        # evaluation: a warning plus a raise per call, several per request.
+        feature_flag_module._is_initialized = False
+        feature_flag_module._init_attempted = False
+        mocker.patch.object(
+            feature_flag_module.settings.secrets, "launch_darkly_sdk_key", ""
+        )
+        warn = mocker.patch.object(feature_flag_module.logger, "warning")
+
+        get_client()
+        get_client()
+        get_client()
+
+        assert warn.call_count == 1

@@ -43,6 +43,9 @@ interface ArtifactPanelState {
   activeArtifact: ArtifactRef | null;
   history: ArtifactRef[];
   activeTab: ContextPanelTab;
+  /** Preview that was showing when the panel last closed — the sidebar
+   *  toggle restores it on reopen instead of landing on the tabs view. */
+  lastArtifact: ArtifactRef | null;
 }
 
 export const DEFAULT_PANEL_WIDTH = 432; // context panel default (352 + 80)
@@ -64,7 +67,7 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "codex"; credentialId: string };
 
 /** Context panel tab. */
-export type ContextPanelTab = "progress" | "files";
+export type ContextPanelTab = "progress" | "files" | "artifacts";
 
 const isClient = typeof window !== "undefined";
 
@@ -76,7 +79,7 @@ function getPersistedOpen(): boolean {
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
-  return saved === "progress" ? saved : "files";
+  return saved === "progress" || saved === "artifacts" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -129,6 +132,14 @@ interface CopilotUIState {
   setInitialPrompt: (prompt: string | null) => void;
 
   /**
+   * Bumped every time the composer actually sends a message. Chain action
+   * cards draft into the input rather than sending themselves, so this is
+   * how they learn their drafted message went out.
+   */
+  sentMessageCount: number;
+  notifyMessageSent: () => void;
+
+  /**
    * Expert ids whose latest thread was already adopted via a
    * /copilot?expertId= deep link this page load. Lives here — not in
    * useChatSession refs — because the chat host remounts on every sessionId
@@ -178,6 +189,11 @@ interface CopilotUIState {
   goBackArtifact: () => void;
   setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
+  /** Opens the panel on `tab`, or closes it if that tab is already showing. */
+  toggleContextPanelTab: (tab: ContextPanelTab) => void;
+  /** Forget the remembered preview — called on session entry so a new chat
+   *  can never restore the previous chat's artifact. */
+  clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
   openContextPanelForProgress: () => void;
   autoOpenArtifact: (ref: ArtifactRef) => void;
@@ -223,6 +239,10 @@ let _autoOpenUserClosed = false;
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
   setInitialPrompt: (prompt) => set({ initialPrompt: prompt }),
+
+  sentMessageCount: 0,
+  notifyMessageSent: () =>
+    set((state) => ({ sentMessageCount: state.sentMessageCount + 1 })),
 
   adoptedExpertThreads: new Set<string>(),
   markExpertThreadAdopted: (expertId) =>
@@ -302,6 +322,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     activeArtifact: null,
     history: [],
     activeTab: getPersistedTab(),
+    lastArtifact: null,
   },
   openArtifact: (ref, opts) =>
     set((state) => {
@@ -348,6 +369,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: false,
           activeArtifact: null,
           history: [],
+          // Remember what was previewing so the sidebar toggle can bring it
+          // back; closing from the tabs view remembers nothing.
+          lastArtifact: state.artifactPanel.activeArtifact,
         },
       };
     }),
@@ -365,6 +389,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         activeArtifact: null,
         history: [],
+        lastArtifact: null,
       },
     })),
   goBackArtifact: () =>
@@ -410,6 +435,34 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
           isOpen: nextOpen,
           activeArtifact: null,
           history: [],
+        },
+      };
+    }),
+  clearLastArtifact: () =>
+    set((state) => ({
+      artifactPanel: { ...state.artifactPanel, lastArtifact: null },
+    })),
+  toggleContextPanelTab: (tab) =>
+    set((state) => {
+      const { isOpen, activeTab, activeArtifact } = state.artifactPanel;
+      // An open preview covers the panel, so a click there means "show me the
+      // tab again" rather than "close" — only a visible matching tab closes.
+      const nextOpen = !(isOpen && activeTab === tab && activeArtifact == null);
+      if (isClient) {
+        storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, String(nextOpen));
+        storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
+      }
+      if (!nextOpen) _autoOpenUserClosed = true;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: nextOpen,
+          activeTab: tab,
+          activeArtifact: null,
+          history: [],
+          // Closing from the tab view forgets the remembered preview, so the
+          // next sidebar click reopens the tab rather than an older artifact.
+          lastArtifact: nextOpen ? state.artifactPanel.lastArtifact : null,
         },
       };
     }),
@@ -576,6 +629,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeArtifact: null,
         history: [],
         activeTab: "files",
+        lastArtifact: null,
       },
       copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",

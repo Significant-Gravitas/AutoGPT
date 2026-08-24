@@ -1,6 +1,7 @@
 import {
   AlertCircleIcon,
   CoinsDollarIcon,
+  MessageQuestionIcon,
   PauseIcon,
   Settings02Icon,
 } from "@hugeicons/core-free-icons";
@@ -23,6 +24,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
   setup: Settings02Icon,
   paused: PauseIcon,
   credits: CoinsDollarIcon,
+  question: MessageQuestionIcon,
 };
 
 const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
@@ -30,6 +32,7 @@ const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
   setup: "Setup",
   paused: "Paused",
   credits: "Credits",
+  question: "Question",
 };
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {

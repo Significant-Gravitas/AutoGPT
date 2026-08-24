@@ -36,6 +36,50 @@ export function normalizeClarifyingQuestions(
   });
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function questionItems(value: unknown): Record<string, unknown>[] | null {
+  const raw = toRecord(value)?.questions;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const items = raw.filter(
+    (item): item is Record<string, unknown> =>
+      !!item && typeof item === "object" && !Array.isArray(item),
+  );
+  return items.length > 0 ? items : null;
+}
+
+export function extractClarifyingQuestions(source: {
+  input?: unknown;
+  output?: unknown;
+}): ClarifyingQuestion[] {
+  const raw = questionItems(source.output) ?? questionItems(source.input) ?? [];
+  const valid = raw.flatMap((item) =>
+    typeof item.question === "string" &&
+    item.question.trim() &&
+    typeof item.keyword === "string"
+      ? [
+          {
+            question: item.question.trim(),
+            keyword: item.keyword,
+            example: item.example,
+          },
+        ]
+      : [],
+  );
+  return normalizeClarifyingQuestions(valid);
+}
+
 /**
  * Formats clarification answers as a context message and sends it via onSend.
  */

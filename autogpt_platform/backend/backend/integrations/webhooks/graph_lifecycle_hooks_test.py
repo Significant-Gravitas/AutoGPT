@@ -5,6 +5,7 @@ import pytest
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     GraphActivationError,
     _before_graph_activate,
+    on_graph_deactivate,
 )
 
 
@@ -120,3 +121,78 @@ async def test_before_graph_activate_succeeds_when_credentials_resolve():
         await _before_graph_activate(graph, "user-1")
 
     assert node.input_default["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_ignores_credential_meta_without_id():
+    """A credentials value that is truthy but carries no `id` means "nothing
+    selected", not "resolve this". It must be skipped like an absent field
+    rather than indexed — indexing raised KeyError('id'), surfacing to the user
+    as a bare 500 on POST /api/graphs that named neither block nor field."""
+    node = _make_node(creds_field="codex_credentials", required=False)
+    node.input_default = {"codex_credentials": {"provider": "codex", "type": "oauth2"}}
+    graph = MagicMock(nodes=[node])
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await _before_graph_activate(graph, "user-1")
+
+    getter.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_graph_deactivate_ignores_credential_meta_without_id():
+    """Deactivation had the same `creds_meta["id"]` indexing as activation.
+    Graphs persisted with the id-less shape hit it on delete, so the guard
+    needs its own regression test rather than relying on the activation one."""
+    node = _make_node(creds_field="codex_credentials", required=False)
+    node.input_default = {"codex_credentials": {"provider": "codex", "type": "oauth2"}}
+    node.block.webhook_config = None
+    graph = MagicMock(nodes=[node])
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await on_graph_deactivate(graph, "user-1")
+
+    getter.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_graph_deactivate_keeps_first_resolved_credential():
+    """A failed lookup on a later field must not discard a credential an
+    earlier field already resolved."""
+    node = _make_node(required=False)
+    node.input_default = {
+        "credentials": {"id": "good", "provider": "github", "type": "api_key"},
+        "other_credentials": {"id": "gone", "provider": "github", "type": "api_key"},
+    }
+    node.block.webhook_config = None
+    schema = node.block.input_schema
+    schema.get_credentials_fields.return_value = {
+        "credentials": object(),
+        "other_credentials": object(),
+    }
+
+    resolved = MagicMock()
+
+    async def getter(creds_id):
+        return resolved if creds_id == "good" else None
+
+    graph = MagicMock(nodes=[node])
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        with patch(
+            "backend.integrations.webhooks.graph_lifecycle_hooks.on_node_deactivate",
+            new=AsyncMock(return_value=node),
+        ) as deactivate:
+            await on_graph_deactivate(graph, "user-1")
+
+    assert deactivate.await_args.kwargs["credentials"] is resolved

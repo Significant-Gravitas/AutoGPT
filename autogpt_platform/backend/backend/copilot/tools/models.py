@@ -123,6 +123,11 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
+    # Experts (soul edits, hire/raise)
+    EXPERT_SOUL_UPDATED = "expert_soul_updated"
+    EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
+    EXPERT_CHANGE_APPLIED = "expert_change_applied"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -361,6 +366,21 @@ class WorkspaceFileInfoData(BaseModel):
     size_bytes: int
 
 
+class DelegatedExpertInfo(BaseModel):
+    """Identity of the expert a delegated sub-session runs as.
+
+    Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
+    both the model and the ToolChain card can name who is doing the work
+    instead of rendering a generic "Sub-AutoPilot".
+    """
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
 
@@ -370,12 +390,17 @@ class SubSessionStatusResponse(ToolResponseBase):
     """
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
-    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+    status: Literal[
+        "running", "completed", "cancelled", "error", "queued", "transferred"
+    ] = Field(
         description=(
             "Current state of the sub-AutoPilot run.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
-            "existing turn on its next drain."
+            "existing turn on its next drain.  ``transferred`` is terminal "
+            "for the caller: ``handoff_to_expert`` gave the task away, so no "
+            "result is coming back and there is nothing to poll — the "
+            "receiving expert now owns it and reports to the user directly."
         ),
     )
     sub_session_id: str = Field(
@@ -402,6 +427,13 @@ class SubSessionStatusResponse(ToolResponseBase):
             "Relative URL the user can click to open the sub-AutoPilot "
             "conversation in the CoPilot UI. Always set when "
             "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    expert: DelegatedExpertInfo | None = Field(
+        default=None,
+        description=(
+            "Teammate the work was delegated to. Set only for "
+            "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
     )
     tool_calls: list[dict[str, Any]] | None = Field(
@@ -484,6 +516,87 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
+class SoulFieldChange(BaseModel):
+    """One field's before/after values for an expert soul edit."""
+
+    field: SoulFieldName
+    before: str
+    after: str
+
+
+class ExpertSoulUpdatedResponse(ToolResponseBase):
+    """Response for the two-step Soul edit tools.
+
+    Carries the diff so the model must surface exactly what changed. ``applied``
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
+    applied: bool = False
+    changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
+
+
+ExpertChangeKind = Literal["hire", "raise", "update"]
+
+
+class ExpertChangePreview(BaseModel):
+    """The expert a hire/raise proposal would create, exactly as previewed.
+
+    One shape covers both kinds: ``template_id`` is set only for a hire, and
+    the charter fields (``about`` / ``boundaries``) only for a raise.
+    """
+
+    kind: ExpertChangeKind
+    name: str
+    role: str = ""
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
+    template_id: str | None = None
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ExpertSummary(BaseModel):
+    """Identity of an expert created by ``confirm_expert_change``."""
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ExpertChangeProposedResponse(ToolResponseBase):
+    """Preview returned by ``hire_expert`` / ``raise_expert`` — never a write.
+
+    ``applied`` is always False here; the one-time ``confirmation_id``
+    references the proposal stored server-side until the user approves.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_PROPOSED
+    applied: bool = False
+    preview: ExpertChangePreview
+    confirmation_id: str
+
+
+class ExpertChangeAppliedResponse(ToolResponseBase):
+    """The expert ``confirm_expert_change`` actually created."""
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_APPLIED
+    applied: bool = True
+    kind: ExpertChangeKind
+    expert: ExpertSummary
+    failed_workflows: list[str] = Field(default_factory=list)
 
 
 # Agent generation models
@@ -606,6 +719,12 @@ class BlockInfoSummary(BaseModel):
         default_factory=list,
         description="List of input fields for this block",
     )
+    provider: str | None = Field(
+        default=None,
+        description="Integration provider slug when the block uses exactly "
+        "one provider (e.g. 'google', 'discord'); used for provider icons "
+        "in the chat UI",
+    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -647,6 +766,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_id: str
     block_name: str
     outputs: dict[str, list[Any]]
+    provider: str | None = None
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
@@ -676,6 +796,11 @@ class WebFetchResponse(ToolResponseBase):
     status_code: int
     content_type: str
     content: str
+    title: str | None = None
+    content_length: int = Field(
+        default=0,
+        description="Original response body size in bytes",
+    )
     truncated: bool = False
 
 

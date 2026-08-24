@@ -1,11 +1,29 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetHomeDashboardMockHandler200,
+  getGetHomeDashboardResponseMock200,
+} from "@/app/api/__generated__/endpoints/home/home.msw";
+import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppSidebar } from "../AppSidebar";
+
+function dashboardWith(agents: HomeAgentStatus[]): HomeDashboardResponse {
+  return { ...getGetHomeDashboardResponseMock200(), agents };
+}
+
+function makeAgent(id: string, name: string): HomeAgentStatus {
+  return {
+    expert: { id, name, role: "Expert", avatar_url: null },
+    status: "ready",
+    detail: "Ready for the next task",
+  };
+}
 
 // The global next/link mock only exports `default`; AppSidebar also imports
 // `useLinkStatus`, so re-mock here with a no-op pending status.
@@ -104,5 +122,20 @@ describe("AppSidebar", () => {
   it("shows the recent-chats empty state once sessions resolve", async () => {
     renderSidebar();
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
+  });
+
+  it("does not nest the team roster under Team", async () => {
+    useGetFlagMock.mockReturnValue(true);
+    server.use(
+      getGetHomeDashboardMockHandler200(
+        dashboardWith([makeAgent("expert-maria", "Maria")]),
+      ),
+    );
+    renderSidebar();
+
+    expect(await screen.findByRole("link", { name: /team/i })).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: /Maria/i })).toBeNull(),
+    );
   });
 });

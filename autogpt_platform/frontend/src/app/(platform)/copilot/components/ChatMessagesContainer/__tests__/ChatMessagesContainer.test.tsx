@@ -2,6 +2,21 @@ import { act } from "@testing-library/react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { buildKickoffMessage } from "../../../expertKickoff";
+
+const flagState = vi.hoisted(() => ({ newToolUI: false }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.NEW_TOOL_UI ? flagState.newToolUI : false,
+  };
+});
 
 const mockScrollEl = {
   scrollHeight: 100,
@@ -57,6 +72,9 @@ vi.mock("@/components/ai-elements/message", () => ({
 vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
+vi.mock("../components/ChainMessageParts", () => ({
+  ChainMessageParts: () => <div data-testid="chain-message-parts" />,
+}));
 
 vi.mock("../components/QueueBadge", () => ({
   QueueBadge: ({ sessionID }: { sessionID: string | null }) => (
@@ -84,6 +102,9 @@ vi.mock("../components/ThinkingIndicator", () => ({
     <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
   ),
 }));
+vi.mock("../../ToolChain/ToolChain", () => ({
+  ToolChain: () => <div data-testid="tool-chain" />,
+}));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
@@ -97,6 +118,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: (text: string) => {
     if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
       return { markerType: "error" };
@@ -153,6 +175,37 @@ const baseProps = {
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
 };
+
+describe("ChatMessagesContainer — tool UI dispatch", () => {
+  const messages = [
+    {
+      id: "assistant-tools",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: "Done" }],
+    },
+  ];
+
+  afterEach(() => {
+    flagState.newToolUI = false;
+    cleanup();
+  });
+
+  it("uses chain rendering when the new tool UI flag is enabled", () => {
+    flagState.newToolUI = true;
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.getByTestId("chain-message-parts")).toBeDefined();
+  });
+
+  it("keeps the legacy renderer when the flag is off", () => {
+    flagState.newToolUI = false;
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByTestId("chain-message-parts")).toBeNull();
+  });
+});
 
 // ── queued-messages rendering ─────────────────────────────────────────────
 
@@ -711,5 +764,60 @@ describe("ChatMessagesContainer — readOnly mode", () => {
       />,
     );
     expect(screen.queryByTestId("queue-badge")).toBeNull();
+  });
+});
+
+// ── expert kickoff ────────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — expert kickoff", () => {
+  it("shows the kickoff prompt as a user message above the reply", () => {
+    const kickoff = buildKickoffMessage("3f8b0f7e-9f30-4a3b-a6a1-000000000001");
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [{ type: "text", text: kickoff.text }],
+            metadata: kickoff.metadata,
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            parts: [{ type: "text", text: "Hi, I'm Maria." }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
+    expect(screen.getAllByTestId("message-assistant").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("keeps a user message that merely repeats the kickoff wording", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        hasMoreMessages={false}
+        messages={[
+          {
+            id: "m1",
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: "You were just hired. Introduce yourself in 2-3 sentences in your voice",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByTestId("message-user")).toHaveLength(1);
   });
 });
