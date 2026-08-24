@@ -69,7 +69,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
           instantly. Neither child holds state, so the remount costs nothing. */}
       <div
         key={filter}
-        className="flex flex-col gap-4 duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+        className="flex flex-col gap-6 duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
       >
         {groups.length > 0 ? (
           <div className="flex flex-col gap-3">

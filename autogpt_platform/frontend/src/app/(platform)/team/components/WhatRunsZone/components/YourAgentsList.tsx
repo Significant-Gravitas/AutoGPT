@@ -41,7 +41,7 @@ export function YourAgentsList({
   return (
     <section aria-label="Your workflows" className="flex flex-col gap-2">
       <div className="mb-2 border-b border-zinc-100 pb-4">
-        <Text variant="h5">Your workflows</Text>
+        <Text variant="h4">Your workflows</Text>
       </div>
       {agents.length === 0 ? (
         !hasMoreAgents ? (
