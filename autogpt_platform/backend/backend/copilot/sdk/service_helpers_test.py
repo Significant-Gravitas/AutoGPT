@@ -16,6 +16,7 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
 
+from ..model import ChatMessage
 from ..model_router import ResolvedModel
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
@@ -30,6 +31,7 @@ from .service import (
     _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _TokenUsage,
+    _will_compact,
 )
 
 # ---------------------------------------------------------------------------
@@ -1682,3 +1684,28 @@ class TestSameModelCanonicalization:
             routing_source="ld",
         )
         assert msgs[0].routing_source == "ld"  # same model, not "fallback"
+
+
+def _msg(role: str, content: str) -> ChatMessage:
+    return ChatMessage(role=role, content=content)
+
+
+class TestWillCompact:
+    def test_false_for_short_history(self):
+        assert _will_compact([_msg("user", "hi")], "gpt-4o") is False
+
+    def test_false_for_empty_history(self):
+        assert _will_compact([], "gpt-4o") is False
+
+    def test_true_when_history_exceeds_the_compression_target(self):
+        # get_compression_target for gpt-4o is well under 1M tokens; a
+        # megabyte of prose comfortably clears it.
+        big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
+        assert _will_compact(big, "gpt-4o") is True
+
+    def test_ignores_reasoning_and_compaction_rows(self):
+        rows = [
+            _msg("reasoning", "word " * 200_000),
+            _msg("user", "hi"),
+        ]
+        assert _will_compact(rows, "gpt-4o") is False
