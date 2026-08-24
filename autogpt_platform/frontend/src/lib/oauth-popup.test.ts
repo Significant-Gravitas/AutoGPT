@@ -76,7 +76,7 @@ describe("openOAuthPopup popup-close handling", () => {
     });
   });
 
-  test("final localStorage sweep resolves when result lands after close", async () => {
+  test("cross-origin localStorage poll resolves the flow", async () => {
     const popup = makePopupStub();
     setupPopup(popup);
 
@@ -88,9 +88,8 @@ describe("openOAuthPopup popup-close handling", () => {
     const onReject = vi.fn();
     promise.then(onResolve, onReject);
 
-    // Result lands in scoped localStorage just before the user closes the
-    // popup — the BroadcastChannel listener never fired (storage partitioning)
-    // and the periodic poll hasn't ticked yet.
+    // The BroadcastChannel listener never fires, so the callback page leaves
+    // the result in scoped localStorage for the periodic poll to read.
     localStorage.setItem(
       "oauth_popup_result_tok-2",
       JSON.stringify({
@@ -100,10 +99,8 @@ describe("openOAuthPopup popup-close handling", () => {
         state: "tok-2",
       }),
     );
-    popup.closed = true;
 
-    // First closed-poll tick runs the synchronous final-storage check,
-    // which resolves the promise before the grace timer even arms.
+    // The next periodic localStorage poll resolves the flow.
     await vi.advanceTimersByTimeAsync(500);
 
     expect(onReject).not.toHaveBeenCalled();
