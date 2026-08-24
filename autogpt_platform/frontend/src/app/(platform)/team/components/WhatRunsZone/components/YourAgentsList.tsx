@@ -47,8 +47,8 @@ export function YourAgentsList({
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
             {libraryAgentCount === 0
-              ? "No available agents to adopt."
-              : "Every agent is already on your team."}
+              ? "No available workflows to adopt."
+              : "Every workflow is already on your team."}
           </Text>
         ) : null
       ) : (
@@ -128,7 +128,7 @@ export function YourAgentsList({
           onClick={onLoadMore}
           className="self-start"
         >
-          Load more agents
+          Load more workflows
         </Button>
       ) : null}
     </section>

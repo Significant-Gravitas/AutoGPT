@@ -1701,7 +1701,7 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     expect(
-      await within(agents).findByText("No available agents to adopt."),
+      await within(agents).findByText("No available workflows to adopt."),
     ).toBeDefined();
   });
 
@@ -1738,7 +1738,7 @@ describe("TeamPage", () => {
     expect(requestedPages).toEqual(["1"]);
 
     await user.click(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     );
 
     expect(await within(agents).findByText("Second-page Agent")).toBeDefined();
@@ -1766,10 +1766,10 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     expect(
-      within(agents).queryByText("Every agent is already on your team."),
+      within(agents).queryByText("Every workflow is already on your team."),
     ).toBeNull();
     expect(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     ).toBeDefined();
   });
 
@@ -1804,7 +1804,7 @@ describe("TeamPage", () => {
     });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     await user.click(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     );
 
     expect(
