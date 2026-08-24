@@ -1,6 +1,19 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactionCard } from "../CompactionCard";
+
+function preferReducedMotion() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("prefers-reduced-motion"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("CompactionCard", () => {
   it("narrates the summarizing phase with a live progress bar", () => {
@@ -78,6 +91,43 @@ describe("CompactionCard", () => {
     expect(bar.getAttribute("aria-valuemax")).toBe("100");
     expect(bar.getAttribute("aria-valuenow")).toBe("2");
     expect(bar.getAttribute("aria-label")).toBe("Condensing our conversation…");
+  });
+
+  it("reports the token drop when compression summarized rows in place", () => {
+    // What QA actually sees on a live run: the same message count in and
+    // out, because compression rewrites rows rather than removing them. The
+    // token half is the whole payoff, and it has to render.
+    render(
+      <CompactionCard
+        phase={null}
+        stats={{
+          tokensBefore: 233_000,
+          tokensAfter: 97_000,
+          messagesBefore: 36,
+          messagesAfter: 36,
+        }}
+        isSettled
+      />,
+    );
+    expect(
+      screen.getByText("Condensed the conversation · 233K → 97K tokens"),
+    ).toBeDefined();
+  });
+
+  it("steps the bar under reduced motion but keeps aria-valuenow exact", () => {
+    preferReducedMotion();
+    render(<CompactionCard phase="summarizing" stats={{}} isSettled={false} />);
+    const bar = screen.getByRole("progressbar");
+    // The opening 2% is below the first step, so the fill is still empty
+    // while the value assistive tech reads stays truthful.
+    expect(bar.getAttribute("aria-valuenow")).toBe("2");
+    expect((bar.firstElementChild as HTMLElement).style.width).toBe("0%");
+  });
+
+  it("paints the exact percent when motion is allowed", () => {
+    render(<CompactionCard phase="summarizing" stats={{}} isSettled={false} />);
+    const bar = screen.getByRole("progressbar");
+    expect((bar.firstElementChild as HTMLElement).style.width).toBe("2%");
   });
 
   it("announces label changes politely without turning the bar into a live region", () => {

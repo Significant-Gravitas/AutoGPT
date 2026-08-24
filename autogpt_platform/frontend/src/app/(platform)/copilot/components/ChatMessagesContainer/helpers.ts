@@ -5,6 +5,7 @@ import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
 import {
+  COMPACTION_DATA_PART_TYPE,
   readCompactionStats,
   type CompactionPhase,
   type CompactionStats,
@@ -102,9 +103,14 @@ function isCompactionTransparentPart(part: MessagePart): boolean {
   );
 }
 
-// A row closed by the abort sentinel (output "") or an error never compacted
-// anything — any phase parts it left behind are stale.
-function isRetiredCompactionRow(part: MessagePart): boolean {
+/**
+ * A row closed by the abort sentinel (output "") or an error never compacted
+ * anything — any phase parts it left behind are stale, and the row itself
+ * renders nothing. This is a cross-language contract with the backend's
+ * close paths, so it lives here once: `MessagePartRenderer` decides what to
+ * draw with the same predicate `getLatestCompactionPhase` decides with.
+ */
+export function isRetiredCompactionRow(part: MessagePart): boolean {
   if (part.type !== COMPACTION_PART_TYPE || !("state" in part)) return false;
   const tool = part as ToolUIPart;
   if (tool.state === "output-error") return true;
@@ -126,7 +132,7 @@ export function getLatestCompactionPhase(
   if (lastRow && isRetiredCompactionRow(lastRow)) return null;
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
-    if (part.type === "data-compaction") {
+    if (part.type === COMPACTION_DATA_PART_TYPE) {
       const data = (part as { data?: { phase?: unknown } }).data;
       const phase = data?.phase;
       if (typeof phase === "string" && COMPACTION_PHASES.has(phase)) {
@@ -151,7 +157,7 @@ export function getLatestCompactionStats(
 ): CompactionStats {
   const stats: CompactionStats = {};
   for (const part of parts) {
-    if (part.type !== "data-compaction") continue;
+    if (part.type !== COMPACTION_DATA_PART_TYPE) continue;
     const data = (part as { data?: unknown }).data;
     if (typeof data !== "object" || data === null) continue;
     Object.assign(stats, readCompactionStats(data as Record<string, unknown>));

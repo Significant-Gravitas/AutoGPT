@@ -4,13 +4,15 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { ReloadIcon } from "@hugeicons/core-free-icons";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
+  barPercent,
   compactionLabel,
   type CompactionPhase,
   type CompactionStats,
 } from "./helpers";
 import { useCompactionProgress } from "./useCompactionProgress";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
-const SHOW_TIME_AFTER_SECONDS = 20;
+export const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   phase: CompactionPhase | null;
@@ -46,8 +48,13 @@ function LiveCompaction({ phase, stats }: LiveProps) {
     phase,
     stats.tokensBefore,
   );
+  const prefersReducedMotion = usePrefersReducedMotion();
   const label = compactionLabel(phase, stats);
   const percent = Math.round(progress * 100);
+  // Reduced motion gets the progress, not the crawl: the fill jumps a step at
+  // a time instead of easing for minutes. `aria-valuenow` keeps the exact
+  // percent either way — assistive tech reads the truth, not the rendering.
+  const width = barPercent(progress, prefersReducedMotion);
   const showTime = elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
 
   return (
@@ -80,7 +87,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
       >
         <div
           className="h-full rounded-full bg-foreground"
-          style={{ width: `${percent}%` }}
+          style={{ width: `${width}%` }}
         />
       </div>
     </div>

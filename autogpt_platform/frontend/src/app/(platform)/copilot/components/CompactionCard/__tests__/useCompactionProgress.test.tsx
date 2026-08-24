@@ -1,5 +1,7 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatElapsed } from "../../JobStatsBar/formatElapsed";
+import { CompactionCard, SHOW_TIME_AFTER_SECONDS } from "../CompactionCard";
 import { PARKED_POLL_MS, PHASE_CURVE, type CompactionPhase } from "../helpers";
 import { useCompactionProgress } from "../useCompactionProgress";
 
@@ -129,6 +131,23 @@ describe("useCompactionProgress", () => {
     );
   });
 
+  it("keeps counting while the curve is parked at its ceiling", () => {
+    // The park deliberately idles on a slow timer rather than dropping the
+    // loop entirely — a rebuild that stalls for two minutes must still show
+    // two minutes, not the age it had when the bar stopped moving.
+    const { result } = renderProgress();
+    for (let i = 0; i < 60 && frameCallbacks.size > 0; i++) runFrame(60_000);
+    expect(frameCallbacks.size).toBe(0);
+    const parkedProgress = result.current.progress;
+    const parkedSeconds = result.current.elapsedSeconds;
+
+    runParkedPoll();
+    runFrame(30_000);
+
+    expect(result.current.elapsedSeconds).toBe(parkedSeconds + 30);
+    expect(result.current.progress).toBe(parkedProgress);
+  });
+
   it("cancels the pending frame on unmount", () => {
     const { unmount } = renderProgress();
     runFrame(500);
@@ -136,5 +155,40 @@ describe("useCompactionProgress", () => {
     unmount();
     expect(frameCallbacks.size).toBe(0);
     expect(cancelledFrames.length).toBeGreaterThan(0);
+  });
+});
+
+// The card's elapsed readout rides the same frame clock, so it is exercised
+// through the same harness rather than a second set of stubs.
+describe("CompactionCard elapsed readout", () => {
+  function renderCard() {
+    return render(
+      <CompactionCard
+        phase="summarizing"
+        stats={{ tokensBefore: 128_000 }}
+        isSettled={false}
+      />,
+    );
+  }
+
+  it("stays quiet until the wait is worth mentioning", () => {
+    renderCard();
+    runFrame((SHOW_TIME_AFTER_SECONDS - 1) * 1_000);
+    expect(
+      screen.queryByText(formatElapsed(SHOW_TIME_AFTER_SECONDS - 1)),
+    ).toBeNull();
+  });
+
+  it("shows the timer once past the threshold and keeps it ticking", () => {
+    renderCard();
+    runFrame(SHOW_TIME_AFTER_SECONDS * 1_000);
+    expect(
+      screen.getByText(formatElapsed(SHOW_TIME_AFTER_SECONDS)),
+    ).toBeDefined();
+
+    runFrame(45_000);
+    expect(
+      screen.getByText(formatElapsed(SHOW_TIME_AFTER_SECONDS + 45)),
+    ).toBeDefined();
   });
 });

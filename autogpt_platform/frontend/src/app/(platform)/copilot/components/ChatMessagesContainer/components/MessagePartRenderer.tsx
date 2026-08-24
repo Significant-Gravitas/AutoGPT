@@ -32,6 +32,7 @@ import {
 import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
+  isRetiredCompactionRow,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
@@ -296,20 +297,13 @@ export function MessagePartRenderer({
       return null;
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
-      // A failed compaction condensed nothing — settled "Condensed…" copy
-      // would report work that never happened. Render nothing, like the
-      // abort sentinel below; failure messaging belongs to the turn-level
-      // error surfaces, not a maintenance row.
-      if (toolPart.state === "output-error") return null;
+      // A failed compaction, or one closed by the abort sentinel (output ""),
+      // condensed nothing — settled "Condensed…" copy would report work that
+      // never happened. Render nothing; failure messaging belongs to the
+      // turn-level error surfaces, not a maintenance row. Same predicate the
+      // phase derivation uses, so the row and the bar can never disagree.
+      if (isRetiredCompactionRow(part)) return null;
       const settled = toolPart.state === "output-available";
-      // A retired prediction closes the row with output "" (the abort
-      // sentinel — real closes always carry JSON with a summary). Render
-      // nothing: this compaction never happened.
-      const isAbortedRow =
-        settled &&
-        typeof toolPart.output === "string" &&
-        toolPart.output.trim() === "";
-      if (isAbortedRow) return null;
       // A row still open when the stream is over never completed — the
       // user stopped the turn or the connection dropped mid-compaction.
       // Claiming "Condensed the conversation" would report work that

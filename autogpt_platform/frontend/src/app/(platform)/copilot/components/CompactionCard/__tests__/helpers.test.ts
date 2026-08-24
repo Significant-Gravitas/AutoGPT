@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  barPercent,
   compactionLabel,
   formatTokens,
   parseCompactionOutput,
   phaseProgress,
+  REDUCED_MOTION_STEP_PERCENT,
   tauForTokens,
 } from "../helpers";
 
@@ -117,6 +119,31 @@ describe("formatTokens", () => {
     expect(formatTokens(1_000_000)).toBe("1M");
     expect(formatTokens(1_500_000)).toBe("1.5M");
     expect(formatTokens(128_000_000)).toBe("128M");
+  });
+});
+
+describe("barPercent", () => {
+  it("paints the exact percent when motion is allowed", () => {
+    expect(barPercent(0.02, false)).toBe(2);
+    expect(barPercent(0.473, false)).toBe(47);
+  });
+
+  it("steps the fill under reduced motion instead of creeping", () => {
+    expect(barPercent(0.473, true)).toBe(40);
+    expect(barPercent(0.5, true)).toBe(50);
+    expect(barPercent(0.59, true)).toBe(50);
+  });
+
+  it("never claims progress the curve has not made", () => {
+    for (let p = 0; p <= 1.0001; p += 0.01) {
+      const stepped = barPercent(p, true);
+      expect(stepped).toBeLessThanOrEqual(barPercent(p, false));
+      expect(stepped % REDUCED_MOTION_STEP_PERCENT).toBe(0);
+    }
+  });
+
+  it("still reaches a full bar", () => {
+    expect(barPercent(1, true)).toBe(100);
   });
 });
 

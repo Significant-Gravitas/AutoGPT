@@ -2,6 +2,14 @@
 // no "done" — a finished compaction settles the row instead.
 export type CompactionPhase = "summarizing" | "rebuilding";
 
+/**
+ * AI SDK v5 wire type of the transient progress part the backend streams
+ * while a compaction runs (`ResponseType.COMPACTION`). Every filter that has
+ * to see past it references this constant — spelling the string by hand in
+ * one more place is how a bookkeeping part starts rendering as content.
+ */
+export const COMPACTION_DATA_PART_TYPE = "data-compaction";
+
 export interface CompactionStats {
   tokensBefore?: number;
   tokensAfter?: number;
@@ -29,6 +37,25 @@ export const SETTLE_EPSILON = 0.005;
 // enough that a stalled rebuild costs nothing, fast enough that the handover
 // to the next phase reads as continuous.
 export const PARKED_POLL_MS = 1_000;
+
+// Under `prefers-reduced-motion` the bar advances in whole steps instead of
+// creeping a pixel at a time. The progress is the feature — a compaction can
+// run for minutes and the user deserves to know it is moving — but the crawl
+// is the motion, so we keep the information and drop the animation.
+export const REDUCED_MOTION_STEP_PERCENT = 10;
+
+/**
+ * Width the bar actually paints. Always floors to the step under reduced
+ * motion: rounding up would claim progress the curve has not made.
+ */
+export function barPercent(progress: number, prefersReducedMotion: boolean) {
+  const percent = Math.round(progress * 100);
+  if (!prefersReducedMotion) return percent;
+  return (
+    Math.floor(percent / REDUCED_MOTION_STEP_PERCENT) *
+    REDUCED_MOTION_STEP_PERCENT
+  );
+}
 
 const TAU_FLOOR_MS = 12_000;
 const TAU_CEILING_MS = 45_000;
