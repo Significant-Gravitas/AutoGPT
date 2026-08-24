@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetV2ListChatConnectionsQueryKey,
   useGetV2ListChatConnections,
+  useGetV2ListProviderModelTiers,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
@@ -21,6 +22,16 @@ export function useConnectStep() {
   const offers =
     connectionsQuery.data?.status === 200
       ? connectionsQuery.data.data.offers
+      : undefined;
+
+  // What ChatGPT's tiers resolve to, which the connections list cannot answer
+  // for a connection the user has not made yet.
+  const tiersQuery = useGetV2ListProviderModelTiers({
+    query: { refetchOnWindowFocus: false },
+  });
+  const providers =
+    tiersQuery.data?.status === 200
+      ? tiersQuery.data.data.providers
       : undefined;
 
   const { connect, isPending } = useOAuthConnect({
@@ -40,6 +51,6 @@ export function useConnectStep() {
     isConnecting: isPending,
     skip: nextStep,
     isAlreadyLinked: hasLinkedSubscription(offers),
-    models: linkedModelsSentence(offers),
+    models: linkedModelsSentence(providers),
   };
 }
