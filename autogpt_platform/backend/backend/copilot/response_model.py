@@ -62,6 +62,10 @@ class ResponseType(str, Enum):
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
     MODE_CHANGED = "data-mode-changed"
+    # Live context-compaction progress — phase transitions plus token/message
+    # deltas.  Transient (never persisted); the durable record is the
+    # ``context_compaction`` tool row's JSON output.
+    COMPACTION = "data-compaction"
 
 
 class StreamBaseResponse(BaseModel):
@@ -382,6 +386,39 @@ class StreamStatus(StreamBaseResponse):
             "data": {"message": self.message},
         }
         return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamCompactionProgress(StreamBaseResponse):
+    """Live progress for a context-compaction cycle.
+
+    Emitted three times per cycle: ``summarizing`` before the compression
+    work starts, ``rebuilding`` once it finishes (covering transcript
+    upload, CLI restart and the uncached prefill), and ``done`` when the
+    final stats are known.  Transient — the frontend uses it to drive the
+    progress bar; the persisted record is the tool row's JSON output.
+    """
+
+    type: ResponseType = ResponseType.COMPACTION
+    phase: str = Field(..., description="One of 'summarizing', 'rebuilding', 'done'")
+    tokensBefore: int | None = None
+    tokensAfter: int | None = None
+    messagesBefore: int | None = None
+    messagesAfter: int | None = None
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part so the client surfaces it as
+        `type="data-compaction"` on `message.parts`."""
+        data: dict[str, Any] = {"phase": self.phase}
+        for key in (
+            "tokensBefore",
+            "tokensAfter",
+            "messagesBefore",
+            "messagesAfter",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                data[key] = value
+        return f"data: {json.dumps({'type': self.type.value, 'data': data})}\n\n"
 
 
 class StreamPendingDrained(StreamBaseResponse):

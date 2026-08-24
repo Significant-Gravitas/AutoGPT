@@ -2,7 +2,11 @@
 
 import json
 
-from backend.copilot.response_model import StreamModeChanged
+from backend.copilot.response_model import (
+    ResponseType,
+    StreamCompactionProgress,
+    StreamModeChanged,
+)
 
 
 def test_mode_changed_serializes_as_ai_sdk_data_part():
@@ -15,3 +19,36 @@ def test_mode_changed_serializes_as_ai_sdk_data_part():
         "type": "data-mode-changed",
         "data": {"mode": "extended_thinking"},
     }
+
+
+class TestStreamCompactionProgress:
+    def test_type_is_data_compaction(self):
+        evt = StreamCompactionProgress(phase="summarizing")
+        assert evt.type == ResponseType.COMPACTION
+        assert ResponseType.COMPACTION.value == "data-compaction"
+
+    def test_to_sse_wraps_fields_in_data_envelope(self):
+        evt = StreamCompactionProgress(
+            phase="done",
+            tokensBefore=128_000,
+            tokensAfter=31_000,
+            messagesBefore=412,
+            messagesAfter=38,
+        )
+        line = evt.to_sse()
+        assert line.startswith("data: ")
+        assert line.endswith("\n\n")
+        payload = json.loads(line[len("data: ") : -2])
+        assert payload["type"] == "data-compaction"
+        assert payload["data"] == {
+            "phase": "done",
+            "tokensBefore": 128_000,
+            "tokensAfter": 31_000,
+            "messagesBefore": 412,
+            "messagesAfter": 38,
+        }
+
+    def test_to_sse_omits_unknown_stats(self):
+        evt = StreamCompactionProgress(phase="summarizing")
+        payload = json.loads(evt.to_sse()[len("data: ") : -2])
+        assert payload["data"] == {"phase": "summarizing"}
