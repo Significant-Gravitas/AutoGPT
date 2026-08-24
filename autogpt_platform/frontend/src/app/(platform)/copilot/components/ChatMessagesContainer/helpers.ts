@@ -4,6 +4,7 @@ import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
+import type { CompactionPhase } from "../CompactionCard/helpers";
 import type { TodoItem } from "../TaskProgressBar/helpers";
 
 export function shouldShowTaskListNotice({
@@ -73,7 +74,42 @@ export function isReasoningToolPart(part: MessagePart): boolean {
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool can fall back to the legacy top-level UI.
 export function isChainableToolPart(part: MessagePart): boolean {
+  if (part.type === "tool-context_compaction") return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
+}
+
+const COMPACTION_PHASES = new Set(["summarizing", "rebuilding", "done"]);
+
+/**
+ * Latest `data-compaction` phase on a message, or null once real content has
+ * landed past it (at which point the compaction row is settled history).
+ */
+export function getLatestCompactionPhase(
+  parts: MessagePart[],
+): CompactionPhase | null {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === "data-compaction") {
+      const data = (part as { data?: { phase?: unknown } }).data;
+      const phase = data?.phase;
+      if (typeof phase === "string" && COMPACTION_PHASES.has(phase)) {
+        return phase as CompactionPhase;
+      }
+      return null;
+    }
+    if (
+      part.type === "data-cursor" ||
+      part.type === "data-status" ||
+      part.type === "data-dream-operations" ||
+      part.type === "tool-context_compaction" ||
+      part.type === "step-start"
+    ) {
+      continue;
+    }
+    if (part.type === "text" && "text" in part && !part.text.trim()) continue;
+    return null;
+  }
+  return null;
 }
 
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.

@@ -24,6 +24,7 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import { revealKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
+  getLatestCompactionPhase,
   getTurnMessages,
   type MessagePart,
   type RenderSegment,
@@ -35,6 +36,7 @@ import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { useCopilotUIStore } from "../../store";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
+import type { CompactionPhase } from "../CompactionCard/helpers";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
@@ -110,6 +112,7 @@ interface RenderSegmentOptions {
   fileUrlBuilder?: (fileId: string) => string;
   forceArtifacts?: boolean;
   readOnly?: boolean;
+  compactionPhase?: CompactionPhase | null;
 }
 
 function renderSegments(
@@ -117,7 +120,8 @@ function renderSegments(
   messageID: string,
   options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
-  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
+  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly, compactionPhase } =
+    options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
@@ -140,6 +144,7 @@ function renderSegments(
         fileUrlBuilder={fileUrlBuilder}
         forceArtifacts={forceArtifacts}
         readOnly={readOnly}
+        compactionPhase={compactionPhase}
       />
     );
   });
@@ -467,6 +472,7 @@ export function ChatMessagesContainer({
       const part = lastMessage.parts[i];
       if (part.type === "data-cursor") continue;
       if (part.type === "data-dream-operations") continue;
+      if (part.type === "data-compaction") continue;
       if (part.type === "data-status") {
         const data = (part as { data?: { message?: unknown } }).data;
         return typeof data?.message === "string" ? data.message : null;
@@ -677,8 +683,12 @@ export function ChatMessagesContainer({
             // strip them before any render/split logic so they never reach
             // the user UI. data-status surfaces via ThinkingIndicator.
             const renderableParts = message.parts.filter(
-              (p) => p.type !== "data-cursor" && p.type !== "data-status",
+              (p) =>
+                p.type !== "data-cursor" &&
+                p.type !== "data-status" &&
+                p.type !== "data-compaction",
             );
+            const compactionPhase = getLatestCompactionPhase(message.parts);
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
                 p.type === "text",
@@ -771,6 +781,7 @@ export function ChatMessagesContainer({
                       fileUrlBuilder,
                       forceArtifacts: readOnly,
                       readOnly,
+                      compactionPhase,
                     })
                   ) : (
                     (() => {
@@ -784,6 +795,7 @@ export function ChatMessagesContainer({
                           fileUrlBuilder={fileUrlBuilder}
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
+                          compactionPhase={compactionPhase}
                         />
                       ));
                       return isNewToolUI ? (

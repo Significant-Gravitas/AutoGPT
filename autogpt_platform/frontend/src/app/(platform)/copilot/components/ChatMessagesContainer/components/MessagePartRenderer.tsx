@@ -23,6 +23,11 @@ import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
+import { CompactionCard } from "../../CompactionCard/CompactionCard";
+import {
+  parseCompactionOutput,
+  type CompactionPhase,
+} from "../../CompactionCard/helpers";
 import {
   extractWorkspaceArtifacts,
   parseSpecialMarkers,
@@ -144,6 +149,10 @@ interface Props {
   /** Read-only mode — forwarded so embedded ``ArtifactCard``s
    *  download on click instead of opening a panel. */
   readOnly?: boolean;
+  /** Live `data-compaction` phase for the enclosing message, derived by
+   *  the caller from the message's parts. Drives the compaction row's
+   *  progress bar; null once the row has settled into history. */
+  compactionPhase?: CompactionPhase | null;
 }
 
 export function MessagePartRenderer({
@@ -154,6 +163,7 @@ export function MessagePartRenderer({
   fileUrlBuilder,
   forceArtifacts,
   readOnly,
+  compactionPhase,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -267,6 +277,23 @@ export function MessagePartRenderer({
       // list while any task is active. See `TaskListNotice` rendering in
       // `ChatMessagesContainer`.
       return null;
+    case "tool-context_compaction": {
+      const toolPart = part as ToolUIPart;
+      const settled =
+        toolPart.state === "output-available" ||
+        toolPart.state === "output-error";
+      const { stats } = parseCompactionOutput(
+        settled ? toolPart.output : undefined,
+      );
+      return (
+        <CompactionCard
+          key={key}
+          phase={compactionPhase ?? null}
+          stats={stats}
+          isSettled={settled && compactionPhase === null}
+        />
+      );
+    }
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool

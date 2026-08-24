@@ -138,7 +138,12 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   return undefined;
 }
 
+// The compaction row owns its own progress bar and payoff frame — folding
+// it into a chain would bury both behind a collapsed "summarized context".
+export const COMPACTION_PART_TYPE = "tool-context_compaction";
+
 export function isChainPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE) return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
