@@ -1,7 +1,7 @@
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
 
-import { formatProviderName } from "../../helpers";
+import { formatProviderName, isRecommendedProvider } from "../../helpers";
 
 export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
@@ -12,6 +12,7 @@ export interface ConnectableProvider {
   name: string;
   description?: string | null;
   supportedAuthTypes: AuthMethod[];
+  recommended?: boolean;
   authProviderByType?: Partial<Record<AuthMethod, string>>;
   searchTerms?: string[];
 }
@@ -44,6 +45,7 @@ export function toConnectableProviders(
       name: formatProviderName(displayProvider),
       description: item.description,
       supportedAuthTypes: [],
+      ...(isRecommendedProvider(displayProvider) ? { recommended: true } : {}),
     };
 
     for (const authType of authTypes) {
@@ -78,7 +80,12 @@ export function toConnectableProviders(
   }
 
   const result = Array.from(byDisplayProvider.values());
-  result.sort((a, b) => a.name.localeCompare(b.name));
+  result.sort((a, b) => {
+    if (Boolean(a.recommended) !== Boolean(b.recommended)) {
+      return a.recommended ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
   return result;
 }
 
