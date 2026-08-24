@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from backend.api.features.partner_embed import routes as embed_routes
@@ -144,3 +145,47 @@ def test_stream_rejects_a_session_from_another_external_account(mocker):
 
     assert response.status_code == 404
     stream.assert_not_awaited()
+
+
+def test_stream_forwards_locked_identity_to_autopilot(mocker):
+    mocker.patch(
+        "backend.api.features.partner_embed.routes.get_chat_session_metadata",
+        return_value=SimpleNamespace(
+            organization_id=PRINCIPAL.organization_id,
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id=PRINCIPAL.external_account_id,
+            ),
+        ),
+    )
+
+    async def body():
+        yield b'data: {"type":"finish"}\n\n'
+
+    stream = mocker.patch(
+        "backend.api.features.partner_embed.routes.stream_chat_post",
+        return_value=StreamingResponse(body(), media_type="text/event-stream"),
+    )
+
+    response = client.post(
+        "/api/embed/v1/sessions/session-1/stream",
+        json={"message": "Summarize today's shipments", "message_id": "turn-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert stream.await_args.args[0] == "session-1"
+    assert stream.await_args.args[1].model_dump() == {
+        "message": "Summarize today's shipments",
+        "is_user_message": True,
+        "context": None,
+        "file_ids": None,
+        "mode": None,
+        "model": None,
+        "message_id": "turn-1",
+        "expert_kickoff": False,
+    }
+    assert stream.await_args.kwargs["user_id"] == PRINCIPAL.user_id
+    context = stream.await_args.kwargs["ctx"]
+    assert context.org_id == PRINCIPAL.organization_id
+    assert context.team_id == PRINCIPAL.team_id

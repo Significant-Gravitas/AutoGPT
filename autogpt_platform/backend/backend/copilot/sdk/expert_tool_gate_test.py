@@ -52,8 +52,12 @@ def _make_lock_mock():
     return _lock_factory
 
 
-def _make_session() -> ChatSession:
-    return ChatSession(
+def _make_session(
+    *,
+    source_platform: str | None = None,
+    external_account_id: str | None = None,
+) -> ChatSession:
+    session = ChatSession(
         session_id="test-session-id",
         user_id="test-user",
         usage=[],
@@ -61,6 +65,9 @@ def _make_session() -> ChatSession:
         updated_at=datetime.now(UTC),
         messages=[ChatMessage(role="user", content="hello")],
     )
+    session.metadata.source_platform = source_platform
+    session.metadata.external_account_id = external_account_id
+    return session
 
 
 def _make_client_mock():
@@ -97,14 +104,37 @@ def _make_patches(*, hire_experts_enabled: bool):
     read after the turn."""
     mcp_server_mock = MagicMock(return_value=MagicMock())
     is_feature_enabled_mock = AsyncMock(return_value=hire_experts_enabled)
+    system_prompt_value_mock = MagicMock(side_effect=lambda prompt, **kwargs: prompt)
 
     patches = [
         (f"{_SVC}.get_chat_session", dict(new_callable=AsyncMock)),
+        (
+            f"{_SVC}.build_expert_identity_suffix",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
+        (f"{_SVC}.clear_pending_question", dict(new_callable=AsyncMock)),
+        (f"{_SVC}._update_title_async", dict(new_callable=AsyncMock)),
+        (
+            f"{_SVC}._fetch_graphiti_context",
+            dict(new_callable=AsyncMock, return_value=(False, "")),
+        ),
         (
             f"{_SVC}.upsert_chat_session",
             dict(new_callable=AsyncMock, side_effect=lambda s: s),
         ),
         (f"{_SVC}.build_skills_context", dict(new_callable=AsyncMock, return_value="")),
+        (
+            f"{_SVC}.build_builder_system_prompt_suffix",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
+        (
+            f"{_SVC}.build_session_context",
+            dict(new_callable=AsyncMock, return_value=""),
+        ),
+        (
+            f"{_SVC}.inject_user_context",
+            dict(new_callable=AsyncMock, return_value=None),
+        ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (f"{_SVC}.AsyncClusterLock", dict(side_effect=_make_lock_mock())),
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
@@ -116,6 +146,10 @@ def _make_patches(*, hire_experts_enabled: bool):
         (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
+        ),
+        (
+            f"{_SVC}._build_system_prompt_value",
+            dict(new=system_prompt_value_mock),
         ),
         (
             f"{_SVC}.ClaudeSDKClient",
@@ -157,16 +191,33 @@ def _make_patches(*, hire_experts_enabled: bool):
         ),
         (f"{_SVC}.drain_pending_safe", dict(new_callable=AsyncMock, return_value=[])),
     ]
-    return patches, mcp_server_mock, is_feature_enabled_mock
+    return (
+        patches,
+        mcp_server_mock,
+        is_feature_enabled_mock,
+        system_prompt_value_mock,
+    )
 
 
-async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
+async def _run_sdk_turn(
+    *,
+    user_id: str | None,
+    hire_experts_enabled: bool,
+    source_platform: str | None = None,
+    external_account_id: str | None = None,
+):
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
-    session = _make_session()
-    patches, mcp_server_mock, is_feature_enabled_mock = _make_patches(
-        hire_experts_enabled=hire_experts_enabled
+    session = _make_session(
+        source_platform=source_platform,
+        external_account_id=external_account_id,
     )
+    (
+        patches,
+        mcp_server_mock,
+        is_feature_enabled_mock,
+        system_prompt_value_mock,
+    ) = _make_patches(hire_experts_enabled=hire_experts_enabled)
 
     events = []
     with contextlib.ExitStack() as stack:
@@ -184,13 +235,13 @@ async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
     assert any(
         isinstance(e, StreamStart) for e in events
     ), f"Turn did not complete far enough to reach tool registration: {events}"
-    return mcp_server_mock, is_feature_enabled_mock
+    return mcp_server_mock, is_feature_enabled_mock, system_prompt_value_mock
 
 
 class TestSdkExpertsFlagGuard:
     @pytest.mark.asyncio
     async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
-        mcp_server_mock, is_feature_enabled_mock = await _run_sdk_turn(
+        mcp_server_mock, is_feature_enabled_mock, _ = await _run_sdk_turn(
             user_id=None, hire_experts_enabled=True
         )
 
@@ -206,7 +257,7 @@ class TestSdkExpertsFlagGuard:
     async def test_authenticated_turn_with_flag_on_only_hides_staffing_tools(
         self,
     ) -> None:
-        mcp_server_mock, is_feature_enabled_mock = await _run_sdk_turn(
+        mcp_server_mock, is_feature_enabled_mock, _ = await _run_sdk_turn(
             user_id="test-user", hire_experts_enabled=True
         )
 
@@ -217,3 +268,24 @@ class TestSdkExpertsFlagGuard:
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+        assert "query_forwarding_digital" in hidden
+
+
+class TestSdkPartnerToolGate:
+    @pytest.mark.asyncio
+    async def test_forwarding_digital_turn_registers_tenant_tool_and_prompt(
+        self,
+    ) -> None:
+        mcp_server_mock, _, system_prompt_value_mock = await _run_sdk_turn(
+            user_id="test-user",
+            hire_experts_enabled=False,
+            source_platform="forwarding-digital",
+            external_account_id="fd-account-77",
+        )
+
+        hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
+        assert "query_forwarding_digital" not in hidden
+        system_prompt = system_prompt_value_mock.call_args.args[0]
+        assert "<partner_integration>" in system_prompt
+        assert "query_forwarding_digital" in system_prompt
+        assert "fd-account-77" not in system_prompt
