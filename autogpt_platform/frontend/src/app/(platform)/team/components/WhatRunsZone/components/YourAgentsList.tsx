@@ -39,10 +39,8 @@ export function YourAgentsList({
   onAdopt,
 }: Props) {
   return (
-    <section aria-label="Your agents" className="flex flex-col gap-2">
-      <Text variant="small-medium" className="text-zinc-500">
-        Your agents
-      </Text>
+    <section aria-label="Your workflows" className="flex flex-col gap-2">
+      <Text variant="h4">Your workflows</Text>
       {agents.length === 0 ? (
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
