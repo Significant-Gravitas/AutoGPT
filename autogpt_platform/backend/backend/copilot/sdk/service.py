@@ -58,7 +58,11 @@ from backend.integrations.codex.transport import PooledCodexRuntimeLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.prompt import estimate_token_count, get_compression_target
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    estimate_token_count,
+    get_compression_target,
+)
 from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotLLMModel, CopilotMode
@@ -2606,39 +2610,106 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     return result
 
 
-# Mirrors ``compress_context``'s ``reserve`` default (prompt.py) — the
-# response headroom subtracted from the compression target.
-_COMPRESSION_RESERVE = 2_048
+def _compression_model() -> str:
+    """The model whose context window governs pre-query compression.
+
+    ``_compress_messages`` hands this to ``_run_compression``, and the
+    pre-query predictor sizes its estimate against the same name.  Both read
+    it here rather than naming a model each: the runtime model (Codex 400K,
+    Opus 120K) and the compressor's model have different windows, so any
+    call site that picks its own opens compaction rows for work the
+    compressor won't do — or does the work with no row open at all.
+    """
+    return config.thinking_standard_model
 
 
-def _will_compact(messages: list[ChatMessage], model: str) -> bool:
+def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
+    """One ``ChatMessage`` in the dict shape the compressor reads.
+
+    Shared by ``_compress_messages`` (what actually gets compressed) and
+    ``_will_compact`` (what gets estimated).  ``_msg_tokens`` counts the
+    serialized ``function.arguments`` of every tool call, and copilot
+    assistant rows carry whole graph JSON in ``create_agent``/``edit_agent``
+    payloads — an estimate built from ``role``/``content`` alone undercounts
+    the tool-heaviest sessions by the widest margin.
+    """
+    payload: dict[str, Any] = {"role": msg.role}
+    if msg.content:
+        payload["content"] = msg.content
+    if msg.tool_calls:
+        payload["tool_calls"] = msg.tool_calls
+    if msg.tool_call_id:
+        payload["tool_call_id"] = msg.tool_call_id
+    return payload
+
+
+# Tokenizing a 300K-token history takes ~2s cold on the event loop shared by
+# every concurrent copilot stream.  The estimate is an optimisation, not a
+# correctness requirement, so it is capped rather than awaited indefinitely.
+_WILL_COMPACT_TIMEOUT_SECONDS = 5
+
+
+@dataclass(frozen=True)
+class _CompactionForecast:
+    """Whether the upcoming turn compresses, and how big the input is.
+
+    ``tokens_before`` is the estimate the prediction was made from; it rides
+    the ``summarizing`` phase so the client can pace its progress curve.
+    ``None`` when the estimate was skipped or timed out.
+    """
+
+    expected: bool
+    tokens_before: int | None = None
+
+
+_NO_COMPACTION = _CompactionForecast(expected=False)
+
+
+async def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecast:
     """Cheap pre-check: would ``_compress_messages`` do real work?
 
     Mirrors ``compress_context``'s early-return condition (``prompt.py``:
     ``original_count + reserve <= target_tokens``) using the same token
-    estimator, so the UI can open a compaction row *before* the expensive
-    LLM summarization starts instead of announcing it afterwards.
+    estimator and the same message dicts, so the UI can open a compaction row
+    *before* the expensive LLM summarization starts instead of announcing it
+    afterwards.
 
-    Tokenization only — no LLM call.  Being wrong is survivable in both
-    directions: a false positive is retired by ``abort_pre_query``, a
-    false negative falls back to a self-contained row.
+    Tokenization only — no LLM call — but tiktoken is CPU-bound and blocking,
+    so it runs off the event loop under a timeout.  Being wrong is survivable
+    in both directions: a false positive is retired by ``abort_pre_query``, a
+    false negative falls back to a self-contained row.  That is what makes the
+    timeout safe: giving up returns a false negative, never a stall.
     """
     rows = [m for m in filter_compaction_messages(messages) if m.role != "reasoning"]
     if len(rows) < 2:
-        return False
-    payload = [{"role": m.role, "content": m.content or ""} for m in rows]
-    estimated = estimate_token_count(payload, model=model)
-    return estimated + _COMPRESSION_RESERVE > get_compression_target(model)
+        return _NO_COMPACTION
+    payload = [_to_compress_dict(m) for m in rows]
+    try:
+        estimated = await asyncio.wait_for(
+            asyncio.to_thread(estimate_token_count, payload, model=model),
+            timeout=_WILL_COMPACT_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(
+            "[SDK] Compaction pre-check timed out after %ds on %d rows —"
+            " skipping the prediction (the row still opens after the fact)",
+            _WILL_COMPACT_TIMEOUT_SECONDS,
+            len(rows),
+        )
+        return _NO_COMPACTION
+    expected = estimated + DEFAULT_COMPRESSION_RESERVE > get_compression_target(model)
+    return _CompactionForecast(expected=expected, tokens_before=estimated)
 
 
-def _expect_pre_query_compaction(
+async def _expect_pre_query_compaction(
     messages: list[ChatMessage],
     model: str,
     *,
     use_resume: bool,
     transcript_msg_count: int,
     session_msg_ceiling: int,
-) -> bool:
+    prior_messages: "list[ChatMessage] | None" = None,
+) -> _CompactionForecast:
     """Predict whether ``_build_query_message`` will compress on this turn.
 
     Mirrors ``_build_query_message``'s branch selection so the compaction
@@ -2649,18 +2720,28 @@ def _expect_pre_query_compaction(
     on EVERY turn once cumulative history exceeds the compression target,
     opening a row that is immediately aborted.
 
+    ``prior_messages`` must be the same value handed to
+    ``_build_query_message``: on the no-resume path it is the compacted
+    transcript + hole + gap, which is normally far smaller than the raw
+    session and is non-``None`` on essentially every turn with a baseline
+    transcript.  Predicting over the full session there is the mirror-image
+    error — the branch compresses a slice this function never looked at.
+
     False negatives are safe: ``emit_pre_query_end`` emits a self-contained
     row when compression happens without a prediction.  That covers slices
     this estimator cannot see, like cap-engaged hole rows fetched from the DB.
     """
-    if not use_resume:
-        return _will_compact(messages, model)
-    if transcript_msg_count <= 0:
-        # ``use_resume`` with no covered rows compresses nothing.
-        return False
     prior = [
         m for m in messages[: max(0, session_msg_ceiling - 1)] if m.role != "reasoning"
     ]
+    if not use_resume:
+        if session_msg_ceiling <= 1:
+            return _NO_COMPACTION
+        source = prior_messages if prior_messages is not None else prior
+        return await _will_compact(source, model)
+    if transcript_msg_count <= 0:
+        # ``use_resume`` with no covered rows compresses nothing.
+        return _NO_COMPACTION
     cap_engaged = transcript_msg_count >= len(prior) or (
         bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
     )
@@ -2670,16 +2751,16 @@ def _expect_pre_query_compaction(
             for m in prior
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
-        return _will_compact(window_gap, model)
+        return await _will_compact(window_gap, model)
     if transcript_msg_count < session_msg_ceiling - 1:
         if transcript_msg_count > len(prior):
-            return False
+            return _NO_COMPACTION
         if prior[transcript_msg_count - 1].role != "assistant":
             # Misaligned watermark — _build_query_message skips the gap.
-            return False
-        return _will_compact(prior[transcript_msg_count:], model)
+            return _NO_COMPACTION
+        return await _will_compact(prior[transcript_msg_count:], model)
     # Scenario A: --resume covers the full context; nothing is compressed.
-    return False
+    return _NO_COMPACTION
 
 
 def _retry_reduced_context(
@@ -2734,21 +2815,12 @@ async def _compress_messages(
         return messages, False, None
 
     # Convert ChatMessages to dicts for compress_context
-    messages_dict = []
-    for msg in messages:
-        msg_dict: dict[str, Any] = {"role": msg.role}
-        if msg.content:
-            msg_dict["content"] = msg.content
-        if msg.tool_calls:
-            msg_dict["tool_calls"] = msg.tool_calls
-        if msg.tool_call_id:
-            msg_dict["tool_call_id"] = msg.tool_call_id
-        messages_dict.append(msg_dict)
+    messages_dict = [_to_compress_dict(msg) for msg in messages]
 
     try:
         result = await _run_compression(
             messages_dict,
-            config.thinking_standard_model,
+            _compression_model(),
             "[SDK]",
             target_tokens=target_tokens,
         )
@@ -2764,15 +2836,17 @@ async def _compress_messages(
         # that can definitively recover a session whose stored history
         # exceeds the model's context window.
         logger.warning(
-            "[SDK] _compress_messages failed — dropping history to bare"
+            "[SDK] _compress_messages failed — dropping %d messages to bare"
             " message to guarantee retry progress: %s",
+            len(messages),
             exc,
         )
-        return (
-            [],
-            True,
-            CompactionStats(messages_before=len(messages), messages_after=0),
-        )
+        # No stats: a drop is not a summarize.  Stats are what promote the
+        # compaction row from a transient prediction to a durable, replayed-
+        # on-reload claim that "earlier messages were summarized" — and to a
+        # ``compaction_count``.  History was destroyed here, not condensed;
+        # the caller still learns reduction happened from the bool.
+        return [], True, None
 
     if result.was_compacted:
         logger.info(
@@ -2913,6 +2987,7 @@ async def _build_query_message(
     session_msg_ceiling: int | None = None,
     target_tokens: int | None = None,
     prior_messages: "list[ChatMessage] | None" = None,
+    expect_compaction: bool = False,
 ) -> tuple[str, "CompactionStats | None"]:
     """Build the query message with appropriate context.
 
@@ -2934,6 +3009,9 @@ async def _build_query_message(
             messages so that mid-turn drains do not skew the gap calculation
             and cause pending messages to be duplicated in both the gap context
             and ``current_message``.
+        expect_compaction: What the caller's pre-check predicted.  Logged only,
+            beside the branch actually taken, so a row that opens without
+            compression (or compression with no row) is one grep away.
 
     Returns:
         Tuple of (query_message, compaction_stats or None).
@@ -2960,18 +3038,21 @@ async def _build_query_message(
     # mid-turn user rows from the next LLM query.
     prior = [m for m in prior if m.role != "reasoning"]
 
-    # First non-None wins: its ``tokens_before`` reflects the true starting
-    # size, which is what the progress curve's tau is scaled from.
+    # Every branch below makes at most one ``_compress_messages`` call and then
+    # returns, so this is written exactly once per invocation.
     compaction_stats: CompactionStats | None = None
 
     logger.info(
         "[SDK] [%s] Context path: use_resume=%s, transcript_msg_count=%d,"
-        " db_msg_count=%d, target_tokens=%s",
+        " db_msg_count=%d, target_tokens=%s, expect_compaction=%s,"
+        " prior_messages=%s",
         session_id[:8],
         use_resume,
         transcript_msg_count,
         msg_count,
         target_tokens,
+        expect_compaction,
+        len(prior_messages) if prior_messages is not None else None,
     )
 
     if use_resume and transcript_msg_count > 0:
@@ -3023,8 +3104,7 @@ async def _build_query_message(
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
-            if compaction_stats is None:
-                compaction_stats = stats
+            compaction_stats = stats
             gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
@@ -3071,8 +3151,7 @@ async def _build_query_message(
             compressed, _was_compressed, stats = await _compress_messages(
                 gap, target_tokens
             )
-            if compaction_stats is None:
-                compaction_stats = stats
+            compaction_stats = stats
             gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
@@ -3139,8 +3218,7 @@ async def _build_query_message(
         compressed, _was_compressed, stats = await _compress_messages(
             source, target_tokens
         )
-        if compaction_stats is None:
-            compaction_stats = stats
+        compaction_stats = stats
         history_context = _format_conversation_context(compressed)
         if history_context:
             logger.info(
@@ -3736,10 +3814,6 @@ async def _run_stream_attempt(
         )
 
         ctx.compaction.reset_for_query()
-        # The compaction row is opened *before* the compression work in
-        # ``stream_chat_completion_sdk`` — emitting it here would show the
-        # user a completed row and then go silent for the expensive part
-        # (transcript upload, CLI restart, uncached prefill).
 
         # Narrate the silent gap between dispatching the query and the
         # SDK's first real chunk — usually <1s but can stretch to several
@@ -3928,6 +4002,7 @@ async def _seed_transcript(
     transcript_covers_prefix: bool,
     transcript_msg_count: int,
     log_prefix: str,
+    msg_ceiling: int,
 ) -> tuple[str, bool, int]:
     """Seed the transcript builder from compressed DB messages.
 
@@ -3938,13 +4013,20 @@ async def _seed_transcript(
     on the next pod gets a usable compact base even for sessions that started
     on old pods.
 
+    ``msg_ceiling`` is ``len(session.messages)`` as of *before* the compaction
+    row was persisted.  Slicing off just the last entry is not enough: closing
+    a pre-query compaction row appends a synthetic assistant+tool pair, so the
+    naive ``[:-1]`` leaves the current user message inside the seed — and the
+    turn appends it again via ``append_user``, duplicating the live message in
+    the transcript and inflating the watermark by two.
+
     Returns ``(transcript_content, transcript_covers_prefix, transcript_msg_count)``
     updated values — unchanged if seeding is not possible.
     """
-    if len(session.messages) <= 1:
+    if msg_ceiling <= 1:
         return "", transcript_covers_prefix, transcript_msg_count
 
-    _prior = session.messages[:-1]
+    _prior = session.messages[: msg_ceiling - 1]
     _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
@@ -4933,16 +5015,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
-        model_for_estimate = sdk_model or config.thinking_standard_model
-        expect_compaction = _expect_pre_query_compaction(
+        forecast = await _expect_pre_query_compaction(
             session.messages,
-            model_for_estimate,
+            _compression_model(),
             use_resume=use_resume,
             transcript_msg_count=transcript_msg_count,
             session_msg_ceiling=_pre_drain_msg_count,
+            prior_messages=restore_context_messages,
         )
-        if expect_compaction:
-            for ev in compaction.emit_pre_query_start():
+        if forecast.expected:
+            for ev in compaction.emit_pre_query_start(forecast.tokens_before):
                 yield ev
 
         query_message, compaction_stats = await _build_query_message(
@@ -4953,13 +5035,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_id,
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
+            expect_compaction=forecast.expected,
         )
 
+        # Snapshot before the close persists its synthetic assistant+tool pair:
+        # ``_seed_transcript`` slices ``session.messages`` and would otherwise
+        # read the compaction row as history and the current user message as
+        # prior context, seeding a transcript that repeats the live turn.
+        pre_compaction_msg_count = len(session.messages)
         if compaction_stats is not None:
             for ev in compaction.emit_pre_query_end(session, compaction_stats):
                 yield ev
-        elif expect_compaction:
-            for ev in compaction.abort_pre_query(session):
+        elif forecast.expected:
+            for ev in compaction.abort_pre_query():
                 yield ev
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
@@ -4998,6 +5086,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 transcript_covers_prefix,
                 transcript_msg_count,
                 log_prefix,
+                pre_compaction_msg_count,
             )
 
         tried_compaction = False
@@ -5145,6 +5234,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         session_id,
                         session_msg_ceiling=_pre_drain_msg_count,
                         target_tokens=state.target_tokens,
+                        expect_compaction=True,
                     )
                 )
                 if _retry_reduced_context(
@@ -5156,7 +5246,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     ):
                         yield ev
                 else:
-                    for ev in compaction.abort_pre_query(session):
+                    for ev in compaction.abort_pre_query():
                         yield ev
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
@@ -5526,7 +5616,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # compaction row. abort_pre_query is a no-op when nothing is
             # open, so this is safe to call unconditionally.
             if compaction is not None:
-                for ev in compaction.abort_pre_query(session):
+                for ev in compaction.abort_pre_query():
                     yield ev
             yield StreamError(errorText=display_msg, code=code)
 

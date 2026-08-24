@@ -15,9 +15,12 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
+    CompactionPhase,
     StreamBaseResponse,
     StreamCompactionProgress,
     StreamFinishStep,
@@ -41,27 +44,32 @@ class CompactionResult:
     transcript_path: str = ""
 
 
-@dataclass(frozen=True)
-class CompactionStats:
+class CompactionStats(BaseModel):
     """Token and message counts for one compaction cycle.
 
     Every field is optional: the SDK-internal path learns the counts from
     the CLI transcript (sometimes not at all), while the pre-query path
     reads them straight off ``CompressResult``.
+
+    The camelCase serialization aliases are the wire names, declared once here
+    so the tool row's JSON output and the ``data-compaction`` progress event
+    cannot drift apart from each other or from the fields.
     """
 
-    tokens_before: int | None = None
-    tokens_after: int | None = None
-    messages_before: int | None = None
-    messages_after: int | None = None
+    model_config = ConfigDict(frozen=True)
 
+    tokens_before: int | None = Field(default=None, serialization_alias="tokensBefore")
+    tokens_after: int | None = Field(default=None, serialization_alias="tokensAfter")
+    messages_before: int | None = Field(
+        default=None, serialization_alias="messagesBefore"
+    )
+    messages_after: int | None = Field(
+        default=None, serialization_alias="messagesAfter"
+    )
 
-_STATS_WIRE_KEYS = (
-    ("tokens_before", "tokensBefore"),
-    ("tokens_after", "tokensAfter"),
-    ("messages_before", "messagesBefore"),
-    ("messages_after", "messagesAfter"),
-)
+    def to_wire(self) -> dict[str, Any]:
+        """Known counts under their client-facing names; unknowns omitted."""
+        return self.model_dump(by_alias=True, exclude_none=True)
 
 
 def build_compaction_output(stats: "CompactionStats | None") -> str:
@@ -73,25 +81,15 @@ def build_compaction_output(stats: "CompactionStats | None") -> str:
     """
     payload: dict[str, Any] = {"summary": COMPACTION_DONE_MSG}
     if stats is not None:
-        for attr, wire in _STATS_WIRE_KEYS:
-            value = getattr(stats, attr)
-            if value is not None:
-                payload[wire] = value
+        payload.update(stats.to_wire())
     return json.dumps(payload)
 
 
 def _progress(
-    phase: str, stats: "CompactionStats | None" = None
+    phase: CompactionPhase, stats: "CompactionStats | None" = None
 ) -> StreamCompactionProgress:
-    if stats is None:
-        return StreamCompactionProgress(phase=phase)
-    return StreamCompactionProgress(
-        phase=phase,
-        tokensBefore=stats.tokens_before,
-        tokensAfter=stats.tokens_after,
-        messagesBefore=stats.messages_before,
-        messagesAfter=stats.messages_after,
-    )
+    stats = stats or CompactionStats()
+    return StreamCompactionProgress(phase=phase, **stats.to_wire())
 
 
 # ---------------------------------------------------------------------------
@@ -303,13 +301,21 @@ class CompactionTracker:
     # Pre-query compaction
     # ------------------------------------------------------------------
 
-    def emit_pre_query_start(self) -> list[StreamBaseResponse]:
+    def emit_pre_query_start(
+        self, tokens_before: int | None = None
+    ) -> list[StreamBaseResponse]:
         """Open a compaction row BEFORE the compression work runs.
 
         The row stays open — no output event — until
         :meth:`emit_pre_query_end` or :meth:`abort_pre_query` closes it,
         so the progress bar spans the real work instead of appearing
         after it.
+
+        *tokens_before* is the pre-check's token estimate for the slice about
+        to be compressed.  It rides the ``summarizing`` phase so the client can
+        pace its progress curve against the real size of the work — without it
+        every compaction, 20K or 500K, animates on the same floor.  Optional
+        because the SDK-internal path has no estimate to offer.
 
         Deliberately does NOT record an attempt: the caller opens this row
         on a *prediction* (``_will_compact``), and a prediction that turns
@@ -320,7 +326,7 @@ class CompactionTracker:
         self._pre_query_tool_call_id = _new_tool_call_id()
         return [
             *_start_events(self._pre_query_tool_call_id),
-            _progress("summarizing"),
+            _progress("summarizing", CompactionStats(tokens_before=tokens_before)),
         ]
 
     def emit_pre_query_end(
@@ -342,15 +348,20 @@ class CompactionTracker:
         events.append(_progress("rebuilding", stats))
         return events
 
-    def abort_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
+    def abort_pre_query(self) -> list[StreamBaseResponse]:
         """Close an optimistically-opened row when no compaction happened.
 
         The pre-check in ``stream_chat_completion_sdk`` predicts compaction
         from a token estimate; when the estimate is wrong the row must be
         retired without persisting anything, so a refresh doesn't replay a
         compaction that never occurred.
+
+        The empty ``output`` is the sentinel that tells the client this row
+        is retired rather than completed, and it is the only signal needed:
+        the client treats phases left behind by a retired row as stale and
+        stops animating.  Emitting a trailing phase here would instead claim
+        a stage that never ran.
         """
-        _ = session
         tc_id = self._pre_query_tool_call_id
         if not tc_id:
             return []

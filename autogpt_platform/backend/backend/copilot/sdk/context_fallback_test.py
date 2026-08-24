@@ -27,7 +27,7 @@ Compression unit tests
 | L | [1 msg]              | None          | ([msg], False) — single-msg guard             |
 | M | [2+ msgs]            | None          | target_tokens=None forwarded to _run_compression |
 | N | [2+ msgs]            | 30_000        | target_tokens=30_000 forwarded                |
-| O | [2+ msgs], run fails | None          | returns originals, False                      |
+| O | [2+ msgs], run fails | None          | drops history, no stats                       |
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import _build_query_message, _compress_messages
 from backend.util.prompt import CompressResult
 
@@ -476,7 +477,16 @@ class TestCompressMessages:
         _, kwargs = mock_run.call_args
         assert kwargs.get("target_tokens") == 30_000
         assert compacted is True
-        assert stats is not None
+        # Pin the whole payoff frame, not just its existence: the before/after
+        # pairs are what the UI renders, and a swap between them would ship a
+        # backwards "31K → 128K tokens" with the suite still green.
+        assert stats == CompactionStats(
+            tokens_before=50,
+            tokens_after=5,
+            messages_before=2,
+            messages_after=1,
+        )
+        assert [(m.role, m.content) for m in result] == [("user", "summary")]
 
     @pytest.mark.asyncio
     async def test_scenario_o_run_compression_exception_drops_history(self):
@@ -490,6 +500,12 @@ class TestCompressMessages:
         SENTRY-1207's persistent recurrence: a session whose stored history
         exceeds the model's context window cannot be rescued by re-trying
         with the same history).
+
+        It must ALSO return no stats.  Stats promote the compaction row from
+        a transient prediction into a durable "earlier messages were
+        summarized" claim replayed on every reload, plus a
+        ``compaction_count``.  Nothing was summarized here — the history was
+        thrown away — so there is nothing honest to persist.
         """
         msgs = [
             ChatMessage(role="user", content="q"),
@@ -506,7 +522,35 @@ class TestCompressMessages:
         # occurred (current message goes alone, smallest possible payload).
         assert result == []
         assert compacted is True
-        assert stats is not None
+        assert stats is None
+
+    @pytest.mark.asyncio
+    async def test_drop_path_persists_no_compaction_row(self):
+        """A dropped history must not surface as a completed compaction.
+
+        ``_build_query_message`` falls through to the bare message when the
+        drop leaves nothing to inject; if it reported stats there, the caller
+        would close and persist a row claiming a summarization that never
+        happened.
+        """
+        session = _make_session(
+            _msgs(("user", "q1"), ("assistant", "a1"), ("user", "q2"))
+        )
+        with patch(
+            "backend.copilot.sdk.service._run_compression",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("compression timeout"),
+        ):
+            result, stats = await _build_query_message(
+                "q2",
+                session,
+                use_resume=False,
+                transcript_msg_count=0,
+                session_id="s",
+            )
+
+        assert result == "q2"
+        assert stats is None
 
     @pytest.mark.asyncio
     async def test_compaction_messages_filtered_before_compression(self):

@@ -7,7 +7,9 @@ Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``,
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,14 +18,17 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
 
-from ..model import ChatMessage
+from ..model import ChatMessage, ChatSession
 from ..model_router import ResolvedModel
 from .compaction import CompactionStats
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
     ReducedContext,
+    _build_query_message,
     _compaction_target_tokens,
+    _compress_messages,
+    _compression_model,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
     _is_tool_only_message,
@@ -1694,24 +1699,74 @@ def _msg(role: str, content: str) -> ChatMessage:
 
 
 class TestWillCompact:
-    def test_false_for_short_history(self):
-        assert _will_compact([_msg("user", "hi")], "gpt-4o") is False
+    @pytest.mark.asyncio
+    async def test_false_for_short_history(self):
+        assert (await _will_compact([_msg("user", "hi")], "gpt-4o")).expected is False
 
-    def test_false_for_empty_history(self):
-        assert _will_compact([], "gpt-4o") is False
+    @pytest.mark.asyncio
+    async def test_false_for_empty_history(self):
+        assert (await _will_compact([], "gpt-4o")).expected is False
 
-    def test_true_when_history_exceeds_the_compression_target(self):
+    @pytest.mark.asyncio
+    async def test_true_when_history_exceeds_the_compression_target(self):
         # get_compression_target for gpt-4o is well under 1M tokens; a
         # megabyte of prose comfortably clears it.
         big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
-        assert _will_compact(big, "gpt-4o") is True
+        forecast = await _will_compact(big, "gpt-4o")
+        assert forecast.expected is True
+        # The estimate rides along so the client can pace its progress curve
+        # against the real size of the work instead of a constant floor.
+        assert forecast.tokens_before is not None
+        assert forecast.tokens_before > 100_000
 
-    def test_ignores_reasoning_and_compaction_rows(self):
+    @pytest.mark.asyncio
+    async def test_ignores_reasoning_and_compaction_rows(self):
         rows = [
             _msg("reasoning", "word " * 200_000),
             _msg("user", "hi"),
         ]
-        assert _will_compact(rows, "gpt-4o") is False
+        assert (await _will_compact(rows, "gpt-4o")).expected is False
+
+    @pytest.mark.asyncio
+    async def test_counts_tool_call_arguments(self):
+        """Tool-call payloads must be tokenized, not silently dropped.
+
+        Copilot assistant rows carry whole graph JSON in ``create_agent`` /
+        ``edit_agent`` arguments.  An estimate built from role+content alone
+        reads these rows as nearly empty, so the sessions that need the
+        compaction row most are exactly the ones that never open one.
+        """
+        graph_json = json.dumps({"nodes": ["n" * 40] * 40_000})
+        rows = [
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "create_agent",
+                            "arguments": graph_json,
+                        },
+                    }
+                ],
+            ),
+            _msg("user", "ship it"),
+        ]
+        assert (await _will_compact(rows, "gpt-4o")).expected is True
+
+    @pytest.mark.asyncio
+    async def test_timeout_degrades_to_a_false_negative(self):
+        """A slow tokenizer must not stall the SSE generator.
+
+        Every concurrent copilot stream shares this loop, so the pre-check is
+        capped.  Giving up returns False — a false negative, which
+        ``emit_pre_query_end`` covers with a self-contained row.
+        """
+        big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
+        with patch("backend.copilot.sdk.service._WILL_COMPACT_TIMEOUT_SECONDS", 0.0):
+            assert (await _will_compact(big, "gpt-4o")).expected is False
 
 
 def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
@@ -1728,65 +1783,101 @@ def _big_history(n: int = 10) -> list[ChatMessage]:
 
 
 class TestExpectPreQueryCompaction:
-    def test_steady_state_resume_never_predicts(self):
+    @pytest.mark.asyncio
+    async def test_steady_state_resume_never_predicts(self):
         # The transcript covers the full history — _build_query_message's
         # Scenario A compresses nothing, so the pre-check must stay False
         # even though the cumulative history exceeds the target.
         messages = _big_history()
-        assert _will_compact(messages, "gpt-4o") is True  # the old false positive
+        assert (await _will_compact(messages, "gpt-4o")).expected is True
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=len(messages) - 1,
                 session_msg_ceiling=len(messages),
             )
-            is False
-        )
+        ).expected is False
 
-    def test_no_resume_predicts_over_full_history(self):
+    @pytest.mark.asyncio
+    async def test_no_resume_predicts_over_full_history(self):
         messages = _big_history()
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=False,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
             )
-            is True
-        )
+        ).expected is True
 
-    def test_resume_with_zero_watermark_never_predicts(self):
+    @pytest.mark.asyncio
+    async def test_no_resume_predicts_over_prior_messages_when_given(self):
+        """The no-resume branch compresses ``prior_messages`` when it is set.
+
+        ``prior_messages`` is the compacted transcript + hole + gap — normally
+        far smaller than the raw session and non-None on essentially every
+        no-resume turn with a baseline transcript.  Predicting over the full
+        session there opens a row for compression that never runs.
+        """
+        messages = _big_history()
+        small_prior = [_msg("user", "hi"), _msg("assistant", "hello")]
+        assert (
+            await _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=False,
+                transcript_msg_count=0,
+                session_msg_ceiling=len(messages),
+                prior_messages=small_prior,
+            )
+        ).expected is False
+
+    @pytest.mark.asyncio
+    async def test_no_resume_single_message_never_predicts(self):
+        messages = [_msg("user", "word " * 200_000)]
+        assert (
+            await _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=False,
+                transcript_msg_count=0,
+                session_msg_ceiling=1,
+            )
+        ).expected is False
+
+    @pytest.mark.asyncio
+    async def test_resume_with_zero_watermark_never_predicts(self):
         messages = _big_history()
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=0,
                 session_msg_ceiling=len(messages),
             )
-            is False
-        )
+        ).expected is False
 
-    def test_resume_with_a_big_stale_gap_predicts(self):
+    @pytest.mark.asyncio
+    async def test_resume_with_a_big_stale_gap_predicts(self):
         # Watermark covers rows 0-1 (last covered row is the assistant at
         # index 1); the remaining gap is large enough to compress.
         messages = _big_history()
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
             )
-            is True
-        )
+        ).expected is True
 
-    def test_resume_with_a_small_gap_never_predicts(self):
+    @pytest.mark.asyncio
+    async def test_resume_with_a_small_gap_never_predicts(self):
         messages = [
             _seq_msg("user", "word " * 30_000, 0),
             _seq_msg("assistant", "word " * 30_000, 1),
@@ -1795,32 +1886,32 @@ class TestExpectPreQueryCompaction:
             _seq_msg("user", "thanks", 4),
         ]
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=2,
                 session_msg_ceiling=len(messages),
             )
-            is False
-        )
+        ).expected is False
 
-    def test_resume_misaligned_watermark_never_predicts(self):
+    @pytest.mark.asyncio
+    async def test_resume_misaligned_watermark_never_predicts(self):
         # prior[transcript_msg_count - 1] is a user row — _build_query_message
         # skips the gap entirely, so no compaction row should open.
         messages = _big_history()
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=1,
                 session_msg_ceiling=len(messages),
             )
-            is False
-        )
+        ).expected is False
 
-    def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
+    @pytest.mark.asyncio
+    async def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
         # The windowed view starts above absolute sequence 0, so the
         # sequence-based gap path runs; rows at/after the watermark form
         # the compressible slice.
@@ -1829,30 +1920,190 @@ class TestExpectPreQueryCompaction:
             for i in range(10)
         ]
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=102,
                 session_msg_ceiling=len(messages),
             )
-            is True
-        )
+        ).expected is True
 
-    def test_cap_engaged_with_no_post_watermark_rows_never_predicts(self):
+    @pytest.mark.asyncio
+    async def test_cap_engaged_with_no_post_watermark_rows_never_predicts(self):
         messages = [
             _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
             for i in range(10)
         ]
         assert (
-            _expect_pre_query_compaction(
+            await _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
                 transcript_msg_count=200,
                 session_msg_ceiling=len(messages),
             )
-            is False
+        ).expected is False
+
+
+# ---------------------------------------------------------------------------
+# Predictor vs. compressor — the two must never disagree
+# ---------------------------------------------------------------------------
+
+
+def _make_session(messages: list[ChatMessage]) -> ChatSession:
+    now = datetime.now(UTC)
+    return ChatSession(
+        session_id="differential-session",
+        user_id="user-1",
+        messages=messages,
+        title="t",
+        usage=[],
+        started_at=now,
+        updated_at=now,
+    )
+
+
+_DIFFERENTIAL_CASES: list[dict] = [
+    # name, use_resume, transcript_msg_count, messages, prior_messages
+    {
+        "name": "no-resume, full db history",
+        "use_resume": False,
+        "transcript_msg_count": 0,
+        "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "no-resume, small transcript+gap prior",
+        "use_resume": False,
+        "transcript_msg_count": 4,
+        "messages": _big_history(),
+        "prior_messages": [_msg("user", "hi"), _msg("assistant", "hello")],
+    },
+    {
+        "name": "no-resume, large transcript+gap prior",
+        "use_resume": False,
+        "transcript_msg_count": 4,
+        "messages": _big_history(),
+        "prior_messages": _big_history(6),
+    },
+    {
+        "name": "no-resume, single message",
+        "use_resume": False,
+        "transcript_msg_count": 0,
+        "messages": [_msg("user", "word " * 200_000)],
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, watermark aligned with a big gap",
+        "use_resume": True,
+        "transcript_msg_count": 2,
+        "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, watermark misaligned on a user row",
+        "use_resume": True,
+        "transcript_msg_count": 1,
+        "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, zero watermark",
+        "use_resume": True,
+        "transcript_msg_count": 0,
+        "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, full coverage",
+        "use_resume": True,
+        "transcript_msg_count": 9,
+        "messages": _big_history(),
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, cap engaged with post-watermark rows",
+        "use_resume": True,
+        "transcript_msg_count": 102,
+        "messages": [
+            _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
+            for i in range(10)
+        ],
+        "prior_messages": None,
+    },
+    {
+        "name": "resume, cap engaged with no post-watermark rows",
+        "use_resume": True,
+        "transcript_msg_count": 200,
+        "messages": [
+            _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
+            for i in range(10)
+        ],
+        "prior_messages": None,
+    },
+]
+
+
+class TestPredictorMatchesCompressor:
+    """``_expect_pre_query_compaction`` is a hand-written mirror of
+    ``_build_query_message``'s branch tree.  Nothing but a differential test
+    keeps the two honest: every divergence so far has shipped as either a bar
+    that flashes and aborts, or expensive work with no row open at all.
+
+    False negatives are tolerated (``emit_pre_query_end`` covers them with a
+    self-contained row).  False positives are the failure this pins.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "case", _DIFFERENTIAL_CASES, ids=[c["name"] for c in _DIFFERENTIAL_CASES]
+    )
+    async def test_predictor_never_claims_compaction_that_does_not_happen(
+        self, case, monkeypatch
+    ):
+        messages = case["messages"]
+        session = _make_session(messages)
+        ceiling = len(messages)
+
+        forecast = await _expect_pre_query_compaction(
+            messages,
+            _compression_model(),
+            use_resume=case["use_resume"],
+            transcript_msg_count=case["transcript_msg_count"],
+            session_msg_ceiling=ceiling,
+            prior_messages=case["prior_messages"],
+        )
+
+        # Spy on the compressor: run the real pre-check against the slice
+        # _build_query_message actually hands it, so the two see identical
+        # inputs by construction rather than by a hand-copied estimate.
+        compressed_slices: list[list[ChatMessage]] = []
+
+        async def _spy(msgs, target_tokens=None):
+            compressed_slices.append(list(msgs))
+            return msgs, False, None
+
+        monkeypatch.setattr("backend.copilot.sdk.service._compress_messages", _spy)
+        await _build_query_message(
+            "now what?",
+            session,
+            case["use_resume"],
+            case["transcript_msg_count"],
+            "differential-session",
+            session_msg_ceiling=ceiling,
+            prior_messages=case["prior_messages"],
+        )
+
+        would_compact = False
+        for slice_ in compressed_slices:
+            if (await _will_compact(slice_, _compression_model())).expected:
+                would_compact = True
+
+        assert not (forecast.expected and not would_compact), (
+            f"{case['name']}: predicted compaction but "
+            f"_build_query_message compressed {len(compressed_slices)} slice(s), "
+            "none of which would compact — the row opens and aborts instantly"
         )
 
 
@@ -1901,3 +2152,97 @@ class TestRetryReducedContext:
             )
             is True
         )
+
+
+# ---------------------------------------------------------------------------
+# The compressor's model is the predictor's model
+# ---------------------------------------------------------------------------
+
+
+class TestCompressionModelIsShared:
+    """The predictor sizes an estimate against a context window; the
+    compressor compresses against one.  When those were two different models
+    — the runtime model (Codex, 400K) versus the compressor's default
+    (Sonnet, 200K) — every turn in the band between them either compacted
+    with no row open or opened a row that instantly aborted.
+    """
+
+    @pytest.mark.asyncio
+    async def test_compress_messages_uses_the_shared_model(self):
+        from backend.util.prompt import CompressResult
+
+        captured: dict[str, str] = {}
+
+        async def _fake_run(messages, model, log_prefix, target_tokens=None):
+            captured["model"] = model
+            return CompressResult(
+                messages=list(messages),
+                token_count=1,
+                was_compacted=False,
+                original_token_count=1,
+            )
+
+        with patch("backend.copilot.sdk.service._run_compression", new=_fake_run):
+            await _compress_messages([_msg("user", "q"), _msg("assistant", "a")])
+
+        assert captured["model"] == _compression_model()
+
+
+# ---------------------------------------------------------------------------
+# _seed_transcript
+# ---------------------------------------------------------------------------
+
+
+class TestSeedTranscript:
+    @pytest.mark.asyncio
+    async def test_seed_excludes_the_current_turn_and_the_compaction_row(
+        self, monkeypatch
+    ):
+        """The pre-query row is persisted BEFORE seeding runs.
+
+        Slicing off only the last entry then leaves the current user message
+        inside the seed; the turn appends it again via ``append_user``, so the
+        next turn's ``--resume`` context shows the live message twice and the
+        watermark is two rows ahead of reality.
+        """
+        from .compaction import _persist
+        from .service import _seed_transcript
+        from .transcript_builder import TranscriptBuilder
+
+        session = _make_session(
+            [
+                _msg("user", "q1"),
+                _msg("assistant", "a1"),
+                _msg("user", "current turn"),
+            ]
+        )
+        ceiling = len(session.messages)
+        _persist(session, "compaction-abc", '{"summary": "x"}')
+        assert len(session.messages) == ceiling + 2
+
+        seen: list[list[ChatMessage]] = []
+
+        async def _passthrough(msgs, target_tokens=None):
+            seen.append(list(msgs))
+            return list(msgs), False, None
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.service._compress_messages", _passthrough
+        )
+
+        content, covers, count = await _seed_transcript(
+            session,
+            TranscriptBuilder(),
+            False,
+            0,
+            "[test]",
+            ceiling,
+        )
+
+        assert [(m.role, m.content) for m in seen[0]] == [
+            ("user", "q1"),
+            ("assistant", "a1"),
+        ]
+        assert "current turn" not in content
+        assert covers is True
+        assert count == 2

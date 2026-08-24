@@ -22,6 +22,8 @@ Scenario matrix:
 
 from __future__ import annotations
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1049,6 +1051,7 @@ def _make_sdk_patches(
                 agent_max_turns=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
+                claude_agent_autocompact_pct_override=0,
                 claude_agent_thinking_effort=None,
                 claude_agent_fallback_model=None,
                 # Real strings: the stamp path canonicalizes the model for
@@ -1982,3 +1985,383 @@ class TestStreamChatCompletionRetryIntegration:
             f"{captured_options}"
         )
         assert any(isinstance(e, StreamStart) for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Pre-query compaction row — timing and lifecycle at generator level
+# ---------------------------------------------------------------------------
+
+
+class TestPreQueryCompactionRowTiming:
+    """The compaction row exists to narrate the wait, so it must SPAN it.
+
+    Opening and closing the row around work that already finished is the
+    regression this class pins; it has shipped twice, both times because the
+    predictor and the compressor were fed different inputs and the row was
+    only emitted after the fact.  Asserting event ORDER is not enough — the
+    broken build emitted the same order, just with every event inside the
+    same 10ms.  These tests assert the elapsed GAP.
+    """
+
+    _WORK_SECONDS = 0.25
+
+    def _make_result_message(self):
+        from claude_agent_sdk import ResultMessage
+
+        return ResultMessage(
+            subtype="success",
+            result="done",
+            duration_ms=100,
+            duration_api_ms=50,
+            is_error=False,
+            num_turns=1,
+            session_id="test-session-id",
+        )
+
+    def _make_client_mock(self, raises_on_enter=False, result_message=None):
+        async def _receive():
+            if result_message is not None:
+                yield result_message
+
+        client = MagicMock()
+        client.receive_response = _receive
+        client.query = AsyncMock()
+        client._transport = MagicMock()
+        client._transport.write = AsyncMock()
+        if raises_on_enter:
+            client.query.side_effect = Exception(
+                "prompt is too long (context_length_exceeded)"
+            )
+
+        cm = AsyncMock()
+        cm.__aenter__.return_value = client
+        cm.__aexit__.return_value = None
+        return cm
+
+    def _big_prior(self):
+        from backend.copilot.model import ChatMessage
+
+        return [
+            ChatMessage(
+                role="user" if i % 2 == 0 else "assistant",
+                content="word " * 30_000,
+                sequence=i,
+            )
+            for i in range(8)
+        ]
+
+    def _session_with_history(self, prior):
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+
+        return ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[*prior, ChatMessage(role="user", content="hello", sequence=8)],
+        )
+
+    def _no_resume_restore(self, prior):
+        """Force the no-resume path with a transcript+gap context slice.
+
+        This is the shape production hits on essentially every no-resume turn
+        that has a baseline transcript — and the shape the first fix missed,
+        because the predictor read the full session while the compressor read
+        this list.
+        """
+        from backend.copilot.sdk.service import _RestoreResult
+
+        return _RestoreResult(
+            transcript_content="seeded",
+            transcript_covers_prefix=True,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=len(prior),
+            context_messages=list(prior),
+        )
+
+    def _slow_compress(self, calls):
+        from backend.copilot.sdk.compaction import CompactionStats
+
+        async def _compress(msgs, target_tokens=None):
+            calls.append(len(msgs))
+            await asyncio.sleep(self._WORK_SECONDS)
+            return (
+                list(msgs)[:1],
+                True,
+                CompactionStats(
+                    tokens_before=200_000,
+                    tokens_after=20_000,
+                    messages_before=len(msgs),
+                    messages_after=1,
+                ),
+            )
+
+        return _compress
+
+    async def _run(self, session, extra_patches, client_factory):
+        import contextlib
+
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript([("user", "q"), ("assistant", "a")]),
+            compacted_transcript=_build_transcript([("user", "[summary]")]),
+            client_side_effect=client_factory,
+        )
+        patches = [p for p in patches if p[0] != f"{_SVC}.download_transcript"]
+        patches.extend(extra_patches)
+
+        timeline = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            # The generator re-raises after yielding StreamError so the caller
+            # can roll back; the events already on the wire are what we assert.
+            with contextlib.suppress(Exception):
+                async for event in stream_chat_completion_sdk(
+                    session_id="test-session-id",
+                    message="hello",
+                    is_user_message=True,
+                    user_id="test-user",
+                    session=session,
+                ):
+                    timeline.append((time.monotonic(), event))
+        return timeline
+
+    @staticmethod
+    def _compaction_marks(timeline):
+        from backend.copilot.constants import COMPACTION_TOOL_NAME
+        from backend.copilot.response_model import (
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+        )
+
+        opened = [
+            t
+            for t, e in timeline
+            if isinstance(e, StreamToolInputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        closed = [
+            t
+            for t, e in timeline
+            if isinstance(e, StreamToolOutputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        return opened, closed
+
+    @pytest.mark.asyncio
+    async def test_row_stays_open_across_the_compression_work(self):
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        calls: list[int] = []
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        assert calls, "the no-resume branch never reached _compress_messages"
+        opened, closed = self._compaction_marks(timeline)
+        assert opened, "no compaction row was opened before the work"
+        assert closed, "the compaction row was never closed"
+        gap = closed[0] - opened[0]
+        assert gap >= self._WORK_SECONDS, (
+            f"the row opened and closed within {gap * 1000:.1f}ms — it was "
+            "emitted AFTER the compression work, so the user watched the wait "
+            "with nothing on screen"
+        )
+
+    @pytest.mark.asyncio
+    async def test_row_opens_before_the_compressor_is_called(self):
+        """Order, not just duration: the input event precedes the work."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        marks: list[str] = []
+
+        from backend.copilot.sdk.compaction import CompactionStats
+
+        async def _compress(msgs, target_tokens=None):
+            marks.append("compress")
+            return (
+                list(msgs)[:1],
+                True,
+                CompactionStats(messages_before=len(msgs), messages_after=1),
+            )
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_compress)),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        assert marks == ["compress"]
+        opened, closed = self._compaction_marks(timeline)
+        assert opened and closed
+        # The row is opened by the predictor, so it must be on the wire before
+        # the compressor even runs — and the close after it.
+        assert opened[0] < closed[0]
+
+    @pytest.mark.asyncio
+    async def test_summarizing_phase_carries_the_token_estimate(self):
+        """Without ``tokensBefore`` the client's pacing collapses to its floor,
+        so a 500K compaction animates exactly like a 20K one."""
+        from backend.copilot.response_model import StreamCompactionProgress
+
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        calls: list[int] = []
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        summarizing = [
+            e
+            for _, e in timeline
+            if isinstance(e, StreamCompactionProgress) and e.phase == "summarizing"
+        ]
+        assert summarizing, "no summarizing phase was emitted"
+        assert summarizing[0].tokensBefore is not None
+        assert summarizing[0].tokensBefore > 100_000
+
+    @pytest.mark.asyncio
+    async def test_retry_opens_and_closes_its_own_row(self):
+        """The retry re-reduces context, so it gets its own row — opened
+        before ``_reduce_context`` runs and closed after the rebuild."""
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        attempts = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        calls: list[int] = []
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=self._slow_compress(calls))),
+            ],
+            _client_factory,
+        )
+
+        assert attempts[0] == 2
+        opened, closed = self._compaction_marks(timeline)
+        assert len(opened) == 2, f"expected a row per attempt, got {len(opened)}"
+        assert len(closed) == 2
+        for i in (0, 1):
+            gap = closed[i] - opened[i]
+            assert (
+                gap >= self._WORK_SECONDS
+            ), f"attempt {i + 1}'s row spanned only {gap * 1000:.1f}ms"
+
+    @pytest.mark.asyncio
+    async def test_error_during_compression_closes_the_open_row(self):
+        """The generator's except branch must retire a row left open by a
+        failure between start and end — otherwise the client is stuck with a
+        compaction spinner that never resolves."""
+        from backend.copilot.response_model import StreamError
+
+        prior = self._big_prior()
+        session = self._session_with_history(prior)
+
+        async def _explode(msgs, target_tokens=None):
+            raise RuntimeError("compression blew up")
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_explode)),
+            ],
+            lambda *a, **k: self._make_client_mock(),
+        )
+
+        opened, closed = self._compaction_marks(timeline)
+        assert opened, "no row was opened"
+        assert len(closed) == len(opened), "an opened row was left unclosed"
+        assert any(isinstance(e, StreamError) for _, e in timeline)
+
+    @pytest.mark.asyncio
+    async def test_no_row_when_nothing_will_be_compressed(self):
+        """A short session must not flash a compaction bar."""
+        from backend.copilot.model import ChatMessage
+
+        prior = [
+            ChatMessage(role="user", content="hi", sequence=0),
+            ChatMessage(role="assistant", content="hello", sequence=1),
+        ]
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+            ],
+            lambda *a, **k: self._make_client_mock(result_message=result_msg),
+        )
+
+        opened, _closed = self._compaction_marks(timeline)
+        assert opened == []

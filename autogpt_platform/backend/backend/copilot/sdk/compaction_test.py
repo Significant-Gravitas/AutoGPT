@@ -548,14 +548,31 @@ class TestPreQueryEmitters:
         tracker = CompactionTracker()
         session = _make_session()
         tracker.emit_pre_query_start()
-        evts = tracker.abort_pre_query(session)
+        evts = tracker.abort_pre_query()
         assert isinstance(evts[0], StreamToolOutputAvailable)
+        # The empty output IS the retirement sentinel — a client that sees a
+        # summary here renders a compaction that never ran.
+        assert evts[0].output == ""
         assert isinstance(evts[1], StreamFinishStep)
         assert session.messages == []
 
+    def test_abort_claims_no_phase_of_its_own(self):
+        """A retired prediction reports the retirement, not a stage.
+
+        The empty-output sentinel is the whole signal: the client treats any
+        phase left behind by a retired row as stale and stops animating.  A
+        trailing phase event here would name a stage that never ran — and
+        there is no honest value to send, since the row is being withdrawn
+        rather than advanced.
+        """
+        tracker = CompactionTracker()
+        tracker.emit_pre_query_start()
+        evts = tracker.abort_pre_query()
+        assert not [e for e in evts if isinstance(e, StreamCompactionProgress)]
+
     def test_abort_is_a_noop_when_no_row_is_open(self):
         tracker = CompactionTracker()
-        assert tracker.abort_pre_query(_make_session()) == []
+        assert tracker.abort_pre_query() == []
 
     def test_pre_query_counts_as_an_attempt_and_a_completion(self):
         tracker = CompactionTracker()
@@ -571,7 +588,7 @@ class TestPreQueryEmitters:
     def test_abort_records_neither_an_attempt_nor_a_completion(self):
         tracker = CompactionTracker()
         tracker.emit_pre_query_start()
-        tracker.abort_pre_query(_make_session())
+        tracker.abort_pre_query()
         assert tracker.attempt_sources == ()
         assert tracker.completed_sources == ()
 
@@ -622,7 +639,7 @@ class TestPreQueryOrdering:
         tracker = CompactionTracker()
         session = _make_session()
         tracker.emit_pre_query_start()
-        tracker.abort_pre_query(session)
+        tracker.abort_pre_query()
         assert session.messages == []
 
     def test_error_between_start_and_end_can_still_be_closed_by_abort(self):
@@ -630,11 +647,11 @@ class TestPreQueryOrdering:
         compression work itself failing) must not leave a permanently-open
         row on the client.
 
-        ``stream_chat_completion_sdk``'s outer except branch closes any row
-        left open by an in-flight ``_build_query_message``/``_reduce_context``
-        call via an unconditional ``abort_pre_query`` — this exercises that
-        exact recovery path at the tracker level, without needing to mock
-        the whole streaming generator.
+        Scope: this covers the tracker primitive only — that ``abort_pre_query``
+        closes an open row and that a second call is a no-op.  That
+        ``stream_chat_completion_sdk``'s except branch actually reaches for it
+        is a separate claim, covered end to end by
+        ``retry_scenarios_test.TestPreQueryCompactionRowTiming``.
         """
         tracker = CompactionTracker()
         session = _make_session()
@@ -642,9 +659,9 @@ class TestPreQueryOrdering:
         try:
             raise RuntimeError("compression blew up")
         except RuntimeError:
-            close_evts = tracker.abort_pre_query(session)
+            close_evts = tracker.abort_pre_query()
         assert len(close_evts) > 0
         assert session.messages == []
         # A second close (e.g. a defensive call on a later error path) is a
         # no-op rather than emitting a duplicate close.
-        assert tracker.abort_pre_query(session) == []
+        assert tracker.abort_pre_query() == []
