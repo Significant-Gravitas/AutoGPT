@@ -24,6 +24,7 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import { revealKickoffMessages } from "../../expertKickoff";
 import {
   buildRenderSegments,
+  getLastCompactionCallId,
   getLatestCompactionPhase,
   getTurnMessages,
   type MessagePart,
@@ -113,6 +114,7 @@ interface RenderSegmentOptions {
   forceArtifacts?: boolean;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
+  liveCompactionCallId?: string | null;
 }
 
 function renderSegments(
@@ -120,8 +122,14 @@ function renderSegments(
   messageID: string,
   options: RenderSegmentOptions = {},
 ): React.ReactNode[] {
-  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly, compactionPhase } =
-    options;
+  const {
+    onRetry,
+    fileUrlBuilder,
+    forceArtifacts,
+    readOnly,
+    compactionPhase,
+    liveCompactionCallId,
+  } = options;
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
@@ -145,6 +153,7 @@ function renderSegments(
         forceArtifacts={forceArtifacts}
         readOnly={readOnly}
         compactionPhase={compactionPhase}
+        liveCompactionCallId={liveCompactionCallId}
       />
     );
   });
@@ -689,7 +698,19 @@ export function ChatMessagesContainer({
                 p.type !== "data-status" &&
                 p.type !== "data-compaction",
             );
-            const compactionPhase = getLatestCompactionPhase(message.parts);
+            // Only a message that is actively streaming can have a live
+            // compaction phase — a stopped or failed turn must not leave an
+            // eternal progress bar. Replayed/settled messages never carry
+            // `data-compaction` parts, so they derive null either way.
+            const compactionPhase = isCurrentlyStreaming
+              ? getLatestCompactionPhase(message.parts)
+              : null;
+            // The phase belongs to the LAST compaction row only; earlier
+            // (settled) rows in the same message stay settled.
+            const liveCompactionCallId =
+              compactionPhase !== null
+                ? getLastCompactionCallId(message.parts)
+                : null;
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
                 p.type === "text",
@@ -776,6 +797,7 @@ export function ChatMessagesContainer({
                       forceArtifacts={readOnly}
                       readOnly={readOnly}
                       compactionPhase={compactionPhase}
+                      liveCompactionCallId={liveCompactionCallId}
                     />
                   ) : responseSegments ? (
                     renderSegments(responseSegments, message.id, {
@@ -784,6 +806,7 @@ export function ChatMessagesContainer({
                       forceArtifacts: readOnly,
                       readOnly,
                       compactionPhase,
+                      liveCompactionCallId,
                     })
                   ) : (
                     (() => {
@@ -798,6 +821,7 @@ export function ChatMessagesContainer({
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
                           compactionPhase={compactionPhase}
+                          liveCompactionCallId={liveCompactionCallId}
                         />
                       ));
                       return isNewToolUI ? (

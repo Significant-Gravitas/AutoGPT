@@ -117,6 +117,21 @@ export function getLatestCompactionPhase(
   return null;
 }
 
+/**
+ * Tool-call ID of the message's last `tool-context_compaction` part. The live
+ * phase applies only to this row — without the ID gate, a second compaction
+ * cycle's `summarizing` part would flip earlier (settled) rows back to live.
+ */
+export function getLastCompactionCallId(parts: MessagePart[]): string | null {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === "tool-context_compaction" && "toolCallId" in part) {
+      return (part as ToolUIPart).toolCallId ?? null;
+    }
+  }
+  return null;
+}
+
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.
 // Other surfaces (e.g. public share viewer) pass their own pattern into
 // ``filePartToArtifactRef`` rather than loosen this one — keeping the

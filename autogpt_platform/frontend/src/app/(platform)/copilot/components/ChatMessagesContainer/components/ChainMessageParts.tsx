@@ -13,6 +13,7 @@ interface Props {
   forceArtifacts?: boolean;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
+  liveCompactionCallId?: string | null;
 }
 
 export function ChainMessageParts({
@@ -24,6 +25,7 @@ export function ChainMessageParts({
   forceArtifacts,
   readOnly,
   compactionPhase,
+  liveCompactionCallId,
 }: Props) {
   const segments = buildChainSegments(
     parts,
@@ -57,6 +59,7 @@ export function ChainMessageParts({
         forceArtifacts={forceArtifacts}
         readOnly={readOnly}
         compactionPhase={compactionPhase}
+        liveCompactionCallId={liveCompactionCallId}
       />
     );
   });

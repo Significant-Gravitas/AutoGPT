@@ -155,6 +155,163 @@ const COMPACTION_THEN_TOOL_TURN: UIMessageChunk[] = [
   { type: "finish" },
 ];
 
+// A pre-check false positive: the row opens, the phase streams, then the
+// prediction is retired — the row closes with the abort sentinel (output "")
+// and the turn continues with normal text. No compaction happened, so no
+// compaction copy may survive the settle.
+const ABORTED_COMPACTION_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 128000 },
+  },
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-1",
+    output: "",
+  },
+  { type: "finish-step" },
+  { type: "start-step" },
+  { type: "text-start", id: "t1" },
+  { type: "text-delta", id: "t1", delta: "No condensing needed." },
+  { type: "text-end", id: "t1" },
+  { type: "finish-step" },
+  { type: "finish" },
+];
+
+// Two compaction cycles in one assistant message: the first settles with
+// JSON stats, then a second cycle opens and streams its `summarizing`
+// phase. The live phase belongs to the second row only — the first must
+// keep showing its settled payoff copy.
+const TWO_CYCLE_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 128000 },
+  },
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-1",
+    output: JSON.stringify({
+      summary: "Earlier messages were summarized to fit within context limits.",
+      tokensBefore: 128000,
+      tokensAfter: 31000,
+    }),
+  },
+  { type: "finish-step" },
+  { type: "data-compaction", data: { phase: "rebuilding" } },
+  { type: "start-step" },
+  { type: "text-start", id: "t1" },
+  { type: "text-delta", id: "t1", delta: "Continuing." },
+  { type: "text-end", id: "t1" },
+  { type: "finish-step" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-2",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-2",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 64000 },
+  },
+  // The hold sits before this chunk so the second cycle stays live long
+  // enough to assert against (see SECOND_CYCLE_HOLD_INDEX).
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-2",
+    output: JSON.stringify({
+      summary: "Earlier messages were summarized to fit within context limits.",
+      tokensBefore: 64000,
+      tokensAfter: 20000,
+    }),
+  },
+  { type: "finish-step" },
+  { type: "data-compaction", data: { phase: "rebuilding" } },
+  { type: "start-step" },
+  { type: "text-start", id: "t2" },
+  { type: "text-delta", id: "t2", delta: "Done again." },
+  { type: "text-end", id: "t2" },
+  { type: "finish-step" },
+  { type: "finish" },
+];
+
+const SECOND_CYCLE_HOLD_INDEX = TWO_CYCLE_TURN.findIndex(
+  (c) => c.type === "tool-output-available" && c.toolCallId === "compaction-2",
+);
+
+// A turn whose stream dies right after a `data-compaction` part — the Stop
+// button or a terminal error ends the stream with no trailing text, so no
+// content part ever lands to null out the phase. The streaming gate must
+// retire the bar when the stream closes.
+const DEAD_STREAM_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 128000 },
+  },
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-1",
+    output: JSON.stringify({
+      summary: "Earlier messages were summarized to fit within context limits.",
+      tokensBefore: 128000,
+      tokensAfter: 31000,
+    }),
+  },
+  { type: "finish-step" },
+  { type: "data-compaction", data: { phase: "rebuilding" } },
+  // The hold sits before this chunk so the live "Reloading context…" bar
+  // is observable before the stream closes (see DEAD_STREAM_HOLD_INDEX).
+  { type: "finish" },
+];
+
+const DEAD_STREAM_HOLD_INDEX = DEAD_STREAM_TURN.findIndex(
+  (c) => c.type === "finish",
+);
+
 // `COMPACTION_TURN`'s chunk index of `tool-output-available` — the delay
 // applied *before* this chunk is what keeps the turn parked in the
 // "summarizing" phase long enough for `waitFor` to observe it (see below).
@@ -249,6 +406,91 @@ describe("context compaction progress", () => {
     // adjacent web_search call, the payoff copy above would be hidden
     // behind a "N tool calls completed" toggle instead of standing alone.
     expect(screen.queryByText(/tool calls/)).toBeNull();
+  });
+
+  it("renders nothing for a row retired by an aborted prediction", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: ABORTED_COMPACTION_TURN,
+        delayMsBetweenChunks: 15,
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("quick question");
+
+    await waitFor(() => {
+      expect(screen.getByText("No condensing needed.")).toBeDefined();
+    });
+    // The abort sentinel (output "") must not read as a real compaction —
+    // neither the live copy nor the settled payoff copy may survive.
+    expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+    expect(screen.queryByText(/Condensed the conversation/)).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("keeps the first cycle settled while a second cycle streams", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: TWO_CYCLE_TURN,
+        perChunkDelaysMs: TWO_CYCLE_TURN.map((_, i) =>
+          i === SECOND_CYCLE_HOLD_INDEX ? 600 : 15,
+        ),
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise twice");
+
+    await waitFor(() => {
+      // Second cycle live in `summarizing`…
+      expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+      // …while the first row keeps its settled payoff copy…
+      expect(
+        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+      ).toBeDefined();
+      // …and only the live row carries a progress bar. Without the
+      // per-row phase gate, the second cycle's phase re-animates the
+      // first (closed) row and two bars render.
+      expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    });
+  });
+
+  it("retires the live bar when the stream dies after a compaction phase", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: DEAD_STREAM_TURN,
+        perChunkDelaysMs: DEAD_STREAM_TURN.map((_, i) =>
+          i === DEAD_STREAM_HOLD_INDEX ? 600 : 15,
+        ),
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise this");
+
+    // Live during the stream: the trailing `rebuilding` phase keeps the
+    // bar up while the connection is open.
+    await waitFor(() => {
+      expect(screen.getByRole("progressbar")).toBeDefined();
+    });
+    // Once the stream closes with no trailing text, the streaming gate
+    // must null the phase — the row settles instead of spinning forever.
+    await waitFor(() => {
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(
+        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+      ).toBeDefined();
+    });
   });
 });
 

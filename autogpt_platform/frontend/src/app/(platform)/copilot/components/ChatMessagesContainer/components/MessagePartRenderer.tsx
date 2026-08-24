@@ -153,6 +153,10 @@ interface Props {
    *  the caller from the message's parts. Drives the compaction row's
    *  progress bar; null once the row has settled into history. */
   compactionPhase?: CompactionPhase | null;
+  /** Tool-call ID of the message's last compaction row — the only row the
+   *  live phase applies to. Earlier (settled) rows render as history even
+   *  while a later cycle streams its phases. */
+  liveCompactionCallId?: string | null;
 }
 
 export function MessagePartRenderer({
@@ -164,6 +168,7 @@ export function MessagePartRenderer({
   forceArtifacts,
   readOnly,
   compactionPhase,
+  liveCompactionCallId,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -282,15 +287,28 @@ export function MessagePartRenderer({
       const settled =
         toolPart.state === "output-available" ||
         toolPart.state === "output-error";
+      // A retired prediction closes the row with output "" (the abort
+      // sentinel — real closes always carry JSON with a summary). Render
+      // nothing: this compaction never happened.
+      const isAbortedRow =
+        settled &&
+        typeof toolPart.output === "string" &&
+        toolPart.output.trim() === "";
+      if (isAbortedRow) return null;
+      const phase =
+        liveCompactionCallId != null &&
+        toolPart.toolCallId === liveCompactionCallId
+          ? (compactionPhase ?? null)
+          : null;
       const { stats } = parseCompactionOutput(
         settled ? toolPart.output : undefined,
       );
       return (
         <CompactionCard
           key={key}
-          phase={compactionPhase ?? null}
+          phase={phase}
           stats={stats}
-          isSettled={settled && compactionPhase === null}
+          isSettled={settled && phase === null}
         />
       );
     }
