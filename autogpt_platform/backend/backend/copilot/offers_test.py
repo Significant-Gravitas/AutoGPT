@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_mock
 
-from backend.copilot import offers, transports
+from backend.copilot import offers, provider_tiers, transports
 from backend.copilot.offers import get_connection_offers, offer_id_for
 from backend.copilot.transports import ChatTransportResponse
 from backend.data.llm_registry import registry
@@ -43,9 +43,11 @@ def advanced_allowed(mocker: pytest_mock.MockerFixture):
 def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
-    mocker.patch.object(offers, "resolve_use_sdk", new=AsyncMock(return_value=False))
     mocker.patch.object(
-        offers,
+        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=False)
+    )
+    mocker.patch.object(
+        provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
             side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
@@ -130,7 +132,7 @@ async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
     # A registry read, not a call to the account: the router validates the
     # pinned slug against what the account advertises when the turn runs.
     mocker.patch.object(
-        offers.llm_registry,
+        provider_tiers.llm_registry,
         "get_route",
         side_effect=lambda surface, mode, tier: f"{surface}:{mode}:{tier}",
     )
@@ -154,7 +156,7 @@ async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
 async def test_a_chatgpt_tier_the_catalog_pins_nothing_for_stays_unnamed(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    mocker.patch.object(offers.llm_registry, "get_route", return_value=None)
+    mocker.patch.object(provider_tiers.llm_registry, "get_route", return_value=None)
     _mock_transports(
         mocker, [_transport("platform", None), _transport("codex", "cred-1")]
     )
@@ -188,7 +190,9 @@ async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """The engine is the server's decision, so it is knowable before a turn."""
-    mocker.patch.object(offers, "resolve_use_sdk", new=AsyncMock(return_value=True))
+    mocker.patch.object(
+        provider_tiers, "resolve_use_sdk", new=AsyncMock(return_value=True)
+    )
     _mock_transports(mocker, [_transport(default=True)])
 
     (offer,) = await get_connection_offers(USER_ID)
@@ -217,7 +221,7 @@ async def test_an_unresolvable_tier_is_described_without_a_name(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch.object(
-        offers,
+        provider_tiers,
         "resolve_model_route",
         new=AsyncMock(side_effect=RuntimeError("registry down")),
     )
@@ -435,9 +439,9 @@ async def test_a_locked_chatgpt_offer_still_names_the_models(
     # "What you get" is the argument for connecting; a locked row that
     # cannot name the models asks the user to take it on faith.
     mocker.patch.object(
-        offers.llm_registry, "get_route", side_effect=lambda s, m, t: f"{m}-{t}"
+        provider_tiers.llm_registry, "get_route", side_effect=lambda s, m, t: f"{m}-{t}"
     )
-    mocker.patch.object(offers.llm_registry, "get_model", return_value=None)
+    mocker.patch.object(provider_tiers.llm_registry, "get_model", return_value=None)
     _mock_transports(mocker, [_transport("platform", None)])
     _upsell(mocker)
 
@@ -485,7 +489,7 @@ async def test_a_platform_tier_names_a_model_configured_in_transport_spelling(
     default."""
     _mock_transports(mocker, [_transport(default=True)])
     mocker.patch.object(
-        offers,
+        provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
             side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
@@ -512,7 +516,7 @@ async def test_a_model_the_catalog_does_not_know_is_named_by_its_slug(
     prefix, which is addressing rather than identity."""
     _mock_transports(mocker, [_transport(default=True)])
     mocker.patch.object(
-        offers,
+        provider_tiers,
         "resolve_model_route",
         new=AsyncMock(
             side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(

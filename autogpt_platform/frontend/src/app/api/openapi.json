@@ -3745,6 +3745,30 @@
         }
       }
     },
+    "/api/chat/model-tiers": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Provider Model Tiers",
+        "description": "What each provider's quality tiers resolve to, whoever you are.\n\n``GET /connections`` answers \"what can you pick\", and deliberately omits\na connection nobody can select. That makes it the wrong source for the\nsurfaces that describe a provider *before* the user has one -- the\nconnect dialog, and the plan cards selling a plan they have not bought.\nThose need \"ChatGPT's Advanced tier is 5.6 Sol\", which is a fact about\nthe catalog rather than about this user's entitlements.\n\nUser-scoped only because the engine is: which model a tier maps to\ndepends on the path a turn will run on. Says nothing about access.",
+        "operationId": "getV2ListProviderModelTiers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTiersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/schema/tool-responses": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -24432,6 +24456,50 @@
         "type": "object",
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
+      },
+      "ProviderTier": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["standard", "advanced"],
+            "title": "Tier"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "display_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Model"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "label"],
+        "title": "ProviderTier",
+        "description": "A tier and the model it resolves to, with no claim about access.\n\nDeliberately not ``ConnectionTier``: that type carries ``selectable`` and\n``lock_reason``, which are answers about a user. This one is a statement\nabout the catalog and is true whether or not anyone can pick it."
+      },
+      "ProviderTiers": {
+        "properties": {
+          "provider_family": { "type": "string", "title": "Provider Family" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "tiers": {
+            "items": { "$ref": "#/components/schemas/ProviderTier" },
+            "type": "array",
+            "title": "Tiers"
+          }
+        },
+        "type": "object",
+        "required": ["provider_family", "display_name", "tiers"],
+        "title": "ProviderTiers"
+      },
+      "ProviderTiersResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/ProviderTiers" },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": ["providers"],
+        "title": "ProviderTiersResponse"
       },
       "PushSubscribeRequest": {
         "properties": {

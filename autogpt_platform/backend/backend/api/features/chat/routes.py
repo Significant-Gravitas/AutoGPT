@@ -58,6 +58,10 @@ from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
     peek_pending_messages,
 )
+from backend.copilot.provider_tiers import (
+    ProviderTiersResponse,
+    describe_provider_tiers,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
@@ -560,6 +564,28 @@ async def list_chat_connections(
     so product and billing statements come from the side that enforces them.
     """
     return AIConnectionOffersResponse(offers=await get_connection_offers(user_id))
+
+
+@router.get(
+    "/model-tiers",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_provider_model_tiers(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ProviderTiersResponse:
+    """What each provider's quality tiers resolve to, whoever you are.
+
+    ``GET /connections`` answers "what can you pick", and deliberately omits
+    a connection nobody can select. That makes it the wrong source for the
+    surfaces that describe a provider *before* the user has one -- the
+    connect dialog, and the plan cards selling a plan they have not bought.
+    Those need "ChatGPT's Advanced tier is 5.6 Sol", which is a fact about
+    the catalog rather than about this user's entitlements.
+
+    User-scoped only because the engine is: which model a tier maps to
+    depends on the path a turn will run on. Says nothing about access.
+    """
+    return ProviderTiersResponse(providers=await describe_provider_tiers(user_id))
 
 
 class SetDefaultTransportRequest(BaseModel):

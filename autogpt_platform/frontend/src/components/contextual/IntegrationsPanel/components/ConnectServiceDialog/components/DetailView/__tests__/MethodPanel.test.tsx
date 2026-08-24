@@ -1,3 +1,6 @@
+import { getGetV2ListProviderModelTiersMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
+import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { describe, expect, test, vi } from "vitest";
 
@@ -17,7 +20,61 @@ const openaiProvider: ConnectableProvider = {
   authProviderByType: { [AuthType.oauth2]: "codex" },
 };
 
+function mockProviderTiers(providers: ProviderTiers[]) {
+  server.use(getGetV2ListProviderModelTiersMockHandler200({ providers }));
+}
+
 describe("MethodPanel", () => {
+  test("names the models the plan gets you, from the catalog", async () => {
+    // Mock 2 spells these out. They cannot come from the connections list --
+    // the user has not connected yet, so ChatGPT is absent from it -- and
+    // hardcoding them here would drift from the catalog that routes the turn.
+    mockProviderTiers([
+      {
+        provider_family: "openai",
+        display_name: "ChatGPT",
+        tiers: [
+          {
+            tier: "standard",
+            label: "Balanced",
+            display_model: "GPT-5.6 Terra",
+          },
+          { tier: "advanced", label: "Advanced", display_model: "GPT-5.6 Sol" },
+        ],
+      } as ProviderTiers,
+    ]);
+
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={openaiProvider}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        /GPT-5\.6 Terra \(Balanced\) and GPT-5\.6 Sol \(Advanced\)/,
+      ),
+    ).toBeDefined();
+  });
+
+  test("falls back to the general promise when the catalog names nothing", async () => {
+    mockProviderTiers([]);
+
+    render(
+      <MethodPanel
+        method={AuthType.oauth2}
+        provider={openaiProvider}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/models your ChatGPT plan already includes/),
+    ).toBeDefined();
+  });
+
   test("uses ChatGPT branding while sending OAuth to the Codex backend provider", () => {
     render(
       <MethodPanel

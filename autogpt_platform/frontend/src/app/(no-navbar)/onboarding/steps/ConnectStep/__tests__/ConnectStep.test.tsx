@@ -1,5 +1,9 @@
-import { getGetV2ListChatConnectionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import {
+  getGetV2ListChatConnectionsMockHandler200,
+  getGetV2ListProviderModelTiersMockHandler200,
+} from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
@@ -63,8 +67,25 @@ function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   });
 }
 
-function mockOffers(offers: AIConnectionOffer[]) {
-  server.use(getGetV2ListChatConnectionsMockHandler200({ offers }));
+function chatgptTiers(): ProviderTiers {
+  return {
+    provider_family: "openai",
+    display_name: "ChatGPT",
+    tiers: [
+      { tier: "standard", label: "Balanced", display_model: "GPT-5.6 Terra" },
+      { tier: "advanced", label: "Advanced", display_model: "GPT-5.6 Sol" },
+    ],
+  } as ProviderTiers;
+}
+
+function mockOffers(
+  offers: AIConnectionOffer[],
+  providers: ProviderTiers[] = [],
+) {
+  server.use(
+    getGetV2ListChatConnectionsMockHandler200({ offers }),
+    getGetV2ListProviderModelTiersMockHandler200({ providers }),
+  );
 }
 
 describe("ConnectStep", () => {
@@ -122,6 +143,18 @@ describe("ConnectStep", () => {
       await screen.findByText(/Claude subscriptions can't be linked/),
     ).toBeDefined();
   });
+
+  it("names what you get, from the catalog", async () => {
+    mockOffers([offer()], [chatgptTiers()]);
+
+    render(<ConnectStep />);
+
+    expect(
+      await screen.findByText(
+        /GPT-5\.6 Terra \(Balanced\) and GPT-5\.6 Sol \(Advanced\)/,
+      ),
+    ).toBeDefined();
+  });
 });
 
 describe("ConnectStep helpers", () => {
@@ -133,13 +166,22 @@ describe("ConnectStep helpers", () => {
   });
 
   it("names the models from the catalog rather than hardcoding them", () => {
-    expect(linkedModelsSentence([offer(), chatgpt()])).toBe(
+    expect(linkedModelsSentence([chatgptTiers()])).toBe(
       "GPT-5.6 Terra (Balanced) and GPT-5.6 Sol (Advanced)",
     );
   });
 
+  it("reads them from provider tiers, not from the user's connections", () => {
+    // The whole point of this screen is that the user has not connected yet,
+    // so ChatGPT is absent from their offers and this sentence would always
+    // have come out empty if it read them.
+    expect(linkedModelsSentence([])).toBe("");
+  });
+
   it("says nothing when the server named no models", () => {
-    expect(linkedModelsSentence([offer(), chatgpt({ tiers: [] })])).toBe("");
+    expect(
+      linkedModelsSentence([{ ...chatgptTiers(), tiers: [] } as ProviderTiers]),
+    ).toBe("");
     expect(linkedModelsSentence(undefined)).toBe("");
   });
 });
