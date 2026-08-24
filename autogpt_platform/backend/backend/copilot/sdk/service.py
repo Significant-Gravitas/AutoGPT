@@ -2689,7 +2689,9 @@ async def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionF
             asyncio.to_thread(estimate_token_count, payload, model=model),
             timeout=_WILL_COMPACT_TIMEOUT_SECONDS,
         )
-    except TimeoutError:
+    # The two are the same class from 3.11, but this package declares
+    # >=3.10, where wait_for raises the asyncio one and the builtin misses it.
+    except (asyncio.TimeoutError, TimeoutError):
         logger.warning(
             "[SDK] Compaction pre-check timed out after %ds on %d rows —"
             " skipping the prediction (the row still opens after the fact)",
