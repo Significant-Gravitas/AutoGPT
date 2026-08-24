@@ -71,10 +71,11 @@ export function parseCompactionOutput(output: unknown): {
 } {
   let value: unknown = output;
   if (typeof value === "string") {
+    const text = value;
     try {
-      value = JSON.parse(value);
+      value = JSON.parse(text);
     } catch {
-      return { summary: value, stats: {} };
+      return { summary: text, stats: {} };
     }
   }
   if (typeof value !== "object" || value === null) {
