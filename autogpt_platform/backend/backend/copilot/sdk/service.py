@@ -3662,9 +3662,10 @@ async def _run_stream_attempt(
         )
 
         ctx.compaction.reset_for_query()
-        if state.compaction_stats is not None:
-            for ev in ctx.compaction.emit_pre_query(ctx.session):
-                yield ev
+        # The compaction row is opened *before* the compression work in
+        # ``stream_chat_completion_sdk`` — emitting it here would show the
+        # user a completed row and then go silent for the expensive part
+        # (transcript upload, CLI restart, uncached prefill).
 
         # Narrate the silent gap between dispatching the query and the
         # SDK's first real chunk — usually <1s but can stretch to several
@@ -4853,6 +4854,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
+        model_for_estimate = sdk_model or config.thinking_standard_model
+        expect_compaction = _will_compact(session.messages, model_for_estimate)
+        if expect_compaction:
+            for ev in compaction.emit_pre_query_start():
+                yield ev
+
         query_message, compaction_stats = await _build_query_message(
             current_message,
             session,
@@ -4862,6 +4869,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
         )
+
+        if compaction_stats is not None:
+            for ev in compaction.emit_pre_query_end(session, compaction_stats):
+                yield ev
+        elif expect_compaction:
+            for ev in compaction.abort_pre_query(session):
+                yield ev
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(
@@ -4979,6 +4993,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _MAX_STREAM_ATTEMPTS,
                 )
                 yield StreamStatus(message="Optimizing conversation context\u2026")
+                for ev in compaction.emit_pre_query_start():
+                    yield ev
 
                 ctx = await _reduce_context(
                     transcript_content,
@@ -5041,6 +5057,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         target_tokens=state.target_tokens,
                     )
                 )
+                for ev in compaction.emit_pre_query_end(
+                    session, state.compaction_stats
+                ):
+                    yield ev
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via

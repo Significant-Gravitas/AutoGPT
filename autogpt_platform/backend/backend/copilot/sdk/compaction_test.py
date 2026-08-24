@@ -592,3 +592,35 @@ class TestSdkInternalRebuildingPhase:
         assert result.just_ended is True
         assert isinstance(result.events[-1], StreamCompactionProgress)
         assert result.events[-1].phase == "rebuilding"
+
+
+# ---------------------------------------------------------------------------
+# Pre-query ordering (row opens before the work, not after)
+# ---------------------------------------------------------------------------
+
+
+class TestPreQueryOrdering:
+    def test_start_carries_no_output_event(self):
+        """Regression: the row must be OPEN while the work runs.
+
+        The original bug emitted start+end together, so the user saw a
+        completed row and then sat through the expensive part in silence.
+        """
+        tracker = CompactionTracker()
+        evts = tracker.emit_pre_query_start()
+        assert not any(isinstance(e, StreamToolOutputAvailable) for e in evts)
+        assert not any(isinstance(e, StreamFinishStep) for e in evts)
+
+    def test_start_then_end_produces_exactly_one_persisted_row(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(session, CompactionStats(tokens_before=10))
+        assert len(session.messages) == 2
+
+    def test_aborted_prediction_persists_nothing(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        tracker.abort_pre_query(session)
+        assert session.messages == []
