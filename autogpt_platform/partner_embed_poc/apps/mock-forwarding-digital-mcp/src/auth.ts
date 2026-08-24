@@ -26,6 +26,9 @@ export function verifyAccessToken(
   if (parts.length !== 2) return undefined;
   const [payload, signature] = parts;
   if (!payload || !signature) return undefined;
+  if (!isCanonicalBase64Url(payload) || !isCanonicalBase64Url(signature)) {
+    return undefined;
+  }
 
   const expected = Buffer.from(sign(payload, secret), "base64url");
   const received = Buffer.from(signature, "base64url");
@@ -56,6 +59,10 @@ export function bearerToken(
 
 function sign(payload: BinaryLike, secret: string) {
   return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function isCanonicalBase64Url(value: string) {
+  return Buffer.from(value, "base64url").toString("base64url") === value;
 }
 
 function isClaims(value: unknown): value is PartnerMCPClaims {
