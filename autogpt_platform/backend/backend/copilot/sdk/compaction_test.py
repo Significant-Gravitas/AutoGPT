@@ -624,3 +624,27 @@ class TestPreQueryOrdering:
         tracker.emit_pre_query_start()
         tracker.abort_pre_query(session)
         assert session.messages == []
+
+    def test_error_between_start_and_end_can_still_be_closed_by_abort(self):
+        """Regression: an exception raised between start and end (e.g. the
+        compression work itself failing) must not leave a permanently-open
+        row on the client.
+
+        ``stream_chat_completion_sdk``'s outer except branch closes any row
+        left open by an in-flight ``_build_query_message``/``_reduce_context``
+        call via an unconditional ``abort_pre_query`` — this exercises that
+        exact recovery path at the tracker level, without needing to mock
+        the whole streaming generator.
+        """
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        try:
+            raise RuntimeError("compression blew up")
+        except RuntimeError:
+            close_evts = tracker.abort_pre_query(session)
+        assert len(close_evts) > 0
+        assert session.messages == []
+        # A second close (e.g. a defensive call on a later error path) is a
+        # no-op rather than emitting a duplicate close.
+        assert tracker.abort_pre_query(session) == []

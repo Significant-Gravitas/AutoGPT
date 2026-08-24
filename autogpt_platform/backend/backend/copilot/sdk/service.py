@@ -4275,6 +4275,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
+    # ``compaction`` is constructed after several fallible setup steps below
+    # (sandbox/system-prompt/CLI-restore). The except branch needs to close
+    # a pre-query row on ANY failure in this function, including ones raised
+    # before that point, so it must tolerate ``compaction`` still being None.
+    compaction: CompactionTracker | None = None
     codex_effort: "CodexReasoningEffort | None" = None
     codex_gateway: CodexAnthropicGateway | None = None
     deferred_codex_cleanup_error: BaseException | None = None
@@ -5422,6 +5427,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             e, asyncio.CancelledError
         ) or _is_sdk_disconnect_error(e)
         if not is_cancellation:
+            # An open pre-query row (emit_pre_query_start already yielded,
+            # but the matching emit_pre_query_end/abort_pre_query never ran
+            # because the error hit between the two) must be closed here —
+            # otherwise the client is left with a permanently-open
+            # compaction row. abort_pre_query is a no-op when nothing is
+            # open, so this is safe to call unconditionally.
+            if compaction is not None:
+                for ev in compaction.abort_pre_query(session):
+                    yield ev
             yield StreamError(errorText=display_msg, code=code)
 
         raise
