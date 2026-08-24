@@ -1,7 +1,6 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import { ReloadIcon } from "@hugeicons/core-free-icons";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import {
@@ -20,31 +19,34 @@ interface Props {
 }
 
 export function CompactionCard({ phase, stats, isSettled }: Props) {
-  const label = compactionLabel(phase, stats);
-
   if (isSettled) {
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <Icon icon={ReloadIcon} size={14} />
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="min-w-0 truncate">
+          {compactionLabel(phase, stats)}
+        </span>
       </div>
     );
   }
 
-  return <LiveCompaction phase={phase} stats={stats} label={label} />;
+  // A live row that hasn't received its first `data-compaction` part yet is
+  // in the opening state — animate it as `summarizing` rather than letting
+  // null read as finished copy over a frozen bar.
+  return <LiveCompaction phase={phase ?? "summarizing"} stats={stats} />;
 }
 
 interface LiveProps {
-  phase: CompactionPhase | null;
+  phase: CompactionPhase;
   stats: CompactionStats;
-  label: string;
 }
 
-function LiveCompaction({ phase, stats, label }: LiveProps) {
+function LiveCompaction({ phase, stats }: LiveProps) {
   const { progress, elapsedSeconds } = useCompactionProgress(
     phase,
     stats.tokensBefore,
   );
+  const label = compactionLabel(phase, stats);
   const percent = Math.round(progress * 100);
   const showTime = elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
 
@@ -54,13 +56,16 @@ function LiveCompaction({ phase, stats, label }: LiveProps) {
         <Icon
           icon={ReloadIcon}
           size={14}
-          className={cn(
-            phase !== "done" && "animate-spin [animation-duration:2.4s]",
-          )}
+          className="[animation-duration:2.4s] motion-safe:animate-spin"
         />
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {showTime && phase !== "done" && (
-          <span className="font-mono tabular-nums text-zinc-400">
+        {/* Polite live region on the label ONLY — the progressbar's
+            aria-valuenow moves every committed percent and would flood the
+            announcement queue. */}
+        <span aria-live="polite" className="min-w-0 flex-1 truncate">
+          {label}
+        </span>
+        {showTime && (
+          <span className="font-mono tabular-nums text-muted-foreground">
             {formatElapsed(elapsedSeconds)}
           </span>
         )}
@@ -71,10 +76,10 @@ function LiveCompaction({ phase, stats, label }: LiveProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-1 w-full overflow-hidden rounded-full bg-zinc-200"
+        className="h-1 w-full overflow-hidden rounded-full bg-muted"
       >
         <div
-          className="h-full rounded-full bg-zinc-900"
+          className="h-full rounded-full bg-foreground"
           style={{ width: `${percent}%` }}
         />
       </div>

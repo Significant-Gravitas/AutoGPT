@@ -4,6 +4,8 @@ import {
   buildRenderSegments,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
+  getLatestCompactionPhase,
+  getLatestCompactionStats,
   getMessageArtifacts,
   getMostRecentArtifact,
   isCompletedToolPart,
@@ -963,6 +965,135 @@ describe("getMostRecentArtifact", () => {
     expect(getMostRecentArtifact(messages, { origin: "user-upload" })?.id).toBe(
       FILE_A,
     );
+  });
+});
+
+function dataPart(type: string, data?: unknown): MessagePart {
+  return { type, data } as unknown as MessagePart;
+}
+
+function compactionRowPart(
+  state: string,
+  output?: unknown,
+  id = "compaction-1",
+): MessagePart {
+  return {
+    type: "tool-context_compaction",
+    state,
+    toolCallId: id,
+    toolName: "context_compaction",
+    input: {},
+    output,
+  } as unknown as MessagePart;
+}
+
+describe("getLatestCompactionPhase", () => {
+  const openRow = compactionRowPart("input-available");
+  const summarizing = dataPart("data-compaction", {
+    phase: "summarizing",
+    tokensBefore: 128_000,
+  });
+
+  it("reads the latest phase behind the open row", () => {
+    expect(
+      getLatestCompactionPhase([stepStartPart(), openRow, summarizing]),
+    ).toBe("summarizing");
+  });
+
+  it("survives ANY transient data part landing mid-compaction", () => {
+    // data-pending-drained and data-mode-changed are real parts the backend
+    // emits mid-turn; an enumerated deny-list dropped the phase (and the
+    // bar) the moment one arrived.
+    const parts = [
+      openRow,
+      summarizing,
+      dataPart("data-pending-drained", { count: 1 }),
+      dataPart("data-mode-changed", { mode: "chat" }),
+      dataPart("data-status", { message: "working" }),
+      dataPart("data-some-future-part"),
+    ];
+    expect(getLatestCompactionPhase(parts)).toBe("summarizing");
+  });
+
+  it("nulls the phase once real content lands past it", () => {
+    expect(
+      getLatestCompactionPhase([openRow, summarizing, textPart("Back to it.")]),
+    ).toBeNull();
+  });
+
+  it("skips whitespace-only streaming text", () => {
+    expect(
+      getLatestCompactionPhase([openRow, summarizing, textPart("  ")]),
+    ).toBe("summarizing");
+  });
+
+  it("drops the phase when the row was retired by the abort sentinel", () => {
+    const abortedRow = compactionRowPart("output-available", "");
+    expect(getLatestCompactionPhase([abortedRow, summarizing])).toBeNull();
+  });
+
+  it("drops the phase when the row closed with an error", () => {
+    const failedRow = compactionRowPart("output-error");
+    expect(getLatestCompactionPhase([failedRow, summarizing])).toBeNull();
+  });
+
+  it("ignores an earlier retired row when a later cycle is live", () => {
+    const abortedRow = compactionRowPart(
+      "output-available",
+      "",
+      "compaction-1",
+    );
+    const secondRow = compactionRowPart(
+      "input-available",
+      undefined,
+      "compaction-2",
+    );
+    expect(
+      getLatestCompactionPhase([
+        abortedRow,
+        textPart("hi"),
+        secondRow,
+        summarizing,
+      ]),
+    ).toBe("summarizing");
+  });
+
+  it("returns null with no compaction parts at all", () => {
+    expect(getLatestCompactionPhase([textPart("hello")])).toBeNull();
+  });
+});
+
+describe("getLatestCompactionStats", () => {
+  it("merges stats across data-compaction parts, later phases winning", () => {
+    const parts = [
+      dataPart("data-compaction", {
+        phase: "summarizing",
+        tokensBefore: 128_000,
+      }),
+      dataPart("data-compaction", {
+        phase: "rebuilding",
+        tokensBefore: 128_000,
+        tokensAfter: 31_000,
+        messagesBefore: 412,
+        messagesAfter: 38,
+      }),
+    ];
+    expect(getLatestCompactionStats(parts)).toEqual({
+      tokensBefore: 128_000,
+      tokensAfter: 31_000,
+      messagesBefore: 412,
+      messagesAfter: 38,
+    });
+  });
+
+  it("survives phase-only and junk payloads", () => {
+    const parts = [
+      dataPart("data-compaction", { phase: "summarizing" }),
+      dataPart("data-compaction", null),
+      dataPart("data-compaction"),
+      textPart("hi"),
+    ];
+    expect(getLatestCompactionStats(parts)).toEqual({});
   });
 });
 

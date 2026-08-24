@@ -1,4 +1,6 @@
-export type CompactionPhase = "summarizing" | "rebuilding" | "done";
+// The wire contract: the backend only ever emits these two phases. There is
+// no "done" — a finished compaction settles the row instead.
+export type CompactionPhase = "summarizing" | "rebuilding";
 
 export interface CompactionStats {
   tokensBefore?: number;
@@ -16,11 +18,17 @@ export const PHASE_CURVE: Record<
 > = {
   summarizing: { cap: 0.55, tauMs: 15_000 },
   rebuilding: { cap: 0.92, tauMs: 20_000 },
-  done: { cap: 1, tauMs: 420 },
 };
 
-export const FINISH_MS = 420;
 export const INITIAL_PROGRESS = 0.02;
+// Within half a percent of the ceiling the rounded bar can no longer move,
+// so the rAF loop parks itself instead of spinning at 60fps forever.
+export const SETTLE_EPSILON = 0.005;
+
+// How often a curve parked at its ceiling re-checks for a new phase. Slow
+// enough that a stalled rebuild costs nothing, fast enough that the handover
+// to the next phase reads as continuous.
+export const PARKED_POLL_MS = 1_000;
 
 const TAU_FLOOR_MS = 12_000;
 const TAU_CEILING_MS = 45_000;
@@ -42,15 +50,9 @@ export function phaseProgress(
   return base + (cap - base) * (1 - decay);
 }
 
-export function finishProgress(base: number, elapsedMs: number): number {
-  const eased = 1 - Math.exp((-4 * elapsedMs) / FINISH_MS);
-  return Math.min(1, base + (1 - base) * eased);
-}
-
-const LEGACY_SUMMARY =
-  "Earlier messages were summarized to fit within context limits.";
-
-function readStats(source: Record<string, unknown>): CompactionStats {
+export function readCompactionStats(
+  source: Record<string, unknown>,
+): CompactionStats {
   const stats: CompactionStats = {};
   const keys = [
     "tokensBefore",
@@ -60,37 +62,46 @@ function readStats(source: Record<string, unknown>): CompactionStats {
   ] as const;
   for (const key of keys) {
     const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) stats[key] = value;
+    // Counts are positive integers by construction — anything else (0, a
+    // fraction, NaN) is a measurement bug and must not reach the copy.
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+      stats[key] = value;
+    }
   }
   return stats;
 }
 
-export function parseCompactionOutput(output: unknown): {
-  summary: string;
-  stats: CompactionStats;
-} {
+/**
+ * Stats from a settled row's output. The payload's `summary` prose is
+ * transcript-level detail the card deliberately does not surface — the
+ * settled copy is `compactionLabel`'s verified claim, so legacy
+ * plain-sentence outputs simply yield no stats.
+ */
+export function parseCompactionOutput(output: unknown): CompactionStats {
   let value: unknown = output;
   if (typeof value === "string") {
-    const text = value;
     try {
-      value = JSON.parse(text);
+      value = JSON.parse(value);
     } catch {
-      return { summary: text, stats: {} };
+      return {};
     }
   }
-  if (typeof value !== "object" || value === null) {
-    return { summary: LEGACY_SUMMARY, stats: {} };
-  }
-  const record = value as Record<string, unknown>;
-  const summary =
-    typeof record.summary === "string" ? record.summary : LEGACY_SUMMARY;
-  return { summary, stats: readStats(record) };
+  if (typeof value !== "object" || value === null) return {};
+  return readCompactionStats(value as Record<string, unknown>);
+}
+
+function formatWithUnit(value: number, unit: string): string {
+  const rounded = value < 10 ? Math.round(value * 10) / 10 : Math.round(value);
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text}${unit}`;
 }
 
 export function formatTokens(n: number): string {
   if (n < 1_000) return String(n);
-  if (n < 10_000) return `${(n / 1_000).toFixed(1)}K`;
-  return `${Math.round(n / 1_000)}K`;
+  // 999_500 rounds up to 1M — switching units there keeps the scale
+  // continuous ("999K" → "1M", never "1000K").
+  if (n < 999_500) return formatWithUnit(n / 1_000, "K");
+  return formatWithUnit(n / 1_000_000, "M");
 }
 
 export function compactionLabel(
@@ -100,19 +111,24 @@ export function compactionLabel(
   if (phase === "summarizing") return "Condensing our conversation…";
   if (phase === "rebuilding") return "Reloading context…";
 
-  const parts: string[] = [];
-  if (phase === "done" && stats.messagesBefore !== undefined) {
-    parts.push(`Condensed ${stats.messagesBefore} messages`);
-  } else {
-    parts.push("Condensed the conversation");
-  }
-  if (stats.tokensBefore !== undefined && stats.tokensAfter !== undefined) {
-    parts.push(
-      `${formatTokens(stats.tokensBefore)} → ${formatTokens(stats.tokensAfter)} tokens`,
-    );
-  }
-  if (parts.length === 1 && phase !== "done") {
-    return "Condensed the conversation to keep going";
-  }
-  return parts.join(" · ");
+  // A number only earns its place when both ends of the measurement exist
+  // and the "after" actually shrank — an equal or inverted pair (e.g. 60
+  // messages summarized in place, none removed) reads as a broken claim.
+  const condensedMessages =
+    stats.messagesBefore !== undefined &&
+    stats.messagesAfter !== undefined &&
+    stats.messagesAfter < stats.messagesBefore;
+  const headline = condensedMessages
+    ? `Condensed ${stats.messagesBefore} messages`
+    : "Condensed the conversation";
+  const tokens =
+    stats.tokensBefore !== undefined &&
+    stats.tokensAfter !== undefined &&
+    stats.tokensAfter < stats.tokensBefore
+      ? `${formatTokens(stats.tokensBefore)} → ${formatTokens(stats.tokensAfter)} tokens`
+      : null;
+  if (tokens) return `${headline} · ${tokens}`;
+  return condensedMessages
+    ? headline
+    : "Condensed the conversation to keep going";
 }

@@ -20,21 +20,34 @@ describe("CompactionCard", () => {
     expect(screen.getByText("Reloading context…")).toBeDefined();
   });
 
-  it("shows the payoff numbers when done", () => {
+  it("shows the payoff numbers once settled", () => {
     render(
       <CompactionCard
-        phase="done"
+        phase={null}
         stats={{
           tokensBefore: 128_000,
           tokensAfter: 31_000,
           messagesBefore: 412,
+          messagesAfter: 38,
         }}
-        isSettled={false}
+        isSettled
       />,
     );
     expect(
       screen.getByText("Condensed 412 messages · 128K → 31K tokens"),
     ).toBeDefined();
+  });
+
+  it("treats a live row with no phase yet as the opening state", () => {
+    // Between `tool-input-start` and the first `data-compaction` chunk the
+    // row is live but phaseless — it must read and animate as summarizing,
+    // never as finished copy over a frozen bar.
+    render(<CompactionCard phase={null} stats={{}} isSettled={false} />);
+    expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+    expect(screen.getByRole("progressbar")).toBeDefined();
+    expect(
+      screen.queryByText("Condensed the conversation to keep going"),
+    ).toBeNull();
   });
 
   it("drops the bar once settled", () => {
@@ -63,6 +76,16 @@ describe("CompactionCard", () => {
     const bar = screen.getByRole("progressbar");
     expect(bar.getAttribute("aria-valuemin")).toBe("0");
     expect(bar.getAttribute("aria-valuemax")).toBe("100");
+    expect(bar.getAttribute("aria-valuenow")).toBe("2");
     expect(bar.getAttribute("aria-label")).toBe("Condensing our conversation…");
+  });
+
+  it("announces label changes politely without turning the bar into a live region", () => {
+    render(<CompactionCard phase="summarizing" stats={{}} isSettled={false} />);
+    const label = screen.getByText("Condensing our conversation…");
+    expect(label.getAttribute("aria-live")).toBe("polite");
+    expect(
+      screen.getByRole("progressbar").getAttribute("aria-live"),
+    ).toBeNull();
   });
 });

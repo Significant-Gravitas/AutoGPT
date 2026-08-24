@@ -4,7 +4,12 @@ import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { isCorruptedCardToolPart } from "../../helpers/toolOutput";
 import type { ArtifactRef } from "../../store";
-import type { CompactionPhase } from "../CompactionCard/helpers";
+import {
+  readCompactionStats,
+  type CompactionPhase,
+  type CompactionStats,
+} from "../CompactionCard/helpers";
+import { COMPACTION_PART_TYPE } from "../ToolChain/helpers";
 import type { TodoItem } from "../TaskProgressBar/helpers";
 
 export function shouldShowTaskListNotice({
@@ -58,7 +63,7 @@ const LEGACY_CUSTOM_TOOL_TYPES = new Set([
   // excluding it here keeps a settled compaction row from folding into a
   // collapsed "N tool calls" group next to an adjacent completed tool,
   // which would bury its payoff copy.
-  "tool-context_compaction",
+  COMPACTION_PART_TYPE,
 ]);
 
 const REASONING_TOOL_TYPES = new Set([
@@ -79,11 +84,36 @@ export function isReasoningToolPart(part: MessagePart): boolean {
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool can fall back to the legacy top-level UI.
 export function isChainableToolPart(part: MessagePart): boolean {
-  if (part.type === "tool-context_compaction") return false;
+  if (part.type === COMPACTION_PART_TYPE) return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
-const COMPACTION_PHASES = new Set(["summarizing", "rebuilding", "done"]);
+const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);
+
+// All `data-*` parts are transient bookkeeping (status, cursor,
+// pending-drained, mode-changed, …) — none of them is content that settles
+// a compaction row, and neither may any future one. Enumerating them here
+// would silently kill the bar the day a new data part ships mid-compaction.
+function isCompactionTransparentPart(part: MessagePart): boolean {
+  return (
+    part.type.startsWith("data-") ||
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === "step-start"
+  );
+}
+
+// A row closed by the abort sentinel (output "") or an error never compacted
+// anything — any phase parts it left behind are stale.
+function isRetiredCompactionRow(part: MessagePart): boolean {
+  if (part.type !== COMPACTION_PART_TYPE || !("state" in part)) return false;
+  const tool = part as ToolUIPart;
+  if (tool.state === "output-error") return true;
+  return (
+    tool.state === "output-available" &&
+    typeof tool.output === "string" &&
+    tool.output.trim() === ""
+  );
+}
 
 /**
  * Latest `data-compaction` phase on a message, or null once real content has
@@ -92,6 +122,8 @@ const COMPACTION_PHASES = new Set(["summarizing", "rebuilding", "done"]);
 export function getLatestCompactionPhase(
   parts: MessagePart[],
 ): CompactionPhase | null {
+  const lastRow = parts.findLast((p) => p.type === COMPACTION_PART_TYPE);
+  if (lastRow && isRetiredCompactionRow(lastRow)) return null;
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
     if (part.type === "data-compaction") {
@@ -102,19 +134,29 @@ export function getLatestCompactionPhase(
       }
       return null;
     }
-    if (
-      part.type === "data-cursor" ||
-      part.type === "data-status" ||
-      part.type === "data-dream-operations" ||
-      part.type === "tool-context_compaction" ||
-      part.type === "step-start"
-    ) {
-      continue;
-    }
+    if (isCompactionTransparentPart(part)) continue;
     if (part.type === "text" && "text" in part && !part.text.trim()) continue;
     return null;
   }
   return null;
+}
+
+/**
+ * Stats carried by the message's `data-compaction` parts, merged in stream
+ * order (later phases override earlier ones). They pace the live progress
+ * curve before the tool row closes with its own — authoritative — stats.
+ */
+export function getLatestCompactionStats(
+  parts: MessagePart[],
+): CompactionStats {
+  const stats: CompactionStats = {};
+  for (const part of parts) {
+    if (part.type !== "data-compaction") continue;
+    const data = (part as { data?: unknown }).data;
+    if (typeof data !== "object" || data === null) continue;
+    Object.assign(stats, readCompactionStats(data as Record<string, unknown>));
+  }
+  return stats;
 }
 
 /**
@@ -125,7 +167,7 @@ export function getLatestCompactionPhase(
 export function getLastCompactionCallId(parts: MessagePart[]): string | null {
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i];
-    if (part.type === "tool-context_compaction" && "toolCallId" in part) {
+    if (part.type === COMPACTION_PART_TYPE && "toolCallId" in part) {
       return (part as ToolUIPart).toolCallId ?? null;
     }
   }

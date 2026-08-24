@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   compactionLabel,
-  finishProgress,
   formatTokens,
   parseCompactionOutput,
   phaseProgress,
   tauForTokens,
-  FINISH_MS,
 } from "../helpers";
 
 describe("phaseProgress", () => {
@@ -34,20 +32,6 @@ describe("phaseProgress", () => {
   });
 });
 
-describe("finishProgress", () => {
-  it("lands on exactly 1 at the finish duration", () => {
-    expect(finishProgress(0.9, FINISH_MS)).toBeCloseTo(1, 1);
-  });
-
-  it("clamps past the finish duration", () => {
-    expect(finishProgress(0.9, FINISH_MS * 10)).toBe(1);
-  });
-
-  it("starts from the base", () => {
-    expect(finishProgress(0.42, 0)).toBeCloseTo(0.42, 5);
-  });
-});
-
 describe("tauForTokens", () => {
   it("floors at 12s for unknown or small contexts", () => {
     expect(tauForTokens(undefined)).toBe(12_000);
@@ -65,7 +49,7 @@ describe("tauForTokens", () => {
 
 describe("parseCompactionOutput", () => {
   it("reads the JSON payload", () => {
-    const parsed = parseCompactionOutput(
+    const stats = parseCompactionOutput(
       JSON.stringify({
         summary:
           "Earlier messages were summarized to fit within context limits.",
@@ -75,27 +59,35 @@ describe("parseCompactionOutput", () => {
         messagesAfter: 38,
       }),
     );
-    expect(parsed.stats.tokensBefore).toBe(128_000);
-    expect(parsed.stats.messagesAfter).toBe(38);
+    expect(stats.tokensBefore).toBe(128_000);
+    expect(stats.messagesAfter).toBe(38);
   });
 
   it("accepts an already-parsed object", () => {
-    const parsed = parseCompactionOutput({ summary: "x", tokensBefore: 5 });
-    expect(parsed.summary).toBe("x");
-    expect(parsed.stats.tokensBefore).toBe(5);
+    const stats = parseCompactionOutput({ summary: "x", tokensBefore: 5 });
+    expect(stats.tokensBefore).toBe(5);
   });
 
-  it("falls back to the legacy plain sentence", () => {
+  it("yields no stats for the legacy plain sentence", () => {
     const legacy =
       "Earlier messages were summarized to fit within context limits.";
-    const parsed = parseCompactionOutput(legacy);
-    expect(parsed.summary).toBe(legacy);
-    expect(parsed.stats).toEqual({});
+    expect(parseCompactionOutput(legacy)).toEqual({});
   });
 
   it("survives junk", () => {
-    expect(parseCompactionOutput(undefined).stats).toEqual({});
-    expect(parseCompactionOutput(42).stats).toEqual({});
+    expect(parseCompactionOutput(undefined)).toEqual({});
+    expect(parseCompactionOutput(42)).toEqual({});
+  });
+
+  it("drops implausible counts — zeros and fractions never reach the copy", () => {
+    const stats = parseCompactionOutput({
+      summary: "x",
+      tokensBefore: 0,
+      tokensAfter: 0,
+      messagesBefore: 412.5,
+      messagesAfter: 38,
+    });
+    expect(stats).toEqual({ messagesAfter: 38 });
   });
 });
 
@@ -111,6 +103,20 @@ describe("formatTokens", () => {
 
   it("rounds to one decimal below 10K", () => {
     expect(formatTokens(4_200)).toBe("4.2K");
+    expect(formatTokens(4_000)).toBe("4K");
+  });
+
+  it("is continuous at the 10K boundary", () => {
+    expect(formatTokens(9_999)).toBe("10K");
+    expect(formatTokens(10_000)).toBe("10K");
+  });
+
+  it("switches to millions instead of rendering 1000K", () => {
+    expect(formatTokens(999_499)).toBe("999K");
+    expect(formatTokens(999_500)).toBe("1M");
+    expect(formatTokens(1_000_000)).toBe("1M");
+    expect(formatTokens(1_500_000)).toBe("1.5M");
+    expect(formatTokens(128_000_000)).toBe("128M");
   });
 });
 
@@ -122,20 +128,41 @@ describe("compactionLabel", () => {
     expect(compactionLabel("rebuilding", {})).toBe("Reloading context…");
   });
 
-  it("celebrates with real numbers when it has them", () => {
+  it("celebrates settled rows with real numbers when it has them", () => {
     expect(
-      compactionLabel("done", {
+      compactionLabel(null, {
         tokensBefore: 128_000,
         tokensAfter: 31_000,
         messagesBefore: 412,
+        messagesAfter: 38,
       }),
     ).toBe("Condensed 412 messages · 128K → 31K tokens");
   });
 
-  it("settles without a phase", () => {
+  it("settles with tokens only when no messages were removed", () => {
     expect(
       compactionLabel(null, { tokensBefore: 128_000, tokensAfter: 31_000 }),
     ).toBe("Condensed the conversation · 128K → 31K tokens");
+  });
+
+  it("skips the message count when content was summarized in place", () => {
+    // Observed in production: 60 messages in, 60 messages out — the rows
+    // survived, only their content shrank. "Condensed 60 messages" would
+    // read as removal that never happened.
+    expect(
+      compactionLabel(null, {
+        tokensBefore: 128_000,
+        tokensAfter: 31_000,
+        messagesBefore: 60,
+        messagesAfter: 60,
+      }),
+    ).toBe("Condensed the conversation · 128K → 31K tokens");
+  });
+
+  it("refuses to advertise an inverted token measurement", () => {
+    expect(
+      compactionLabel(null, { tokensBefore: 31_000, tokensAfter: 128_000 }),
+    ).toBe("Condensed the conversation to keep going");
   });
 
   it("degrades gracefully for legacy rows with no stats", () => {

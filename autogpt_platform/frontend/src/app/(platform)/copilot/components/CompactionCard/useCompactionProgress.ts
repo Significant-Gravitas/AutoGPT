@@ -2,15 +2,16 @@ import { useMountEffect } from "@/hooks/useMountEffect";
 import { useRef, useState } from "react";
 import {
   INITIAL_PROGRESS,
+  PARKED_POLL_MS,
   PHASE_CURVE,
-  finishProgress,
+  SETTLE_EPSILON,
   phaseProgress,
   tauForTokens,
   type CompactionPhase,
 } from "./helpers";
 
 export function useCompactionProgress(
-  phase: CompactionPhase | null,
+  phase: CompactionPhase,
   tokensBefore: number | undefined,
 ) {
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
@@ -22,13 +23,16 @@ export function useCompactionProgress(
   const tokensRef = useRef(tokensBefore);
   const baseRef = useRef(INITIAL_PROGRESS);
   const phaseStartRef = useRef<number | null>(null);
-  const lastPhaseRef = useRef<CompactionPhase | null>(phase);
+  const lastPhaseRef = useRef<CompactionPhase>(phase);
   const progressRef = useRef(INITIAL_PROGRESS);
+  const percentRef = useRef(Math.round(INITIAL_PROGRESS * 100));
+  const secondsRef = useRef(0);
   phaseRef.current = phase;
   tokensRef.current = tokensBefore;
 
   useMountEffect(() => {
     let frame = 0;
+    let parkedTimer: ReturnType<typeof setTimeout> | undefined;
     const mountedAt = performance.now();
 
     function tick(now: number) {
@@ -42,30 +46,50 @@ export function useCompactionProgress(
       if (phaseStartRef.current === null) phaseStartRef.current = now;
 
       const sincePhase = now - phaseStartRef.current;
-      let next = progressRef.current;
-
-      if (current === "done") {
-        next = finishProgress(baseRef.current, sincePhase);
-      } else if (current !== null) {
-        const curve = PHASE_CURVE[current];
-        const tau =
-          current === "summarizing"
-            ? tauForTokens(tokensRef.current)
-            : curve.tauMs;
-        next = phaseProgress(baseRef.current, curve.cap, sincePhase, tau);
-      }
+      const curve = PHASE_CURVE[current];
+      const tau =
+        current === "summarizing"
+          ? tauForTokens(tokensRef.current)
+          : curve.tauMs;
+      let next = phaseProgress(baseRef.current, curve.cap, sincePhase, tau);
 
       // The bar is a promise to the user: it never goes backwards.
       next = Math.max(progressRef.current, next);
       progressRef.current = next;
-      setProgress(next);
-      setElapsedSeconds(Math.floor((now - mountedAt) / 1000));
 
-      if (next < 1) frame = requestAnimationFrame(tick);
+      // Quantize commits: only a change the DOM can show (a whole percent, a
+      // whole second) triggers a render, not 60 identical frames a second.
+      const percent = Math.round(next * 100);
+      if (percent !== percentRef.current) {
+        percentRef.current = percent;
+        setProgress(next);
+      }
+      const seconds = Math.floor((now - mountedAt) / 1000);
+      if (seconds !== secondsRef.current) {
+        secondsRef.current = seconds;
+        setElapsedSeconds(seconds);
+      }
+
+      // Once the curve is visually pinned at its ceiling there is nothing
+      // left to animate, so drop off the frame clock and idle on a slow
+      // timer instead — a stalled rebuild must not hold the tab at 60Hz for
+      // minutes. The timer keeps the elapsed seconds honest and picks the
+      // frame loop back up when a later phase raises the ceiling, so the bar
+      // still never finishes before the work does.
+      if (curve.cap - next <= SETTLE_EPSILON) {
+        parkedTimer = setTimeout(() => {
+          frame = requestAnimationFrame(tick);
+        }, PARKED_POLL_MS);
+        return;
+      }
+      frame = requestAnimationFrame(tick);
     }
 
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (parkedTimer !== undefined) clearTimeout(parkedTimer);
+    };
   });
 
   return { progress, elapsedSeconds };

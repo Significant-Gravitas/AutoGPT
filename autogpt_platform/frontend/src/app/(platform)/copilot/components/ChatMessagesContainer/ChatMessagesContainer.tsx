@@ -26,6 +26,7 @@ import {
   buildRenderSegments,
   getLastCompactionCallId,
   getLatestCompactionPhase,
+  getLatestCompactionStats,
   getTurnMessages,
   type MessagePart,
   type RenderSegment,
@@ -37,7 +38,10 @@ import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { useCopilotUIStore } from "../../store";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
-import type { CompactionPhase } from "../CompactionCard/helpers";
+import type {
+  CompactionPhase,
+  CompactionStats,
+} from "../CompactionCard/helpers";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
@@ -115,6 +119,7 @@ interface RenderSegmentOptions {
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
+  liveCompactionStats?: CompactionStats;
   isCurrentlyStreaming?: boolean;
 }
 
@@ -130,6 +135,7 @@ function renderSegments(
     readOnly,
     compactionPhase,
     liveCompactionCallId,
+    liveCompactionStats,
     isCurrentlyStreaming,
   } = options;
   return segments.map((seg, segIdx) => {
@@ -156,6 +162,7 @@ function renderSegments(
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}
+        liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );
@@ -496,12 +503,22 @@ export function ChatMessagesContainer({
     return null;
   })();
 
+  // A live compaction narrates itself via CompactionCard — the generic
+  // Thinking indicator must not stack a second spinner and timer under it.
+  // The `rebuilding` phase arrives after the tool row has already closed,
+  // so `hasInflight` alone cannot cover that window.
+  const liveCompactionPhase =
+    isChatStreaming && lastMessage?.role === "assistant"
+      ? getLatestCompactionPhase(lastMessage.parts)
+      : null;
+
   // Suppressed during active-session restore so the ThinkingIndicator and
   // the "Retrieving latest messages" spinner can't both render — the
   // restore spinner wins until real content arrives (see the
   // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
   const showThinking =
     !isRestoringActiveSession &&
+    liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const { elapsedSeconds } = useElapsedTimer(
@@ -714,6 +731,13 @@ export function ChatMessagesContainer({
               compactionPhase !== null
                 ? getLastCompactionCallId(message.parts)
                 : null;
+            // Stats streamed on the `data-compaction` parts pace the live
+            // progress curve while the tool row is still open (its own
+            // output stats only exist once it closes).
+            const liveCompactionStats =
+              compactionPhase !== null
+                ? getLatestCompactionStats(message.parts)
+                : undefined;
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
                 p.type === "text",
@@ -801,6 +825,7 @@ export function ChatMessagesContainer({
                       readOnly={readOnly}
                       compactionPhase={compactionPhase}
                       liveCompactionCallId={liveCompactionCallId}
+                      liveCompactionStats={liveCompactionStats}
                     />
                   ) : responseSegments ? (
                     renderSegments(responseSegments, message.id, {
@@ -810,6 +835,7 @@ export function ChatMessagesContainer({
                       readOnly,
                       compactionPhase,
                       liveCompactionCallId,
+                      liveCompactionStats,
                       isCurrentlyStreaming,
                     })
                   ) : (
@@ -826,6 +852,7 @@ export function ChatMessagesContainer({
                           readOnly={readOnly}
                           compactionPhase={compactionPhase}
                           liveCompactionCallId={liveCompactionCallId}
+                          liveCompactionStats={liveCompactionStats}
                           isCurrentlyStreaming={isCurrentlyStreaming}
                         />
                       ));

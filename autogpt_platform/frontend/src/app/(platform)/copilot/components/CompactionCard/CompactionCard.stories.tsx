@@ -8,7 +8,7 @@ const meta: Meta<typeof CompactionCard> = {
     docs: {
       description: {
         component:
-          "Context compaction as one continuous moment. The bar approaches each phase's ceiling exponentially so it can never finish before the work does; entering the rebuild phase raises the ceiling, and completion eases to exactly 100%.",
+          "Context compaction as one continuous moment. The bar approaches each phase's ceiling exponentially so it can never finish before the work does; entering the rebuild phase raises the ceiling, and the row settles into a one-line receipt when the stream moves on.",
       },
     },
   },
@@ -33,23 +33,15 @@ export const Rebuilding: Story = {
   },
 };
 
-export const Done: Story = {
+export const Settled: Story = {
   args: {
-    phase: "done",
+    phase: null,
     stats: {
       tokensBefore: 128_000,
       tokensAfter: 31_000,
       messagesBefore: 412,
       messagesAfter: 38,
     },
-    isSettled: false,
-  },
-};
-
-export const Settled: Story = {
-  args: {
-    phase: null,
-    stats: { tokensBefore: 128_000, tokensAfter: 31_000 },
     isSettled: true,
   },
 };

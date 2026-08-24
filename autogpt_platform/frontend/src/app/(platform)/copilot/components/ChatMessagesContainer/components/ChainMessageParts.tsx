@@ -1,7 +1,10 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
-import type { CompactionPhase } from "../../CompactionCard/helpers";
+import type {
+  CompactionPhase,
+  CompactionStats,
+} from "../../CompactionCard/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {
@@ -14,6 +17,7 @@ interface Props {
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
+  liveCompactionStats?: CompactionStats;
 }
 
 export function ChainMessageParts({
@@ -26,6 +30,7 @@ export function ChainMessageParts({
   readOnly,
   compactionPhase,
   liveCompactionCallId,
+  liveCompactionStats,
 }: Props) {
   const segments = buildChainSegments(
     parts,
@@ -60,6 +65,7 @@ export function ChainMessageParts({
         readOnly={readOnly}
         compactionPhase={compactionPhase}
         liveCompactionCallId={liveCompactionCallId}
+        liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
       />
     );

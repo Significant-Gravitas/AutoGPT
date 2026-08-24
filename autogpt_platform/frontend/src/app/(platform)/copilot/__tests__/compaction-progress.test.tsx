@@ -53,43 +53,77 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => false,
 }));
 
-// Mirrors the backend's emission order after the ordering fix: the row is
-// OPEN while the work runs, then closes with JSON stats.
+// Shared chunk builders — every scenario below is "open row → phase(s) →
+// close (or not) → whatever content follows", so only the tails differ.
+function openCompactionRow(id = "compaction-1"): UIMessageChunk[] {
+  return [
+    {
+      type: "tool-input-start",
+      toolCallId: id,
+      toolName: "context_compaction",
+    },
+    {
+      type: "tool-input-available",
+      toolCallId: id,
+      toolName: "context_compaction",
+      input: {},
+    },
+  ];
+}
+
+function closeCompactionRow(
+  stats: Record<string, number>,
+  id = "compaction-1",
+): UIMessageChunk {
+  return {
+    type: "tool-output-available",
+    toolCallId: id,
+    output: JSON.stringify({
+      summary: "Earlier messages were summarized to fit within context limits.",
+      ...stats,
+    }),
+  };
+}
+
+function summarizingPhase(tokensBefore = 128000): UIMessageChunk {
+  return {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore },
+  };
+}
+
+const REBUILDING_PHASE: UIMessageChunk = {
+  type: "data-compaction",
+  data: { phase: "rebuilding" },
+};
+
+function textChunks(text: string, id = "t1"): UIMessageChunk[] {
+  return [
+    { type: "text-start", id },
+    { type: "text-delta", id, delta: text },
+    { type: "text-end", id },
+  ];
+}
+
+const FULL_STATS = {
+  tokensBefore: 128000,
+  tokensAfter: 31000,
+  messagesBefore: 412,
+  messagesAfter: 38,
+};
+
+// Mirrors the backend's emission order: the row is OPEN while the work
+// runs, then closes with JSON stats.
 const COMPACTION_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
-  {
-    type: "tool-output-available",
-    toolCallId: "compaction-1",
-    output: JSON.stringify({
-      summary: "Earlier messages were summarized to fit within context limits.",
-      tokensBefore: 128000,
-      tokensAfter: 31000,
-      messagesBefore: 412,
-      messagesAfter: 38,
-    }),
-  },
+  ...openCompactionRow(),
+  summarizingPhase(),
+  closeCompactionRow(FULL_STATS),
   { type: "finish-step" },
-  { type: "data-compaction", data: { phase: "rebuilding" } },
+  REBUILDING_PHASE,
   { type: "start-step" },
-  { type: "text-start", id: "t1" },
-  { type: "text-delta", id: "t1", delta: "All caught up." },
-  { type: "text-end", id: "t1" },
+  ...textChunks("All caught up."),
   { type: "finish-step" },
   { type: "finish" },
 ];
@@ -101,34 +135,11 @@ const COMPACTION_TURN: UIMessageChunk[] = [
 const COMPACTION_THEN_TOOL_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
-  {
-    type: "tool-output-available",
-    toolCallId: "compaction-1",
-    output: JSON.stringify({
-      summary: "Earlier messages were summarized to fit within context limits.",
-      tokensBefore: 128000,
-      tokensAfter: 31000,
-      messagesBefore: 412,
-      messagesAfter: 38,
-    }),
-  },
+  ...openCompactionRow(),
+  summarizingPhase(),
+  closeCompactionRow(FULL_STATS),
   { type: "finish-step" },
-  { type: "data-compaction", data: { phase: "rebuilding" } },
+  REBUILDING_PHASE,
   { type: "start-step" },
   {
     type: "tool-input-start",
@@ -148,9 +159,7 @@ const COMPACTION_THEN_TOOL_TURN: UIMessageChunk[] = [
   },
   { type: "finish-step" },
   { type: "start-step" },
-  { type: "text-start", id: "t1" },
-  { type: "text-delta", id: "t1", delta: "Done." },
-  { type: "text-end", id: "t1" },
+  ...textChunks("Done."),
   { type: "finish-step" },
   { type: "finish" },
 ];
@@ -162,21 +171,8 @@ const COMPACTION_THEN_TOOL_TURN: UIMessageChunk[] = [
 const ABORTED_COMPACTION_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
+  ...openCompactionRow(),
+  summarizingPhase(),
   {
     type: "tool-output-available",
     toolCallId: "compaction-1",
@@ -184,9 +180,7 @@ const ABORTED_COMPACTION_TURN: UIMessageChunk[] = [
   },
   { type: "finish-step" },
   { type: "start-step" },
-  { type: "text-start", id: "t1" },
-  { type: "text-delta", id: "t1", delta: "No condensing needed." },
-  { type: "text-end", id: "t1" },
+  ...textChunks("No condensing needed."),
   { type: "finish-step" },
   { type: "finish" },
 ];
@@ -198,70 +192,27 @@ const ABORTED_COMPACTION_TURN: UIMessageChunk[] = [
 const TWO_CYCLE_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
-  {
-    type: "tool-output-available",
-    toolCallId: "compaction-1",
-    output: JSON.stringify({
-      summary: "Earlier messages were summarized to fit within context limits.",
-      tokensBefore: 128000,
-      tokensAfter: 31000,
-    }),
-  },
+  ...openCompactionRow("compaction-1"),
+  summarizingPhase(),
+  closeCompactionRow({ tokensBefore: 128000, tokensAfter: 31000 }),
   { type: "finish-step" },
-  { type: "data-compaction", data: { phase: "rebuilding" } },
+  REBUILDING_PHASE,
   { type: "start-step" },
-  { type: "text-start", id: "t1" },
-  { type: "text-delta", id: "t1", delta: "Continuing." },
-  { type: "text-end", id: "t1" },
+  ...textChunks("Continuing."),
   { type: "finish-step" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-2",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-2",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 64000 },
-  },
+  ...openCompactionRow("compaction-2"),
+  summarizingPhase(64000),
   // The hold sits before this chunk so the second cycle stays live long
   // enough to assert against (see SECOND_CYCLE_HOLD_INDEX).
-  {
-    type: "tool-output-available",
-    toolCallId: "compaction-2",
-    output: JSON.stringify({
-      summary: "Earlier messages were summarized to fit within context limits.",
-      tokensBefore: 64000,
-      tokensAfter: 20000,
-    }),
-  },
+  closeCompactionRow(
+    { tokensBefore: 64000, tokensAfter: 20000 },
+    "compaction-2",
+  ),
   { type: "finish-step" },
-  { type: "data-compaction", data: { phase: "rebuilding" } },
+  REBUILDING_PHASE,
   { type: "start-step" },
-  { type: "text-start", id: "t2" },
-  { type: "text-delta", id: "t2", delta: "Done again." },
-  { type: "text-end", id: "t2" },
+  ...textChunks("Done again.", "t2"),
   { type: "finish-step" },
   { type: "finish" },
 ];
@@ -277,32 +228,11 @@ const SECOND_CYCLE_HOLD_INDEX = TWO_CYCLE_TURN.findIndex(
 const DEAD_STREAM_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
-  {
-    type: "tool-output-available",
-    toolCallId: "compaction-1",
-    output: JSON.stringify({
-      summary: "Earlier messages were summarized to fit within context limits.",
-      tokensBefore: 128000,
-      tokensAfter: 31000,
-    }),
-  },
+  ...openCompactionRow(),
+  summarizingPhase(),
+  closeCompactionRow({ tokensBefore: 128000, tokensAfter: 31000 }),
   { type: "finish-step" },
-  { type: "data-compaction", data: { phase: "rebuilding" } },
+  REBUILDING_PHASE,
   // The hold sits before this chunk so the live "Reloading context…" bar
   // is observable before the stream closes (see DEAD_STREAM_HOLD_INDEX).
   { type: "finish" },
@@ -319,27 +249,40 @@ const DEAD_STREAM_HOLD_INDEX = DEAD_STREAM_TURN.findIndex(
 const INTERRUPTED_OPEN_ROW_TURN: UIMessageChunk[] = [
   { type: "start" },
   { type: "start-step" },
-  {
-    type: "tool-input-start",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-  },
-  {
-    type: "tool-input-available",
-    toolCallId: "compaction-1",
-    toolName: "context_compaction",
-    input: {},
-  },
-  {
-    type: "data-compaction",
-    data: { phase: "summarizing", tokensBefore: 128000 },
-  },
+  ...openCompactionRow(),
+  summarizingPhase(),
   { type: "finish" },
 ];
 
 const INTERRUPTED_HOLD_INDEX = INTERRUPTED_OPEN_ROW_TURN.findIndex(
   (c) => c.type === "finish",
 );
+
+// The compaction fails outright: the row closes with `tool-output-error`
+// and the turn recovers with normal text. Nothing was condensed, so no
+// compaction copy — live or settled — may render for it.
+const FAILED_COMPACTION_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  ...openCompactionRow(),
+  summarizingPhase(),
+  {
+    type: "tool-output-error",
+    toolCallId: "compaction-1",
+    errorText: "compaction failed",
+  },
+  { type: "finish-step" },
+  { type: "start-step" },
+  ...textChunks("Carrying on regardless."),
+  { type: "finish-step" },
+  { type: "finish" },
+];
+
+// Holds long enough to outlast `waitFor`'s default 1000ms window, so a
+// loaded CI runner can't watch the held state expire mid-poll.
+const HOLD_MS = 1_500;
+// Post-hold assertions wait for the stream to play out past the hold.
+const POST_HOLD_TIMEOUT = { timeout: 5_000 };
 
 // The rebuild phase is emitted AFTER the tool row closes — it covers the
 // transcript upload, CLI restart and uncached prefill, which is the silence
@@ -377,7 +320,7 @@ describe("context compaction progress", () => {
         sessionId: TEST_SESSION_ID,
         chunks: COMPACTION_TURN,
         perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
-          i === SUMMARIZING_HOLD_INDEX ? 300 : 15,
+          i === SUMMARIZING_HOLD_INDEX ? HOLD_MS : 15,
         ),
       }),
     );
@@ -409,9 +352,9 @@ describe("context compaction progress", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+        screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
       ).toBeDefined();
-    });
+    }, POST_HOLD_TIMEOUT);
   });
 
   it("never shows the old apologetic copy", async () => {
@@ -420,7 +363,7 @@ describe("context compaction progress", () => {
 
     await waitFor(() => {
       expect(screen.getByText("All caught up.")).toBeDefined();
-    });
+    }, POST_HOLD_TIMEOUT);
     expect(screen.queryByText(/Earlier messages were summarized/)).toBeNull();
   });
 
@@ -440,13 +383,37 @@ describe("context compaction progress", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+        screen.getByText(/Condensed 412 messages · 128K → 31K tokens/),
       ).toBeDefined();
     });
     // If the compaction row had folded into a CollapsedToolGroup with the
     // adjacent web_search call, the payoff copy above would be hidden
     // behind a "N tool calls completed" toggle instead of standing alone.
     expect(screen.queryByText(/tool calls/)).toBeNull();
+  });
+
+  it("renders nothing for a compaction that failed", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: FAILED_COMPACTION_TURN,
+        delayMsBetweenChunks: 15,
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise this");
+
+    await waitFor(() => {
+      expect(screen.getByText("Carrying on regardless.")).toBeDefined();
+    });
+    // A failed compaction condensed nothing — neither the live copy nor
+    // the settled "Condensed…" claim may render for it.
+    expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+    expect(screen.queryByText(/Condensed/)).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
   it("renders nothing for a row retired by an aborted prediction", async () => {
@@ -481,7 +448,7 @@ describe("context compaction progress", () => {
         sessionId: TEST_SESSION_ID,
         chunks: TWO_CYCLE_TURN,
         perChunkDelaysMs: TWO_CYCLE_TURN.map((_, i) =>
-          i === SECOND_CYCLE_HOLD_INDEX ? 600 : 15,
+          i === SECOND_CYCLE_HOLD_INDEX ? HOLD_MS : 15,
         ),
       }),
     );
@@ -511,7 +478,7 @@ describe("context compaction progress", () => {
         sessionId: TEST_SESSION_ID,
         chunks: DEAD_STREAM_TURN,
         perChunkDelaysMs: DEAD_STREAM_TURN.map((_, i) =>
-          i === DEAD_STREAM_HOLD_INDEX ? 600 : 15,
+          i === DEAD_STREAM_HOLD_INDEX ? HOLD_MS : 15,
         ),
       }),
     );
@@ -531,7 +498,7 @@ describe("context compaction progress", () => {
       expect(
         screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
       ).toBeDefined();
-    });
+    }, POST_HOLD_TIMEOUT);
   });
 
   it("keeps the bar live through the rebuild that follows the closed row", async () => {
@@ -542,7 +509,7 @@ describe("context compaction progress", () => {
         sessionId: TEST_SESSION_ID,
         chunks: COMPACTION_TURN,
         perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
-          i === REBUILDING_HOLD_INDEX ? 600 : 15,
+          i === REBUILDING_HOLD_INDEX ? HOLD_MS : 15,
         ),
       }),
     );
@@ -554,6 +521,10 @@ describe("context compaction progress", () => {
     // the row must still be live and narrating the rebuild.
     await waitFor(() => {
       expect(screen.getByText("Reloading context…")).toBeDefined();
+      // With the row closed, `hasInflight` is false — without the live-
+      // compaction gate the ThinkingIndicator would stack its own spinner
+      // and timer directly under the CompactionCard's.
+      expect(screen.queryByText("Thinking...")).toBeNull();
     });
     expect(screen.getByRole("progressbar")).toBeDefined();
   });
@@ -566,7 +537,7 @@ describe("context compaction progress", () => {
         sessionId: TEST_SESSION_ID,
         chunks: INTERRUPTED_OPEN_ROW_TURN,
         perChunkDelaysMs: INTERRUPTED_OPEN_ROW_TURN.map((_, i) =>
-          i === INTERRUPTED_HOLD_INDEX ? 600 : 15,
+          i === INTERRUPTED_HOLD_INDEX ? HOLD_MS : 15,
         ),
       }),
     );
@@ -582,7 +553,7 @@ describe("context compaction progress", () => {
     // bar nor a "Condensed…" claim — it disappears.
     await waitFor(() => {
       expect(screen.queryByRole("progressbar")).toBeNull();
-    });
+    }, POST_HOLD_TIMEOUT);
     expect(screen.queryByText(/Condensed/)).toBeNull();
     expect(screen.queryByText(/Condensing/)).toBeNull();
   });

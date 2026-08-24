@@ -27,7 +27,9 @@ import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import {
   parseCompactionOutput,
   type CompactionPhase,
+  type CompactionStats,
 } from "../../CompactionCard/helpers";
+import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
   parseSpecialMarkers,
@@ -157,6 +159,10 @@ interface Props {
    *  live phase applies to. Earlier (settled) rows render as history even
    *  while a later cycle streams its phases. */
   liveCompactionCallId?: string | null;
+  /** Stats streamed on the message's `data-compaction` parts. They pace the
+   *  live progress curve before the tool row closes; once it does, the
+   *  row's own parsed output wins. */
+  liveCompactionStats?: CompactionStats;
   /** Whether the enclosing message is still streaming. A compaction row
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
@@ -173,6 +179,7 @@ export function MessagePartRenderer({
   readOnly,
   compactionPhase,
   liveCompactionCallId,
+  liveCompactionStats,
   isCurrentlyStreaming,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
@@ -287,11 +294,14 @@ export function MessagePartRenderer({
       // list while any task is active. See `TaskListNotice` rendering in
       // `ChatMessagesContainer`.
       return null;
-    case "tool-context_compaction": {
+    case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
-      const settled =
-        toolPart.state === "output-available" ||
-        toolPart.state === "output-error";
+      // A failed compaction condensed nothing — settled "Condensed…" copy
+      // would report work that never happened. Render nothing, like the
+      // abort sentinel below; failure messaging belongs to the turn-level
+      // error surfaces, not a maintenance row.
+      if (toolPart.state === "output-error") return null;
+      const settled = toolPart.state === "output-available";
       // A retired prediction closes the row with output "" (the abort
       // sentinel — real closes always carry JSON with a summary). Render
       // nothing: this compaction never happened.
@@ -305,14 +315,18 @@ export function MessagePartRenderer({
       // Claiming "Condensed the conversation" would report work that
       // never finished, so render nothing, like the abort sentinel.
       if (!isCurrentlyStreaming && !settled) return null;
-      const phase =
+      const isLiveRow =
         liveCompactionCallId != null &&
-        toolPart.toolCallId === liveCompactionCallId
-          ? (compactionPhase ?? null)
-          : null;
-      const { stats } = parseCompactionOutput(
+        toolPart.toolCallId === liveCompactionCallId;
+      const phase = isLiveRow ? (compactionPhase ?? null) : null;
+      const outputStats = parseCompactionOutput(
         settled ? toolPart.output : undefined,
       );
+      // The streamed `data-compaction` stats pace the live curve while the
+      // row is still open; the row's own output wins once it lands.
+      const stats = isLiveRow
+        ? { ...liveCompactionStats, ...outputStats }
+        : outputStats;
       return (
         <CompactionCard
           key={key}
