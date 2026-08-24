@@ -7,6 +7,7 @@ import {
   formatMaskedValue,
   formatProviderName,
   groupCredentialsByProvider,
+  isRecommendedProvider,
   type CredentialView,
   type ProviderGroupView,
 } from "../helpers";
@@ -45,6 +46,7 @@ describe("formatProviderName", () => {
     expect(formatProviderName("github")).toBe("GitHub");
     expect(formatProviderName("d_id")).toBe("D-ID");
     expect(formatProviderName("twitter")).toBe("X");
+    expect(formatProviderName("aiml_api")).toBe("aimlapi.com");
     // "MCP" is an acronym — without an override the title-caser would
     // emit the awkward "Mcp" we shipped before; keep the override.
     expect(formatProviderName("mcp")).toBe("MCP");
@@ -60,6 +62,20 @@ describe("formatProviderName", () => {
     expect(formatProviderName(null)).toBe("");
     expect(formatProviderName(42)).toBe("");
     expect(formatProviderName("")).toBe("");
+  });
+});
+
+describe("isRecommendedProvider", () => {
+  test("flags only the curated recommended providers", () => {
+    expect(isRecommendedProvider("aiml_api")).toBe(true);
+    expect(isRecommendedProvider("github")).toBe(false);
+    expect(isRecommendedProvider("openai")).toBe(false);
+  });
+
+  test("returns false for non-string input", () => {
+    expect(isRecommendedProvider(undefined)).toBe(false);
+    expect(isRecommendedProvider(null)).toBe(false);
+    expect(isRecommendedProvider(42)).toBe(false);
   });
 });
 
