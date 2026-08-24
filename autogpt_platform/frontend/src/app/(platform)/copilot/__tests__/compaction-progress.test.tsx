@@ -1,3 +1,4 @@
+import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/models/sessionDetailResponseMessagesItem";
 import { server } from "@/mocks/mock-server";
 import { copilotStreamHandler } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
@@ -248,5 +249,90 @@ describe("context compaction progress", () => {
     // adjacent web_search call, the payoff copy above would be hidden
     // behind a "N tool calls completed" toggle instead of standing alone.
     expect(screen.queryByText(/tool calls/)).toBeNull();
+  });
+});
+
+// A row restored from the DB never carries a `data-compaction` part — that
+// part only ever exists on a live stream. `getLatestCompactionPhase` reads
+// null in that case, and the tool part's persisted output makes it
+// `output-available`, so the card renders settled — this proves the
+// back-compat path for both the new JSON payload and the old plain-sentence
+// rows some sessions still have on disk.
+describe("compaction rows restored from the database", () => {
+  beforeEach(() => {
+    resetCopilotChatRegistry();
+  });
+
+  afterEach(() => {
+    resetCopilotChatRegistry();
+  });
+
+  it("renders new JSON rows with their numbers and no bar", async () => {
+    const messages: SessionDetailResponseMessagesItem[] = [
+      { role: "user", content: "hi", sequence: 0 },
+      {
+        role: "assistant",
+        content: "",
+        sequence: 1,
+        tool_calls: [
+          {
+            id: "compaction-1",
+            type: "function",
+            function: { name: "context_compaction", arguments: "{}" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        tool_call_id: "compaction-1",
+        sequence: 2,
+        content: JSON.stringify({
+          summary:
+            "Earlier messages were summarized to fit within context limits.",
+          tokensBefore: 128000,
+          tokensAfter: 31000,
+        }),
+      },
+    ];
+    renderHost({ sessionOverride: { messages } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Condensed the conversation · 128K → 31K tokens"),
+      ).toBeDefined();
+    });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("renders legacy plain-sentence rows without crashing", async () => {
+    const messages: SessionDetailResponseMessagesItem[] = [
+      { role: "user", content: "hi", sequence: 0 },
+      {
+        role: "assistant",
+        content: "",
+        sequence: 1,
+        tool_calls: [
+          {
+            id: "compaction-1",
+            type: "function",
+            function: { name: "context_compaction", arguments: "{}" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        tool_call_id: "compaction-1",
+        sequence: 2,
+        content:
+          "Earlier messages were summarized to fit within context limits.",
+      },
+    ];
+    renderHost({ sessionOverride: { messages } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Condensed the conversation to keep going"),
+      ).toBeDefined();
+    });
   });
 });
