@@ -1,6 +1,7 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
+import type { CompactionPhase } from "../../CompactionCard/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   fileUrlBuilder?: (fileId: string) => string;
   forceArtifacts?: boolean;
   readOnly?: boolean;
+  compactionPhase?: CompactionPhase | null;
 }
 
 export function ChainMessageParts({
@@ -21,6 +23,7 @@ export function ChainMessageParts({
   fileUrlBuilder,
   forceArtifacts,
   readOnly,
+  compactionPhase,
 }: Props) {
   const segments = buildChainSegments(
     parts,
@@ -53,6 +56,7 @@ export function ChainMessageParts({
         fileUrlBuilder={fileUrlBuilder}
         forceArtifacts={forceArtifacts}
         readOnly={readOnly}
+        compactionPhase={compactionPhase}
       />
     );
   });

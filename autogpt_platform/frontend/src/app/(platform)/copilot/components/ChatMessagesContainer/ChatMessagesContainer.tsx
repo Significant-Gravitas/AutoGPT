@@ -430,7 +430,8 @@ export function ChatMessagesContainer({
       (p) =>
         p.type !== "data-cursor" &&
         p.type !== "data-status" &&
-        p.type !== "data-dream-operations",
+        p.type !== "data-dream-operations" &&
+        p.type !== "data-compaction",
     );
     if (parts.length === 0) return false;
 
@@ -774,6 +775,7 @@ export function ChatMessagesContainer({
                       fileUrlBuilder={fileUrlBuilder}
                       forceArtifacts={readOnly}
                       readOnly={readOnly}
+                      compactionPhase={compactionPhase}
                     />
                   ) : responseSegments ? (
                     renderSegments(responseSegments, message.id, {

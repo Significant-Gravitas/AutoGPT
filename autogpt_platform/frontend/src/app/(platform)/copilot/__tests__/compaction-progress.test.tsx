@@ -93,19 +93,93 @@ const COMPACTION_TURN: UIMessageChunk[] = [
   { type: "finish" },
 ];
 
+// A settled compaction row followed immediately by another completed
+// generic tool call, both ahead of the final text — reproduces the
+// collapsed-group bug where two adjacent "generic completed tool" parts
+// fold into a single `CollapsedToolGroup`, burying the payoff copy.
+const COMPACTION_THEN_TOOL_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "compaction-1",
+    toolName: "context_compaction",
+    input: {},
+  },
+  {
+    type: "data-compaction",
+    data: { phase: "summarizing", tokensBefore: 128000 },
+  },
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-1",
+    output: JSON.stringify({
+      summary: "Earlier messages were summarized to fit within context limits.",
+      tokensBefore: 128000,
+      tokensAfter: 31000,
+      messagesBefore: 412,
+      messagesAfter: 38,
+    }),
+  },
+  { type: "finish-step" },
+  { type: "data-compaction", data: { phase: "rebuilding" } },
+  { type: "start-step" },
+  {
+    type: "tool-input-start",
+    toolCallId: "search-1",
+    toolName: "web_search",
+  },
+  {
+    type: "tool-input-available",
+    toolCallId: "search-1",
+    toolName: "web_search",
+    input: { query: "latest news" },
+  },
+  {
+    type: "tool-output-available",
+    toolCallId: "search-1",
+    output: JSON.stringify({ result: "ok" }),
+  },
+  { type: "finish-step" },
+  { type: "start-step" },
+  { type: "text-start", id: "t1" },
+  { type: "text-delta", id: "t1", delta: "Done." },
+  { type: "text-end", id: "t1" },
+  { type: "finish-step" },
+  { type: "finish" },
+];
+
+// `COMPACTION_TURN`'s chunk index of `tool-output-available` — the delay
+// applied *before* this chunk is what keeps the turn parked in the
+// "summarizing" phase long enough for `waitFor` to observe it (see below).
+const SUMMARIZING_HOLD_INDEX = COMPACTION_TURN.findIndex(
+  (c) => c.type === "tool-output-available",
+);
+
 describe("context compaction progress", () => {
   beforeEach(() => {
     resetCopilotChatRegistry();
     server.use(
       sessionHandler(),
-      // A small inter-chunk delay keeps the stream from resolving in a
-      // single microtask tick, so the transient "summarizing" phase is
-      // actually observable by `waitFor` before the turn settles.
+      // A uniform 15ms gap keeps the stream from resolving inside a single
+      // microtask tick, but the "summarizing" phase itself only spans the
+      // single gap between the `data-compaction` chunk and
+      // `tool-output-available` — at 15ms that's narrower than
+      // `waitFor`'s ~50ms poll interval, so the assertion below could miss
+      // it entirely depending on scheduling. Hold specifically at that
+      // gap for long enough to make the phase reliably observable.
       copilotStreamHandler({
         baseUrl: TEST_BACKEND_BASE_URL,
         sessionId: TEST_SESSION_ID,
         chunks: COMPACTION_TURN,
-        delayMsBetweenChunks: 15,
+        perChunkDelaysMs: COMPACTION_TURN.map((_, i) =>
+          i === SUMMARIZING_HOLD_INDEX ? 300 : 15,
+        ),
       }),
     );
   });
@@ -121,6 +195,12 @@ describe("context compaction progress", () => {
     await waitFor(() => {
       expect(screen.getByRole("progressbar")).toBeDefined();
       expect(screen.getByText("Condensing our conversation…")).toBeDefined();
+      // CompactionCard owns its own spinner/label — the generic
+      // ThinkingIndicator must not double up alongside it. The tool row
+      // (or, before it opens, the step-start marker) keeps `hasInflight`
+      // true throughout the compaction turn, so this holds from the very
+      // first chunk onward — not just once the bar is visible.
+      expect(screen.queryByText("Thinking...")).toBeNull();
     });
   });
 
@@ -143,5 +223,30 @@ describe("context compaction progress", () => {
       expect(screen.getByText("All caught up.")).toBeDefined();
     });
     expect(screen.queryByText(/Earlier messages were summarized/)).toBeNull();
+  });
+
+  it("keeps a settled compaction row out of a collapsed tool group when another tool call follows it", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: COMPACTION_THEN_TOOL_TURN,
+        delayMsBetweenChunks: 15,
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("search and summarise");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Condensed the conversation · 128K → 31K tokens/),
+      ).toBeDefined();
+    });
+    // If the compaction row had folded into a CollapsedToolGroup with the
+    // adjacent web_search call, the payoff copy above would be hidden
+    // behind a "N tool calls completed" toggle instead of standing alone.
+    expect(screen.queryByText(/tool calls/)).toBeNull();
   });
 });

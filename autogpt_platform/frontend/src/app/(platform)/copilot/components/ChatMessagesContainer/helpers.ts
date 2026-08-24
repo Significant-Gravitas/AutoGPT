@@ -54,6 +54,11 @@ const LEGACY_CUSTOM_TOOL_TYPES = new Set([
   "tool-search_feature_requests",
   "tool-create_feature_request",
   "tool-decompose_goal",
+  // Renders via CompactionCard, not the generic completed-tool grouping —
+  // excluding it here keeps a settled compaction row from folding into a
+  // collapsed "N tool calls" group next to an adjacent completed tool,
+  // which would bury its payoff copy.
+  "tool-context_compaction",
 ]);
 
 const REASONING_TOOL_TYPES = new Set([
