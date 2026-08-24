@@ -7,6 +7,10 @@ from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import is_transient_api_error
+from backend.copilot.model import ChatSession
+from backend.copilot.response_model import StreamCompactionProgress
+from backend.copilot.sdk.compaction import CompactionTracker
+from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -856,9 +860,6 @@ class TestEphemeralEventTypesConstant:
         loop, alongside the tool-row events that are already exempt.  Counting
         them would make a transient failure after a compaction unretryable.
         """
-        from backend.copilot.response_model import StreamCompactionProgress
-        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
-
         assert StreamCompactionProgress in _EPHEMERAL_EVENT_TYPES, (
             "StreamCompactionProgress must be in _EPHEMERAL_EVENT_TYPES — a "
             "cosmetic progress phase must not suppress the transient retry"
@@ -870,10 +871,6 @@ class TestEphemeralEventTypesConstant:
         Guards the class of bug where a new compaction event type is added to
         the stream but not exempted here.
         """
-        from backend.copilot.model import ChatSession
-        from backend.copilot.sdk.compaction import CompactionTracker
-        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
-
         tracker = CompactionTracker()
         session = ChatSession.new(user_id="test-user", dry_run=False)
         events = [
