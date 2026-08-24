@@ -140,6 +140,7 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
+from ..partner_context import build_partner_system_prompt_suffix
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -149,7 +150,12 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
+from ..tools import (
+    ToolGroup,
+    expert_tool_disabled_groups,
+    partner_tool_disabled_groups,
+    tool_names_in_groups,
+)
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -4339,6 +4345,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # prompt cache keeps the ~20KB guide warm for the whole session.
         # Empty string for non-builder sessions preserves cross-user caching.
         builder_session_suffix = await build_builder_system_prompt_suffix(session)
+        partner_session_suffix = build_partner_system_prompt_suffix(session)
         # Per-turn runtime flag (never persisted): lets the guide gate and
         # get_agent_building_guide skip redundant guide round-trips when the
         # guide is already in this turn's cached system prompt.
@@ -4350,6 +4357,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + delegation_supplement
             + graphiti_supplement
             + builder_session_suffix
+            + partner_session_suffix
             + expert_session_suffix
         )
 
@@ -4398,6 +4406,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             expert_tool_disabled_groups(
                 experts_enabled=experts_enabled, expert_id=session.expert_id
             )
+        )
+        disabled_tool_groups.extend(
+            partner_tool_disabled_groups(session.metadata.source_platform)
         )
 
         # Hide both permission-denied tools AND group-disabled tools at

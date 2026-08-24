@@ -1,0 +1,144 @@
+@if (loading()) {
+<main class="loading" aria-live="polite">Loading Forwarding Digital…</main>
+} @else if (!session()) {
+<main class="signin-shell">
+  <section class="signin-card" aria-labelledby="signin-heading">
+    <p class="eyebrow">Angular integration demo</p>
+    <h1 id="signin-heading">Forwarding Digital</h1>
+    <p>
+      Sign in through the partner application. AutoGPT never asks for a second
+      login.
+    </p>
+    @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+    }
+    <div class="user-list">
+      @for (user of directory(); track user.id) {
+      <button type="button" [disabled]="busy()" (click)="signIn(user.id)">
+        <span>{{ user.name }}</span>
+        <small>{{ user.email }}</small>
+      </button>
+      }
+    </div>
+  </section>
+</main>
+} @else { @let current = session()!;
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span aria-hidden="true">FD</span>
+      <div>
+        <strong>forwarding digital</strong>
+        <small>Angular partner host</small>
+      </div>
+    </div>
+    <nav aria-label="Primary navigation">
+      <a href="#control-tower" aria-current="page">Control tower</a>
+      <a href="#shipments">Shipments</a>
+      <a href="#documents">Documents</a>
+      <a href="#reports">Reports</a>
+    </nav>
+    <button type="button" class="signout" (click)="signOut()">Sign out</button>
+  </aside>
+
+  <main class="workspace" id="control-tower">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Control tower</p>
+        <h1>{{ current.activeOrganization.name }}</h1>
+      </div>
+      <label>
+        <span>Active organization</span>
+        <select
+          [disabled]="busy()"
+          [value]="current.activeOrganization.id"
+          (change)="switchOrganization($any($event.target).value)"
+        >
+          @for (organization of current.organizations; track organization.id) {
+          <option [value]="organization.id">{{ organization.name }}</option>
+          }
+        </select>
+      </label>
+    </header>
+
+    @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+    }
+
+    <section class="summary-grid" aria-label="Tenant summary">
+      <article>
+        <span>Open jobs</span>
+        <strong>
+          {{ current.activeOrganization.id === "fd-account-77" ? 148 : 61 }}
+        </strong>
+      </article>
+      <article>
+        <span>Exceptions</span>
+        <strong>
+          {{ current.activeOrganization.id === "fd-account-77" ? 7 : 2 }}
+        </strong>
+      </article>
+      <article>
+        <span>Role</span>
+        <strong>{{ current.activeOrganization.role }}</strong>
+      </article>
+      <article>
+        <span>MCP tools allowed</span>
+        <strong>{{ current.activeOrganization.tools.length }}</strong>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <div class="operations">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Live operations</p>
+            <h2>Priority movements</h2>
+          </div>
+          <code>{{ current.activeOrganization.id }}</code>
+        </div>
+        @for ( job of jobsFor(current.activeOrganization.id); track
+        job.reference ) {
+        <article class="job">
+          <div>
+            <strong>{{ job.reference }}</strong>
+            <span>{{ job.lane }}</span>
+          </div>
+          <em>{{ job.status }}</em>
+        </article>
+        }
+
+        <div class="sync-card">
+          <div>
+            <p class="eyebrow">Tenant mapping</p>
+            <h2>{{ current.sync ? "Synced to AutoGPT" : "Ready to sync" }}</h2>
+          </div>
+          <p>
+            The mapping is server-side and locks user, organization, and team
+            before chat starts.
+          </p>
+          <button type="button" [disabled]="busy()" (click)="syncTenant()">
+            {{ current.sync ? "Refresh mapping" : "Sync tenant" }}
+          </button>
+        </div>
+      </div>
+
+      <section class="assistant-panel" aria-label="Forwarding Assistant">
+        <p class="tenant-lock">
+          Assistant locked to
+          <strong>{{ current.activeOrganization.name }}</strong>
+        </p>
+        <autogpt-embedded-chat
+          api-base-url=""
+          brand-name="Forwarding Digital"
+          chat-title="Forwarding Assistant"
+          [attr.tenant-key]="
+              current.user.id + ':' + current.activeOrganization.id
+            "
+          [accessTokenProvider]="accessTokenProvider"
+        ></autogpt-embedded-chat>
+      </section>
+    </section>
+  </main>
+</div>
+}

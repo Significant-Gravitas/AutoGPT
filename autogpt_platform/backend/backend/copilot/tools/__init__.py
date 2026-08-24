@@ -30,6 +30,7 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
+from .forwarding_digital import ForwardingDigitalTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
@@ -125,6 +126,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delegate_to_expert": DelegateToExpertTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
+    "query_forwarding_digital": ForwardingDigitalTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
@@ -185,7 +187,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "delegation", "forwarding_digital"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -211,6 +215,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    "query_forwarding_digital": "forwarding_digital",
 }
 
 
@@ -227,6 +232,13 @@ def expert_tool_disabled_groups(
     if not experts_enabled:
         return ["experts", "expert_admin", "delegation"]
     return ["expert_admin"] if expert_id else ["experts"]
+
+
+def partner_tool_disabled_groups(source_platform: str | None) -> list[ToolGroup]:
+    """Hide partner-specific tools outside their authenticated session origin."""
+    if source_platform == "forwarding-digital":
+        return []
+    return ["forwarding_digital"]
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

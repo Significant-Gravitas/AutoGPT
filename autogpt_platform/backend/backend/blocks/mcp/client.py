@@ -54,11 +54,13 @@ class MCPClient:
         self,
         server_url: str,
         auth_token: str | None = None,
+        trusted_origins: list[str] | None = None,
     ):
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
         self.auth_token = auth_token
+        self.trusted_origins = list(trusted_origins or [])
         self._request_id = 0
         self._session_id: str | None = None
 
@@ -132,6 +134,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=True,
             extra_headers=headers,
+            trusted_origins=self.trusted_origins,
         )
         response = await requests.post(self.server_url, json=payload)
 
@@ -175,6 +178,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             extra_headers=headers,
+            trusted_origins=self.trusted_origins,
         )
         await requests.post(self.server_url, json=notification)
 
@@ -292,7 +296,11 @@ class MCPClient:
             return
         try:
             headers = self._build_headers()
-            requests = Requests(raise_for_status=False, extra_headers=headers)
+            requests = Requests(
+                raise_for_status=False,
+                extra_headers=headers,
+                trusted_origins=self.trusted_origins,
+            )
             await requests.delete(self.server_url)
         except Exception:
             pass

@@ -14,18 +14,23 @@ docker compose \
   up -d --build
 ```
 
-Open <http://127.0.0.1:8787>, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant. The local compose overlay uses AutoGPT's deterministic copilot test engine, so this path does not need an LLM key or spend tokens.
+Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant.
 
 Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
 
-The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published:
+Open <http://127.0.0.1:8789> for the separate Angular 22 host. It uses the publishable `@autogpt/embedded-chat-element` custom element and the same BFF, token exchange, tenant mapping, real Autopilot, and MCP path.
 
-| URL                     | Purpose                                        |
-| ----------------------- | ---------------------------------------------- |
-| `http://127.0.0.1:8787` | Mock Forwarding Digital host and BFF           |
-| `http://127.0.0.1:8788` | Multi-tenant Forwarding Digital host and BFF   |
-| `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange         |
-| `http://127.0.0.1:8006` | AutoGPT backend; exposed for local diagnostics |
+The compose overlay explicitly disables `CHAT_TEST_MODE`. This checkout selects a user-owned Codex credential through `PARTNER_EMBED_CODEX_CREDENTIAL_ID`; the credential must exist in AutoGPT's credential store for the mapped partner user. It is never committed to the repository. A production deployment would supply its managed model transport instead.
+
+The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published; the mock MCP service is Docker-internal:
+
+| URL                     | Purpose                                     |
+| ----------------------- | ------------------------------------------- |
+| `http://127.0.0.1:8787` | Minimal React Forwarding Digital host + BFF |
+| `http://127.0.0.1:8788` | Multi-tenant React host + BFF               |
+| `http://127.0.0.1:8789` | Multi-tenant Angular host + BFF             |
+| `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange      |
+| `http://127.0.0.1:8006` | AutoGPT backend diagnostics                 |
 
 Stop this isolated stack with the same files:
 
@@ -57,9 +62,12 @@ sequenceDiagram
     Partner-->>Browser: Access token response
     Browser->>Partner: Create/stream chat through same-origin proxy
     Partner->>API: Bearer token on restricted embed routes
-    API->>API: Lock user, organization, team, partner, and scope from claims
+    API->>API: Lock user, organization, team, partner, and external account
+    API->>API: Real Autopilot chooses tenant-safe partner tool
+    API->>MCP: 60-second HMAC service token derived from session tenancy
+    MCP->>MCP: Verify token and select tenant dataset server-side
+    MCP-->>API: Tenant-specific tool result
     API-->>Browser: AI SDK data stream
-    API-->>MCP: Future user-delegated tool calls
 ```
 
 The partner assertion contains `sub`, `account_id`, `email`, `name`, `account_name`, `roles`, `jti`, `iss`, `aud`, `iat`, and `exp`. AutoGPT verifies the signature through the configured JWKS, requires the configured issuer and `autogpt-partner-exchange` audience, and maps immutable partner subject/account IDs to deterministic internal IDs. Email is profile data, not an identity key.
@@ -69,12 +77,16 @@ The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `p
 ## Components
 
 - `packages/embed-react` builds the publishable `@autogpt/embedded-chat` React package. It owns chat state and AI SDK streaming but delegates token retrieval to the host.
+- `packages/embed-element` builds the publishable `@autogpt/embedded-chat-element` custom element. Angular and other frameworks assign an `accessTokenProvider` property and brand it through attributes and CSS variables.
 - `apps/mock-forwarding-digital` is the minimal representative freight dashboard and partner BFF.
 - `apps/mock-forwarding-digital-multitenant` owns partner users, organizations, role/tool memberships, sessions, and a durable mapping ledger. Switching tenant remounts chat, and its BFF checks every chat token against the active user and organization before proxying.
+- `apps/mock-forwarding-digital-angular` is a separate Angular 22 host using the custom-element package.
+- `apps/mock-forwarding-digital-mcp` is an internal Streamable HTTP MCP server with three tools and separate Northstar/Harbour datasets.
 - Each host uses an opaque, HTTP-only partner session cookie. The browser never receives a partner signing key and never signs into AutoGPT.
 - `frontend/src/app/api/embed/token` is the Better Auth-side assertion exchange and token broker.
-- `backend/api/features/partner_embed` is the restricted FastAPI façade plus deterministic JIT provisioning.
-- `docker-compose.poc.yml` enables the credential-free copilot test engine and joins the mock partner to the platform network.
+- `backend/api/features/partner_embed` is the restricted FastAPI façade, deterministic JIT provisioning, external-account session anchor, and user-owned model-credential selector.
+- `backend/copilot/tools/forwarding_digital.py` is the Autopilot-to-MCP bridge. The model selects only a report; the server derives the tenant.
+- `docker-compose.poc.yml` disables the dummy engine and joins the hosts and internal MCP service to the platform network.
 - `docker-compose.isolation.yml` avoids global container names, dedicated network collisions, and nonessential host ports.
 
 ## Consume the component
@@ -104,6 +116,31 @@ export function AssistantPanel() {
 }
 ```
 
+Angular and other framework hosts use the custom element:
+
+```ts
+import "@autogpt/embedded-chat-element";
+
+export class App {
+  readonly accessTokenProvider = async () => {
+    const response = await fetch("/api/autogpt/token", { method: "POST" });
+    if (!response.ok) throw new Error("Assistant authorization failed");
+    const body = (await response.json()) as { access_token: string };
+    return body.access_token;
+  };
+}
+```
+
+```html
+<autogpt-embedded-chat
+  api-base-url=""
+  brand-name="Forwarding Digital"
+  chat-title="Forwarding Assistant"
+  tenant-key="partner-user:partner-account"
+  [accessTokenProvider]="accessTokenProvider"
+></autogpt-embedded-chat>
+```
+
 The callback is invoked for session creation and every chat turn, so the host can refresh short-lived tokens without exposing partner signing keys to the browser. The `apiBaseURL` can be empty for a same-origin BFF or point at an explicitly allowed API origin.
 
 Build, test, or prepare a registry artifact independently:
@@ -114,6 +151,7 @@ corepack pnpm install
 corepack pnpm test
 corepack pnpm build
 corepack pnpm --filter @autogpt/embedded-chat pack
+corepack pnpm --filter @autogpt/embedded-chat-element pack
 ```
 
 No package is published by this PoC.
@@ -126,14 +164,14 @@ No package is published by this PoC.
 4. Add customer and user lifecycle hooks for suspension, account moves, offboarding, role changes, and audit export. JIT provisioning must not grant permissions beyond the partner assertion.
 5. Add per-partner/account/user rate limits, concurrency limits, budget enforcement, and metering in customer language such as completed runs or document pages.
 6. Add the scheduling façade only after its separate scopes, approval model, idempotency, run history, cancellation, and budget caps are defined. The PoC deliberately does not mint a schedule permission.
-7. Connect Forwarding Digital's MCP using user-delegated credentials. AutoGPT memory and model output are never an authority source; every tool call must still pass Forwarding Digital's role and tool permission checks.
+7. Replace the three-tool mock MCP with Forwarding Digital's 72-tool production server and a managed token-exchange trust relationship. Preserve the same rule: AutoGPT derives tenancy from the authenticated session, while Forwarding Digital remains authoritative for role and tool permissions on every call.
 8. Add production TLS, CSP and allowed-origin configuration, structured audit events, secret rotation, availability targets, data retention controls, and incident revocation.
 
 ## Deliberate PoC limitations
 
-- Two mock hosts represent one partner. The multi-tenant app seeds two customer accounts and two users but is not a full production forwarding system.
+- Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - No distributed `jti` replay store yet; assertions expire after 60 seconds.
-- Chat only. Scheduling and the real 72-tool Forwarding Digital MCP are architectural follow-ons.
-- AutoGPT's deterministic local test response stands in for a billable model call.
-- The component package is built and packable but is not published to npm.
+- Chat only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
+- Real Autopilot calls use a locally imported user-owned Codex credential. Production must use managed organization credentials, budgets, metering, and rotation.
+- Both component packages are built and packable but are not published to npm.

@@ -122,10 +122,12 @@ app.post<{ Params: { sessionID: string } }>(
   },
 );
 
-const staticRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  process.env.NODE_ENV === "production" ? "../dist" : "../../dist",
-);
+const staticRoot = process.env.STATIC_ROOT
+  ? resolve(process.env.STATIC_ROOT)
+  : resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      process.env.NODE_ENV === "production" ? "../dist" : "../../dist",
+    );
 if (existsSync(staticRoot)) {
   await app.register(fastifyStatic, { root: staticRoot });
 }

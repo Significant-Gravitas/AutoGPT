@@ -1,16 +1,21 @@
 services:
   rest_server:
     environment:
-      CHAT_TEST_MODE: "true"
+      CHAT_TEST_MODE: "false"
+      FORWARDING_DIGITAL_MCP_URL: http://mock-forwarding-digital-mcp:8790/mcp
+      FORWARDING_DIGITAL_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
+      PARTNER_EMBED_CODEX_CREDENTIAL_ID: 7d7ac4ed-4b90-49e4-8a9c-e1a3613f48a2
 
   copilot_executor:
     environment:
-      CHAT_TEST_MODE: "true"
+      CHAT_TEST_MODE: "false"
+      FORWARDING_DIGITAL_MCP_URL: http://mock-forwarding-digital-mcp:8790/mcp
+      FORWARDING_DIGITAL_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
 
   frontend:
     environment:
       PARTNER_EMBED_CONFIGS: >-
-        [{"partnerID":"forwarding-digital","issuer":"http://localhost:8787","jwksURL":"http://mock-forwarding-digital:8787/.well-known/jwks.json","audience":"autogpt-partner-exchange"},{"partnerID":"forwarding-digital","issuer":"http://localhost:8788","jwksURL":"http://mock-forwarding-digital-multitenant:8788/.well-known/jwks.json","audience":"autogpt-partner-exchange"}]
+        [{"partnerID":"forwarding-digital","issuer":"http://localhost:8787","jwksURL":"http://mock-forwarding-digital:8787/.well-known/jwks.json","audience":"autogpt-partner-exchange"},{"partnerID":"forwarding-digital","issuer":"http://localhost:8788","jwksURL":"http://mock-forwarding-digital-multitenant:8788/.well-known/jwks.json","audience":"autogpt-partner-exchange"},{"partnerID":"forwarding-digital","issuer":"http://localhost:8789","jwksURL":"http://mock-forwarding-digital-angular:8789/.well-known/jwks.json","audience":"autogpt-partner-exchange"}]
 
   mock-forwarding-digital:
     build:
@@ -60,5 +65,51 @@ services:
     networks:
       - app-network
 
+  mock-forwarding-digital-angular:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    command:
+      - pnpm
+      - --filter
+      - "@autogpt/mock-forwarding-digital-multitenant"
+      - start
+    depends_on:
+      frontend:
+        condition: service_started
+      rest_server:
+        condition: service_started
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8789"
+      PARTNER_ORIGIN: http://localhost:8789
+      AUTOGPT_FRONTEND_URL: http://frontend:3000
+      AUTOGPT_BACKEND_URL: http://rest_server:8006
+      DATABASE_PATH: /data/forwarding-digital-angular.sqlite
+      STATIC_ROOT: /app/apps/mock-forwarding-digital-angular/dist/forwarding-digital-angular/browser
+    ports:
+      - "127.0.0.1:8789:8789"
+    volumes:
+      - forwarding-digital-angular-data:/data
+    networks:
+      - app-network
+
+  mock-forwarding-digital-mcp:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    command:
+      - pnpm
+      - --filter
+      - "@autogpt/mock-forwarding-digital-mcp"
+      - start
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8790"
+      PARTNER_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
+    networks:
+      - app-network
+
 volumes:
+  forwarding-digital-angular-data:
   forwarding-digital-multitenant-data:

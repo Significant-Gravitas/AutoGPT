@@ -70,6 +70,10 @@ def test_provision_route_returns_only_internal_mapping(mocker):
 
 
 def test_create_session_uses_token_locked_tenancy(mocker):
+    resolve_route = mocker.patch(
+        "backend.api.features.partner_embed.routes.resolve_embed_llm_route",
+        return_value=("codex", "credential-1"),
+    )
     create = mocker.patch(
         "backend.api.features.partner_embed.routes.create_chat_session",
         return_value=SimpleNamespace(
@@ -90,8 +94,12 @@ def test_create_session_uses_token_locked_tenancy(mocker):
         "organization_id": PRINCIPAL.organization_id,
         "team_id": PRINCIPAL.team_id,
         "source_platform": PRINCIPAL.partner_id,
+        "external_account_id": PRINCIPAL.external_account_id,
+        "llm_auth_provider": "codex",
+        "llm_credential_id": "credential-1",
     }
     assert create.await_args.args == (PRINCIPAL.user_id,)
+    resolve_route.assert_awaited_once_with(PRINCIPAL.user_id)
 
 
 def test_stream_rejects_a_session_from_another_customer_account(mocker):
@@ -99,7 +107,32 @@ def test_stream_rejects_a_session_from_another_customer_account(mocker):
         "backend.api.features.partner_embed.routes.get_chat_session_metadata",
         return_value=SimpleNamespace(
             organization_id="another-org",
-            metadata=SimpleNamespace(source_platform=PRINCIPAL.partner_id),
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id=PRINCIPAL.external_account_id,
+            ),
+        ),
+    )
+    stream = mocker.patch("backend.api.features.partner_embed.routes.stream_chat_post")
+
+    response = client.post(
+        "/api/embed/v1/sessions/session-1/stream",
+        json={"message": "Summarize today's shipments"},
+    )
+
+    assert response.status_code == 404
+    stream.assert_not_awaited()
+
+
+def test_stream_rejects_a_session_from_another_external_account(mocker):
+    mocker.patch(
+        "backend.api.features.partner_embed.routes.get_chat_session_metadata",
+        return_value=SimpleNamespace(
+            organization_id=PRINCIPAL.organization_id,
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id="another-account",
+            ),
         ),
     )
     stream = mocker.patch("backend.api.features.partner_embed.routes.stream_chat_post")

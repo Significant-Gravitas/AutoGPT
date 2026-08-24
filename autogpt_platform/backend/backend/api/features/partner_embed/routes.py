@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.api.features.chat.routes import StreamChatRequest, stream_chat_post
 from backend.api.features.partner_embed.auth import EmbedPrincipal, require_embed_scope
+from backend.api.features.partner_embed.llm_route import resolve_embed_llm_route
 from backend.api.features.partner_embed.models import (
     CreateEmbedSessionResponse,
     EmbedTurnRequest,
@@ -49,12 +50,18 @@ async def provision_partner(
 async def create_embed_session(
     principal: EmbedChatPrincipal,
 ) -> CreateEmbedSessionResponse:
+    llm_auth_provider, llm_credential_id = await resolve_embed_llm_route(
+        principal.user_id
+    )
     session = await create_chat_session(
         principal.user_id,
         dry_run=False,
         organization_id=principal.organization_id,
         team_id=principal.team_id,
         source_platform=principal.partner_id,
+        external_account_id=principal.external_account_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
     )
     return CreateEmbedSessionResponse(
         id=session.session_id,
@@ -103,6 +110,7 @@ async def _require_embed_session(
         session is None
         or session.organization_id != principal.organization_id
         or session.metadata.source_platform != principal.partner_id
+        or session.metadata.external_account_id != principal.external_account_id
     ):
         raise HTTPException(status_code=404, detail="Session not found")
     return session

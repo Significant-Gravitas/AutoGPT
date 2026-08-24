@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "pnpm --filter @autogpt/embedded-chat build && pnpm --filter @autogpt/mock-forwarding-digital build && pnpm --filter @autogpt/mock-forwarding-digital-multitenant build",
+    "build": "pnpm --filter @autogpt/embedded-chat build && pnpm --filter @autogpt/embedded-chat-element build && pnpm --filter @autogpt/mock-forwarding-digital build && pnpm --filter @autogpt/mock-forwarding-digital-multitenant build && pnpm --filter @autogpt/mock-forwarding-digital-mcp build && pnpm --filter @autogpt/mock-forwarding-digital-angular build",
     "dev": "pnpm --filter @autogpt/mock-forwarding-digital dev",
     "format": "prettier --write .",
-    "test": "pnpm --filter @autogpt/embedded-chat test && pnpm --filter @autogpt/mock-forwarding-digital test && pnpm --filter @autogpt/mock-forwarding-digital-multitenant test"
+    "test": "pnpm --filter @autogpt/embedded-chat test && pnpm --filter @autogpt/embedded-chat-element test && pnpm --filter @autogpt/mock-forwarding-digital test && pnpm --filter @autogpt/mock-forwarding-digital-multitenant test && pnpm --filter @autogpt/mock-forwarding-digital-mcp test && pnpm --filter @autogpt/mock-forwarding-digital-angular test"
   },
   "packageManager": "pnpm@10.20.0",
   "devDependencies": {
