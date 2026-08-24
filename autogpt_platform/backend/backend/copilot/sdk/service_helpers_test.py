@@ -23,6 +23,7 @@ from .service import (
     _RETRY_TARGET_TOKENS,
     ReducedContext,
     _compaction_target_tokens,
+    _expect_pre_query_compaction,
     _is_prompt_too_long,
     _is_tool_only_message,
     _iter_sdk_messages,
@@ -1709,3 +1710,145 @@ class TestWillCompact:
             _msg("user", "hi"),
         ]
         assert _will_compact(rows, "gpt-4o") is False
+
+
+def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
+    return ChatMessage(role=role, content=content, sequence=sequence)
+
+
+def _big_history(n: int = 10) -> list[ChatMessage]:
+    """Alternating user/assistant rows whose total comfortably exceeds the
+    gpt-4o compression target (see TestWillCompact)."""
+    return [
+        _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, i)
+        for i in range(n)
+    ]
+
+
+class TestExpectPreQueryCompaction:
+    def test_steady_state_resume_never_predicts(self):
+        # The transcript covers the full history — _build_query_message's
+        # Scenario A compresses nothing, so the pre-check must stay False
+        # even though the cumulative history exceeds the target.
+        messages = _big_history()
+        assert _will_compact(messages, "gpt-4o") is True  # the old false positive
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=len(messages) - 1,
+                session_msg_ceiling=len(messages),
+            )
+            is False
+        )
+
+    def test_no_resume_predicts_over_full_history(self):
+        messages = _big_history()
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=False,
+                transcript_msg_count=0,
+                session_msg_ceiling=len(messages),
+            )
+            is True
+        )
+
+    def test_resume_with_zero_watermark_never_predicts(self):
+        messages = _big_history()
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=0,
+                session_msg_ceiling=len(messages),
+            )
+            is False
+        )
+
+    def test_resume_with_a_big_stale_gap_predicts(self):
+        # Watermark covers rows 0-1 (last covered row is the assistant at
+        # index 1); the remaining gap is large enough to compress.
+        messages = _big_history()
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=2,
+                session_msg_ceiling=len(messages),
+            )
+            is True
+        )
+
+    def test_resume_with_a_small_gap_never_predicts(self):
+        messages = [
+            _seq_msg("user", "word " * 30_000, 0),
+            _seq_msg("assistant", "word " * 30_000, 1),
+            _seq_msg("user", "hi", 2),
+            _seq_msg("assistant", "ok", 3),
+            _seq_msg("user", "thanks", 4),
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=2,
+                session_msg_ceiling=len(messages),
+            )
+            is False
+        )
+
+    def test_resume_misaligned_watermark_never_predicts(self):
+        # prior[transcript_msg_count - 1] is a user row — _build_query_message
+        # skips the gap entirely, so no compaction row should open.
+        messages = _big_history()
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=1,
+                session_msg_ceiling=len(messages),
+            )
+            is False
+        )
+
+    def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
+        # The windowed view starts above absolute sequence 0, so the
+        # sequence-based gap path runs; rows at/after the watermark form
+        # the compressible slice.
+        messages = [
+            _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
+            for i in range(10)
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=102,
+                session_msg_ceiling=len(messages),
+            )
+            is True
+        )
+
+    def test_cap_engaged_with_no_post_watermark_rows_never_predicts(self):
+        messages = [
+            _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
+            for i in range(10)
+        ]
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=200,
+                session_msg_ceiling=len(messages),
+            )
+            is False
+        )

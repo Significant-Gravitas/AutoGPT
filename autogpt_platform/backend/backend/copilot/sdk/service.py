@@ -2627,6 +2627,57 @@ def _will_compact(messages: list[ChatMessage], model: str) -> bool:
     return estimated + _COMPRESSION_RESERVE > get_compression_target(model)
 
 
+def _expect_pre_query_compaction(
+    messages: list[ChatMessage],
+    model: str,
+    *,
+    use_resume: bool,
+    transcript_msg_count: int,
+    session_msg_ceiling: int,
+) -> bool:
+    """Predict whether ``_build_query_message`` will compress on this turn.
+
+    Mirrors ``_build_query_message``'s branch selection so the compaction
+    row only opens when the branch actually taken feeds ``_compress_messages``
+    a slice that would compress.  On the steady-state resume path the
+    transcript covers the full history and nothing is compressed — running
+    ``_will_compact`` over the whole session there returns a false positive
+    on EVERY turn once cumulative history exceeds the compression target,
+    opening a row that is immediately aborted.
+
+    False negatives are safe: ``emit_pre_query_end`` emits a self-contained
+    row when compression happens without a prediction.  That covers slices
+    this estimator cannot see, like cap-engaged hole rows fetched from the DB.
+    """
+    if not use_resume:
+        return _will_compact(messages, model)
+    if transcript_msg_count <= 0:
+        # ``use_resume`` with no covered rows compresses nothing.
+        return False
+    prior = [
+        m for m in messages[: max(0, session_msg_ceiling - 1)] if m.role != "reasoning"
+    ]
+    cap_engaged = transcript_msg_count >= len(prior) or (
+        bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+    )
+    if cap_engaged and prior and prior[0].sequence is not None:
+        window_gap = [
+            m
+            for m in prior
+            if m.sequence is not None and m.sequence >= transcript_msg_count
+        ]
+        return _will_compact(window_gap, model)
+    if transcript_msg_count < session_msg_ceiling - 1:
+        if transcript_msg_count > len(prior):
+            return False
+        if prior[transcript_msg_count - 1].role != "assistant":
+            # Misaligned watermark — _build_query_message skips the gap.
+            return False
+        return _will_compact(prior[transcript_msg_count:], model)
+    # Scenario A: --resume covers the full context; nothing is compressed.
+    return False
+
+
 async def _compress_messages(
     messages: list[ChatMessage],
     target_tokens: int | None = None,
@@ -4860,7 +4911,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
 
         model_for_estimate = sdk_model or config.thinking_standard_model
-        expect_compaction = _will_compact(session.messages, model_for_estimate)
+        expect_compaction = _expect_pre_query_compaction(
+            session.messages,
+            model_for_estimate,
+            use_resume=use_resume,
+            transcript_msg_count=transcript_msg_count,
+            session_msg_ceiling=_pre_drain_msg_count,
+        )
         if expect_compaction:
             for ev in compaction.emit_pre_query_start():
                 yield ev
