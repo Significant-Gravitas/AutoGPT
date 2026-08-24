@@ -8,13 +8,17 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 
+import { useGetV2ListProviderModelTiers } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+
+import { chatgptModelsSentence } from "./helpers";
 
 interface Point {
   icon: IconSvgElement;
   title: string;
   body: string;
+  withModels?: (models: string) => string;
 }
 
 /**
@@ -22,9 +26,13 @@ interface Point {
  * that implies get answered on screen before the OAuth window opens rather
  * than after the user has committed.
  *
- * Deliberately claims nothing about specific models or about pausing and
- * resuming a run at a provider limit: the model catalog is server-owned, and
- * same-chat recovery is not built yet. Both land with their own work.
+ * Says nothing about pausing and resuming a run at a provider limit, because
+ * same-chat recovery is not built yet.
+ *
+ * It does name the models, from the catalog rather than from a literal here.
+ * The connections list cannot answer that at this point -- the user has not
+ * made this connection, so it is absent from their offers -- which is what
+ * the provider-tiers endpoint exists for.
  */
 const POINTS: Point[] = [
   {
@@ -41,6 +49,8 @@ const POINTS: Point[] = [
     icon: SparklesIcon,
     title: "What you get.",
     body: "The models your ChatGPT plan already includes, at no extra cost from AutoGPT.",
+    /** Replaced with the named models when the catalog can supply them. */
+    withModels: (models: string) => `${models}, at no extra cost from AutoGPT.`,
   },
   {
     icon: ShieldKeyIcon,
@@ -50,6 +60,12 @@ const POINTS: Point[] = [
 ];
 
 export function ChatGPTConnectExplainer() {
+  const { data } = useGetV2ListProviderModelTiers({
+    query: { refetchOnWindowFocus: false },
+  });
+  const models =
+    data?.status === 200 ? chatgptModelsSentence(data.data.providers) : "";
+
   return (
     <div className="divide-y divide-[#DADADC] rounded-2xl border border-[#DADADC] bg-[#FBFBFC]">
       {POINTS.map((point) => (
@@ -62,7 +78,7 @@ export function ChatGPTConnectExplainer() {
           </span>
           <Text variant="small" className="text-[#505057]">
             <span className="font-medium text-black">{point.title}</span>{" "}
-            {point.body}
+            {models && point.withModels ? point.withModels(models) : point.body}
           </Text>
         </div>
       ))}

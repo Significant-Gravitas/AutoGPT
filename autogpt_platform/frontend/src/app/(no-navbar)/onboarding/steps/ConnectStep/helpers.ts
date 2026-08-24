@@ -1,4 +1,5 @@
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
 
 /**
  * Whether the user has already linked a subscription of their own.
@@ -19,16 +20,21 @@ export function hasLinkedSubscription(
 /**
  * "5.6 Terra (Balanced) and 5.6 Sol (Advanced)", from the catalog.
  *
+ * Read from the provider-tiers endpoint rather than from the user's
+ * connections, because the whole point of this screen is that the user does
+ * not have this connection yet -- so it is absent from the offers list, and
+ * the sentence would always come out empty.
+ *
  * Empty when the server named nothing, so the sentence that would have
  * carried it is dropped rather than rendered half-written. Never hardcoded
  * here: which model a tier resolves to is the server's to say, and this
  * screen is the one making the promise.
  */
 export function linkedModelsSentence(
-  offers: AIConnectionOffer[] | undefined,
+  providers: ProviderTiers[] | undefined,
 ): string {
-  const chatgpt = (offers ?? []).find(
-    (offer) => offer.auth_method === "chatgpt_oauth",
+  const chatgpt = (providers ?? []).find(
+    (provider) => provider.provider_family === "openai",
   );
   const named = (chatgpt?.tiers ?? [])
     .filter((tier) => tier.display_model)
