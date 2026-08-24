@@ -9,6 +9,7 @@ persistence, and the ``CompactionTracker`` state machine.
 """
 
 import asyncio
+import json
 import uuid
 from collections import Counter, deque
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
     StreamBaseResponse,
+    StreamCompactionProgress,
     StreamFinishStep,
     StreamStartStep,
     StreamToolInputAvailable,
@@ -37,6 +39,59 @@ class CompactionResult:
     events: list[StreamBaseResponse] = field(default_factory=list)
     just_ended: bool = False
     transcript_path: str = ""
+
+
+@dataclass(frozen=True)
+class CompactionStats:
+    """Token and message counts for one compaction cycle.
+
+    Every field is optional: the SDK-internal path learns the counts from
+    the CLI transcript (sometimes not at all), while the pre-query path
+    reads them straight off ``CompressResult``.
+    """
+
+    tokens_before: int | None = None
+    tokens_after: int | None = None
+    messages_before: int | None = None
+    messages_after: int | None = None
+
+
+_STATS_WIRE_KEYS = (
+    ("tokens_before", "tokensBefore"),
+    ("tokens_after", "tokensAfter"),
+    ("messages_before", "messagesBefore"),
+    ("messages_after", "messagesAfter"),
+)
+
+
+def build_compaction_output(stats: "CompactionStats | None") -> str:
+    """Encode the tool row's output as JSON, always carrying ``summary``.
+
+    ``summary`` repeats ``COMPACTION_DONE_MSG`` verbatim so a client that
+    cannot parse the JSON — or a session persisted before this change —
+    still has a human-readable sentence to fall back on.
+    """
+    payload: dict[str, Any] = {"summary": COMPACTION_DONE_MSG}
+    if stats is not None:
+        for attr, wire in _STATS_WIRE_KEYS:
+            value = getattr(stats, attr)
+            if value is not None:
+                payload[wire] = value
+    return json.dumps(payload)
+
+
+def _progress(
+    phase: str, stats: "CompactionStats | None" = None
+) -> StreamCompactionProgress:
+    if stats is None:
+        return StreamCompactionProgress(phase=phase)
+    return StreamCompactionProgress(
+        phase=phase,
+        tokensBefore=stats.tokens_before,
+        tokensAfter=stats.tokens_after,
+        messagesBefore=stats.messages_before,
+        messagesAfter=stats.messages_after,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -91,8 +146,9 @@ def emit_compaction(session: ChatSession) -> list[StreamBaseResponse]:
     legacy non-SDK streaming path in ``service.py``).
     """
     tc_id = _new_tool_call_id()
-    evts = compaction_events(COMPACTION_DONE_MSG, tool_call_id=tc_id)
-    _persist(session, tc_id, COMPACTION_DONE_MSG)
+    output = build_compaction_output(None)
+    evts = compaction_events(output, tool_call_id=tc_id)
+    _persist(session, tc_id, output)
     return evts
 
 
@@ -183,7 +239,9 @@ class CompactionTracker:
     Two compaction paths:
 
     1. **Pre-query** — history compressed before the SDK query starts.
-       Call :meth:`emit_pre_query` to yield a self-contained tool call.
+       Call :meth:`emit_pre_query_start` to open the row before the work
+       runs, then :meth:`emit_pre_query_end` (or :meth:`abort_pre_query`
+       if the prediction was wrong) to close it.
 
     2. **SDK-internal** — ``PreCompact`` hook fires mid-stream.
        Call :meth:`emit_start_if_ready` on heartbeat ticks and
@@ -197,6 +255,7 @@ class CompactionTracker:
         self._pending_transcript_paths: deque[str] = deque()
         self._attempted_sources: list[str] = []
         self._completed_sources: list[str] = []
+        self._pre_query_tool_call_id: str = ""
 
     @property
     def attempt_count(self) -> int:
@@ -244,11 +303,59 @@ class CompactionTracker:
     # Pre-query compaction
     # ------------------------------------------------------------------
 
-    def emit_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
-        """Emit + persist a self-contained compaction tool call."""
+    def emit_pre_query_start(self) -> list[StreamBaseResponse]:
+        """Open a compaction row BEFORE the compression work runs.
+
+        The row stays open — no output event — until
+        :meth:`emit_pre_query_end` or :meth:`abort_pre_query` closes it,
+        so the progress bar spans the real work instead of appearing
+        after it.
+
+        Deliberately does NOT record an attempt: the caller opens this row
+        on a *prediction* (``_will_compact``), and a prediction that turns
+        out wrong is retired by :meth:`abort_pre_query`.  Counting it here
+        would inflate ``compaction_attempt_count`` with compactions that
+        never ran.  :meth:`emit_pre_query_end` records the attempt.
+        """
+        self._pre_query_tool_call_id = _new_tool_call_id()
+        return [
+            *_start_events(self._pre_query_tool_call_id),
+            _progress("summarizing"),
+        ]
+
+    def emit_pre_query_end(
+        self, session: ChatSession, stats: "CompactionStats | None"
+    ) -> list[StreamBaseResponse]:
+        """Close the pre-query row and hand off to the rebuild phase."""
+        output = build_compaction_output(stats)
+        tc_id = self._pre_query_tool_call_id
+        if tc_id:
+            events: list[StreamBaseResponse] = list(_end_events(tc_id, output))
+        else:
+            # No open row (the pre-check missed) — emit a self-contained one.
+            tc_id = _new_tool_call_id()
+            events = list(_start_events(tc_id) + _end_events(tc_id, output))
+        self._pre_query_tool_call_id = ""
         self._attempted_sources.append("pre_query")
         self._completed_sources.append("pre_query")
-        return emit_compaction(session)
+        _persist(session, tc_id, output)
+        events.append(_progress("rebuilding", stats))
+        return events
+
+    def abort_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
+        """Close an optimistically-opened row when no compaction happened.
+
+        The pre-check in ``stream_chat_completion_sdk`` predicts compaction
+        from a token estimate; when the estimate is wrong the row must be
+        retired without persisting anything, so a refresh doesn't replay a
+        compaction that never occurred.
+        """
+        _ = session
+        tc_id = self._pre_query_tool_call_id
+        if not tc_id:
+            return []
+        self._pre_query_tool_call_id = ""
+        return list(_end_events(tc_id, ""))
 
     # ------------------------------------------------------------------
     # SDK-internal compaction
@@ -267,7 +374,7 @@ class CompactionTracker:
             self._start_emitted = True
             self._tool_call_id = _new_tool_call_id()
             self._active_transcript_path = self._pending_transcript_paths.popleft()
-            return _start_events(self._tool_call_id)
+            return [*_start_events(self._tool_call_id), _progress("summarizing")]
         return []
 
     async def emit_end_if_ready(self, session: ChatSession) -> CompactionResult:
@@ -283,17 +390,17 @@ class CompactionTracker:
         if not self._start_emitted and not self._pending_transcript_paths:
             return CompactionResult()
 
+        output = build_compaction_output(None)
+
         if self._start_emitted:
             # Close the open spinner
-            done_events = _end_events(self._tool_call_id, COMPACTION_DONE_MSG)
+            done_events = _end_events(self._tool_call_id, output)
             persist_id = self._tool_call_id
             transcript_path = self._active_transcript_path
         else:
             # PreCompact fired but start never emitted — self-contained
             persist_id = _new_tool_call_id()
-            done_events = compaction_events(
-                COMPACTION_DONE_MSG, tool_call_id=persist_id
-            )
+            done_events = compaction_events(output, tool_call_id=persist_id)
             transcript_path = (
                 self._pending_transcript_paths.popleft()
                 if self._pending_transcript_paths
@@ -304,7 +411,8 @@ class CompactionTracker:
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._completed_sources.append("sdk_internal")
-        _persist(session, persist_id, COMPACTION_DONE_MSG)
+        _persist(session, persist_id, output)
+        done_events.append(_progress("rebuilding"))
         return CompactionResult(
             events=done_events, just_ended=True, transcript_path=transcript_path
         )

@@ -1,11 +1,14 @@
 """Tests for sdk/compaction.py — event builders, filtering, persistence, and
 CompactionTracker state machine."""
 
+import json as stdlib_json
+
 import pytest
 
 from backend.copilot.constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
+    StreamCompactionProgress,
     StreamFinishStep,
     StreamStartStep,
     StreamToolInputAvailable,
@@ -13,7 +16,9 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import (
+    CompactionStats,
     CompactionTracker,
+    build_compaction_output,
     compaction_events,
     emit_compaction,
     filter_compaction_messages,
@@ -82,7 +87,10 @@ class TestEmitCompaction:
             == COMPACTION_TOOL_NAME
         )
         assert session.messages[1].role == "tool"
-        assert session.messages[1].content == COMPACTION_DONE_MSG
+        assert (
+            stdlib_json.loads(session.messages[1].content or "")["summary"]
+            == COMPACTION_DONE_MSG
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -176,16 +184,18 @@ class TestCompactionTracker:
         tracker = CompactionTracker()
         tracker.on_compact()
         evts = tracker.emit_start_if_ready()
-        assert len(evts) == 3
+        assert len(evts) == 4
         assert isinstance(evts[0], StreamStartStep)
         assert isinstance(evts[1], StreamToolInputStart)
         assert isinstance(evts[2], StreamToolInputAvailable)
+        assert isinstance(evts[3], StreamCompactionProgress)
+        assert evts[3].phase == "summarizing"
 
     def test_emit_start_only_once(self):
         tracker = CompactionTracker()
         tracker.on_compact()
         evts1 = tracker.emit_start_if_ready()
-        assert len(evts1) == 3
+        assert len(evts1) == 4
         # Second call should return empty
         evts2 = tracker.emit_start_if_ready()
         assert evts2 == []
@@ -198,9 +208,11 @@ class TestCompactionTracker:
         tracker.emit_start_if_ready()
         result = await tracker.emit_end_if_ready(session)
         assert result.just_ended is True
-        assert len(result.events) == 2
+        assert len(result.events) == 3
         assert isinstance(result.events[0], StreamToolOutputAvailable)
         assert isinstance(result.events[1], StreamFinishStep)
+        assert isinstance(result.events[2], StreamCompactionProgress)
+        assert result.events[2].phase == "rebuilding"
         # Should persist
         assert len(session.messages) == 2
 
@@ -214,8 +226,9 @@ class TestCompactionTracker:
         # Don't call emit_start_if_ready
         result = await tracker.emit_end_if_ready(session)
         assert result.just_ended is True
-        assert len(result.events) == 5  # Full self-contained event
+        assert len(result.events) == 6  # Full self-contained event + rebuilding phase
         assert isinstance(result.events[0], StreamStartStep)
+        assert isinstance(result.events[-1], StreamCompactionProgress)
         assert len(session.messages) == 2
 
     @pytest.mark.asyncio
@@ -239,11 +252,13 @@ class TestCompactionTracker:
         assert result.just_ended is False
         assert result.events == []
 
-    def test_emit_pre_query(self):
+    def test_emit_pre_query_start_then_end(self):
         tracker = CompactionTracker()
         session = _make_session()
-        evts = tracker.emit_pre_query(session)
-        assert len(evts) == 5
+        start_evts = tracker.emit_pre_query_start()
+        end_evts = tracker.emit_pre_query_end(session, None)
+        assert len(start_evts) == 4
+        assert len(end_evts) == 3
         assert len(session.messages) == 2
         assert tracker.attempt_count == 1
         assert tracker.completed_count == 1
@@ -271,10 +286,11 @@ class TestCompactionTracker:
         """SDK auto-compaction can still fire after a pre-query compaction."""
         tracker = CompactionTracker()
         session = _make_session()
-        tracker.emit_pre_query(session)
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(session, None)
         tracker.on_compact()
         evts = tracker.emit_start_if_ready()
-        assert len(evts) == 3
+        assert len(evts) == 4
         result = await tracker.emit_end_if_ready(session)
         assert result.just_ended is True
         assert tracker.completed_count == 2
@@ -284,11 +300,12 @@ class TestCompactionTracker:
         """After reset_for_query, compaction can fire again."""
         tracker = CompactionTracker()
         session = _make_session()
-        tracker.emit_pre_query(session)
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(session, None)
         tracker.reset_for_query()
         tracker.on_compact()
         evts = tracker.emit_start_if_ready()
-        assert len(evts) == 3  # Start events emitted
+        assert len(evts) == 4  # Start events emitted
 
     @pytest.mark.asyncio
     async def test_tool_call_id_consistency(self):
@@ -319,13 +336,13 @@ class TestCompactionTracker:
         tracker.emit_start_if_ready()
         result1 = await tracker.emit_end_if_ready(session)
         assert result1.just_ended is True
-        assert len(result1.events) == 2
+        assert len(result1.events) == 3
         assert result1.transcript_path == "/path/1"
 
         # Second compaction cycle in the same query
         tracker.on_compact("/path/2")
         start_evts = tracker.emit_start_if_ready()
-        assert len(start_evts) == 3
+        assert len(start_evts) == 4
         result2 = await tracker.emit_end_if_ready(session)
         assert result2.just_ended is True
         assert result2.transcript_path == "/path/2"
@@ -350,7 +367,7 @@ class TestCompactionTracker:
         # Second compaction in new query
         tracker.on_compact("/path/2")
         start_evts = tracker.emit_start_if_ready()
-        assert len(start_evts) == 3
+        assert len(start_evts) == 4
         result2 = await tracker.emit_end_if_ready(session)
         assert result2.just_ended is True
         assert result2.transcript_path == "/path/2"
@@ -413,7 +430,8 @@ class TestCompactionTracker:
         tracker = CompactionTracker()
         session = _make_session()
 
-        tracker.emit_pre_query(session)
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(session, None)
         tracker.on_compact("/path/1")
         tracker.on_compact("/path/2")
 
@@ -428,7 +446,8 @@ class TestCompactionTracker:
         tracker = CompactionTracker()
         session = _make_session()
 
-        tracker.emit_pre_query(session)
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(session, None)
         tracker.on_compact("/path/1")
         tracker.on_compact("/path/2")
 
@@ -438,3 +457,138 @@ class TestCompactionTracker:
             "completed_count": 1,
             "completed_sources": "pre_query",
         }
+
+
+# ---------------------------------------------------------------------------
+# build_compaction_output
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCompactionOutput:
+    def test_encodes_stats_as_json_with_summary(self):
+        out = build_compaction_output(
+            CompactionStats(
+                tokens_before=128_000,
+                tokens_after=31_000,
+                messages_before=412,
+                messages_after=38,
+            )
+        )
+        parsed = stdlib_json.loads(out)
+        assert parsed["summary"] == COMPACTION_DONE_MSG
+        assert parsed["tokensBefore"] == 128_000
+        assert parsed["tokensAfter"] == 31_000
+        assert parsed["messagesBefore"] == 412
+        assert parsed["messagesAfter"] == 38
+
+    def test_omits_unknown_fields(self):
+        parsed = stdlib_json.loads(build_compaction_output(CompactionStats()))
+        assert parsed == {"summary": COMPACTION_DONE_MSG}
+
+    def test_none_stats_still_carries_summary(self):
+        parsed = stdlib_json.loads(build_compaction_output(None))
+        assert parsed == {"summary": COMPACTION_DONE_MSG}
+
+
+# ---------------------------------------------------------------------------
+# Pre-query split emitters
+# ---------------------------------------------------------------------------
+
+
+class TestPreQueryEmitters:
+    def test_start_emits_open_row_and_summarizing_phase(self):
+        tracker = CompactionTracker()
+        evts = tracker.emit_pre_query_start()
+        assert isinstance(evts[0], StreamStartStep)
+        assert isinstance(evts[1], StreamToolInputStart)
+        assert isinstance(evts[2], StreamToolInputAvailable)
+        assert isinstance(evts[3], StreamCompactionProgress)
+        assert evts[3].phase == "summarizing"
+        assert not any(isinstance(e, StreamToolOutputAvailable) for e in evts)
+
+    def test_end_closes_the_same_tool_call_id(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        start = tracker.emit_pre_query_start()
+        tool_start = start[1]
+        assert isinstance(tool_start, StreamToolInputStart)
+
+        end = tracker.emit_pre_query_end(session, CompactionStats(tokens_before=9))
+        output_evt = end[0]
+        assert isinstance(output_evt, StreamToolOutputAvailable)
+        assert output_evt.toolCallId == tool_start.toolCallId
+        assert isinstance(end[1], StreamFinishStep)
+        assert isinstance(end[2], StreamCompactionProgress)
+        assert end[2].phase == "rebuilding"
+
+    def test_end_persists_json_output_to_session(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        tracker.emit_pre_query_end(
+            session, CompactionStats(tokens_before=100, tokens_after=10)
+        )
+        assert len(session.messages) == 2
+        assert session.messages[1].role == "tool"
+        parsed = stdlib_json.loads(session.messages[1].content or "")
+        assert parsed["tokensBefore"] == 100
+        assert parsed["tokensAfter"] == 10
+
+    def test_end_without_start_is_self_contained(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        evts = tracker.emit_pre_query_end(session, None)
+        assert isinstance(evts[0], StreamStartStep)
+        assert isinstance(evts[3], StreamToolOutputAvailable)
+        assert isinstance(evts[4], StreamFinishStep)
+        assert isinstance(evts[5], StreamCompactionProgress)
+        assert len(session.messages) == 2
+
+    def test_abort_closes_row_without_persisting(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        evts = tracker.abort_pre_query(session)
+        assert isinstance(evts[0], StreamToolOutputAvailable)
+        assert isinstance(evts[1], StreamFinishStep)
+        assert session.messages == []
+
+    def test_abort_is_a_noop_when_no_row_is_open(self):
+        tracker = CompactionTracker()
+        assert tracker.abort_pre_query(_make_session()) == []
+
+    def test_pre_query_counts_as_an_attempt_and_a_completion(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        # The counters record real work, not predictions — a row that is
+        # opened optimistically and then aborted must leave no trace.
+        assert tracker.attempt_sources == ()
+        tracker.emit_pre_query_end(session, None)
+        assert tracker.attempt_sources == ("pre_query",)
+        assert tracker.completed_sources == ("pre_query",)
+
+    def test_abort_records_neither_an_attempt_nor_a_completion(self):
+        tracker = CompactionTracker()
+        tracker.emit_pre_query_start()
+        tracker.abort_pre_query(_make_session())
+        assert tracker.attempt_sources == ()
+        assert tracker.completed_sources == ()
+
+
+# ---------------------------------------------------------------------------
+# SDK-internal rebuilding phase
+# ---------------------------------------------------------------------------
+
+
+class TestSdkInternalRebuildingPhase:
+    @pytest.mark.asyncio
+    async def test_end_if_ready_appends_rebuilding_phase(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/tmp/session.jsonl")
+        tracker.emit_start_if_ready()
+        result = await tracker.emit_end_if_ready(session)
+        assert result.just_ended is True
+        assert isinstance(result.events[-1], StreamCompactionProgress)
+        assert result.events[-1].phase == "rebuilding"
