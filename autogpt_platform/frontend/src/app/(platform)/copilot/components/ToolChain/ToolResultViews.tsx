@@ -17,6 +17,7 @@ import {
   formatBytes,
   humanizeKey,
   inline,
+  parseTruncatedOutput,
   resultItemKey,
   safeHostname,
   str,
@@ -253,10 +254,24 @@ export function KeyValueList({ value }: ValueProps) {
   const obj = asObject(value);
   if (!obj || Object.keys(obj).length === 0) {
     if (typeof value !== "string" || !value.trim()) return null;
+    const truncated = parseTruncatedOutput(value);
     return (
-      <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-zinc-50 p-2.5 font-mono text-[11px] leading-4 text-zinc-600 scrollbar-none">
-        {value}
-      </pre>
+      <div className={`${CARD} w-full rounded-2xl p-3`}>
+        <div className="relative">
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-zinc-600 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+            {truncated?.preview ?? value}
+          </p>
+          {truncated && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
+          )}
+        </div>
+        {truncated && (
+          <p className="mt-2 text-[11px] text-zinc-400">
+            Preview of {truncated.totalChars.toLocaleString()} characters — full
+            output saved to the workspace
+          </p>
+        )}
+      </div>
     );
   }
   return (

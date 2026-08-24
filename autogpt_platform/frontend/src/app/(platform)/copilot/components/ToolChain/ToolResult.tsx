@@ -14,6 +14,7 @@ import {
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
+import { ExpertChangeCard } from "./ExpertCards";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -52,6 +53,7 @@ import {
   str,
   stripBaseFields,
 } from "./resultHelpers";
+import { SubSessionPendingCard } from "./SubSessionLive";
 import {
   FileCard,
   KeyValueList,
@@ -252,9 +254,23 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "run_sub_session":
     case "get_sub_session_result":
-      return output && str(output, "status") ? (
-        <SubSessionCard output={output} />
+    case "delegate_to_expert":
+    case "handoff_to_expert":
+      if (output && str(output, "status"))
+        return <SubSessionCard output={output} />;
+      // A blocking delegate has no output while the teammate works — show
+      // who's on it and what they were asked from the tool input instead.
+      // Not for result polls: the delegation card above is already showing
+      // this sub-session live, a second identical card would stack under it.
+      return row.state === "running" &&
+        row.tool !== "get_sub_session_result" ? (
+        <SubSessionPendingCard input={row.input} />
       ) : null;
+    case "hire_expert":
+    case "raise_expert":
+    case "update_expert":
+    case "confirm_expert_change":
+      return output ? <ExpertChangeCard output={output} /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);

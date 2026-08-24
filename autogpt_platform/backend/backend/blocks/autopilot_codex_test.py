@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks.autopilot import AutoPilotBlock
+from backend.copilot.model import ChatSessionMetadata
 from backend.data.execution import ExecutionContext
 from backend.data.graph import NodeModel
 from backend.integrations.providers import ProviderName
@@ -110,11 +111,25 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         (
             SimpleNamespace(
                 metadata=SimpleNamespace(
+                    origin="automation",
                     llm_auth_provider="codex",
                     llm_credential_id="different-credential",
                 )
             ),
             "different transport or connection",
+        ),
+        # A graph naming the user's own chat session would otherwise run its
+        # machine-authored prompt under the one origin the staffing guard
+        # accepts — `create_session` stamps "automation" precisely to stop that.
+        (
+            SimpleNamespace(
+                metadata=SimpleNamespace(
+                    origin="interactive",
+                    llm_auth_provider="codex",
+                    llm_credential_id="cred-1",
+                )
+            ),
+            "started by a person",
         ),
     ],
 )
@@ -160,6 +175,90 @@ async def test_autopilot_block_rejects_invalid_session_route(
     assert outputs[1][0] == "error"
     assert error_fragment in outputs[1][1]
     execute_copilot.assert_not_awaited()
+
+
+def _persisted_metadata(raw_json: str) -> ChatSessionMetadata:
+    """Parse metadata the way ``ChatSessionInfo.from_db`` does.
+
+    The legacy case is a *deserialization* default — a stored JSON blob with
+    no ``origin`` key — so this has to go through parsing. Setting
+    ``origin=None`` on a constructed model would pass even if the field still
+    defaulted to ``"interactive"``, which is the bug itself.
+    """
+    return ChatSessionMetadata.model_validate_json(raw_json)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_metadata", "resumes"),
+    [
+        # Persisted before ``origin`` existed. Any graph that stores an
+        # AutoPilot session_id and re-feeds it on the next run holds one of
+        # these, and refusing them would break live automations.
+        ('{"llm_auth_provider": "codex", "llm_credential_id": "cred-1"}', True),
+        (
+            '{"origin": "automation", "llm_auth_provider": "codex", '
+            '"llm_credential_id": "cred-1"}',
+            True,
+        ),
+        # A graph naming the user's own chat is what the guard exists for.
+        (
+            '{"origin": "interactive", "llm_auth_provider": "codex", '
+            '"llm_credential_id": "cred-1"}',
+            False,
+        ),
+    ],
+)
+async def test_autopilot_block_resumes_every_session_a_person_did_not_start(
+    raw_metadata: str,
+    resumes: bool,
+):
+    block = AutoPilotBlock()
+    execute_copilot = AsyncMock(
+        return_value=(
+            "done",
+            [],
+            "[]",
+            "session-1",
+            {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+    )
+    existing = SimpleNamespace(metadata=_persisted_metadata(raw_metadata))
+    input_data = AutoPilotBlock.Input(
+        prompt="continue",
+        session_id="session-1",
+        codex_credentials={
+            "id": "cred-1",
+            "provider": "codex",
+            "type": "oauth2",
+            "title": "Personal ChatGPT",
+        },
+    )
+    context = ExecutionContext(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_exec_id="graph-exec-1",
+        node_id="node-1",
+        node_exec_id="node-exec-1",
+    )
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=existing),
+        ),
+        patch.object(block, "execute_copilot", execute_copilot),
+    ):
+        outputs = [
+            item async for item in block.run(input_data, execution_context=context)
+        ]
+
+    errors = [value for name, value in outputs if name == "error"]
+    if resumes:
+        assert errors == []
+        execute_copilot.assert_awaited_once()
+    else:
+        assert "started by a person" in errors[0]
+        execute_copilot.assert_not_awaited()
 
 
 def test_transport_is_an_explicit_choice_not_inferred_from_the_credential():
@@ -329,6 +428,7 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
     session = MagicMock()
+    session.metadata.origin = "automation"
     session.metadata.llm_auth_provider = "codex"
     session.metadata.llm_credential_id = "cred-1"
 

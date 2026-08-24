@@ -28,7 +28,6 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarTeamMembers } from "./components/SidebarTeamMembers/SidebarTeamMembers";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
@@ -143,10 +142,9 @@ function NewTaskItem() {
 
 interface NavItemProps {
   link: NavLink;
-  children?: ReactNode;
 }
 
-function NavItem({ link, children }: NavItemProps) {
+function NavItem({ link }: NavItemProps) {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -167,7 +165,6 @@ function NavItem({ link, children }: NavItemProps) {
           <NavLinkLoader />
         </Link>
       </SidebarMenuButton>
-      {children}
     </SidebarMenuItem>
   );
 }
@@ -175,19 +172,15 @@ function NavItem({ link, children }: NavItemProps) {
 function NavMenu({
   links,
   leading,
-  renderAfterItem,
 }: {
   links: NavLink[];
   leading?: ReactNode;
-  renderAfterItem?: (link: NavLink) => ReactNode;
 }) {
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <NavItem key={link.href} link={link}>
-          {renderAfterItem?.(link)}
-        </NavItem>
+        <NavItem key={link.href} link={link} />
       ))}
     </SidebarMenu>
   );
@@ -317,12 +310,7 @@ export function AppSidebar(props: Props) {
 
           <motion.div variants={itemVariants}>
             <CollapsibleNavGroup label="Workspace">
-              <NavMenu
-                links={workspaceLinks}
-                renderAfterItem={(link) =>
-                  link.href === "/team" ? <SidebarTeamMembers /> : null
-                }
-              />
+              <NavMenu links={workspaceLinks} />
             </CollapsibleNavGroup>
           </motion.div>
 

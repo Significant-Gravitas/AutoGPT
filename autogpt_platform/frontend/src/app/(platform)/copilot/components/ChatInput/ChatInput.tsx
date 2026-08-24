@@ -186,13 +186,21 @@ export function ChatInput({
   } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceFiles } = partitionAttachments(attachments);
-      await onSend(
-        message,
-        localFiles.length > 0 ? localFiles : undefined,
-        workspaceFiles.length > 0 ? workspaceFiles : undefined,
-      );
-      // Only clear after successful send (onSend throws on failure)
+      // Chips clear eagerly for the same reason the text does (see
+      // useChatInput.handleSend); a failed send restores them unless the
+      // user already attached new ones in the meantime.
+      const sent = attachments;
       setAttachments([]);
+      try {
+        await onSend(
+          message,
+          localFiles.length > 0 ? localFiles : undefined,
+          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+        );
+      } catch (error) {
+        setAttachments((prev) => (prev.length > 0 ? prev : sent));
+        throw error;
+      }
     },
     disabled: isTextareaDisabled,
     canSendEmpty: hasAttachments,

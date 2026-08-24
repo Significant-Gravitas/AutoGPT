@@ -56,6 +56,7 @@ from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     RoutingSource,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -73,7 +74,11 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    get_delegation_supplement,
+    get_graphiti_supplement,
+)
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -106,7 +111,12 @@ from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
     persist_and_record_usage,
 )
-from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tools import (
+    ToolGroup,
+    execute_tool,
+    expert_tool_disabled_groups,
+    get_available_tools,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -126,6 +136,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -1026,10 +1037,15 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    disabled_groups: Sequence[ToolGroup],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
+
+    ``disabled_groups`` is the same list used to build the turn's schema
+    list; passing it here makes the capability gate an enforcement boundary
+    rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1089,6 +1105,7 @@ async def _baseline_tool_executor(
             user_id=user_id,
             session=session,
             tool_call_id=tool_call_id,
+            disabled_groups=disabled_groups,
         )
         _emit(state, result)
         tool_output = (
@@ -1645,6 +1662,12 @@ async def stream_chat_completion_baseline(
     if message:
         message = strip_user_context_tags(message)
 
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -1812,6 +1835,15 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns.  Resolved here rather than at the
+    # tool-filtering site below so the delegation rules can be gated on the
+    # same boolean — a flag-off turn must not be told to call tools its
+    # ``execute_tool`` gate will refuse.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1821,6 +1853,7 @@ async def stream_chat_completion_baseline(
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        + delegation_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -2067,8 +2100,13 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
-    if not session.expert_id:
-        disabled_tool_groups.append("experts")
+    # ``experts_enabled`` was resolved with the system-prompt supplements
+    # above; the role split lives in the shared helper.
+    disabled_tool_groups.extend(
+        expert_tool_disabled_groups(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+    )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
@@ -2138,6 +2176,7 @@ async def stream_chat_completion_baseline(
             state=state,
             user_id=user_id,
             session=_session_holder[0],
+            disabled_groups=disabled_tool_groups,
         )
 
     _bound_conversation_updater = partial(
