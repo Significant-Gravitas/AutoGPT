@@ -23,11 +23,24 @@ Scenario matrix:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ResultMessage
 
+from backend.copilot.constants import COMPACTION_TOOL_NAME
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.response_model import (
+    StreamCompactionProgress,
+    StreamError,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+)
+from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
 from backend.copilot.transcript import (
     TranscriptDownload,
     _flatten_assistant_content,
@@ -2006,8 +2019,6 @@ class TestPreQueryCompactionRowTiming:
     _WORK_SECONDS = 0.25
 
     def _make_result_message(self):
-        from claude_agent_sdk import ResultMessage
-
         return ResultMessage(
             subtype="success",
             result="done",
@@ -2039,8 +2050,6 @@ class TestPreQueryCompactionRowTiming:
         return cm
 
     def _big_prior(self):
-        from backend.copilot.model import ChatMessage
-
         return [
             ChatMessage(
                 role="user" if i % 2 == 0 else "assistant",
@@ -2051,10 +2060,6 @@ class TestPreQueryCompactionRowTiming:
         ]
 
     def _session_with_history(self, prior):
-        from datetime import UTC, datetime
-
-        from backend.copilot.model import ChatMessage, ChatSession
-
         return ChatSession(
             session_id="test-session-id",
             user_id="test-user",
@@ -2072,8 +2077,6 @@ class TestPreQueryCompactionRowTiming:
         because the predictor read the full session while the compressor read
         this list.
         """
-        from backend.copilot.sdk.service import _RestoreResult
-
         return _RestoreResult(
             transcript_content="seeded",
             transcript_covers_prefix=True,
@@ -2084,8 +2087,6 @@ class TestPreQueryCompactionRowTiming:
         )
 
     def _slow_compress(self, calls):
-        from backend.copilot.sdk.compaction import CompactionStats
-
         async def _compress(msgs, target_tokens=None):
             calls.append(len(msgs))
             await asyncio.sleep(self._WORK_SECONDS)
@@ -2103,10 +2104,6 @@ class TestPreQueryCompactionRowTiming:
         return _compress
 
     async def _run(self, session, extra_patches, client_factory):
-        import contextlib
-
-        from backend.copilot.sdk.service import stream_chat_completion_sdk
-
         patches = _make_sdk_patches(
             session,
             original_transcript=_build_transcript([("user", "q"), ("assistant", "a")]),
@@ -2135,12 +2132,6 @@ class TestPreQueryCompactionRowTiming:
 
     @staticmethod
     def _compaction_marks(timeline):
-        from backend.copilot.constants import COMPACTION_TOOL_NAME
-        from backend.copilot.response_model import (
-            StreamToolInputAvailable,
-            StreamToolOutputAvailable,
-        )
-
         opened = [
             t
             for t, e in timeline
@@ -2196,8 +2187,6 @@ class TestPreQueryCompactionRowTiming:
         result_msg = self._make_result_message()
         marks: list[str] = []
 
-        from backend.copilot.sdk.compaction import CompactionStats
-
         async def _compress(msgs, target_tokens=None):
             marks.append("compress")
             return (
@@ -2232,8 +2221,6 @@ class TestPreQueryCompactionRowTiming:
     async def test_summarizing_phase_carries_the_token_estimate(self):
         """Without ``tokensBefore`` the client's pacing collapses to its floor,
         so a 500K compaction animates exactly like a 20K one."""
-        from backend.copilot.response_model import StreamCompactionProgress
-
         prior = self._big_prior()
         session = self._session_with_history(prior)
         result_msg = self._make_result_message()
@@ -2305,12 +2292,80 @@ class TestPreQueryCompactionRowTiming:
             ), f"attempt {i + 1}'s row spanned only {gap * 1000:.1f}ms"
 
     @pytest.mark.asyncio
+    async def test_retry_that_reduces_nothing_retires_its_row(self):
+        """The opposite branch: the retry opened a row and then found nothing
+        to condense, so the row must be retired, not completed.
+
+        A dropped transcript is not a summarized one, and ``compact_transcript``
+        failing lands in the drop branch — so a close here would persist a
+        durable "Condensed" row for a conversation that was truncated instead.
+        """
+        prior = [
+            ChatMessage(role="user", content="hi", sequence=0),
+            ChatMessage(role="assistant", content="hello", sequence=1),
+        ]
+        session = self._session_with_history(prior)
+        result_msg = self._make_result_message()
+        attempts = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            return self._make_client_mock(result_message=result_msg)
+
+        async def _no_compression(msgs, target_tokens=None):
+            return list(msgs), False, None
+
+        timeline = await self._run(
+            session,
+            [
+                (
+                    f"{_SVC}._restore_cli_session_for_turn",
+                    dict(
+                        new_callable=AsyncMock,
+                        return_value=self._no_resume_restore(prior),
+                    ),
+                ),
+                # Compaction fails, so ``_reduce_context`` drops the transcript.
+                (
+                    f"{_SVC}.compact_transcript",
+                    dict(new_callable=AsyncMock, return_value=None),
+                ),
+                (f"{_SVC}._compress_messages", dict(new=_no_compression)),
+            ],
+            _client_factory,
+        )
+
+        assert attempts[0] == 2
+        opened, closed = self._compaction_marks(timeline)
+        assert len(opened) == 1, "only the retry should have opened a row"
+        assert len(closed) == 1, "the retry's row was left open"
+
+        outputs = [
+            e.output
+            for _, e in timeline
+            if isinstance(e, StreamToolOutputAvailable)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        assert outputs == [""], "the row was completed instead of retired"
+
+        persisted = [
+            m
+            for m in session.messages
+            if m.tool_calls
+            and any(
+                call.get("function", {}).get("name") == COMPACTION_TOOL_NAME
+                for call in m.tool_calls
+            )
+        ]
+        assert persisted == [], "a retired row must not survive a refresh"
+
+    @pytest.mark.asyncio
     async def test_error_during_compression_closes_the_open_row(self):
         """The generator's except branch must retire a row left open by a
         failure between start and end — otherwise the client is stuck with a
         compaction spinner that never resolves."""
-        from backend.copilot.response_model import StreamError
-
         prior = self._big_prior()
         session = self._session_with_history(prior)
 
@@ -2340,8 +2395,6 @@ class TestPreQueryCompactionRowTiming:
     @pytest.mark.asyncio
     async def test_no_row_when_nothing_will_be_compressed(self):
         """A short session must not flash a compaction bar."""
-        from backend.copilot.model import ChatMessage
-
         prior = [
             ChatMessage(role="user", content="hi", sequence=0),
             ChatMessage(role="assistant", content="hello", sequence=1),

@@ -2643,19 +2643,39 @@ def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
     return payload
 
 
-# Tokenizing a 300K-token history takes ~2s cold on the event loop shared by
-# every concurrent copilot stream.  The estimate is an optimisation, not a
-# correctness requirement, so it is capped rather than awaited indefinitely.
-_WILL_COMPACT_TIMEOUT_SECONDS = 5
+# Characters per token, measured with ``o200k_base`` over the payload shapes
+# this history actually carries: base64-ish blobs 1.5, CJK 1.8, numeric IDs
+# 2.6, graph JSON 2.7, source code 4.6, English prose 4.9-6.5.
+# ``estimate_token_count`` then scales raw counts by up to 1.5x for the
+# Claude-5 tokenizer generation, which drags the dense end down to ~1.0
+# characters per *estimated* token.
+#
+# The two bounds bracket the estimate rather than replacing it: at or below
+# ``limit * _MIN_CHARS_PER_TOKEN`` no history can reach the threshold, above
+# ``limit * _MAX_CHARS_PER_TOKEN`` none can miss it, so both ends are decided
+# by arithmetic alone.  Only the band between them pays for a tokenizer pass,
+# and that band is bounded by construction — at the production limit (~138K
+# tokens) the widest input tiktoken can see is ~830K characters, ~80ms.  The
+# megabyte histories that made tokenizing expensive in the first place are
+# exactly the ones the upper cut answers for free.
+_MIN_CHARS_PER_TOKEN = 1.0
+_MAX_CHARS_PER_TOKEN = 6.0
+
+# Pacing hint only, never the decision: when the bounds settle the question
+# without tokenizing there is no estimate to report, and ``summarizing`` with
+# no ``tokens_before`` animates a 500K compaction exactly like a 20K one.  The
+# midpoint of the measured range is wrong by ~2x either way — good enough to
+# pick a progress curve, which is all the client does with it.
+_NOMINAL_CHARS_PER_TOKEN = 3.0
 
 
 @dataclass(frozen=True)
 class _CompactionForecast:
     """Whether the upcoming turn compresses, and how big the input is.
 
-    ``tokens_before`` is the estimate the prediction was made from; it rides
+    ``tokens_before`` is the size the prediction was made from; it rides
     the ``summarizing`` phase so the client can pace its progress curve.
-    ``None`` when the estimate was skipped or timed out.
+    ``None`` when no size was established at all.
     """
 
     expected: bool
@@ -2665,45 +2685,75 @@ class _CompactionForecast:
 _NO_COMPACTION = _CompactionForecast(expected=False)
 
 
-async def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecast:
+def _payload_chars(rows: list[ChatMessage]) -> int:
+    """Characters the estimator would tokenize for *rows*.
+
+    Content plus tool-call names and serialized arguments — the fields
+    ``_to_compress_dict`` hands the estimator.  The per-message wrapper
+    tokens ``_msg_tokens`` adds are left out; they are absorbed by the
+    width of the bounds above.
+    """
+    total = 0
+    for msg in rows:
+        total += len(msg.content or "")
+        for call in msg.tool_calls or []:
+            function = call.get("function", {})
+            total += len(str(function.get("name") or ""))
+            total += len(str(function.get("arguments") or ""))
+    return total
+
+
+def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecast:
     """Cheap pre-check: would ``_compress_messages`` do real work?
 
     Mirrors ``compress_context``'s early-return condition (``prompt.py``:
-    ``original_count + reserve <= target_tokens``) using the same token
-    estimator and the same message dicts, so the UI can open a compaction row
-    *before* the expensive LLM summarization starts instead of announcing it
-    afterwards.
+    ``original_count + reserve <= target_tokens``) so the UI can open a
+    compaction row *before* the expensive LLM summarization starts instead of
+    announcing it afterwards.
 
-    Tokenization only — no LLM call — but tiktoken is CPU-bound and blocking,
-    so it runs off the event loop under a timeout.  Being wrong is survivable
-    in both directions: a false positive is retired by ``abort_pre_query``, a
-    false negative falls back to a self-contained row.  That is what makes the
-    timeout safe: giving up returns a false negative, never a stall.
+    A character count decides the clear-cut cases outright; only histories
+    that land in the ambiguous band near the threshold are tokenized, and
+    that band is bounded (see ``_MIN_CHARS_PER_TOKEN``), so the tokenizer
+    can never run on the huge histories that would make it expensive.
+
+    Being wrong is survivable in both directions — a false negative falls
+    back to a self-contained row, a false positive is retired by
+    ``abort_pre_query`` — but a false positive flashes a bar on screen, so
+    the tokenizer is spent exactly where the bounds cannot separate the two.
+    Any failure means no prediction: this is cosmetic, and a tiktoken
+    download failure or an unknown model must not take the stream with it.
     """
     rows = [m for m in filter_compaction_messages(messages) if m.role != "reasoning"]
     if len(rows) < 2:
         return _NO_COMPACTION
-    payload = [_to_compress_dict(m) for m in rows]
+    chars = _payload_chars(rows)
     try:
-        estimated = await asyncio.wait_for(
-            asyncio.to_thread(estimate_token_count, payload, model=model),
-            timeout=_WILL_COMPACT_TIMEOUT_SECONDS,
+        # ``estimated > limit`` is ``estimated + reserve > target``, the
+        # negation of the compressor's early return.
+        limit = get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
+        if chars <= limit * _MIN_CHARS_PER_TOKEN:
+            return _NO_COMPACTION
+        if chars > limit * _MAX_CHARS_PER_TOKEN:
+            return _CompactionForecast(
+                expected=True,
+                tokens_before=int(chars / _NOMINAL_CHARS_PER_TOKEN),
+            )
+        estimated = estimate_token_count(
+            [_to_compress_dict(m) for m in rows], model=model
         )
-    # The two are the same class from 3.11, but this package declares
-    # >=3.10, where wait_for raises the asyncio one and the builtin misses it.
-    except (asyncio.TimeoutError, TimeoutError):
+    except Exception:
         logger.warning(
-            "[SDK] Compaction pre-check timed out after %ds on %d rows —"
+            "[SDK] Compaction pre-check failed on %d rows (%d chars) —"
             " skipping the prediction (the row still opens after the fact)",
-            _WILL_COMPACT_TIMEOUT_SECONDS,
             len(rows),
+            chars,
+            exc_info=True,
         )
         return _NO_COMPACTION
-    expected = estimated + DEFAULT_COMPRESSION_RESERVE > get_compression_target(model)
-    return _CompactionForecast(expected=expected, tokens_before=estimated)
+    return _CompactionForecast(expected=estimated > limit, tokens_before=estimated)
 
 
-async def _expect_pre_query_compaction(
+def _expect_pre_query_compaction(
     messages: list[ChatMessage],
     model: str,
     *,
@@ -2711,6 +2761,7 @@ async def _expect_pre_query_compaction(
     transcript_msg_count: int,
     session_msg_ceiling: int,
     prior_messages: "list[ChatMessage] | None" = None,
+    target_tokens: int | None = None,
 ) -> _CompactionForecast:
     """Predict whether ``_build_query_message`` will compress on this turn.
 
@@ -2729,6 +2780,12 @@ async def _expect_pre_query_compaction(
     transcript.  Predicting over the full session there is the mirror-image
     error — the branch compresses a slice this function never looked at.
 
+    ``target_tokens`` must be the same value handed to
+    ``_build_query_message`` — the no-resume branch there abandons history
+    injection entirely once the budget falls to ``_BARE_MESSAGE_TOKEN_FLOOR``,
+    and a mirror that skips that guard predicts compression for a branch that
+    returns the bare message.
+
     False negatives are safe: ``emit_pre_query_end`` emits a self-contained
     row when compression happens without a prediction.  That covers slices
     this estimator cannot see, like cap-engaged hole rows fetched from the DB.
@@ -2739,8 +2796,10 @@ async def _expect_pre_query_compaction(
     if not use_resume:
         if session_msg_ceiling <= 1:
             return _NO_COMPACTION
+        if target_tokens is not None and target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
+            return _NO_COMPACTION
         source = prior_messages if prior_messages is not None else prior
-        return await _will_compact(source, model)
+        return _will_compact(source, model)
     if transcript_msg_count <= 0:
         # ``use_resume`` with no covered rows compresses nothing.
         return _NO_COMPACTION
@@ -2753,35 +2812,42 @@ async def _expect_pre_query_compaction(
             for m in prior
             if m.sequence is not None and m.sequence >= transcript_msg_count
         ]
-        return await _will_compact(window_gap, model)
+        return _will_compact(window_gap, model)
     if transcript_msg_count < session_msg_ceiling - 1:
         if transcript_msg_count > len(prior):
             return _NO_COMPACTION
         if prior[transcript_msg_count - 1].role != "assistant":
             # Misaligned watermark — _build_query_message skips the gap.
             return _NO_COMPACTION
-        return await _will_compact(prior[transcript_msg_count:], model)
+        return _will_compact(prior[transcript_msg_count:], model)
     # Scenario A: --resume covers the full context; nothing is compressed.
     return _NO_COMPACTION
 
 
 def _retry_reduced_context(
     *,
-    had_live_transcript: bool,
+    reduced: ReducedContext,
     compaction_stats: "CompactionStats | None",
 ) -> bool:
-    """Did a context-reduction retry actually shrink anything?
+    """Did a context-reduction retry actually summarize anything?
 
     The retry opens its compaction row optimistically, before
-    ``_reduce_context`` runs.  Real reduction happens when a transcript
-    that was still in play gets summarized or dropped, or when
-    ``_build_query_message`` compresses DB history — the latter surfaces
-    as ``compaction_stats``.  A later retry whose transcript was already
-    dropped and whose history already fits the halved budget reduces
-    nothing, so its row must be retired rather than persisted: the user
-    is never told the conversation was condensed when it wasn't.
+    ``_reduce_context`` runs, so the close is a claim about work that may
+    not have happened.  The row says the conversation was condensed, and
+    only two things earn that: the transcript came back summarized
+    (``transcript_lost`` false — the drop branch is the only other exit),
+    or ``_build_query_message`` compressed DB history, which surfaces as
+    ``compaction_stats``.
+
+    Dropping the transcript is deliberately NOT enough.  It reduces
+    context, but by discarding history rather than summarizing it, and
+    ``compact_transcript`` failing lands there just as surely as a second
+    retry does — so a guess made before ``_reduce_context`` ran would
+    persist a durable "Condensed" row for a conversation that was
+    truncated.  The non-retry path already refuses to call a drop a
+    summarize; this keeps the retry path honest about the same thing.
     """
-    return had_live_transcript or compaction_stats is not None
+    return not reduced.transcript_lost or compaction_stats is not None
 
 
 async def _compress_messages(
@@ -5017,7 +5083,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
-        forecast = await _expect_pre_query_compaction(
+        forecast = _expect_pre_query_compaction(
             session.messages,
             _compression_model(),
             use_resume=use_resume,
@@ -5172,11 +5238,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 for ev in compaction.emit_pre_query_start():
                     yield ev
 
-                # Captured before ``_reduce_context`` flips ``tried_compaction``:
-                # a transcript is only reduced on the retry that first
-                # summarizes or drops it.
-                had_live_transcript = bool(transcript_content) and not tried_compaction
-
                 ctx = await _reduce_context(
                     transcript_content,
                     tried_compaction,
@@ -5240,7 +5301,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     )
                 )
                 if _retry_reduced_context(
-                    had_live_transcript=had_live_transcript,
+                    reduced=ctx,
                     compaction_stats=state.compaction_stats,
                 ):
                     for ev in compaction.emit_pre_query_end(

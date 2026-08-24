@@ -2,6 +2,9 @@
 
 import json
 
+import pytest
+from pydantic import ValidationError
+
 from backend.copilot.response_model import (
     ResponseType,
     StreamCompactionProgress,
@@ -60,9 +63,6 @@ class TestStreamCompactionProgress:
         frontend indexes a curve table by this value, so an unmodelled
         phase reaching it is a client-side crash rather than a no-op.
         """
-        import pytest
-        from pydantic import ValidationError
-
         for phase in ("summarizing", "rebuilding"):
             assert StreamCompactionProgress(phase=phase).phase == phase
 

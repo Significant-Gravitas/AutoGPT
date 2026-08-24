@@ -17,12 +17,20 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    compress_context,
+    estimate_token_count,
+    get_compression_target,
+)
 
 from ..model import ChatMessage, ChatSession
 from ..model_router import ResolvedModel
+from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionStats
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
+    _BARE_MESSAGE_TOKEN_FLOOR,
     _RETRY_TARGET_TOKENS,
     ReducedContext,
     _build_query_message,
@@ -1698,38 +1706,67 @@ def _msg(role: str, content: str) -> ChatMessage:
     return ChatMessage(role=role, content=content)
 
 
+def _limit(model: str = "gpt-4o") -> int:
+    """The threshold ``_will_compact`` mirrors: target minus the reserve."""
+    return get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
+
+
+_FILLER = "the quick brown fox jumps over the lazy dog "
+
+
+def _band_history(
+    fraction: float, model: str = "gpt-4o", rows: int = 8
+) -> list[ChatMessage]:
+    """A history whose token estimate is *fraction* of the threshold.
+
+    Sized with the real tokenizer so the payload lands inside the ambiguous
+    band, which is where ``_will_compact`` actually tokenizes — and the only
+    region where its threshold can disagree with the compressor's.  Keep
+    *fraction* within roughly 0.5-1.2: outside that the character prefilter
+    answers on its own and the tokenizer never runs.
+    """
+    probe = 100
+    unit = (
+        estimate_token_count(
+            [{"role": "user", "content": _FILLER * probe}], model=model
+        )
+        / probe
+    )
+    per_row = max(1, int(_limit(model) * fraction) // rows)
+    body = _FILLER * max(1, round(per_row / unit))
+    return [
+        ChatMessage(role="user" if i % 2 == 0 else "assistant", content=body)
+        for i in range(rows)
+    ]
+
+
 class TestWillCompact:
-    @pytest.mark.asyncio
-    async def test_false_for_short_history(self):
-        assert (await _will_compact([_msg("user", "hi")], "gpt-4o")).expected is False
+    def test_false_for_short_history(self):
+        assert _will_compact([_msg("user", "hi")], "gpt-4o").expected is False
 
-    @pytest.mark.asyncio
-    async def test_false_for_empty_history(self):
-        assert (await _will_compact([], "gpt-4o")).expected is False
+    def test_false_for_empty_history(self):
+        assert _will_compact([], "gpt-4o").expected is False
 
-    @pytest.mark.asyncio
-    async def test_true_when_history_exceeds_the_compression_target(self):
+    def test_true_when_history_exceeds_the_compression_target(self):
         # get_compression_target for gpt-4o is well under 1M tokens; a
         # megabyte of prose comfortably clears it.
         big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
-        forecast = await _will_compact(big, "gpt-4o")
+        forecast = _will_compact(big, "gpt-4o")
         assert forecast.expected is True
-        # The estimate rides along so the client can pace its progress curve
+        # The size rides along so the client can pace its progress curve
         # against the real size of the work instead of a constant floor.
         assert forecast.tokens_before is not None
         assert forecast.tokens_before > 100_000
 
-    @pytest.mark.asyncio
-    async def test_ignores_reasoning_and_compaction_rows(self):
+    def test_ignores_reasoning_and_compaction_rows(self):
         rows = [
             _msg("reasoning", "word " * 200_000),
             _msg("user", "hi"),
         ]
-        assert (await _will_compact(rows, "gpt-4o")).expected is False
+        assert _will_compact(rows, "gpt-4o").expected is False
 
-    @pytest.mark.asyncio
-    async def test_counts_tool_call_arguments(self):
-        """Tool-call payloads must be tokenized, not silently dropped.
+    def test_counts_tool_call_arguments(self):
+        """Tool-call payloads must be counted, not silently dropped.
 
         Copilot assistant rows carry whole graph JSON in ``create_agent`` /
         ``edit_agent`` arguments.  An estimate built from role+content alone
@@ -1754,19 +1791,49 @@ class TestWillCompact:
             ),
             _msg("user", "ship it"),
         ]
-        assert (await _will_compact(rows, "gpt-4o")).expected is True
+        assert _will_compact(rows, "gpt-4o").expected is True
 
-    @pytest.mark.asyncio
-    async def test_timeout_degrades_to_a_false_negative(self):
-        """A slow tokenizer must not stall the SSE generator.
+    def test_tokenizer_failure_degrades_to_a_false_negative(self):
+        """The prediction is cosmetic; nothing it does may kill the stream.
 
-        Every concurrent copilot stream shares this loop, so the pre-check is
-        capped.  Giving up returns False — a false negative, which
+        tiktoken downloads its BPE table on first use and models come and go,
+        so this call can fail for reasons that have nothing to do with the
+        conversation.  Giving up returns False — a false negative, which
         ``emit_pre_query_end`` covers with a self-contained row.
         """
-        big = [_msg("user", "word " * 200_000), _msg("assistant", "ok")]
-        with patch("backend.copilot.sdk.service._WILL_COMPACT_TIMEOUT_SECONDS", 0.0):
-            assert (await _will_compact(big, "gpt-4o")).expected is False
+        over_threshold = _band_history(1.1)
+        assert _will_compact(over_threshold, "gpt-4o").expected is True
+        with patch(
+            "backend.copilot.sdk.service.estimate_token_count",
+            side_effect=RuntimeError("tiktoken download failed"),
+        ):
+            assert _will_compact(over_threshold, "gpt-4o").expected is False
+
+    def test_huge_history_skips_the_tokenizer_entirely(self):
+        """The expensive path must not run where it costs the most.
+
+        Above ``limit * _MAX_CHARS_PER_TOKEN`` no history can be under the
+        threshold whatever it contains, so the answer is arithmetic — which
+        is what keeps the tokenizer's input bounded.
+        """
+        huge = [_msg("user", "word " * 400_000), _msg("assistant", "ok")]
+        with patch(
+            "backend.copilot.sdk.service.estimate_token_count",
+            side_effect=AssertionError("tokenizer must not run on a huge history"),
+        ):
+            forecast = _will_compact(huge, "gpt-4o")
+        assert forecast.expected is True
+        # No estimate was taken, but the client still needs something to pace
+        # against, so the character count stands in for one.
+        assert forecast.tokens_before is not None
+
+    def test_tiny_history_skips_the_tokenizer_entirely(self):
+        small = [_msg("user", "hi there"), _msg("assistant", "hello")]
+        with patch(
+            "backend.copilot.sdk.service.estimate_token_count",
+            side_effect=AssertionError("tokenizer must not run on a tiny history"),
+        ):
+            assert _will_compact(small, "gpt-4o").expected is False
 
 
 def _seq_msg(role: str, content: str, sequence: int) -> ChatMessage:
@@ -1783,15 +1850,14 @@ def _big_history(n: int = 10) -> list[ChatMessage]:
 
 
 class TestExpectPreQueryCompaction:
-    @pytest.mark.asyncio
-    async def test_steady_state_resume_never_predicts(self):
+    def test_steady_state_resume_never_predicts(self):
         # The transcript covers the full history — _build_query_message's
         # Scenario A compresses nothing, so the pre-check must stay False
         # even though the cumulative history exceeds the target.
         messages = _big_history()
-        assert (await _will_compact(messages, "gpt-4o")).expected is True
+        assert _will_compact(messages, "gpt-4o").expected is True
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1800,11 +1866,10 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_no_resume_predicts_over_full_history(self):
+    def test_no_resume_predicts_over_full_history(self):
         messages = _big_history()
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=False,
@@ -1813,8 +1878,7 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is True
 
-    @pytest.mark.asyncio
-    async def test_no_resume_predicts_over_prior_messages_when_given(self):
+    def test_no_resume_predicts_over_prior_messages_when_given(self):
         """The no-resume branch compresses ``prior_messages`` when it is set.
 
         ``prior_messages`` is the compacted transcript + hole + gap — normally
@@ -1825,7 +1889,7 @@ class TestExpectPreQueryCompaction:
         messages = _big_history()
         small_prior = [_msg("user", "hi"), _msg("assistant", "hello")]
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=False,
@@ -1835,11 +1899,10 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_no_resume_single_message_never_predicts(self):
+    def test_no_resume_single_message_never_predicts(self):
         messages = [_msg("user", "word " * 200_000)]
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=False,
@@ -1848,11 +1911,38 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_resume_with_zero_watermark_never_predicts(self):
+    def test_no_resume_below_the_bare_message_floor_never_predicts(self):
+        """``_build_query_message`` abandons history injection entirely once
+        the retry budget reaches ``_BARE_MESSAGE_TOKEN_FLOOR``, so the mirror
+        must too — otherwise the row opens for a branch that returns the bare
+        message and compresses nothing."""
         messages = _big_history()
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=False,
+                transcript_msg_count=0,
+                session_msg_ceiling=len(messages),
+                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR,
+            )
+        ).expected is False
+        # A budget above the floor still compresses, so the row still opens.
+        assert (
+            _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=False,
+                transcript_msg_count=0,
+                session_msg_ceiling=len(messages),
+                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR + 1,
+            )
+        ).expected is True
+
+    def test_resume_with_zero_watermark_never_predicts(self):
+        messages = _big_history()
+        assert (
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1861,13 +1951,12 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_resume_with_a_big_stale_gap_predicts(self):
+    def test_resume_with_a_big_stale_gap_predicts(self):
         # Watermark covers rows 0-1 (last covered row is the assistant at
         # index 1); the remaining gap is large enough to compress.
         messages = _big_history()
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1876,8 +1965,7 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is True
 
-    @pytest.mark.asyncio
-    async def test_resume_with_a_small_gap_never_predicts(self):
+    def test_resume_with_a_small_gap_never_predicts(self):
         messages = [
             _seq_msg("user", "word " * 30_000, 0),
             _seq_msg("assistant", "word " * 30_000, 1),
@@ -1886,7 +1974,7 @@ class TestExpectPreQueryCompaction:
             _seq_msg("user", "thanks", 4),
         ]
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1895,13 +1983,12 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_resume_misaligned_watermark_never_predicts(self):
+    def test_resume_misaligned_watermark_never_predicts(self):
         # prior[transcript_msg_count - 1] is a user row — _build_query_message
         # skips the gap entirely, so no compaction row should open.
         messages = _big_history()
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1910,8 +1997,7 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
-    @pytest.mark.asyncio
-    async def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
+    def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
         # The windowed view starts above absolute sequence 0, so the
         # sequence-based gap path runs; rows at/after the watermark form
         # the compressible slice.
@@ -1920,7 +2006,7 @@ class TestExpectPreQueryCompaction:
             for i in range(10)
         ]
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -1929,14 +2015,13 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is True
 
-    @pytest.mark.asyncio
-    async def test_cap_engaged_with_no_post_watermark_rows_never_predicts(self):
+    def test_cap_engaged_with_no_post_watermark_rows_never_predicts(self):
         messages = [
             _seq_msg("user" if i % 2 == 0 else "assistant", "word " * 30_000, 100 + i)
             for i in range(10)
         ]
         assert (
-            await _expect_pre_query_compaction(
+            _expect_pre_query_compaction(
                 messages,
                 "gpt-4o",
                 use_resume=True,
@@ -2051,22 +2136,25 @@ class TestPredictorMatchesCompressor:
     keeps the two honest: every divergence so far has shipped as either a bar
     that flashes and aborts, or expensive work with no row open at all.
 
-    False negatives are tolerated (``emit_pre_query_end`` covers them with a
-    self-contained row).  False positives are the failure this pins.
+    This pins branch SELECTION — that the predictor and the compressor look at
+    the same slice.  The threshold applied to that slice is pinned separately
+    by ``TestWillCompactThresholdMatchesCompressContext``, which drives the
+    real ``compress_context``; measuring it here would mean re-calling
+    ``_will_compact`` to grade ``_will_compact``.
     """
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "case", _DIFFERENTIAL_CASES, ids=[c["name"] for c in _DIFFERENTIAL_CASES]
     )
-    async def test_predictor_never_claims_compaction_that_does_not_happen(
+    async def test_predictor_agrees_with_the_slice_that_gets_compressed(
         self, case, monkeypatch
     ):
         messages = case["messages"]
         session = _make_session(messages)
         ceiling = len(messages)
 
-        forecast = await _expect_pre_query_compaction(
+        forecast = _expect_pre_query_compaction(
             messages,
             _compression_model(),
             use_resume=case["use_resume"],
@@ -2095,15 +2183,73 @@ class TestPredictorMatchesCompressor:
             prior_messages=case["prior_messages"],
         )
 
-        would_compact = False
-        for slice_ in compressed_slices:
-            if (await _will_compact(slice_, _compression_model())).expected:
-                would_compact = True
+        would_compact = any(
+            _will_compact(slice_, _compression_model()).expected
+            for slice_ in compressed_slices
+        )
 
-        assert not (forecast.expected and not would_compact), (
-            f"{case['name']}: predicted compaction but "
-            f"_build_query_message compressed {len(compressed_slices)} slice(s), "
-            "none of which would compact — the row opens and aborts instantly"
+        # Both directions are enforced.  A false positive flashes a bar that
+        # aborts; a false negative is survivable (``emit_pre_query_end`` still
+        # emits a self-contained row) but leaves the user staring at a frozen
+        # screen for the whole summarization, which is the bug this PR exists
+        # to fix — so neither is allowed to creep back in through the branch
+        # tree.  Cases whose slice the estimator genuinely cannot see (the
+        # cap-engaged hole rows fetched from the DB) are not in the matrix.
+        assert forecast.expected == would_compact, (
+            f"{case['name']}: predicted {forecast.expected} but "
+            f"_build_query_message compressed {len(compressed_slices)} slice(s) "
+            f"of which would_compact={would_compact}"
+        )
+
+
+class TestWillCompactThresholdMatchesCompressContext:
+    """``_will_compact``'s threshold is a copy of ``compress_context``'s early
+    return (``original_count + reserve <= target_tokens``).  Grading it against
+    itself proves nothing, so these cases drive the real compressor with real
+    payloads and read ``was_compacted`` back.
+
+    ``client=None`` keeps the LLM out of it: the summarization step is skipped
+    and the remaining strategies still only run when the early return doesn't
+    fire, which is exactly the boundary under test.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("fraction", "expected"),
+        [(0.5, False), (0.9, False), (1.1, True), (1.6, True)],
+        ids=["half", "just-under", "just-over", "well-over"],
+    )
+    async def test_prediction_matches_the_compressor(self, fraction, expected):
+        rows = _band_history(fraction)
+        payload = [{"role": m.role, "content": m.content} for m in rows]
+
+        result = await compress_context(payload, model="gpt-4o", client=None)
+
+        assert result.was_compacted is expected
+        assert _will_compact(rows, "gpt-4o").expected is result.was_compacted
+
+    @pytest.mark.asyncio
+    async def test_threshold_reads_the_compressors_own_constants(self):
+        """A payload sized off ``get_compression_target`` and
+        ``DEFAULT_COMPRESSION_RESERVE`` must land on the compressor's own
+        boundary — if either constant is read differently on the two sides,
+        one of these two cases flips.
+        """
+        under = [{"role": "user", "content": _FILLER}] * 2
+        assert (
+            await compress_context(under, model="gpt-4o", client=None)
+        ).was_compacted is False
+
+        at_limit = _band_history(1.0)
+        payload = [{"role": m.role, "content": m.content} for m in at_limit]
+        estimated = estimate_token_count(payload, model="gpt-4o")
+        result = await compress_context(payload, model="gpt-4o", client=None)
+        # ``compress_context`` sums per-message, the estimator scales the sum,
+        # so the two differ by at most a rounding step per message.
+        assert abs(result.original_token_count - estimated) <= len(payload)
+        assert result.was_compacted is (
+            result.original_token_count + DEFAULT_COMPRESSION_RESERVE
+            > get_compression_target("gpt-4o")
         )
 
 
@@ -2112,25 +2258,38 @@ class TestPredictorMatchesCompressor:
 # ---------------------------------------------------------------------------
 
 
+def _summarized() -> ReducedContext:
+    """``_reduce_context``'s success exit: the transcript came back compacted."""
+    return ReducedContext(TranscriptBuilder(), False, None, False, True)
+
+
+def _dropped() -> ReducedContext:
+    """``_reduce_context``'s fallback exit: the transcript was discarded.
+
+    Reached both when ``compact_transcript`` fails on the first retry and on
+    every later retry.
+    """
+    return ReducedContext(TranscriptBuilder(), False, None, True, True, 50_000)
+
+
 class TestRetryReducedContext:
-    """The retry row must only persist when something actually shrank.
+    """The retry row must only persist when the conversation was summarized.
 
     ``_reduce_context`` is called after the row is already open, so the
     close is a claim about work that may not have happened.
     """
 
-    def test_live_transcript_counts_even_without_compressed_history(self):
-        # First retry: the transcript is summarized or dropped wholesale —
-        # a real reduction the row can honestly report.
+    def test_summarized_transcript_counts_even_without_compressed_history(self):
+        # First retry, compaction succeeded — a real summarization the row
+        # can honestly report.
         assert (
-            _retry_reduced_context(had_live_transcript=True, compaction_stats=None)
-            is True
+            _retry_reduced_context(reduced=_summarized(), compaction_stats=None) is True
         )
 
     def test_compressed_history_counts_without_a_transcript(self):
         assert (
             _retry_reduced_context(
-                had_live_transcript=False,
+                reduced=_dropped(),
                 compaction_stats=CompactionStats(tokens_before=100, tokens_after=10),
             )
             is True
@@ -2140,14 +2299,37 @@ class TestRetryReducedContext:
         # A later retry whose transcript was already dropped and whose
         # history already fits reduces nothing.
         assert (
-            _retry_reduced_context(had_live_transcript=False, compaction_stats=None)
-            is False
+            _retry_reduced_context(reduced=_dropped(), compaction_stats=None) is False
         )
+
+    @pytest.mark.asyncio
+    async def test_failed_compaction_is_not_a_summarization(self):
+        """A live transcript that FAILS to compact takes the drop branch.
+
+        The row is durable, so honouring it here tells the user — permanently,
+        on every refresh — that a conversation which was truncated had been
+        summarized.  Driven through the real ``_reduce_context`` because the
+        distinction only exists in its return value: the inputs (a live
+        transcript, first retry) are identical to the success case.
+        """
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+
+        with patch(
+            "backend.copilot.sdk.service.compact_transcript",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            ctx = await _reduce_context(
+                transcript, False, "sess-123", "/tmp/cwd", "[test]"
+            )
+
+        assert ctx.transcript_lost is True
+        assert _retry_reduced_context(reduced=ctx, compaction_stats=None) is False
 
     def test_both_signals_still_reports_a_reduction(self):
         assert (
             _retry_reduced_context(
-                had_live_transcript=True,
+                reduced=_summarized(),
                 compaction_stats=CompactionStats(messages_before=9, messages_after=2),
             )
             is True

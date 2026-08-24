@@ -618,10 +618,13 @@ class TestSdkInternalRebuildingPhase:
 
 class TestPreQueryOrdering:
     def test_start_carries_no_output_event(self):
-        """Regression: the row must be OPEN while the work runs.
+        """The opening events must leave the row OPEN.
 
-        The original bug emitted start+end together, so the user saw a
-        completed row and then sat through the expensive part in silence.
+        ``emit_pre_query_start`` runs before the compression work, so any
+        output or finish event it carries would close the row while the work
+        is still running — the user sees a completed row and then sits
+        through the expensive part in silence.  Closing is
+        ``emit_pre_query_end``'s job, or ``abort_pre_query``'s.
         """
         tracker = CompactionTracker()
         evts = tracker.emit_pre_query_start()
