@@ -348,7 +348,9 @@ const INTERRUPTED_HOLD_INDEX = INTERRUPTED_OPEN_ROW_TURN.findIndex(
 // the phase entirely.
 const REBUILDING_HOLD_INDEX =
   COMPACTION_TURN.findIndex(
-    (c) => c.type === "data-compaction" && c.data?.phase === "rebuilding",
+    (c) =>
+      c.type === "data-compaction" &&
+      (c.data as { phase?: string } | undefined)?.phase === "rebuilding",
   ) + 1;
 
 // `COMPACTION_TURN`'s chunk index of `tool-output-available` — the delay
