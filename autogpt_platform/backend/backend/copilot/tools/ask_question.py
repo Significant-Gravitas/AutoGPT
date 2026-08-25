@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 MAX_QUESTIONS = 10
 MAX_OPTIONS = 25
 MAX_OPTION_LENGTH = 200
+MAX_OPTION_SCAN = 500
 
 
 class AskQuestionTool(BaseTool):
@@ -182,6 +183,15 @@ def _parse_options(raw: Any) -> list[str]:
     """
     if not isinstance(raw, list):
         return []
-    stripped = [o.strip()[:MAX_OPTION_LENGTH] for o in raw if isinstance(o, str)]
-    unique = dict.fromkeys(s for s in stripped if s)
-    return list(unique)[:MAX_OPTIONS]
+    unique: dict[str, None] = {}
+    # Collect up to the cap rather than normalizing everything and slicing
+    # after: a huge array would otherwise cost a strip per entry. Blanks and
+    # repeats drop out, so the scan needs its own bound to stay finite.
+    for option in raw[:MAX_OPTION_SCAN]:
+        if not isinstance(option, str):
+            continue
+        if trimmed := option.strip()[:MAX_OPTION_LENGTH]:
+            unique[trimmed] = None
+            if len(unique) == MAX_OPTIONS:
+                break
+    return list(unique)

@@ -236,6 +236,21 @@ async def test_options_are_capped_in_count_and_length(
 
 
 @pytest.mark.asyncio
+async def test_options_stop_scanning_past_the_bound(
+    tool: AskQuestionTool, session: ChatSession
+):
+    # Blanks never reach the cap, so only the scan bound stops the walk.
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": "Pick", "options": [""] * 5000 + ["Slack"]}],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].options == []
+
+
+@pytest.mark.asyncio
 async def test_questions_are_capped(tool: AskQuestionTool, session: ChatSession):
     result = await tool._execute(
         user_id=None,
