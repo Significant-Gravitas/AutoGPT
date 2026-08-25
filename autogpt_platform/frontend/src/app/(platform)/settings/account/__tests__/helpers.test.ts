@@ -1,9 +1,10 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 
 import {
   BRIEFING_OPTIONS,
+  describeFooterChoice,
   dirtyKinds,
   findTimezoneLabel,
   isFormDirty,
@@ -127,5 +128,64 @@ describe("account preference helpers", () => {
   test("shows known timezone labels and preserves unknown values", () => {
     expect(findTimezoneLabel("Europe/London")).toBe("London (UK)");
     expect(findTimezoneLabel("Mars/Olympus_Mons")).toBe("Mars/Olympus_Mons");
+  });
+});
+
+describe("the volume knob's footer links", () => {
+  it("maps every option the Briefing footer offers", () => {
+    const current = {
+      briefingFrequency: "WEEKLY" as const,
+      alertsEnabled: true,
+      storeVerdictsEnabled: true,
+    };
+    // The five links in briefing.html.j2's footer, in order.
+    expect(settingsFromFooterLink("daily", current)?.briefingFrequency).toBe(
+      "DAILY",
+    );
+    expect(settingsFromFooterLink("weekly", current)?.briefingFrequency).toBe(
+      "WEEKLY",
+    );
+    expect(settingsFromFooterLink("monthly", current)?.briefingFrequency).toBe(
+      "MONTHLY",
+    );
+
+    // "Alerts only" and "Pause" both stop the digest; they differ on alerts.
+    const alertsOnly = settingsFromFooterLink("alerts", current);
+    expect(alertsOnly?.briefingFrequency).toBe("OFF");
+    expect(alertsOnly?.alertsEnabled).toBe(true);
+
+    const paused = settingsFromFooterLink("off", current);
+    expect(paused?.briefingFrequency).toBe("OFF");
+    expect(paused?.alertsEnabled).toBe(false);
+  });
+
+  it("leaves unrelated preferences alone", () => {
+    const current = {
+      briefingFrequency: "WEEKLY" as const,
+      alertsEnabled: true,
+      storeVerdictsEnabled: false,
+    };
+    // A frequency link must not quietly re-enable store verdicts.
+    expect(settingsFromFooterLink("daily", current)?.storeVerdictsEnabled).toBe(
+      false,
+    );
+  });
+
+  it("ignores an unknown or absent choice", () => {
+    const current = {
+      briefingFrequency: "WEEKLY" as const,
+      alertsEnabled: true,
+      storeVerdictsEnabled: true,
+    };
+    expect(settingsFromFooterLink(null, current)).toBeNull();
+    expect(settingsFromFooterLink("bogus", current)).toBeNull();
+  });
+
+  it("confirms the choice rather than prompting for it", () => {
+    // The click already saved; the toast is a receipt, not a question.
+    expect(describeFooterChoice("daily")).toMatch(/every day/i);
+    expect(describeFooterChoice("alerts")).toMatch(/still get alerts/i);
+    expect(describeFooterChoice("off")).toMatch(/paused/i);
+    expect(describeFooterChoice(null)).toBe("Preferences updated");
   });
 });

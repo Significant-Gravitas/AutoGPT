@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -22,6 +22,7 @@ import {
   dirtyKinds,
   isFormDirty,
   preferencesToSettings,
+  describeFooterChoice,
   settingsFromFooterLink,
   type BriefingFrequency,
   type NotificationSettings,
@@ -37,9 +38,18 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 export function usePreferencesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  // The Briefing footer's volume knob links here with ?f=daily|weekly|monthly
-  // |alerts|off, and the choice is applied on load so it really is one click.
+  // The Briefing footer's volume knob links here with
+  // ?f=daily|weekly|monthly|alerts|off. The design calls these "live one-click
+  // links — a volume knob instead of a trapdoor", so the choice is saved on
+  // arrival rather than pre-filling a form the reader still has to submit.
+  //
+  // A GET that writes is normally a bad idea, but the write goes through the
+  // authenticated API: a link prefetcher or mail scanner has no session, so it
+  // cannot apply anything. The param is stripped afterwards so a refresh or a
+  // shared URL does not re-apply a stale choice.
   const footerChoice = useSearchParams().get("f");
+  const router = useRouter();
+  const pathname = usePathname();
 
   const preferencesQuery = useGetV1GetNotificationPreferences({
     query: {
@@ -87,6 +97,26 @@ export function usePreferencesPage() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const hasInitializedFormState = useRef(false);
+  const hasAppliedFooterChoice = useRef(false);
+
+  const updateTimezone = usePostV1UpdateUserTimezone();
+  const updateNotifications = usePostV1UpdateNotificationPreferences();
+
+  async function applyNotificationSettings(next: NotificationSettings) {
+    await updateNotifications.mutateAsync({
+      data: {
+        email: user?.email ?? "",
+        briefing_frequency: next.briefingFrequency,
+        alerts_enabled: next.alertsEnabled,
+        store_verdicts_enabled: next.storeVerdictsEnabled,
+      },
+    });
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
 
   useEffect(
     function syncFormStateOnce() {
@@ -103,6 +133,37 @@ export function usePreferencesPage() {
       preferencesQuery.isSuccess,
       timezoneQuery.isSuccess,
     ],
+  );
+
+  useEffect(
+    function applyFooterChoiceOnArrival() {
+      if (hasAppliedFooterChoice.current) return;
+      if (!hasInitializedFormState.current) return;
+      if (!user || !footerChoice) return;
+
+      const chosen = settingsFromFooterLink(footerChoice, initialSettings);
+      hasAppliedFooterChoice.current = true;
+      router.replace(pathname);
+
+      if (!chosen) return;
+
+      applyNotificationSettings(chosen)
+        .then(() => {
+          toast({
+            title: describeFooterChoice(footerChoice),
+            variant: "success",
+          });
+        })
+        .catch(() => {
+          // Leave the choice in the form so the reader can still hit Save.
+          toast({
+            title: "Couldn't update your email frequency",
+            description: "Your choice is selected below — press Save to retry.",
+            variant: "destructive",
+          });
+        });
+    },
+    [footerChoice, initialSettings, pathname, router, user],
   );
 
   const dirty = isFormDirty(savedState, formState);
@@ -136,9 +197,6 @@ export function usePreferencesPage() {
   function discardChanges() {
     setFormState(savedState);
   }
-
-  const updateTimezone = usePostV1UpdateUserTimezone();
-  const updateNotifications = usePostV1UpdateNotificationPreferences();
 
   async function savePreferences() {
     if (!dirty || isSaving || !user) return;
@@ -175,21 +233,7 @@ export function usePreferencesPage() {
 
     if (partsAtSubmit.notifications) {
       try {
-        await updateNotifications.mutateAsync({
-          data: {
-            email: user.email ?? "",
-            briefing_frequency: snapshot.notifications.briefingFrequency,
-            alerts_enabled: snapshot.notifications.alertsEnabled,
-            store_verdicts_enabled: snapshot.notifications.storeVerdictsEnabled,
-          },
-        });
-        await queryClient.invalidateQueries({
-          queryKey: getGetV1GetNotificationPreferencesQueryKey(),
-        });
-        setSavedState((prev) => ({
-          ...prev,
-          notifications: snapshot.notifications,
-        }));
+        await applyNotificationSettings(snapshot.notifications);
         notificationsSaved = true;
       } catch (err) {
         failures.push(

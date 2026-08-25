@@ -34,11 +34,24 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
 
+const mockRouterReplace = vi.fn();
+
 vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
     ...actual,
     useSearchParams: mockUseSearchParams,
+    usePathname: () => "/settings/account",
+    // The footer link strips its own ?f= once applied, so the page needs a
+    // router even when the test never navigates.
+    useRouter: () => ({
+      replace: mockRouterReplace,
+      push: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      refresh: vi.fn(),
+      prefetch: vi.fn(),
+    }),
   };
 });
 
@@ -228,20 +241,27 @@ describe("SettingsPreferencesPage", () => {
 
     render(<SettingsPreferencesPage />);
 
-    const alertsSwitch = await screen.findByRole("switch", { name: "Alerts" });
-    const saveButton = screen.getByRole("button", { name: "Save changes" });
-
-    expect(alertsSwitch.getAttribute("aria-checked")).toBe("true");
-    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
-
-    fireEvent.click(saveButton);
-
+    // One click, not two. The design calls these "live one-click links — a
+    // volume knob instead of a trapdoor", so arriving from the footer saves
+    // the choice; nobody has to find and press Save afterwards.
     await waitFor(() => {
       expect(submitted).toMatchObject({
         briefing_frequency: "OFF",
         alerts_enabled: true,
       });
     });
+
+    const alertsSwitch = await screen.findByRole("switch", { name: "Alerts" });
+    expect(alertsSwitch.getAttribute("aria-checked")).toBe("true");
+
+    // Saved, so there is nothing left to save.
+    await waitFor(() => {
+      const saveButton = screen.getByRole("button", { name: "Save changes" });
+      expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    // And the ?f= is stripped so a refresh cannot re-apply a stale choice.
+    expect(mockRouterReplace).toHaveBeenCalledWith("/settings/account");
   });
 
   test("saves briefing frequency and marketplace review changes", async () => {

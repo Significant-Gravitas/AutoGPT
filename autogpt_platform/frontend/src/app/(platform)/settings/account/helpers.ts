@@ -160,3 +160,27 @@ export const TIMEZONES = TIMEZONE_LIST;
 export function findTimezoneLabel(value: string): string {
   return TIMEZONES.find((t) => t.value === value)?.label ?? value;
 }
+
+/**
+ * What to tell someone who just arrived from a footer link.
+ *
+ * The choice is already saved by the time this shows, so it confirms rather
+ * than prompts — the whole point of the volume knob is that one click is the
+ * entire interaction.
+ */
+export function describeFooterChoice(value: string | null): string {
+  switch (value) {
+    case "daily":
+      return "You'll get a briefing every day";
+    case "weekly":
+      return "You'll get a briefing every week";
+    case "monthly":
+      return "You'll get a briefing every month";
+    case "alerts":
+      return "Briefings paused — you'll still get alerts";
+    case "off":
+      return "Briefings and alerts paused";
+    default:
+      return "Preferences updated";
+  }
+}

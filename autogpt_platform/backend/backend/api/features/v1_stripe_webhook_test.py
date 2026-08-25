@@ -14,6 +14,7 @@ from backend.data.credit import (
     reconcile_stripe_tier_for_user,
     sync_tier_from_checkout_session,
 )
+from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 
 from .v1 import _claim_stripe_event, _release_stripe_event, v1_router
 
@@ -35,9 +36,14 @@ def stub_lifecycle_emails(mocker: pytest_mock.MockFixture):
         return_value={"id": "sub_stub"},
     )
     return {
+        # The welcome is queued rather than sent inline: the customer has
+        # already paid, and retrying the whole event to re-send a welcome would
+        # re-run `fulfill_checkout`. The consumer re-reads the session from
+        # Stripe and sends it, with retries and a DLQ.
         "checkout": mocker.patch(
-            "backend.api.features.v1.lifecycle.on_checkout_completed",
+            "backend.api.features.v1.queue_pass_work",
             new_callable=AsyncMock,
+            return_value=NotificationResult(success=True),
         ),
         "payment_failed": mocker.patch(
             "backend.api.features.v1.lifecycle.on_payment_failed",
@@ -754,6 +760,9 @@ def test_welcome_email_hangs_off_checkout_not_subscription_created(
     )
     _post_event(mocker, _make_checkout_event("subscription", "sub_123"))
     stub_lifecycle_emails["checkout"].assert_awaited_once()
+    queued = stub_lifecycle_emails["checkout"].await_args
+    assert queued.args[0] == PassWorkKind.WELCOME.value
+    assert PassWorkEvent.model_validate_json(queued.args[2]).context["session_id"]
 
     stub_lifecycle_emails["checkout"].reset_mock()
     mocker.patch(
