@@ -147,8 +147,11 @@ the `autogpt-data` volume.
 ## Stopping
 
 `docker stop autogpt` completes inside Docker's stock 10-second timeout, so no
-host-wide timeout change is needed. Runtime processes stop first; PostgreSQL,
-RabbitMQ, Valkey, and FalkorDB drain last.
+host-wide timeout change is needed. Runtime processes are signaled first.
+PostgreSQL, RabbitMQ, Valkey, and FalkorDB are signaled afterward and each gets
+at most five seconds to exit before Supervisor forces it down. The tested
+appliance exits within the stock timeout, but larger or slower state may require
+normal crash recovery on the next boot.
 
 Agent runs still executing when the container stops do not survive or resume.
 Re-run them after restart.
@@ -305,10 +308,12 @@ CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
 `CHAT_API_KEY` must be non-empty even if the local server ignores it. The
-local transport automatically makes Graphiti inherit the same base URL and API
-key, rewrites its default extraction and reranker model to the configured local
-chat model, and uses `nomic-embed-text` for embeddings. Separate
-`GRAPHITI_*` routing variables are unnecessary unless you want an override.
+local transport makes Graphiti inherit the same base URL and API key. With the
+default profile above, Graphiti rewrites its extraction and reranker models to
+`hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` and uses `nomic-embed-text` for
+embeddings. If you choose another chat model, also set `GRAPHITI_LLM_MODEL`
+and `GRAPHITI_RERANKER_MODEL` to a model that the endpoint serves. Set
+`GRAPHITI_EMBEDDER_MODEL` too when its embedding model uses another slug.
 
 On Docker Engine, add `--add-host host.docker.internal:host-gateway` to the run
 command for this local-model profile. Docker Desktop provides that hostname
@@ -325,9 +330,9 @@ docker exec autogpt \
 ```
 
 The same settings can point at a remote vLLM, LocalAI, LM Studio, LiteLLM, or
-other OpenAI-compatible HTTPS endpoint, provided it serves both the configured
-chat model and `nomic-embed-text`. Do not expose an unauthenticated model server
-to the internet. See the
+other OpenAI-compatible HTTPS endpoint, provided it serves every configured
+chat and Graphiti model slug. Do not expose an unauthenticated model server to
+the internet. See the
 [AutoPilot local-LLM guide](copilot-local-llm.md)
 for model and context-window guidance.
 
@@ -339,7 +344,11 @@ public frontend process.
 
 `BEHAVE_AS` defaults to `local`, which bypasses subscription entitlement gating
 for every user. This is appropriate for single-tenant self-hosting. Any
-multi-tenant or hosted deployment must set `BEHAVE_AS=cloud`.
+multi-user evaluation must set `BEHAVE_AS=cloud` for backend entitlement
+enforcement, but that setting is not a complete hosted-mode switch: the bundled
+frontend is compiled in local mode. Do not treat this image as a turnkey
+multi-tenant hosted distribution. Use the supported cloud deployment and build,
+and review its full security boundary.
 
 The browser-facing nginx and Next.js processes run under Unix identities that
 are separate from backend services. The frontend receives an explicit runtime
@@ -410,7 +419,10 @@ docker inspect --format \
 The block below stops the running appliance before archiving its coupled
 service state. It uses the stopped container's exact local image ID, writes to
 a unique partial file, and promotes it to the final timestamped name only after
-`tar` succeeds.
+`tar` succeeds. This produces a stopped-volume snapshot. If a state service
+exceeds its five-second shutdown cap, the snapshot reflects a crash stop rather
+than a fully graceful shutdown. Rehearse restoration and verify service
+recovery before relying on it.
 The appliance remains unavailable for the duration of the archive, which grows
 with `/data`:
 
@@ -426,18 +438,25 @@ with `/data`:
   PARTIAL_FILE="${BACKUP_FILE}.partial"
   CHECKSUM_FILE="${BACKUP_FILE}.sha256"
   CHECKSUM_PARTIAL="${CHECKSUM_FILE}.partial"
+  RESTART_AFTER_BACKUP="${RESTART_AFTER_BACKUP:-true}"
   # Invoked by the EXIT trap below.
   # shellcheck disable=SC2329
-  restart_autogpt() {
+  finish_backup() {
     local exit_status="$1"
     trap - EXIT
-    if ! docker start autogpt >/dev/null; then
+    if [[ "${exit_status}" -ne 0 || "${RESTART_AFTER_BACKUP}" == true ]] && \
+       ! docker start autogpt >/dev/null; then
       echo "Backup finished but the autogpt container could not restart" >&2
       exit_status=1
     fi
     exit "${exit_status}"
   }
 
+  if [[ "${RESTART_AFTER_BACKUP}" != true && \
+        "${RESTART_AFTER_BACKUP}" != false ]]; then
+    echo "RESTART_AFTER_BACKUP must be true or false" >&2
+    exit 1
+  fi
   : "${BACKUP_VOLUME:?Container has no named volume mounted at /data}"
   BACKUP_VOLUME_LABELS="$(docker volume inspect --format '{{json .Labels}}' \
     "${BACKUP_VOLUME}")"
@@ -460,7 +479,7 @@ with `/data`:
     exit 1
   fi
 
-  trap 'restart_autogpt "$?"' EXIT
+  trap 'finish_backup "$?"' EXIT
   docker stop autogpt
   umask 077
   touch "${BACKUP_DIR}/${PARTIAL_FILE}"
@@ -488,8 +507,11 @@ with `/data`:
 )
 ```
 
-The exit trap restarts the unchanged installation after the archive succeeds or
-if a later backup command fails. Verify that it is running again:
+By default, the exit trap restarts the unchanged installation after the archive
+succeeds. It always attempts a restart if a backup command fails. For an
+upgrade, set `RESTART_AFTER_BACKUP=false` before running the block; a successful
+backup then leaves the appliance stopped at the cutover snapshot. With the
+default setting, verify that it is running again:
 
 ```bash
 docker inspect --format '{{.State.Status}}' autogpt
@@ -641,15 +663,14 @@ the restored volume:
 Before an upgrade:
 
 1. Record the running image reference and image ID.
-2. Run the Cold backup block while the container is running. It stops the
-   appliance for the archive and restarts it afterward.
-3. Pull or build the new image.
-4. Stop the container again immediately before replacement with
-   `docker stop autogpt`.
-5. Remove only the stopped container with `docker rm autogpt`.
-6. Repeat the Quick start run command with the same environment file and named
+2. Pull or build the new image while the old appliance remains available.
+3. Set `RESTART_AFTER_BACKUP=false`, then run the Cold backup block. A
+   successful backup leaves the appliance stopped; a failed backup restarts the
+   unchanged installation.
+4. Remove only the stopped container with `docker rm autogpt`.
+5. Repeat the Quick start run command with the same environment file and named
    volume but the new image reference.
-7. Wait for full health, then test login, memory, one agent execution, streaming,
+6. Wait for full health, then test login, memory, one agent execution, streaming,
    WebSockets, and persistence across one restart.
 
 Useful image evidence is available with:
