@@ -190,6 +190,29 @@ class DocumentedOperationsTest(unittest.TestCase):
         )
 
         self.assertEqual(restore.returncode, 0, restore.stderr)
+        restore_commands = self._commands()[len(backup_commands) :]
+        create_index = next(
+            index
+            for index, command in enumerate(restore_commands)
+            if command[:2] == ["volume", "create"]
+        )
+        create_command = restore_commands[create_index]
+        self.assertIn("--label", create_command)
+        self.assertRegex(
+            create_command[create_command.index("--label") + 1],
+            r"^org[.]agpt[.]restore[.]owner=restore-",
+        )
+        owner_inspect_indexes = [
+            index
+            for index, command in enumerate(restore_commands)
+            if command[:2] == ["volume", "inspect"] and "--format" in command
+        ]
+        self.assertEqual(len(owner_inspect_indexes), 1)
+        extract_index = next(
+            index for index, command in enumerate(restore_commands) if "-xzf" in command
+        )
+        self.assertLess(create_index, owner_inspect_indexes[0])
+        self.assertLess(owner_inspect_indexes[0], extract_index)
         match = re.search(r"Restored .* into volume (\S+)", restore.stdout)
         self.assertIsNotNone(match, restore.stdout)
         restore_volume = match.group(1) if match else ""
@@ -256,7 +279,7 @@ class DocumentedOperationsTest(unittest.TestCase):
             (
                 "later-listen-override",
                 "postgres/postgresql.conf",
-                POSTGRESQL_CONF + "listen_addresses = '*'\n",
+                POSTGRESQL_CONF + "Listen_Addresses '*'\n",
             ),
             (
                 "auto-conf-listen-override",
@@ -266,7 +289,17 @@ class DocumentedOperationsTest(unittest.TestCase):
             (
                 "postgres-config-include",
                 "postgres/postgresql.conf",
-                POSTGRESQL_CONF + "include = 'unsafe.conf'\n",
+                POSTGRESQL_CONF + "InClUdE = 'unsafe.conf'\n",
+            ),
+            (
+                "postgres-hba-file",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "hba_file = '/tmp/unsafe-hba.conf'\n",
+            ),
+            (
+                "auto-conf-hba-file",
+                "postgres/postgresql.auto.conf",
+                "HBA_FILE '/tmp/unsafe-hba.conf'\n",
             ),
             (
                 "earlier-broad-trust-rule",
@@ -305,6 +338,77 @@ class DocumentedOperationsTest(unittest.TestCase):
                     0,
                     f"{case} unexpectedly passed:\n{invalid.stdout}\n{invalid.stderr}",
                 )
+
+    def test_restore_race_preserves_foreign_volume(self) -> None:
+        backup = self._run(COLD_BACKUP_BLOCK)
+        self.assertEqual(backup.returncode, 0, backup.stderr)
+        archive_path, _ = self._backup_artifacts()
+        command_count = len(self._commands())
+        restore_volume = "contended-restore-volume"
+
+        result = self._run(
+            RESTORE_BLOCK,
+            BACKUP_DIR=str(archive_path.parent),
+            BACKUP_FILE=archive_path.name,
+            RESTORE_IMAGE=self.environment["FAKE_DOCKER_IMAGE_DIGEST"],
+            RESTORE_VOLUME=restore_volume,
+            FAKE_DOCKER_PRECREATE_VOLUME_OWNER="other-restore-run",
+            FAKE_DOCKER_FAIL="extract",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing to populate", result.stderr)
+        foreign_volume = self.volume_root / restore_volume
+        self.assertTrue(foreign_volume.is_dir())
+        self.assertEqual(
+            (foreign_volume / "other-owner.txt").read_text(encoding="utf-8"),
+            "preserve this volume\n",
+        )
+        self.assertFalse((foreign_volume / "config").exists())
+        labels = json.loads(
+            (self.state_dir / "volume-labels" / f"{restore_volume}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(labels, {"org.agpt.restore.owner": "other-restore-run"})
+        restore_commands = self._commands()[command_count:]
+        volume_operations = [
+            command
+            for command in restore_commands
+            if command[:2] in (["volume", "inspect"], ["volume", "create"])
+        ]
+        self.assertEqual(
+            [command[:2] for command in volume_operations],
+            [
+                ["volume", "inspect"],
+                ["volume", "create"],
+                ["volume", "inspect"],
+            ],
+        )
+        self.assertFalse(any("-xzf" in command for command in restore_commands))
+        self.assertFalse(
+            any(command[:2] == ["volume", "rm"] for command in restore_commands)
+        )
+
+    def test_fake_validation_rewrites_only_data_mount_root(self) -> None:
+        restore_volume = "boundary-aware-validation"
+        shutil.copytree(self.source_volume, self.volume_root / restore_volume)
+        validation_block = STRUCTURAL_VALIDATION_BLOCK.replace(
+            '      quote="$(printf "\\047")"',
+            "      literal=/database\n"
+            '      test "${#literal}" -eq 9\n'
+            '      test -s "/data/config/runtime.env"\n'
+            '      quote="$(printf "\\047")"',
+        )
+        self.assertNotEqual(validation_block, STRUCTURAL_VALIDATION_BLOCK)
+
+        result = self._run(
+            validation_block,
+            RESTORE_VOLUME=restore_volume,
+            RESTORE_IMAGE=self.environment["FAKE_DOCKER_IMAGE_DIGEST"],
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_backup_can_leave_the_container_stopped_for_upgrade(self) -> None:
         result = self._run(COLD_BACKUP_BLOCK, RESTART_AFTER_BACKUP="false")
@@ -501,15 +605,20 @@ class DocumentedOperationsTest(unittest.TestCase):
             stderr=subprocess.PIPE,
             encoding="utf-8",
         )
-        lock_path = self.state_dir / "backup-lock"
-        deadline = time.monotonic() + 5
-        while not lock_path.is_file() and first.poll() is None:
-            self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.01)
-        self.assertTrue(lock_path.is_file())
+        try:
+            lock_path = self.state_dir / "backup-lock"
+            deadline = time.monotonic() + 5
+            while not lock_path.is_file() and first.poll() is None:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.01)
+            self.assertTrue(lock_path.is_file())
 
-        second = self._run(COLD_BACKUP_BLOCK, BACKUP_DIR="second-backups")
-        first_stdout, first_stderr = first.communicate(timeout=10)
+            second = self._run(COLD_BACKUP_BLOCK, BACKUP_DIR="second-backups")
+            first_stdout, first_stderr = first.communicate(timeout=10)
+        finally:
+            if first.poll() is None:
+                first.kill()
+            first.wait(timeout=10)
 
         self.assertEqual(first.returncode, 0, first_stderr)
         self.assertIn("Backup written", first_stdout)
@@ -601,6 +710,7 @@ class DocumentedOperationsTest(unittest.TestCase):
         volumes_before_failure = {
             path.name for path in self.volume_root.iterdir() if path.is_dir()
         }
+        failure_command_count = len(self._commands())
         failed_extract = self._run(
             RESTORE_BLOCK,
             BACKUP_DIR=relative_backup_dir,
@@ -614,6 +724,19 @@ class DocumentedOperationsTest(unittest.TestCase):
             {path.name for path in self.volume_root.iterdir() if path.is_dir()},
             volumes_before_failure,
         )
+        failed_restore_commands = self._commands()[failure_command_count:]
+        owner_inspect_indexes = [
+            index
+            for index, command in enumerate(failed_restore_commands)
+            if command[:2] == ["volume", "inspect"] and "--format" in command
+        ]
+        remove_index = next(
+            index
+            for index, command in enumerate(failed_restore_commands)
+            if command[:2] == ["volume", "rm"]
+        )
+        self.assertEqual(len(owner_inspect_indexes), 2)
+        self.assertLess(owner_inspect_indexes[-1], remove_index)
 
         environment_file = self.work_dir / "restore.env"
         environment_file.write_text(

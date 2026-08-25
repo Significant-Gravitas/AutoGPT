@@ -779,6 +779,8 @@ RESTORE_IMAGE=significantgravitas/autogpt@sha256:RECORDED_DIGEST
   CHECKSUM_FILE="${BACKUP_FILE}.sha256"
   DEFAULT_RESTORE_VOLUME="autogpt-data-restored-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}${RANDOM}"
   RESTORE_VOLUME="${RESTORE_VOLUME:-${DEFAULT_RESTORE_VOLUME}}"
+  RESTORE_OWNER_LABEL="org.agpt.restore.owner"
+  RESTORE_OWNER="restore-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}${RANDOM}"
   RESTORE_CREATED=false
   RESTORE_COMPLETE=false
 
@@ -824,10 +826,17 @@ RESTORE_IMAGE=significantgravitas/autogpt@sha256:RECORDED_DIGEST
   # shellcheck disable=SC2329
   finish_restore() {
     local exit_status="$1"
+    local current_owner
     trap - EXIT HUP INT TERM
     if [[ "${RESTORE_CREATED}" == true && \
           "${RESTORE_COMPLETE}" != true ]]; then
-      if docker volume rm "${RESTORE_VOLUME}" >/dev/null; then
+      if ! current_owner="$(docker volume inspect \
+        --format "{{ index .Labels \"${RESTORE_OWNER_LABEL}\" }}" \
+        "${RESTORE_VOLUME}" 2>/dev/null)" || \
+          [[ "${current_owner}" != "${RESTORE_OWNER}" ]]; then
+        echo "Restore failed; refusing to remove a volume whose ownership cannot be verified: ${RESTORE_VOLUME}" >&2
+        exit_status=1
+      elif docker volume rm "${RESTORE_VOLUME}" >/dev/null; then
         echo "Restore failed; the partial restore volume was removed" >&2
       else
         echo "Restore failed; remove the partial volume after inspection: docker volume rm ${RESTORE_VOLUME}" >&2
@@ -841,7 +850,16 @@ RESTORE_IMAGE=significantgravitas/autogpt@sha256:RECORDED_DIGEST
   trap 'finish_restore 129' HUP
   trap 'finish_restore 130' INT
   trap 'finish_restore 143' TERM
-  docker volume create "${RESTORE_VOLUME}" >/dev/null
+  docker volume create \
+    --label "${RESTORE_OWNER_LABEL}=${RESTORE_OWNER}" \
+    "${RESTORE_VOLUME}" >/dev/null
+  if ! CREATED_OWNER="$(docker volume inspect \
+    --format "{{ index .Labels \"${RESTORE_OWNER_LABEL}\" }}" \
+    "${RESTORE_VOLUME}" 2>/dev/null)" || \
+      [[ "${CREATED_OWNER}" != "${RESTORE_OWNER}" ]]; then
+    echo "Refusing to populate a restore volume whose ownership cannot be verified: ${RESTORE_VOLUME}" >&2
+    exit 1
+  fi
   RESTORE_CREATED=true
 
   docker run --rm \
@@ -857,6 +875,10 @@ RESTORE_IMAGE=significantgravitas/autogpt@sha256:RECORDED_DIGEST
     "${BACKUP_FILE}" "${RESTORE_VOLUME}"
 )
 ```
+
+A per-run ownership label is checked after volume creation and again before
+failure cleanup. If another run wins the same volume name, this restore refuses
+to populate or remove that volume.
 
 Use only an archive and checksum obtained through a trusted backup process. A
 matching untrusted checksum detects accidental corruption but does not prove
@@ -895,17 +917,19 @@ same `RESTORE_IMAGE`:
       test -d /data/home
       test -d /data/frontend-home
       quote="$(printf "\047")"
-      setting="^[[:space:]]*listen_addresses[[:space:]]*="
+      setting="^[[:space:]]*listen_addresses([[:space:]]*=[[:space:]]*|[[:space:]]+)"
+      hba_file_setting="^[[:space:]]*hba_file([[:space:]]*=[[:space:]]*|[[:space:]]+)"
       include="^[[:space:]]*include(_if_exists|_dir)?([[:space:]]+|[[:space:]]*=)"
       end="[[:space:]]*(#.*)?$"
       set -- /data/postgres/postgresql.conf
       if test -f /data/postgres/postgresql.auto.conf; then
         set -- "$@" /data/postgres/postgresql.auto.conf
       fi
-      active_listen="$(grep -hE "${setting}" "$@" || true)"
+      active_listen="$(grep -hiE "${setting}" "$@" || true)"
       test "$(printf "%s\n" "${active_listen}" | grep -c .)" -eq 1
-      printf "%s\n" "${active_listen}" | grep -Eq "${setting}[[:space:]]*${quote}127[.]0[.]0[.]1${quote}${end}"
-      if grep -Eq "${include}" "$@"; then
+      printf "%s\n" "${active_listen}" | grep -Eiq "${setting}[[:space:]]*${quote}127[.]0[.]0[.]1${quote}${end}"
+      if grep -Eiq "${include}" "$@" || \
+          grep -Eiq "${hba_file_setting}" "$@"; then
         exit 1
       fi
 
@@ -930,9 +954,9 @@ same `RESTORE_IMAGE`:
 ```
 
 The check also rejects PostgreSQL configuration that enables non-loopback
-listening, loads external configuration fragments, or weakens the generated
-local `peer` and loopback `scram-sha-256` access rules. It does not prove that
-each database can start. A full
+listening, loads external configuration fragments, redirects `hba_file`, or
+weakens the generated local `peer` and loopback `scram-sha-256` access rules.
+It does not prove that each database can start. A full
 recovery rehearsal boots live schedules, stored credentials, and executors,
 and some services fetch runtime data during startup. Perform it only on a
 dedicated egress-filtered host or network after revoking or replacing

@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
 import signal
 import subprocess
@@ -18,8 +17,10 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(os.environ["FAKE_DOCKER_ROOT"])
 STATE_DIR = ROOT / "state"
 VOLUME_DIR = ROOT / "volumes"
+VOLUME_LABEL_DIR = STATE_DIR / "volume-labels"
 LOG_PATH = ROOT / "commands.jsonl"
 ARGS = sys.argv[1:]
+RESTORE_OWNER_LABEL = "org.agpt.restore.owner"
 
 
 def finish(status: int, output: str = "", error: str = "") -> None:
@@ -38,6 +39,46 @@ def record() -> None:
 def should_fail(operation: str) -> bool:
     failures = os.environ.get("FAKE_DOCKER_FAIL", "").split(",")
     return operation in failures
+
+
+def volume_label_path(volume_name: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", volume_name):
+        finish(2, error=f"invalid fake volume name: {volume_name}")
+    return VOLUME_LABEL_DIR / f"{volume_name}.json"
+
+
+def read_volume_labels(volume_name: str) -> dict[str, str]:
+    metadata_path = volume_label_path(volume_name)
+    if not metadata_path.is_file():
+        return {}
+    labels = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if not isinstance(labels, dict):
+        finish(2, error=f"invalid fake volume labels: {volume_name}")
+    return {str(key): str(value) for key, value in labels.items()}
+
+
+def write_volume_labels(volume_name: str, labels: dict[str, str]) -> None:
+    VOLUME_LABEL_DIR.mkdir(exist_ok=True)
+    metadata_path = volume_label_path(volume_name)
+    temporary_path = metadata_path.with_suffix(f".{os.getpid()}.tmp")
+    temporary_path.write_text(json.dumps(labels, sort_keys=True), encoding="utf-8")
+    temporary_path.replace(metadata_path)
+
+
+def requested_volume_labels() -> dict[str, str]:
+    labels: dict[str, str] = {}
+    for index, argument in enumerate(ARGS[:-1]):
+        if argument == "--label":
+            label = ARGS[index + 1]
+        elif argument.startswith("--label="):
+            label = argument.removeprefix("--label=")
+        else:
+            continue
+        key, separator, value = label.partition("=")
+        if not separator or not key:
+            finish(2, error=f"invalid fake volume label: {label}")
+        labels[key] = value
+    return labels
 
 
 def require_network_none() -> None:
@@ -169,9 +210,23 @@ def validate_layout(mounts: dict[str, Path]) -> None:
         if not valid:
             finish(1, error=f"missing required restore path: {container_path}")
     data_path = mounts["/data"]
-    host_script = script.replace("/data", shlex.quote(str(data_path)))
+    try:
+        relative_data_path = data_path.relative_to(ROOT)
+    except ValueError:
+        finish(2, error="fake validation data path escaped its root")
+    if not all(
+        re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in relative_data_path.parts
+    ):
+        finish(2, error="fake validation data path is not shell-safe")
+    shell_data_path = f"./{relative_data_path.as_posix()}"
+    host_script = re.sub(
+        r"(?<![A-Za-z0-9_./-])/data(?=/|[\s:;,)\"']|$)",
+        shell_data_path,
+        script,
+    )
     validation = subprocess.run(
         ["/bin/sh", "-ceu", host_script],
+        cwd=ROOT,
         env={"PATH": os.environ.get("PATH", os.defpath)},
         check=False,
         capture_output=True,
@@ -234,14 +289,48 @@ if ARGS[:2] == ["container", "inspect"]:
     finish(0 if exists else 1)
 
 if ARGS[:2] == ["volume", "inspect"]:
-    if "--format" in ARGS:
-        finish(0, output=os.environ.get("FAKE_DOCKER_LABELS", "{}"))
     volume_name = ARGS[-1]
-    finish(0 if (VOLUME_DIR / volume_name).is_dir() else 1)
+    volume_path = VOLUME_DIR / volume_name
+    if not volume_path.is_dir():
+        finish(1)
+    if "--format" in ARGS:
+        template = ARGS[ARGS.index("--format") + 1]
+        metadata_path = volume_label_path(volume_name)
+        if "json .Labels" in template:
+            if (
+                not metadata_path.is_file()
+                and volume_name == os.environ["FAKE_DOCKER_VOLUME"]
+            ):
+                finish(0, output=os.environ.get("FAKE_DOCKER_LABELS", "{}"))
+            finish(0, output=json.dumps(read_volume_labels(volume_name)))
+        label_match = re.search(r'index \.Labels "([^"]+)"', template)
+        if label_match:
+            finish(
+                0, output=read_volume_labels(volume_name).get(label_match.group(1), "")
+            )
+        finish(2, error=f"unsupported fake volume inspect template: {template}")
+    finish(0)
 
 if ARGS[:2] == ["volume", "create"]:
     volume_name = ARGS[-1]
-    (VOLUME_DIR / volume_name).mkdir(parents=True)
+    volume_path = VOLUME_DIR / volume_name
+    race_owner = os.environ.get("FAKE_DOCKER_PRECREATE_VOLUME_OWNER")
+    if race_owner and not volume_path.exists():
+        try:
+            volume_path.mkdir()
+        except FileExistsError:
+            pass
+        else:
+            write_volume_labels(volume_name, {RESTORE_OWNER_LABEL: race_owner})
+            (volume_path / "other-owner.txt").write_text(
+                "preserve this volume\n", encoding="utf-8"
+            )
+    try:
+        volume_path.mkdir()
+    except FileExistsError:
+        pass
+    else:
+        write_volume_labels(volume_name, requested_volume_labels())
     finish(0, output=volume_name)
 
 if ARGS[:2] == ["volume", "rm"]:
@@ -250,6 +339,7 @@ if ARGS[:2] == ["volume", "rm"]:
     if not volume_path.is_dir():
         finish(1, error="volume does not exist")
     shutil.rmtree(volume_path)
+    volume_label_path(volume_name).unlink(missing_ok=True)
     finish(0, output=volume_name)
 
 if ARGS[0] == "stop":
