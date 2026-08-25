@@ -363,7 +363,11 @@ describe("YourPlanCard cycle toggle", () => {
   });
 
   it("fires updateTier with billing_cycle on confirm", async () => {
-    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    let capturedBody: {
+      tier?: string;
+      billing_cycle?: string;
+      success_url?: string;
+    } | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
@@ -394,6 +398,11 @@ describe("YourPlanCard cycle toggle", () => {
       expect(capturedBody).not.toBeNull();
       expect(capturedBody?.tier).toBe("PRO");
       expect(capturedBody?.billing_cycle).toBe("yearly");
+      // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+      // report the subscription value to Google Ads.
+      expect(capturedBody?.success_url).toContain(
+        "?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=yearly",
+      );
     });
   });
 

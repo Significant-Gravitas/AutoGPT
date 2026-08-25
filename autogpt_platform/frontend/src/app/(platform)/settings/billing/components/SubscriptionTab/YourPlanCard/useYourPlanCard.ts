@@ -13,6 +13,10 @@ import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated_
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  getSubscriptionValue,
+  trackAdsConversion,
+} from "@/services/analytics/google-ads";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 
@@ -187,8 +191,18 @@ export function useYourPlanCard() {
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {
-    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
+    const cycle = billingCycle ?? "monthly";
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription to Google Ads.
+    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
+    // Only a free account goes through Checkout; paid users are modified in
+    // place, which is not a checkout start.
+    if (!isPaid) {
+      trackAdsConversion("begin_checkout", {
+        value: getSubscriptionValue(tier, cycle),
+      });
+    }
     try {
       const result = await updateTier({
         data: {

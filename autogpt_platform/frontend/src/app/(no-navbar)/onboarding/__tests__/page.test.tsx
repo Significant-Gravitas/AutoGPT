@@ -7,6 +7,10 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { http, HttpResponse } from "msw";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
@@ -362,6 +366,31 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
       step: "ONBOARDING_COMPLETE",
     });
     expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("reports onboarding_complete to Google Ads when Preparing finishes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+
+    expect(gtagCalls).toContainEqual([
+      "event",
+      "conversion",
+      { send_to: "AW-123/OC" },
+    ]);
+    removeGtagShim();
+    vi.unstubAllEnvs();
   });
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {

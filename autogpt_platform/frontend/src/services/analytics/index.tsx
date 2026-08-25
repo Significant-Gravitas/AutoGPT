@@ -6,11 +6,15 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { consent } from "@/services/consent/cookies";
+import { useMountEffect } from "@/hooks/useMountEffect";
+import { consent, type ConsentPreferences } from "@/services/consent/cookies";
 import { usePathname } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useState } from "react";
 import { environment } from "../environment";
+import { buildConsentModeScript } from "./consent-mode";
+import { DATA_LAYER_NAME, gtag } from "./gtag";
+import { isTourPath, resolveAnalyticsLoading } from "./loading-policy";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
 
@@ -21,8 +25,6 @@ declare global {
   }
 }
 
-let currDataLayerName: string | undefined = undefined;
-
 type SetupProps = {
   ga: GAParams;
   host: string;
@@ -30,37 +32,29 @@ type SetupProps = {
 
 export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
-  const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = ga;
-  const isProductionDomain = host.includes("platform.agpt.co");
+  const { gaId, debugMode, nonce } = ga;
+  const adsId = environment.getGoogleAdsID();
 
-  // Check for user consent
-  const [hasAnalyticsConsent, setHasAnalyticsConsent] = useState(false);
+  // Stored consent is only readable in the browser; the tag waits for it so
+  // the init script can replay the visitor's answer through Consent Mode.
+  const [preferences, setPreferences] = useState<ConsentPreferences | null>(
+    null,
+  );
+  useMountEffect(() => {
+    setPreferences(consent.load());
+  });
 
-  useEffect(() => {
-    // Check consent on mount
-    setHasAnalyticsConsent(consent.hasConsentFor("analytics"));
-  }, []);
-
-  // The public tour hides the cookie banner, so DataFast loads there without
-  // the consent gate — otherwise tour funnel events would never fire for
-  // first-touch visitors.
   const pathname = usePathname();
-  const isPublicTourPage = isTourPath(pathname);
-
-  // Datafa.st journey analytics only on production AND with consent
-  const dataFastEnabled =
-    isProductionDomain && (hasAnalyticsConsent || isPublicTourPage);
-  // We collect analytics too for open source developers running the platform locally
-  // BUT only with consent
-  const googleAnalyticsEnabled =
-    (environment.isLocal() || isProductionDomain) && hasAnalyticsConsent;
-
-  if (currDataLayerName === undefined) {
-    currDataLayerName = dataLayerName;
-  }
+  const { googleTag: googleTagEnabled, dataFast: dataFastEnabled } =
+    resolveAnalyticsLoading({
+      host,
+      pathname,
+      isLocal: environment.isLocal(),
+      preferences,
+    });
 
   useEffect(() => {
-    if (!googleAnalyticsEnabled) return;
+    if (!googleTagEnabled) return;
 
     // Google Analytics: feature usage signal (same as original implementation)
     performance.mark("mark_feature_usage", {
@@ -68,27 +62,26 @@ export function SetupAnalytics(props: SetupProps) {
         feature: "custom-ga",
       },
     });
-  }, [googleAnalyticsEnabled]);
+  }, [googleTagEnabled]);
 
   return (
     <>
-      {/* Google Analytics */}
-      {googleAnalyticsEnabled ? (
+      {/* Google tag: GA4 + Google Ads */}
+      {googleTagEnabled ? (
         <>
           <Script
             id="_custom-ga-init"
             strategy="afterInteractive"
             dangerouslySetInnerHTML={{
-              __html: `
-            window['${dataLayerName}'] = window['${dataLayerName}'] || [];
-            function gtag(){window['${dataLayerName}'].push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${gaId}' ${debugMode ? ",{ 'debug_mode': true }" : ""});
-          `,
+              __html: buildGoogleTagInitScript({
+                gaId,
+                adsId,
+                debugMode,
+                preferences,
+              }),
             }}
             nonce={nonce}
           />
-          {/* Google Tag Manager */}
           <Script
             id="_custom-ga"
             strategy="afterInteractive"
@@ -112,23 +105,38 @@ export function SetupAnalytics(props: SetupProps) {
   );
 }
 
+interface InitScriptArgs {
+  gaId: string;
+  adsId: string;
+  debugMode?: boolean;
+  preferences: ConsentPreferences | null;
+}
+
+function buildGoogleTagInitScript({
+  gaId,
+  adsId,
+  debugMode,
+  preferences,
+}: InitScriptArgs): string {
+  return [
+    `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
+    `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
+    buildConsentModeScript(preferences),
+    `gtag('js', new Date());`,
+    `gtag('config', '${gaId}'${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    adsId
+      ? `gtag('config', '${adsId}', { 'allow_enhanced_conversions': true });`
+      : "",
+  ].join("\n");
+}
+
 export const analytics = {
   sendGAEvent,
   sendDatafastEvent,
 };
 
 function sendGAEvent(...args: unknown[]) {
-  if (typeof window === "undefined") return;
-  if (currDataLayerName === undefined) return;
-
-  const dataLayer = window[currDataLayerName];
-  if (!dataLayer) return;
-
-  if (Array.isArray(dataLayer)) {
-    dataLayer.push(...args);
-  } else {
-    console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`);
-  }
+  gtag(...args);
 }
 
 // Module scope means the queue survives client-side navigation: queued events
@@ -178,11 +186,4 @@ export function flushDatafastQueue() {
   // A successful drain ends the blocked episode; warn again if a later one
   // overflows too.
   datafastQueueOverflowWarned = false;
-}
-
-// Segment-boundary match: /tourism must not inherit the tour's consent
-// exemption.
-function isTourPath(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return pathname === "/tour" || pathname.startsWith("/tour/");
 }

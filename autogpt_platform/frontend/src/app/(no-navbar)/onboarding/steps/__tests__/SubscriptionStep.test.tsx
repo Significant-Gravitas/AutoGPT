@@ -9,6 +9,10 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
 import {
   getSubscriptionPricingExperimentConfig,
@@ -203,9 +207,38 @@ describe("SubscriptionStep", () => {
     expect(capturedTierBody!.cancel_url).toContain(
       "/onboarding?step=1&subscription=cancelled",
     );
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription value to Google Ads.
+    expect(capturedTierBody!.success_url).toContain(
+      "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
+    );
     // Paywall-first: no profile data exists yet, so nothing is POSTed here —
     // the Preparing step submits the profile at the end of onboarding.
     expect(profileCalled).toBe(false);
+  });
+
+  test("reports begin_checkout with the plan price to Google Ads before redirecting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+      ]);
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
   });
 
   test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {
