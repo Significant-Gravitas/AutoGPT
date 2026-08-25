@@ -78,6 +78,9 @@ memory rather than the container's writable layer.
 - `vX.Y.Z` — immutable AutoGPT Platform release.
 - `sha-<git-sha>` — immutable build for an exact source revision.
 
+Older `canary-sha-*` tags are legacy pre-release validation artifacts, not a
+currently published or supported tag family.
+
 ## More information
 
 - [Canonical single-container operations guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/docs/platform/single-container.md)

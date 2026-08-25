@@ -1,4 +1,4 @@
-# Run AutoGPT in one Docker container (Experimental)
+# Run AutoGPT in One Docker Container (Experimental)
 
 The image packages the AutoGPT Platform frontend and backend together with
 PostgreSQL, a three-node Valkey cluster, RabbitMQ, nginx, and FalkorDB.
@@ -27,6 +27,8 @@ tag or manifest digest. Docker image tags map to source releases as follows:
   revision.
 
 Published images support `linux/amd64` and `linux/arm64`.
+Older `canary-sha-*` tags are legacy pre-release validation artifacts, not a
+currently published or supported tag family.
 
 To build from source instead, run Docker Buildx Bake from the repository root:
 
@@ -78,10 +80,13 @@ AUTH_SIGNUP_ALLOWLIST=owner@example.com
 ```
 
 Replace `owner@example.com` with the email address for the intended first
-account. Signup starts open so a fresh installation can create that account,
-and the run command below binds the app only to loopback. Configure an HTTPS
-origin before creating real accounts or entering credentials on any LAN or
-remote deployment.
+account. Passwords must contain at least 12 characters. Exact-address
+allowlisting compares the email string asserted during signup; because this
+image does not support required email verification, it is not proof of mailbox
+ownership. Signup starts open so a fresh installation can create that account,
+and the run command below binds the app only to loopback. Create and promote the
+administrator and close signup while the app is still loopback-only. Configure
+an HTTPS origin before entering credentials on any LAN or remote deployment.
 
 Provider keys are not required to boot, create an account, use Builder, or run
 provider-free blocks. Model-backed functions return their normal actionable
@@ -105,7 +110,8 @@ docker run --detach --name autogpt \
 ```
 
 The `--shm-size 2g` allocation keeps temporary ChatGPT/Codex authentication
-homes in memory instead of the container's writable layer.
+homes in memory instead of the container's writable layer. The `nofile` limit
+sets a predictable per-process file-descriptor ceiling for the bundled services.
 
 Wait for the complete appliance to become healthy:
 
@@ -196,6 +202,12 @@ For LAN or remote access, keep AutoGPT bound to loopback and place it behind a
 TLS reverse proxy running outside the AutoGPT container. The proxy provides
 HTTPS and forwards requests to port `3000`; AutoGPT handles application routing
 internally.
+
+Before exposing the proxy, complete the [Account policy](#account-policy)
+bootstrap, promote the intended administrator, and close new-account signup.
+The bundled nginx records the external proxy as the immediate client, so the
+proxy must preserve its own client-attribution logs and enforce any per-client
+IP rate limits or access rules.
 
 Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 
@@ -351,8 +363,10 @@ the internet. See the
 for model and context-window guidance.
 
 Additional provider keys consumed by backend blocks may be placed in the same
-environment file. They are passed to backend roles, not indiscriminately to the
-public frontend process.
+environment file. Most remain backend-only. The Next.js server process can
+receive `OPENAI_API_KEY`, `TRANSCRIPTION_API_KEY`, and the legacy
+`SUPABASE_JWT_SECRET` when configured; those values remain server-side process
+environment and are not baked into the browser bundle.
 
 ### Database connection tuning
 
@@ -386,9 +400,8 @@ the FalkorDB password, or encryption keys.
 Generated database, queue, cache, memory, encryption, authentication, and
 signing secrets are created on first boot and stored in
 `/data/config/runtime.env` as `root:root` mode `0600`. Reusing the named volume
-reuses those secrets.
-Supplying a different value for a persisted secret on a later boot fails
-instead of silently rotating it.
+reuses those secrets. Supplying a different value for a persisted secret on a
+later boot fails instead of silently rotating it.
 
 These controls limit compromise between co-located processes, but Docker daemon
 administrators and anyone who can read the data volume remain fully trusted.
@@ -427,7 +440,7 @@ The named volume mounted at `/data` contains all durable appliance state:
 | `/data/falkordb` | Graphiti memory data |
 | `/data/workspaces` | User workspaces |
 | `/data/home` and `/data/frontend-home` | Application home directories |
-| `/data/cache` | Backend and Next.js caches |
+| `/data/cache` | Regenerable backend and Next.js caches (excluded from backups) |
 
 Do not mount one volume into two running AutoGPT containers. Use a different
 named volume for every installation.
@@ -443,15 +456,16 @@ docker inspect --format \
 ## Cold backup
 
 The block below stops the running appliance before archiving its coupled
-service state. It uses the stopped container's exact local image ID, writes to
-a unique partial file, and promotes it to the final timestamped name only after
-`tar` succeeds. This produces a stopped-volume snapshot. If a state service
-exceeds its five-second shutdown cap, the snapshot reflects a crash stop rather
-than a fully graceful shutdown. Rehearse restoration and verify service
-recovery before relying on it.
-The appliance remains unavailable for the duration of the archive, which grows
-with `/data`. Before stopping it, ensure the host filesystem that contains
-`BACKUP_DIR` has room for a complete compressed archive:
+service state. It uses the running container's exact local image ID captured
+before the stop, writes to a unique partial file, and promotes it to the final
+timestamped name only after `tar` succeeds. This produces a stopped-volume
+snapshot. If a state service exceeds its five-second shutdown cap, the snapshot
+reflects a crash stop rather than a fully graceful shutdown. Rehearse
+restoration and verify service recovery before relying on it.
+The appliance remains unavailable while `tar` creates and gzip-compresses the
+archive; duration depends on `/data`, host storage, and CPU performance. Before
+stopping it, ensure the host filesystem that contains `BACKUP_DIR` has room for
+a complete compressed archive:
 
 ```bash
 (
@@ -522,7 +536,7 @@ with `/data`. Before stopping it, ensure the host filesystem that contains
     --volume "${BACKUP_VOLUME}:/data:ro" \
     --volume "${BACKUP_DIR}:/backup" \
     "${BACKUP_IMAGE}" \
-    -czf "/backup/${PARTIAL_FILE}" -C /data .
+    --exclude='./cache' -czf "/backup/${PARTIAL_FILE}" -C /data .
 
   if [[ "${RESTART_AFTER_BACKUP}" == true ]]; then
     docker start autogpt >/dev/null
@@ -556,9 +570,9 @@ docker inspect --format '{{.State.Status}}' autogpt
 
 The block writes the checksum to `<archive>.sha256`. Record the exact image
 reference or digest, environment file, and Git commit beside the archive. The
-archive is plaintext and contains user
-content, provider credentials, auth keys, and database passwords. Encrypt it
-with an approved backup mechanism and remove unencrypted staging copies.
+archive is plaintext and contains user content, provider credentials, auth
+keys, and database passwords. Encrypt it with an approved backup mechanism and
+remove unencrypted staging copies.
 
 ## Restore into a new volume
 
@@ -738,7 +752,7 @@ ready.
 | --- | --- |
 | The browser cannot connect after `docker run IMAGE` | A bare run does not publish a port. Use the complete Quick start command. |
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
-| Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
+| Signup shows **Email Not Allowed** | Inspect the API response or container logs to distinguish closed registration from an allowlist miss. Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
 | The container is OOM-killed or repeatedly restarts during startup | The appliance uses about 5–6 GiB before workload headroom. On Docker Desktop, increase the VM memory allocation under **Settings → Resources**. |
 | Startup refuses to continue after an interrupted migration | Read the log for the migration name and recovery choices. For an empty first boot, remove the unused `/data` volume and retry. For an existing installation, restore the pre-upgrade backup. Do not mark the migration applied or rolled back until you verify which database changes completed. |
