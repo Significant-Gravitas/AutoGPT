@@ -108,10 +108,16 @@ export function ChainRowView({ row, isLast }: Props) {
       : null,
     isSubTool && typeof output?.status === "string" ? output.status : null,
   );
+  // "unknown" means the poll died, not that the teammate finished — the row
+  // only has a running label and a done label, and claiming a result landed
+  // is the worse of the two guesses. It also keeps this row consistent with
+  // the card below it, whose poll caps on its own mount clock.
   const stillWorking =
     isSubTool &&
     row.state === "done" &&
-    ["running", "queued"].includes(effectiveStatus?.toLowerCase() ?? "");
+    ["running", "queued", "unknown"].includes(
+      effectiveStatus?.toLowerCase() ?? "",
+    );
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
   // An expert being hired/raised has no output until it lands — the skeleton

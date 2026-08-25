@@ -3,9 +3,13 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubSessionCard } from "../AgentCards";
 import { ToolResult } from "../ToolResult";
+
+/** Mirrors POLL_CAP_MS in SubSessionLive.tsx — the poll gives up after this.
+ *  Kept local so the test states the contract rather than importing it. */
+const POLL_CAP_MS = 5 * 60_000;
 
 const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
 const SESSION_LIST_ROUTE = "/api/proxy/api/chat/sessions";
@@ -231,6 +235,70 @@ describe("SubSessionLive", () => {
     expect(await screen.findByText("completed")).toBeDefined();
     expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
     expect(screen.queryByText("Half of the brief so far.")).toBeNull();
+  });
+
+  /** The pill is the only status surface a minimal card has — the full card's
+   *  "Live updates paused" notice is exactly what got removed — so a dead
+   *  poll has to reach it instead of leaving "running" standing as fact. */
+  it("stops asserting running on a minimal card once its poll dies", async () => {
+    server.use(failingSubSession());
+
+    render(
+      <ToolResult
+        row={{
+          key: "delegate",
+          category: "agent",
+          text: "Teammate is on it",
+          state: "done",
+          tool: "delegate_to_expert",
+          input: {},
+          output: {
+            status: "running",
+            sub_session_id: "sub-1",
+            expert: { name: "Vera", role: "Research" },
+          },
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("unknown")).toBeDefined();
+    expect(screen.queryByText("running")).toBeNull();
+  });
+
+  /** The other way a poll dies: it is capped after 5 minutes so a forgotten
+   *  tab stops hammering the API. A long delegation reaches that cap while
+   *  the teammate is genuinely still working, so the pill must stop claiming
+   *  to know — same contract as the failed-fetch case above. */
+  it("stops asserting running on a minimal card once the poll cap expires", async () => {
+    server.use(subSession([], { chat_status: "running", active_stream: null }));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    try {
+      render(
+        <ToolResult
+          row={{
+            key: "delegate",
+            category: "agent",
+            text: "Teammate is on it",
+            state: "done",
+            tool: "delegate_to_expert",
+            input: {},
+            output: {
+              status: "running",
+              sub_session_id: "sub-1",
+              expert: { name: "Vera", role: "Research" },
+            },
+          }}
+        />,
+      );
+
+      await vi.advanceTimersByTimeAsync(POLL_CAP_MS + 1);
+
+      expect(screen.getByText("unknown")).toBeDefined();
+      expect(screen.queryByText("running")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("finds the delegate's running session behind a wall of pinned ones", async () => {
