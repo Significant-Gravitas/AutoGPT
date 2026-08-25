@@ -14,6 +14,7 @@ import pytest
 
 import backend.api.features.builder.db as db
 from backend.blocks._base import BlockInfo, BlockType
+from backend.integrations.providers import ProviderName
 from backend.util.text import split_camelcase
 
 
@@ -373,3 +374,51 @@ def test_block_searchable_text_includes_field_descriptions():
         ),
     )
     assert db._block_searchable_text(block) == "my block keyword: a searchable keyword"
+
+
+# ============================================================================
+# Provider listing — featured providers are pinned first
+# ============================================================================
+
+
+def _providers(*names: ProviderName) -> dict[ProviderName, db.Provider]:
+    return {
+        name: db.Provider(name=name, description="", integration_count=1)
+        for name in names
+    }
+
+
+def test_get_providers_lists_featured_providers_first(mocker):
+    mocker.patch.object(
+        db,
+        "_get_all_providers",
+        return_value=_providers(
+            ProviderName.ANTHROPIC,
+            ProviderName.GITHUB,
+            ProviderName.AIML_API,
+            ProviderName.OPENAI,
+        ),
+    )
+
+    response = db.get_providers()
+
+    # Featured provider first, everything else in its original order.
+    assert [p.name for p in response.providers] == [
+        ProviderName.AIML_API,
+        ProviderName.ANTHROPIC,
+        ProviderName.GITHUB,
+        ProviderName.OPENAI,
+    ]
+    assert response.pagination.total_items == 4
+
+
+def test_get_providers_query_still_filters_featured_providers(mocker):
+    mocker.patch.object(
+        db,
+        "_get_all_providers",
+        return_value=_providers(ProviderName.AIML_API, ProviderName.GITHUB),
+    )
+
+    response = db.get_providers(query="git")
+
+    assert [p.name for p in response.providers] == [ProviderName.GITHUB]
