@@ -93,9 +93,7 @@ async def unknown_target_message(
     except Exception as e:
         logger.warning(f"Roster lookup for delegation error failed: {e}")
         return fallback
-    teammates = [
-        e for e in experts if not e.is_archived and e.id != exclude_expert_id
-    ]
+    teammates = [e for e in experts if not e.is_archived and e.id != exclude_expert_id]
     if not teammates:
         return fallback
     roster = "; ".join(f"{e.name} (expert_id: {e.id})" for e in teammates)

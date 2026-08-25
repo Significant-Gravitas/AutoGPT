@@ -17,6 +17,7 @@ from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
     WEEKLY_BUDGET_MAX_CREDITS,
+    Expert,
     ExpertSoulFieldsPatch,
 )
 from backend.copilot.model import ChatSession
@@ -255,7 +256,7 @@ class RaiseExpertTool(BaseTool):
         )
 
 
-async def _active_expert_named(user_id: str, name: str):
+async def _active_expert_named(user_id: str, name: str) -> Expert | None:
     """The active expert already carrying *name*, or None.
 
     Best-effort: a roster read failure must not block a legitimate raise —

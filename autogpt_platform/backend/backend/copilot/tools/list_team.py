@@ -15,12 +15,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .models import (
-    ErrorResponse,
-    TeamExpertInfo,
-    TeamRosterResponse,
-    ToolResponseBase,
-)
+from .models import ErrorResponse, TeamExpertInfo, TeamRosterResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
