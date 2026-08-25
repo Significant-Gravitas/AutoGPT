@@ -582,7 +582,9 @@ class TestStoreToken:
         assert response.json()["id"] == old_cred.id
         mock_cm.create.assert_not_awaited()
         mock_cm.update.assert_awaited_once()
-        user_id, updated = mock_cm.update.await_args.args
+        update_call = mock_cm.update.await_args
+        assert update_call is not None
+        user_id, updated = update_call.args
         assert user_id == "test-user-id"
         assert updated.id == old_cred.id
         assert updated.access_token.get_secret_value() == "Bearer new-token"
@@ -683,7 +685,9 @@ class TestStoreToken:
         assert response.status_code == 200
         mock_cm.update.assert_not_awaited()
         mock_cm.create.assert_awaited_once()
-        created = mock_cm.create.await_args.args[1]
+        create_call = mock_cm.create.await_args
+        assert create_call is not None
+        created = create_call.args[1]
         assert created.id != managed.id
 
     @pytest.mark.asyncio(loop_scope="session")

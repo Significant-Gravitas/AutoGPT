@@ -10,7 +10,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import router
-from backend.blocks.mcp.block import MCPToolBlock, TEST_CREDENTIALS_INPUT
+from backend.blocks.mcp.block import TEST_CREDENTIALS_INPUT, MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
 from backend.executor.utils import _validate_node_input_credentials
 
