@@ -145,8 +145,11 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     every org-scoped endpoint forever rather than transiently. Provisioning
     here from our own verified claims makes that self-healing.
 
-    Best-effort: on failure the caller still attempts the org bootstrap and
-    surfaces the same 400 as before, so this can only improve the outcome.
+    Best-effort once provisioning is attempted: a failure leaves the caller to
+    run the org bootstrap and surface the same 400 as before, so this can only
+    improve the outcome. (The probe below is deliberately outside that guard —
+    if the database is unreachable the request has no context to resolve
+    anyway, and the very next query would raise regardless.)
     """
     from backend.data.db import prisma  # deferred -- only needed at runtime
 
@@ -160,22 +163,33 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     if await prisma.user.find_unique(where={"id": user_id}) is not None:
         return
 
-    # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
-    # token with no platform user is an invariant breach worth seeing.
-    logger.error(
-        f"No platform User row for authenticated user {user_id} — "
-        "provisioning on first touch"
-    )
-
     from backend.data.user import get_or_create_user_with_status  # deferred
 
     try:
-        # The uncached entry point on purpose: the cached `get_or_create_user`
-        # can serve a hit recorded before the row went missing, which would
-        # skip the very creation this call exists to perform.
+        # The uncached entry point: `get_or_create_user` memoizes for 5min
+        # across the whole process, so a row deleted (or healed) out from
+        # under a live cache entry would be masked for the rest of its TTL.
         await get_or_create_user_with_status(jwt_payload)
     except Exception:
+        # A first page load fans out ~20 requests that all miss the probe
+        # above, so all but one lose the create race and surface it as a
+        # DatabaseError. Report only a failure that actually left the user
+        # unprovisioned — otherwise one successful heal buries its own signal
+        # under ~19 tracebacks claiming it failed.
+        if await prisma.user.find_unique(where={"id": user_id}) is not None:
+            logger.debug(f"User {user_id} was provisioned concurrently")
+            return
         logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
+        return
+
+    # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
+    # token with no platform user is an invariant breach worth seeing. Logged
+    # after the create so it fires once for the account that was missing
+    # rather than once per request in the fan-out above.
+    logger.error(
+        f"Provisioned a missing platform User row for {user_id} on first "
+        "touch — sign-up never completed it"
+    )
 
 
 async def get_request_context(
