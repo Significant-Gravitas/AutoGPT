@@ -379,3 +379,43 @@ async def test_ro_violation_falls_back_to_write(driver: AutoGPTFalkorDriver) -> 
     await driver.execute_query("MATCH (n) RETURN count(n)")
     ro.assert_awaited_once()
     write.assert_awaited_once()
+
+
+# --- regression guards for the review findings on the read-only routing ----
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "MATCH (n {kind: 'CREATE'}) RETURN n",
+        'MATCH (n) WHERE n.name = "DELETE" RETURN n',
+        "MATCH (n) RETURN n // SET is only mentioned in this comment",
+        "/* MERGE */ MATCH (n) RETURN n",
+    ],
+)
+def test_write_keywords_inside_literals_stay_read_only(cypher) -> None:
+    """A write keyword inside a string literal or comment must not flip the
+    query onto the graph-materializing path."""
+    assert fdb._is_read_only_cypher(cypher) is True
+
+
+@pytest.mark.asyncio
+async def test_ro_violation_on_final_attempt_still_writes(
+    driver: AutoGPTFalkorDriver,
+) -> None:
+    """The RO fallback must not consume a retry.
+
+    With max_attempts=1 (or on the last attempt) a fallback that burned an
+    attempt would exit the loop having never issued the write, hitting the
+    "unreachable" AssertionError.
+    """
+    ro = _set_ro_query(driver, Exception("ERR graph is read-only for this command"))
+    write = _set_query(driver, [_FakeResult([("x", "n")], [[1]])])
+    with patch(
+        "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
+        1,
+    ):
+        records, _, _ = await driver.execute_query("MATCH (n) RETURN count(n)")
+    assert records == [{"n": 1}]
+    ro.assert_awaited_once()
+    write.assert_awaited_once()

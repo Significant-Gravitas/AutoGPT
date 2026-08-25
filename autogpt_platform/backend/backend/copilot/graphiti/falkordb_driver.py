@@ -49,6 +49,25 @@ _EMPTY_KEY_ERROR = "invalid graph operation on empty key"
 _RO_VIOLATION = "read-only"
 
 
+# Quoted string literals, and // or /* */ comments. Stripped before clause
+# detection so a value like ``{kind: 'CREATE'}`` in an otherwise read-only
+# query is not mistaken for a write clause — that misread would send the query
+# down the graph-materializing path and reintroduce the very bug this fixes.
+_CYPHER_NOISE_RE = re.compile(
+    r"'(?:[^'\\]|\\.)*'"  # single-quoted literal
+    r"|\"(?:[^\"\\]|\\.)*\""  # double-quoted literal
+    r"|`(?:[^`]|``)*`"  # back-quoted identifier
+    r"|//[^\n]*"  # line comment
+    r"|/\*.*?\*/",  # block comment
+    re.DOTALL,
+)
+
+
+def _strip_cypher_noise(cypher_query_: str) -> str:
+    """Blank out literals/comments so only real clause keywords remain."""
+    return _CYPHER_NOISE_RE.sub(" ", cypher_query_ or "")
+
+
 def _is_read_only_cypher(cypher_query_: str) -> bool:
     """True when the query contains no mutating clause.
 
@@ -60,7 +79,7 @@ def _is_read_only_cypher(cypher_query_: str) -> bool:
     the latter in a single weekly community-rebuild sweep: 91 -> 19,033
     graphs, 100% of sampled ones empty).
     """
-    return not _WRITE_CLAUSE_RE.search(cypher_query_ or "")
+    return not _WRITE_CLAUSE_RE.search(_strip_cypher_noise(cypher_query_))
 
 
 def _is_pending_queue_overflow(exc: Exception) -> bool:
@@ -150,17 +169,12 @@ class AutoGPTFalkorDriver(FalkorDriver):
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
         read_only = _is_read_only_cypher(cypher_query_)
 
-        for attempt in range(attempts):
+        attempt = 0
+        while attempt < attempts:
             try:
-                if read_only:
-                    result = await cast(
-                        Awaitable[Any], graph.ro_query(cypher_query_, params)
-                    )
-                else:
-                    result = await cast(
-                        Awaitable[Any], graph.query(cypher_query_, params)
-                    )
-                return self._to_records(result)
+                return self._to_records(
+                    await self._dispatch(graph, cypher_query_, params, read_only)
+                )
             except Exception as e:
                 message = str(e).lower()
                 if read_only and _EMPTY_KEY_ERROR in message:
@@ -172,8 +186,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                     return [], [], None
                 if read_only and _RO_VIOLATION in message:
                     # The classifier called a write read-only. Degrade to the
-                    # write path rather than failing the caller, and log it so
-                    # the missing clause can be added to _WRITE_CLAUSE_RE.
+                    # write path and log it so the missing clause can be added
+                    # to _WRITE_CLAUSE_RE. Deliberately does NOT consume an
+                    # attempt: on the final attempt (or with max_attempts=1)
+                    # that would exit the loop having never run the write,
+                    # falling through to the "unreachable" assertion.
                     logger.warning(
                         "Query classified read-only but rejected by RO_QUERY; "
                         "retrying as a write. Query: %s",
@@ -193,6 +210,7 @@ class AutoGPTFalkorDriver(FalkorDriver):
                         delay,
                     )
                     await asyncio.sleep(delay)
+                    attempt += 1
                     continue
                 # ``params`` hold user memory content (names, facts) — omit them
                 # from this Sentry-routed log to avoid leaking PII. The exception
@@ -202,6 +220,18 @@ class AutoGPTFalkorDriver(FalkorDriver):
                 )
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
+
+    @staticmethod
+    async def _dispatch(graph, cypher_query_, params, read_only: bool) -> Any:
+        """Issue one attempt on the read-only or writing transport.
+
+        ``GRAPH.RO_QUERY`` cannot materialize a graph; ``GRAPH.QUERY`` does,
+        even for a bare MATCH. Keeping the choice here means every caller goes
+        through one place.
+        """
+        if read_only:
+            return await cast(Awaitable[Any], graph.ro_query(cypher_query_, params))
+        return await cast(Awaitable[Any], graph.query(cypher_query_, params))
 
     @staticmethod
     def _pending_queue_retry_delay(attempt: int) -> float:
