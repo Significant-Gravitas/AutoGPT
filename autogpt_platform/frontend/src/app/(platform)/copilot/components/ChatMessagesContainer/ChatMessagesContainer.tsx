@@ -415,7 +415,9 @@ export function ChatMessagesContainer({
       statusMessage={latestStatusMessage}
     />
   );
-  const showIndicator = showThinking;
+  // Public viewers of a shared chat never see a live turn, so the indicator
+  // stays out of the transcript for them wherever it would render.
+  const showIndicator = !readOnly && showThinking;
   const [showRestoreFallback, setShowRestoreFallback] = useState(false);
   useEffect(() => {
     if (!isRestoringActiveSession) {
@@ -680,7 +682,7 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
-          {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
+          {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"

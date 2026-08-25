@@ -179,6 +179,31 @@ describe("ChatMessagesContainer — assistant rendering", () => {
 
     expect(screen.getByTestId("chain-message-parts")).toBeDefined();
   });
+
+  it("shows the thinking indicator inside a submitted assistant turn", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+  });
+
+  it("keeps the thinking indicator out of a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        status="submitted"
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
 });
 
 // ── queued-messages rendering ─────────────────────────────────────────────
