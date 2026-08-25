@@ -5,7 +5,11 @@ import json as stdlib_json
 
 import pytest
 
-from backend.copilot.constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
+from backend.copilot.constants import (
+    COMPACTION_DONE_MSG,
+    COMPACTION_DROPPED_MSG,
+    COMPACTION_TOOL_NAME,
+)
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamCompactionProgress,
@@ -22,6 +26,8 @@ from backend.copilot.sdk.compaction import (
     compaction_events,
     emit_compaction,
     filter_compaction_messages,
+    sdk_compaction_stats,
+    transcript_stats,
 )
 
 # ---------------------------------------------------------------------------
@@ -181,6 +187,49 @@ class TestCompactionTracker:
         assert not tracker.hook_fired.is_set()
         tracker.on_compact()
         assert tracker.hook_fired.is_set()
+
+    def test_pending_transcript_path_follows_the_cycle(self):
+        tracker = CompactionTracker()
+        assert tracker.pending_transcript_path is None
+        assert tracker.has_pending_start is False
+        tracker.on_compact("/tmp/session.jsonl")
+        assert tracker.has_pending_start is True
+        assert tracker.pending_transcript_path == "/tmp/session.jsonl"
+        tracker.emit_start_if_ready()
+        assert tracker.has_pending_start is False
+        assert tracker.pending_transcript_path == "/tmp/session.jsonl"
+
+    @pytest.mark.asyncio
+    async def test_start_stats_pace_the_bar_and_end_stats_settle_the_row(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.on_compact("/tmp/session.jsonl")
+        start = tracker.emit_start_if_ready(
+            CompactionStats(tokens_before=128_000, messages_before=412)
+        )
+        assert isinstance(start[3], StreamCompactionProgress)
+        assert start[3].tokensBefore == 128_000
+        assert tracker.start_stats is not None
+        assert tracker.start_stats.messages_before == 412
+
+        result = await tracker.emit_end_if_ready(
+            session,
+            CompactionStats(
+                tokens_before=128_000,
+                tokens_after=31_000,
+                messages_before=412,
+                messages_after=38,
+            ),
+        )
+        assert tracker.pending_transcript_path is None
+        assert tracker.start_stats is None
+        parsed = stdlib_json.loads(session.messages[1].content or "")
+        assert parsed["tokensAfter"] == 31_000
+        assert parsed["messagesBefore"] == 412
+        rebuilding = result.events[-1]
+        assert isinstance(rebuilding, StreamCompactionProgress)
+        assert rebuilding.phase == "rebuilding"
+        assert rebuilding.tokensAfter == 31_000
 
     def test_emit_start_if_ready_no_event(self):
         tracker = CompactionTracker()
@@ -495,6 +544,18 @@ class TestBuildCompactionOutput:
         parsed = stdlib_json.loads(build_compaction_output(None))
         assert parsed == {"summary": COMPACTION_DONE_MSG}
 
+    def test_dropped_history_is_reported_as_dropped(self):
+        parsed = stdlib_json.loads(
+            build_compaction_output(CompactionStats(dropped=True, messages_before=9))
+        )
+        assert parsed == {
+            "summary": COMPACTION_DROPPED_MSG,
+            "dropped": True,
+            "messagesBefore": 9,
+        }
+        # A payload fact, not a wire stat: progress events never carry it.
+        assert "dropped" not in CompactionStats(dropped=True).to_wire()
+
 
 # ---------------------------------------------------------------------------
 # Pre-query split emitters
@@ -539,6 +600,20 @@ class TestPreQueryEmitters:
         parsed = stdlib_json.loads(session.messages[1].content or "")
         assert parsed["tokensBefore"] == 100
         assert parsed["tokensAfter"] == 10
+
+    def test_dropped_end_closes_honestly_without_counting_a_compaction(self):
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        evts = tracker.emit_pre_query_end(
+            session, CompactionStats(dropped=True, messages_before=9)
+        )
+        assert isinstance(evts[0], StreamToolOutputAvailable)
+        parsed = stdlib_json.loads(session.messages[1].content or "")
+        assert parsed["dropped"] is True
+        assert parsed["summary"] == COMPACTION_DROPPED_MSG
+        assert tracker.attempt_sources == ("pre_query",)
+        assert tracker.completed_sources == ()
 
     def test_end_without_start_is_self_contained(self):
         tracker = CompactionTracker()
@@ -674,3 +749,70 @@ class TestPreQueryOrdering:
         # A second close (e.g. a defensive call on a later error path) is a
         # no-op rather than emitting a duplicate close.
         assert tracker.abort_pre_query() == []
+
+
+# ---------------------------------------------------------------------------
+# Sizing the SDK-internal path
+# ---------------------------------------------------------------------------
+
+
+class TestSdkCompactionStats:
+    BEFORE = [
+        {"type": "user", "message": {"role": "user", "content": "hello there"}},
+        {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "hi"},
+                    {"type": "tool_use", "name": "find_block", "input": {"q": "email"}},
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "3 blocks"}
+                ],
+            },
+        },
+        {"type": "progress", "message": {}},
+    ]
+    COMPACTED = [
+        {
+            "type": "summary",
+            "isCompactSummary": True,
+            "message": {"role": "user", "content": "Summary of the chat"},
+        }
+    ]
+
+    def test_counts_turns_and_tokens_before(self):
+        stats = transcript_stats(self.BEFORE, model="gpt-4o")
+        assert stats.messages_before == 3
+        assert stats.tokens_before is not None and stats.tokens_before > 0
+        assert stats.tokens_after is None
+        assert stats.messages_after is None
+
+    def test_after_counts_come_from_the_compacted_file(self):
+        stats = sdk_compaction_stats(self.BEFORE, self.COMPACTED, model="gpt-4o")
+        assert stats.messages_before == 3
+        assert stats.messages_after == 1
+        assert stats.tokens_after is not None
+        assert stats.tokens_after < (stats.tokens_before or 0)
+
+    def test_unreadable_compacted_file_keeps_only_the_before_counts(self):
+        stats = sdk_compaction_stats(self.BEFORE, None, model="gpt-4o")
+        assert stats.messages_before == 3
+        assert stats.messages_after is None
+
+    def test_reuses_the_counts_measured_at_start(self):
+        start = CompactionStats(tokens_before=999, messages_before=7)
+        stats = sdk_compaction_stats([], self.COMPACTED, model="gpt-4o", start=start)
+        assert stats.tokens_before == 999
+        assert stats.messages_before == 7
+        assert stats.messages_after == 1
+
+    def test_empty_transcript_has_no_counts(self):
+        assert transcript_stats([], model="gpt-4o") == CompactionStats()

@@ -49,3 +49,11 @@ export const Settled: Story = {
 export const SettledLegacyRow: Story = {
   args: { phase: null, stats: {}, isSettled: true },
 };
+
+export const SettledDropped: Story = {
+  args: {
+    phase: null,
+    stats: { dropped: true, messagesBefore: 412 },
+    isSettled: true,
+  },
+};

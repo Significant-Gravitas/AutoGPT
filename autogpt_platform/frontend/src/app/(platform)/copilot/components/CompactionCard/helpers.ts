@@ -15,7 +15,13 @@ export interface CompactionStats {
   tokensAfter?: number;
   messagesBefore?: number;
   messagesAfter?: number;
+  // The backend could not condense the history and dropped it instead. A
+  // settled row carrying this reports the reset — never "Condensed…".
+  dropped?: true;
 }
+
+export const DROPPED_LABEL =
+  "Started a fresh context — earlier messages were dropped";
 
 // Each phase approaches its own ceiling exponentially, so the bar can never
 // land before the work does. Entering a new phase raises the ceiling, which
@@ -95,6 +101,7 @@ export function readCompactionStats(
       stats[key] = value;
     }
   }
+  if (source.dropped === true) stats.dropped = true;
   return stats;
 }
 
@@ -137,6 +144,7 @@ export function compactionLabel(
 ): string {
   if (phase === "summarizing") return "Condensing our conversation…";
   if (phase === "rebuilding") return "Reloading context…";
+  if (stats.dropped) return DROPPED_LABEL;
 
   // A number only earns its place when both ends of the measurement exist
   // and the "after" actually shrank — an equal or inverted pair (e.g. 60

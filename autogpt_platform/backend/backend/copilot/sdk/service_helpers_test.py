@@ -2471,3 +2471,30 @@ class TestSeedTranscript:
         assert "current turn" not in content
         assert covers is True
         assert count == 2
+
+
+# ---------------------------------------------------------------------------
+# A failed compression drops history — and says so
+# ---------------------------------------------------------------------------
+
+
+class TestCompressionFailureIsReportedAsADrop:
+    @pytest.mark.asyncio
+    async def test_failure_returns_dropped_stats(self):
+        """Both compression tiers failing drops the history to the bare
+        message.  That is a real, user-visible loss, so the stats say
+        ``dropped`` — enough for the row to close honestly — while claiming
+        none of the counts a summarize would have produced."""
+        rows = [_msg("user", "q"), _msg("assistant", "a"), _msg("user", "q2")]
+        with patch(
+            "backend.copilot.sdk.service._run_compression",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("summarizer down"),
+        ):
+            compressed, reduced, stats = await _compress_messages(rows)
+        assert compressed == []
+        assert reduced is True
+        assert stats is not None
+        assert stats.dropped is True
+        assert stats.messages_before == 3
+        assert stats.tokens_after is None

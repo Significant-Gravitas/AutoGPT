@@ -70,6 +70,13 @@ describe("parseCompactionOutput", () => {
     expect(stats.tokensBefore).toBe(5);
   });
 
+  it("reads the dropped flag", () => {
+    const stats = parseCompactionOutput(
+      JSON.stringify({ summary: "dropped", dropped: true, messagesBefore: 9 }),
+    );
+    expect(stats).toEqual({ dropped: true, messagesBefore: 9 });
+  });
+
   it("yields no stats for the legacy plain sentence", () => {
     const legacy =
       "Earlier messages were summarized to fit within context limits.";

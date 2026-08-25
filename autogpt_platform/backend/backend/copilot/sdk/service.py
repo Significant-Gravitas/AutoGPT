@@ -177,7 +177,13 @@ from ..transcript import (
     validate_transcript,
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
-from .compaction import CompactionStats, CompactionTracker, filter_compaction_messages
+from .compaction import (
+    CompactionStats,
+    CompactionTracker,
+    filter_compaction_messages,
+    sdk_compaction_stats,
+    transcript_stats,
+)
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
@@ -303,6 +309,53 @@ class _SDKLoopState:
     stream_error_code: str | None = None
 
 
+async def _open_sdk_compaction_row(
+    ctx: "_StreamContext", state: "_RetryState"
+) -> list[StreamBaseResponse]:
+    """Open the row for a CLI-side compaction the PreCompact hook announced.
+
+    Sized off our own mirror of the CLI context: the transcript builder
+    holds the entries the CLI is about to condense, so its token and turn
+    counts are the ``tokensBefore`` that paces the bar and the
+    ``messagesBefore`` the settled row reports.  Measured off the loop — a
+    full context is hundreds of thousands of characters.
+    """
+    if not ctx.compaction.has_pending_start:
+        return []
+    stats = await asyncio.to_thread(
+        transcript_stats,
+        state.transcript_builder.entries_as_dicts(),
+        model=_compression_model(),
+    )
+    return ctx.compaction.emit_start_if_ready(stats)
+
+
+async def _measure_sdk_compaction(
+    ctx: "_StreamContext", state: "_RetryState"
+) -> tuple[list[dict] | None, CompactionStats | None]:
+    """Read what the CLI kept after compacting and size the row's payoff.
+
+    Runs before the row closes so the settled output carries the numbers.
+    The compacted entries are handed back so the caller can sync the
+    transcript builder without reading the session file twice.
+    """
+    # Let a PreCompact hook that raced this message land before we look —
+    # ``emit_end_if_ready`` yields for the same reason.
+    await asyncio.sleep(0)
+    path = ctx.compaction.pending_transcript_path
+    if path is None:
+        return None, None
+    compacted = await asyncio.to_thread(read_compacted_entries, path)
+    stats = await asyncio.to_thread(
+        sdk_compaction_stats,
+        state.transcript_builder.entries_as_dicts(),
+        compacted,
+        model=_compression_model(),
+        start=ctx.compaction.start_stats,
+    )
+    return compacted, stats
+
+
 async def _consume_sdk_until_done(
     client: ClaudeSDKClient,
     ctx: "_StreamContext",
@@ -323,7 +376,7 @@ async def _consume_sdk_until_done(
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()
-            for ev in ctx.compaction.emit_start_if_ready():
+            for ev in await _open_sdk_compaction_row(ctx, state):
                 yield ev
             yield StreamHeartbeat()
 
@@ -613,7 +666,8 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session)
+        compacted, end_stats = await _measure_sdk_compaction(ctx, state)
+        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
             # Compaction events end with StreamFinishStep, which maps to
             # Vercel AI SDK's "finish-step" — that clears activeTextParts.
@@ -632,16 +686,11 @@ async def _consume_sdk_until_done(
         for ev in compact_result.events:
             yield ev
         entries_replaced = False
-        if compact_result.just_ended:
-            compacted = await asyncio.to_thread(
-                read_compacted_entries,
-                compact_result.transcript_path,
+        if compact_result.just_ended and compacted is not None:
+            state.transcript_builder.replace_entries(
+                compacted, log_prefix=ctx.log_prefix
             )
-            if compacted is not None:
-                state.transcript_builder.replace_entries(
-                    compacted, log_prefix=ctx.log_prefix
-                )
-                entries_replaced = True
+            entries_replaced = True
 
         # --- Hard circuit breaker for empty tool calls ---
         breaker = _check_empty_tool_breaker(
@@ -2930,12 +2979,11 @@ async def _compress_messages(
             len(messages),
             exc,
         )
-        # No stats: a drop is not a summarize.  Stats are what promote the
-        # compaction row from a transient prediction to a durable, replayed-
-        # on-reload claim that "earlier messages were summarized" — and to a
-        # ``compaction_count``.  History was destroyed here, not condensed;
-        # the caller still learns reduction happened from the bool.
-        return [], True, None
+        # A drop is not a summarize: the row must not claim "condensed" and
+        # must not count as a completed compaction.  It still has to close
+        # honestly — the user just lost their history, and the settled row
+        # is where they learn it — so the stats say only what happened.
+        return [], True, CompactionStats(dropped=True, messages_before=len(messages))
 
     if result.was_compacted:
         logger.info(

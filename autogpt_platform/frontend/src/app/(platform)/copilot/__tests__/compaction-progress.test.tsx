@@ -278,6 +278,31 @@ const FAILED_COMPACTION_TURN: UIMessageChunk[] = [
   { type: "finish" },
 ];
 
+// Compression failed outright and the backend dropped the history: the row
+// closes with `dropped: true` so the user is told the context was reset
+// rather than watching the bar vanish.
+const DROPPED_COMPACTION_TURN: UIMessageChunk[] = [
+  { type: "start" },
+  { type: "start-step" },
+  ...openCompactionRow(),
+  summarizingPhase(),
+  {
+    type: "tool-output-available",
+    toolCallId: "compaction-1",
+    output: JSON.stringify({
+      summary: "Earlier messages were dropped to fit within context limits.",
+      dropped: true,
+      messagesBefore: 412,
+    }),
+  },
+  { type: "finish-step" },
+  REBUILDING_PHASE,
+  { type: "start-step" },
+  ...textChunks("Starting over from here."),
+  { type: "finish-step" },
+  { type: "finish" },
+];
+
 // Holds long enough to outlast `waitFor`'s default 1000ms window, so a
 // loaded CI runner can't watch the held state expire mid-poll.
 const HOLD_MS = 1_500;
@@ -412,6 +437,33 @@ describe("context compaction progress", () => {
     // A failed compaction condensed nothing — neither the live copy nor
     // the settled "Condensed…" claim may render for it.
     expect(screen.queryByText(/Condensing our conversation/)).toBeNull();
+    expect(screen.queryByText(/Condensed/)).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("tells the user the context was reset when history was dropped", async () => {
+    server.use(
+      sessionHandler(),
+      copilotStreamHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        chunks: DROPPED_COMPACTION_TURN,
+        delayMsBetweenChunks: 15,
+      }),
+    );
+
+    renderHost();
+    await typeAndSend("summarise this");
+
+    await waitFor(() => {
+      expect(screen.getByText("Starting over from here.")).toBeDefined();
+      expect(
+        screen.getByText(
+          "Started a fresh context — earlier messages were dropped",
+        ),
+      ).toBeDefined();
+    });
+    // A drop condensed nothing: no payoff claim, no lingering bar.
     expect(screen.queryByText(/Condensed/)).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });

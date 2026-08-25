@@ -10,14 +10,22 @@ persistence, and the ``CompactionTracker`` state machine.
 
 import asyncio
 import json
+import logging
 import uuid
 from collections import Counter, deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..constants import COMPACTION_DONE_MSG, COMPACTION_TOOL_NAME
+from backend.util.prompt import estimate_token_count_str
+
+from ..constants import (
+    COMPACTION_DONE_MSG,
+    COMPACTION_DROPPED_MSG,
+    COMPACTION_TOOL_NAME,
+)
 from ..model import ChatMessage, ChatSession
 from ..response_model import (
     CompactionPhase,
@@ -66,6 +74,10 @@ class CompactionStats(BaseModel):
     messages_after: int | None = Field(
         default=None, serialization_alias="messagesAfter"
     )
+    # Compression failed outright and the history was dropped, not condensed.
+    # A payload fact rather than a wire stat: the settled row reports the
+    # reset, while the progress events (``to_wire``) never carry it.
+    dropped: bool = Field(default=False, exclude=True)
 
     def to_wire(self) -> dict[str, Any]:
         """Known counts under their client-facing names; unknowns omitted."""
@@ -77,12 +89,115 @@ def build_compaction_output(stats: "CompactionStats | None") -> str:
 
     ``summary`` repeats ``COMPACTION_DONE_MSG`` verbatim so a client that
     cannot parse the JSON — or a session persisted before this change —
-    still has a human-readable sentence to fall back on.
+    still has a human-readable sentence to fall back on.  A dropped
+    history gets ``COMPACTION_DROPPED_MSG`` and ``dropped: true`` instead,
+    so neither a parsing client nor a legacy one can read a reset as a
+    summary.
     """
-    payload: dict[str, Any] = {"summary": COMPACTION_DONE_MSG}
+    if stats is not None and stats.dropped:
+        payload: dict[str, Any] = {"summary": COMPACTION_DROPPED_MSG, "dropped": True}
+    else:
+        payload = {"summary": COMPACTION_DONE_MSG}
     if stats is not None:
         payload.update(stats.to_wire())
     return json.dumps(payload)
+
+
+# ---------------------------------------------------------------------------
+# Sizing the SDK-internal path
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
+
+def _is_message_entry(entry: dict) -> bool:
+    return entry.get("type") in ("user", "assistant") or bool(
+        entry.get("isCompactSummary")
+    )
+
+
+def _entry_text(entry: dict) -> str:
+    """The text the model reads from one CLI transcript entry."""
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        kind = block.get("type")
+        if kind == "text":
+            parts.append(str(block.get("text") or ""))
+        elif kind == "thinking":
+            parts.append(str(block.get("thinking") or ""))
+        elif kind == "tool_use":
+            parts.append(json.dumps(block.get("input") or {}, default=str))
+        elif kind == "tool_result":
+            result = block.get("content")
+            parts.append(
+                result if isinstance(result, str) else json.dumps(result, default=str)
+            )
+    return "\n".join(parts)
+
+
+def _measure_transcript(
+    entries: Iterable[dict], *, model: str
+) -> tuple[int | None, int | None]:
+    """``(tokens, turns)`` for CLI transcript entries; ``(None, None)`` if empty.
+
+    Turns are user and assistant entries (tool results are user entries in
+    the CLI format) plus the compaction summary.  Tokens are estimated over
+    their text with the tokenizer ``compress_context`` measures the
+    pre-query path with, so the two paths report comparable numbers.  The
+    estimate is cosmetic: a tokenizer failure yields no count rather than
+    an error.
+    """
+    rows = [e for e in entries if _is_message_entry(e)]
+    if not rows:
+        return None, None
+    try:
+        tokens = estimate_token_count_str(
+            "\n".join(_entry_text(e) for e in rows), model=model
+        )
+    except Exception:
+        logger.warning(
+            "[SDK] Could not size %d transcript entries for the compaction row",
+            len(rows),
+            exc_info=True,
+        )
+        tokens = 0
+    return (tokens or None), len(rows)
+
+
+def transcript_stats(entries: Iterable[dict], *, model: str) -> CompactionStats:
+    """Size the context the CLI is about to condense: the before-counts."""
+    tokens, turns = _measure_transcript(entries, model=model)
+    return CompactionStats(tokens_before=tokens, messages_before=turns)
+
+
+def sdk_compaction_stats(
+    before: Iterable[dict],
+    compacted: list[dict] | None,
+    *,
+    model: str,
+    start: "CompactionStats | None" = None,
+) -> CompactionStats:
+    """Before/after counts for one CLI-side compaction cycle.
+
+    *before* is the transcript builder's mirror of the CLI context prior to
+    compaction; *compacted* is what ``read_compacted_entries`` found in the
+    session file afterwards — ``None`` when it could not be read, in which
+    case only the before-counts are reported and the card falls back to
+    its generic copy.  *start* reuses the counts measured when the row
+    opened so a cycle is not tokenized twice.
+    """
+    stats = start if start is not None else transcript_stats(before, model=model)
+    if compacted is None:
+        return stats
+    tokens, turns = _measure_transcript(compacted, model=model)
+    return stats.model_copy(update={"tokens_after": tokens, "messages_after": turns})
 
 
 def _progress(
@@ -254,6 +369,7 @@ class CompactionTracker:
     def __init__(self) -> None:
         self.hook_fired = asyncio.Event()
         self._start_emitted = False
+        self._start_stats: CompactionStats | None = None
         self._tool_call_id = ""
         self._active_transcript_path: str = ""
         self._pending_transcript_paths: deque[str] = deque()
@@ -350,7 +466,10 @@ class CompactionTracker:
             events = list(_start_events(tc_id) + _end_events(tc_id, output))
         self._pre_query_tool_call_id = ""
         self._attempted_sources.append("pre_query")
-        self._completed_sources.append("pre_query")
+        # A drop closes the row honestly but is not a compaction that
+        # happened — it must not inflate ``compaction_count``.
+        if stats is None or not stats.dropped:
+            self._completed_sources.append("pre_query")
         _persist(session, tc_id, output)
         events.append(_progress("rebuilding", stats))
         return events
@@ -382,26 +501,65 @@ class CompactionTracker:
     def reset_for_query(self) -> None:
         """Reset per-query state before a new SDK query."""
         self._start_emitted = False
+        self._start_stats = None
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._pending_transcript_paths.clear()
         self.hook_fired.clear()
 
-    def emit_start_if_ready(self) -> list[StreamBaseResponse]:
-        """If the PreCompact hook fired, emit start events (spinning tool)."""
+    @property
+    def has_pending_start(self) -> bool:
+        """A PreCompact hook fired and its row has not been opened yet."""
+        return bool(self._pending_transcript_paths) and not self._start_emitted
+
+    @property
+    def pending_transcript_path(self) -> str | None:
+        """Session file of the compaction the next SDK message will close.
+
+        ``None`` when no cycle is in flight.  The path itself may be empty
+        when the hook carried none — the caller still closes the row, it
+        just cannot read the compacted entries.
+        """
+        if self._start_emitted:
+            return self._active_transcript_path
+        if self._pending_transcript_paths:
+            return self._pending_transcript_paths[0]
+        return None
+
+    @property
+    def start_stats(self) -> "CompactionStats | None":
+        """Counts measured when the open row was emitted, if any."""
+        return self._start_stats
+
+    def emit_start_if_ready(
+        self, stats: "CompactionStats | None" = None
+    ) -> list[StreamBaseResponse]:
+        """If the PreCompact hook fired, emit start events (spinning tool).
+
+        *stats* carries the before-counts measured off the transcript
+        builder; ``tokens_before`` paces the client's curve and the
+        counts are kept for the settled row (:attr:`start_stats`).
+        """
         if self._pending_transcript_paths and not self._start_emitted:
             self._start_emitted = True
+            self._start_stats = stats
             self._tool_call_id = _new_tool_call_id()
             self._active_transcript_path = self._pending_transcript_paths.popleft()
-            return [*_start_events(self._tool_call_id), _progress("summarizing")]
+            return [*_start_events(self._tool_call_id), _progress("summarizing", stats)]
         return []
 
-    async def emit_end_if_ready(self, session: ChatSession) -> CompactionResult:
+    async def emit_end_if_ready(
+        self, session: ChatSession, stats: "CompactionStats | None" = None
+    ) -> CompactionResult:
         """If compaction is in progress, emit end events and persist.
 
         Returns a ``CompactionResult`` with ``just_ended=True`` and the
         captured ``transcript_path`` when a compaction cycle completes.
         This avoids a separate flag check (TOCTOU-safe).
+
+        *stats* is the measured before/after (see
+        :func:`sdk_compaction_stats`); it lands in the persisted output and
+        rides the ``rebuilding`` phase.
         """
         # Yield so pending hook tasks can set compact_start
         await asyncio.sleep(0)
@@ -409,7 +567,7 @@ class CompactionTracker:
         if not self._start_emitted and not self._pending_transcript_paths:
             return CompactionResult()
 
-        output = build_compaction_output(None)
+        output = build_compaction_output(stats)
 
         if self._start_emitted:
             # Close the open spinner
@@ -427,11 +585,12 @@ class CompactionTracker:
             )
 
         self._start_emitted = False
+        self._start_stats = None
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._completed_sources.append("sdk_internal")
         _persist(session, persist_id, output)
-        done_events.append(_progress("rebuilding"))
+        done_events.append(_progress("rebuilding", stats))
         return CompactionResult(
             events=done_events, just_ended=True, transcript_path=transcript_path
         )

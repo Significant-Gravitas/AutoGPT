@@ -77,6 +77,22 @@ describe("CompactionCard", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
+  it("reports a reset, not a condensation, when history was dropped", () => {
+    render(
+      <CompactionCard
+        phase={null}
+        stats={{ dropped: true, messagesBefore: 412 }}
+        isSettled
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Started a fresh context — earlier messages were dropped",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/Condensed/)).toBeNull();
+  });
+
   it("degrades to plain copy for legacy rows without stats", () => {
     render(<CompactionCard phase={null} stats={{}} isSettled />);
     expect(
