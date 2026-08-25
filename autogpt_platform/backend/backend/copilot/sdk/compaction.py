@@ -499,13 +499,20 @@ class CompactionTracker:
     # ------------------------------------------------------------------
 
     def reset_for_query(self) -> None:
-        """Reset per-query state before a new SDK query."""
+        """Reset per-query state before a new SDK query.
+
+        The pre-query row cycle always closes before the query starts, so a
+        pre-query id still set here is stale by definition.  Dropping it keeps
+        a broken call order from attaching this query's compaction to a row
+        the client no longer has open.
+        """
         self._start_emitted = False
         self._start_stats = None
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._pending_transcript_paths.clear()
         self.hook_fired.clear()
+        self._pre_query_tool_call_id = ""
 
     @property
     def has_pending_start(self) -> bool:

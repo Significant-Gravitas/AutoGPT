@@ -336,6 +336,17 @@ class TestCompactionTracker:
         assert tracker._active_transcript_path == ""
         assert list(tracker._pending_transcript_paths) == []
 
+    def test_reset_for_query_forgets_pre_query_row(self):
+        """A pre-query row id never crosses the query boundary."""
+        tracker = CompactionTracker()
+        session = _make_session()
+        tracker.emit_pre_query_start()
+        tracker.reset_for_query()
+        assert tracker._pre_query_tool_call_id == ""
+        assert tracker.abort_pre_query() == []
+        end_evts = tracker.emit_pre_query_end(session, None)
+        assert any(isinstance(e, StreamToolInputStart) for e in end_evts)
+
     @pytest.mark.asyncio
     async def test_pre_query_does_not_block_sdk_compaction_within_query(self):
         """SDK auto-compaction can still fire after a pre-query compaction."""
