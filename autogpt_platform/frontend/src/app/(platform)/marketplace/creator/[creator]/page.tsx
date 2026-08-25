@@ -29,7 +29,7 @@ export async function generateMetadata({
     const { data } = await getV2GetCreatorDetails(params.creator.toLowerCase());
     creator = data as CreatorDetails;
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
+    if ((error as ApiError)?.status === 404) {
       notFound();
     }
     throw error;
