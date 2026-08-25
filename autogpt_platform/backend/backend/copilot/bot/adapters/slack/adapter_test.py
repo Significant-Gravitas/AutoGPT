@@ -179,6 +179,22 @@ class TestInboundRouting:
         assert [e.text for e in captured["ctx"].thread_history] == ["the parent"]
 
     @pytest.mark.asyncio
+    async def test_redis_blip_during_history_gate_does_not_drop_the_message(
+        self, adapter
+    ):
+        # Optional context must never cost the user their turn — including a
+        # failure in the subscription gate itself.
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        with patch(_SUBSCRIBED, new=AsyncMock(side_effect=RuntimeError("redis down"))):
+            await adapter._dispatch_event(_mention_in_thread())
+        assert captured["ctx"].thread_history == ()
+
+    @pytest.mark.asyncio
     async def test_mention_in_own_thread_skips_the_history_fetch(self, adapter):
         # The handler discards history for a subscribed thread, so the
         # adapter must not pay for the fetch.
@@ -414,6 +430,28 @@ class TestOutbound:
             # rather than blow through the cap.
             assert len(sent) <= config.MAX_MESSAGE_LENGTH
         assert "".join(c.kwargs["text"] for c in calls) == "ab&amp;" * 2000
+
+    @pytest.mark.asyncio
+    async def test_send_message_resplits_when_escaping_expands_past_the_cap(
+        self, adapter
+    ):
+        # The streamed reply path flushes canonical chunks; Slack counts the
+        # escaped wire text, so expansion must re-split here too.
+        await adapter.send_message("T1|C1|", ("a & b " * 640).strip())
+        calls = adapter._clients["T1"].chat_postMessage.await_args_list
+        assert len(calls) >= 2
+        for c in calls:
+            assert len(c.kwargs["text"]) <= config.MAX_MESSAGE_LENGTH
+
+    @pytest.mark.asyncio
+    async def test_mention_as_link_label_stays_plain_inside_the_link(self, adapter):
+        # A live <@Uid> inside <url|label> would nest angle brackets and
+        # truncate the label at Slack's first ">".
+        await adapter.send_message(
+            "T1|C1|", "see [@Bently](https://x.com) now", (("Bently", "U9"),)
+        )
+        text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert text == "see <https://x.com|@Bently> now"
 
     @pytest.mark.asyncio
     async def test_forged_nul_placeholder_cannot_ping(self, adapter):

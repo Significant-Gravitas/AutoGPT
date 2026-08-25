@@ -133,11 +133,12 @@ async def _handle_callback(
         # The SDK raises on ok:false (expired/reused code, bad secret); the
         # error code is the one actionable signal an operator gets.
         return _exchange_failed(_slack_error_code(e))
-    except Exception as e:
+    except Exception:
         # slack_sdk re-raises raw aiohttp/asyncio errors on transport failure
         # (timeout, DNS, proxy outage) — same graceful landing, never a 500.
+        # The log keeps the exception; the browser gets the generic detail.
         logger.warning("Slack oauth.v2.access request failed", exc_info=True)
-        return _exchange_failed(type(e).__name__)
+        return _exchange_failed(None)
 
     team = resp.get("team") or {}
     install = _Install(

@@ -434,3 +434,7 @@ class TestProactiveChunking:
             assert len(parsed) <= 4096
             raw_over_cap += len(sent) > 4096
         assert raw_over_cap > 0  # the raw length is not the limit
+        joined = "".join(
+            html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
+        )
+        assert joined.count("Tom") == 200  # nothing dropped across the chunks

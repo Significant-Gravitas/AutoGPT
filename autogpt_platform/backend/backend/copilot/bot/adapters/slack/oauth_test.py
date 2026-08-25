@@ -1,6 +1,7 @@
 """Tests for the Slack OAuth v2 install flow."""
 
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
@@ -421,3 +422,14 @@ async def test_callback_failure_reads_the_code_from_a_real_sdk_response():
         )
     assert resp.status_code == 400
     assert b"invalid_code" in resp.body
+
+
+def test_scopes_match_the_app_manifest():
+    # oauth._SCOPES carries a "must stay in sync with app-manifest.yaml"
+    # comment; this is the thing that enforces it.
+    import yaml
+
+    manifest = yaml.safe_load(
+        Path(oauth.__file__).with_name("app-manifest.yaml").read_text()
+    )
+    assert set(manifest["oauth_config"]["scopes"]["bot"]) == set(oauth._SCOPES)

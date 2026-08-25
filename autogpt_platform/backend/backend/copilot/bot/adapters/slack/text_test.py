@@ -55,4 +55,15 @@ def test_link_rule_cannot_smuggle_a_mention(payload):
 
 def test_blockquotes_survive_escaping():
     assert to_mrkdwn("> quoted\n<!channel>") == "> quoted\n&lt;!channel&gt;"
+    assert to_mrkdwn(">>> deep quote") == ">>> deep quote"
     assert to_mrkdwn("a > b") == "a &gt; b"
+
+
+def test_mailto_targets_become_links():
+    assert to_mrkdwn("[mail us](mailto:a@b.co)") == "<mailto:a@b.co|mail us>"
+
+
+def test_nul_passes_through_untouched():
+    # The adapter stashes allowlisted mentions behind NUL placeholders across
+    # this escaping — stripping control chars here would kill every ping.
+    assert to_mrkdwn("a\x00U9\x00b") == "a\x00U9\x00b"

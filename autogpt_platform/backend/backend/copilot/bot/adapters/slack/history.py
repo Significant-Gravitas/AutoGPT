@@ -9,7 +9,7 @@ tail, which the shared char budget then trims newest-first.
 import asyncio
 import logging
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Optional
 
 from slack_sdk.web.async_client import AsyncWebClient
@@ -27,6 +27,9 @@ MAX_PAGES = 10
 CHAR_BUDGET = 24000
 # users.info is rate-limited workspace-wide; don't fan out unbounded.
 NAME_LOOKUP_CONCURRENCY = 8
+# Author labels are inlined into the prompt frame; a bot_message "username" is
+# attacker-set and newline-capable, so flatten and cap it.
+MAX_LABEL_LENGTH = 80
 
 
 async def fetch_thread_history(
@@ -44,6 +47,11 @@ async def fetch_thread_history(
     Other bots' posts stay: an alert thread is often exactly what the user wants
     summarized. ``display_name`` / ``strip_mentions`` are the adapter's
     workspace-bound helpers."""
+    if not bot_user_id:
+        # Without our own identity the self-filter fails open and the bot's
+        # prior replies would be folded back into its own prompt.
+        logger.warning("Slack bot identity unknown; skipping thread history")
+        return ()
     tail = await _fetch_tail(client, channel, thread_ts)
     # Newest-first: budget_history keeps the recent end.
     recent = [
@@ -63,13 +71,14 @@ async def fetch_thread_history(
         if not m.get("user")
     }
 
-    async def _entries():
+    async def _entries() -> AsyncIterator[MessageHistoryEntry]:
         for m in recent:
-            text = await strip_mentions(m.get("text") or "")
+            text = (m.get("text") or "").strip()
             if text:
                 author = _author(m)
-                # The id stands in for the name until the budget has decided
-                # which entries are worth a users.info lookup.
+                # The id stands in for the name, and mention tokens stay raw,
+                # until the budget has decided which entries are worth the
+                # users.info lookups.
                 yield MessageHistoryEntry(
                     username=preset.get(author, author), user_id=author, text=text
                 )
@@ -79,18 +88,28 @@ async def fetch_thread_history(
         {e.user_id for e in kept if e.user_id and e.user_id not in preset},
         display_name,
     )
-    return tuple(
-        MessageHistoryEntry(
-            username=names.get(e.user_id or "", e.username),
-            user_id=e.user_id,
-            text=e.text,
+    entries = []
+    for e in kept:
+        text = await strip_mentions(e.text)
+        if not text:
+            continue
+        uid = e.user_id or ""
+        entries.append(
+            MessageHistoryEntry(
+                username=_label(names.get(uid, e.username)),
+                user_id=e.user_id,
+                text=text,
+            )
         )
-        for e in kept
-    )
+    return tuple(entries)
 
 
 def _author(message: dict[str, Any]) -> str:
     return message.get("user") or message.get("bot_id") or ""
+
+
+def _label(name: str) -> str:
+    return " ".join(str(name).split())[:MAX_LABEL_LENGTH] or "user"
 
 
 async def _resolve_names(
@@ -115,7 +134,7 @@ async def _fetch_tail(
 ) -> list[dict[str, Any]]:
     tail: deque[dict[str, Any]] = deque(maxlen=TAIL_SIZE)
     cursor: Optional[str] = None
-    for _ in range(MAX_PAGES):
+    for page in range(MAX_PAGES):
         try:
             resp = await client.conversations_replies(
                 channel=channel, ts=thread_ts, limit=PAGE_SIZE, cursor=cursor
@@ -126,7 +145,19 @@ async def _fetch_tail(
             # user their turn over optional context.
             logger.warning("Could not fetch Slack thread history", exc_info=True)
             return []
-        tail.extend(resp.get("messages") or [])
+        messages = list(resp.get("messages") or [])
+        if page == 0 and messages:
+            # The parent's reply_count is on the first page: an over-cap thread
+            # can bail after one round trip instead of paying for all pages.
+            reply_count = int(messages[0].get("reply_count") or 0)
+            if reply_count > PAGE_SIZE * MAX_PAGES:
+                logger.warning(
+                    "Slack thread %s has %d replies; skipping history",
+                    thread_ts,
+                    reply_count,
+                )
+                return []
+        tail.extend(messages)
         cursor = (resp.get("response_metadata") or {}).get("next_cursor") or None
         if cursor is None:
             return list(tail)

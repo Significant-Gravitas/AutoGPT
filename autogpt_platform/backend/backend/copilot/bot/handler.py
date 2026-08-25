@@ -98,9 +98,10 @@ class MessageHandler:
             return
 
         if not ctx.text.strip() and not ctx.attachments:
-            # Nothing usable survived the adapter, so there is no turn to run.
-            # Say so in place: resolving a target first would open a thread
-            # (a real, visible one on Discord) just to hold the note.
+            # The content gate above guarantees skipped_attachments is
+            # non-empty here. There is no turn to run, so say so in place:
+            # resolving a target first would open a thread (a real, visible
+            # one on Discord) just to hold the note.
             await self._report_skipped_only(ctx, adapter)
             return
 

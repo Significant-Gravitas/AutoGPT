@@ -199,7 +199,7 @@ class DiscordAdapter(SocketAdapter):
         rendered, allowed = _resolve_mentions(text, mentionable_users)
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-        except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 429
+        except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 5xx
             # fetch_message needs Read Message History, which gateway delivery
             # doesn't — a plain send needs neither, so don't lose the reply.
             # Only fetch failures fall back: a failed reply() must not retry as

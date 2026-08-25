@@ -82,6 +82,10 @@ _MENTION_STASH_RE = re.compile(r"\x00([^\x00]+)\x00")
 # message cap (worst case ~5x, so this keeps the wire text well under it).
 _MIN_FLUSH_AT = 200
 
+# The display-name cache now collects every author of every summoned thread;
+# a hard cap keeps a long-lived pod bounded (and lets renames surface).
+_USER_NAME_CACHE_MAX = 10_000
+
 
 class SlackAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
@@ -328,15 +332,18 @@ class SlackAdapter(WebhookAdapter):
         target_id: str,
         exclude_ts: str,
     ) -> tuple[MessageHistoryEntry, ...]:
-        # The handler only folds history in for a thread the bot doesn't own
-        # (its own threads' turns already live in the session), so don't pay
-        # for a fetch it would discard.
-        if await threads.is_subscribed(self.platform_name, target_id):
-            return ()
-        client = await self._client_for(team)
-        if client is None:
-            return ()
+        # Optional context must never cost the user their turn: EVERYTHING in
+        # here (the Redis gate included) answers without history on failure
+        # rather than dropping the message.
         try:
+            # The handler only folds history in for a thread the bot doesn't
+            # own (its own threads' turns already live in the session), so
+            # don't pay for a fetch it would discard.
+            if await threads.is_subscribed(self.platform_name, target_id):
+                return ()
+            client = await self._client_for(team)
+            if client is None:
+                return ()
             return await history.fetch_thread_history(
                 client,
                 channel=channel,
@@ -347,8 +354,6 @@ class SlackAdapter(WebhookAdapter):
                 strip_mentions=lambda text: self._strip_mentions(team, text),
             )
         except Exception:
-            # History is optional context; it must never cost the user their
-            # turn, so answer without it rather than drop the message.
             logger.warning("Slack thread history failed; skipping", exc_info=True)
             return ()
 
@@ -400,7 +405,44 @@ class SlackAdapter(WebhookAdapter):
             mentionable_users,
             lambda _name, uid: f"\x00{uid}\x00",
         )
-        return _MENTION_STASH_RE.sub(r"<@\1>", self.localize_markup(resolved))
+        rendered = self.localize_markup(resolved)
+        # Inside an emitted <url|label> link a mention token would nest angle
+        # brackets and truncate the label at Slack's first ">" — give a stashed
+        # mention there its plain @name instead. Links are the only <...>
+        # constructs at this point.
+        names = {uid: name for name, uid in mentionable_users}
+        rendered = re.sub(
+            r"<[^<>]*>",
+            lambda link: _MENTION_STASH_RE.sub(
+                lambda p: f"@{names.get(p.group(1), p.group(1))}", link.group(0)
+            ),
+            rendered,
+        )
+        return _MENTION_STASH_RE.sub(r"<@\1>", rendered)
+
+    async def _post_rendered(
+        self,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: Optional[str],
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...],
+        flush_at: int = config.CHUNK_FLUSH_AT,
+    ) -> None:
+        """Render and post ``text``, re-splitting the canonical text whenever
+        escaping expands the wire text past the message cap — Slack counts the
+        escaped characters, and the upstream flush budget counts canonical
+        ones."""
+        rendered = self._render(text, mentionable_users)
+        if len(rendered) <= config.MAX_MESSAGE_LENGTH or flush_at <= _MIN_FLUSH_AT:
+            await client.chat_postMessage(
+                channel=channel, text=rendered, thread_ts=thread_ts
+            )
+            return
+        for chunk in iter_chunks(text, flush_at // 2):
+            await self._post_rendered(
+                client, channel, thread_ts, chunk, mentionable_users, flush_at // 2
+            )
 
     async def send_message(
         self,
@@ -412,11 +454,7 @@ class SlackAdapter(WebhookAdapter):
         client = await self._client_for(team)
         if client is None:
             return
-        await client.chat_postMessage(
-            channel=channel,
-            text=self._render(text, mentionable_users),
-            thread_ts=thread_ts,
-        )
+        await self._post_rendered(client, channel, thread_ts, text, mentionable_users)
 
     async def send_reply(
         self,
@@ -429,10 +467,8 @@ class SlackAdapter(WebhookAdapter):
         client = await self._client_for(team)
         if client is None:
             return
-        await client.chat_postMessage(
-            channel=channel,
-            text=self._render(text, mentionable_users),
-            thread_ts=thread_ts or reply_to_message_id,
+        await self._post_rendered(
+            client, channel, thread_ts or reply_to_message_id, text, mentionable_users
         )
 
     async def send_link(
@@ -630,6 +666,8 @@ class SlackAdapter(WebhookAdapter):
                 )
                 # Only cache a real resolution — a transient API failure must not
                 # poison the cache with the raw id (mirrors _bot_user_id_for).
+                if len(self._user_name_cache) >= _USER_NAME_CACHE_MAX:
+                    self._user_name_cache.clear()
                 self._user_name_cache[cache_key] = name
                 return name
             except Exception:

@@ -157,16 +157,24 @@ class TestEmptyMessage:
         # The note replaces the misleading "didn't say anything" nudge and is
         # sent as an in-channel reply: opening a thread (real and visible on
         # Discord) just to hold it would leave an orphan behind.
-        handler = MessageHandler(_api())
+        api = _api()
+        handler = MessageHandler(api)
         adapter = _adapter()
         await handler.handle(
-            _ctx(text="", skipped_attachments=(("huge.zip", "is too large"),)),
+            _ctx(
+                text="",
+                bot_mentioned=True,
+                skipped_attachments=(("huge.zip", "is too large"),),
+            ),
             adapter,
         )
         adapter.create_thread.assert_not_awaited()
         adapter.send_message.assert_not_awaited()
         _channel, note, reply_to = adapter.send_reply.await_args.args
         assert "huge.zip" in note and reply_to == "msg-1"
+        # These messages still count as received in analytics.
+        assert api.track_event.called
+        assert api.track_event.call_args.kwargs["event_type"] == "message_received"
 
     @pytest.mark.asyncio
     async def test_skipped_only_dm_from_unlinked_user_still_gets_the_link_prompt(self):
