@@ -81,6 +81,27 @@ async def test_only_our_own_posts_are_skipped():
 
 
 @pytest.mark.asyncio
+async def test_our_own_userless_bot_message_is_excluded():
+    # A bot_message record from our own app can omit "user"; the bot_id our
+    # user-keyed posts carry identifies it as ours.
+    page = {
+        "messages": [
+            _msg("1.0", "U1", "human"),
+            _msg("1.5", "UBOT", "ours keyed", bot_id="B1"),
+            {
+                "ts": "1.6",
+                "bot_id": "B1",
+                "username": "AutoGPT",
+                "text": "ours unkeyed",
+            },
+            {"ts": "1.7", "bot_id": "B2", "username": "PagerDuty", "text": "theirs"},
+        ]
+    }
+    entries = await _fetch(_client(page))
+    assert [e.text for e in entries] == ["human", "theirs"]
+
+
+@pytest.mark.asyncio
 async def test_budget_keeps_the_newest_messages():
     page = {"messages": [_msg(f"{i}.0", "U1", f"m{i} " + "x" * 40) for i in range(5)]}
     with patch.object(history, "CHAR_BUDGET", 100):

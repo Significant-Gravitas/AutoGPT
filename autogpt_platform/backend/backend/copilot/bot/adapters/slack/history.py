@@ -53,23 +53,11 @@ async def fetch_thread_history(
         logger.warning("Slack bot identity unknown; skipping thread history")
         return ()
     tail = await _fetch_tail(client, channel, thread_ts)
-    # Newest-first: budget_history keeps the recent end.
-    recent = [
-        m
-        for m in reversed(tail)
-        if _author(m) and m.get("ts") != exclude_ts and m.get("user") != bot_user_id
-    ]
+    recent, preset = _select_recent(
+        tail, exclude_ts=exclude_ts, bot_user_id=bot_user_id
+    )
     if not recent:
         return ()
-    # Integration bots (subtype bot_message) have no users.info entry; their
-    # name rides on the message itself.
-    preset = {
-        m["bot_id"]: m.get("username")
-        or (m.get("bot_profile") or {}).get("name")
-        or m["bot_id"]
-        for m in recent
-        if not m.get("user")
-    }
 
     async def _entries() -> AsyncIterator[MessageHistoryEntry]:
         for m in recent:
@@ -88,6 +76,44 @@ async def fetch_thread_history(
         {e.user_id for e in kept if e.user_id and e.user_id not in preset},
         display_name,
     )
+    return await _finalize(kept, names=names, strip_mentions=strip_mentions)
+
+
+def _select_recent(
+    tail: list[dict[str, Any]], *, exclude_ts: str, bot_user_id: str
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Newest-first messages minus the trigger and the bot's own posts, plus
+    the on-message names for integration bots (no users.info entry).
+
+    Our own posts are keyed by ``user``; a userless bot_message record of ours
+    is identified by the ``bot_id`` those user-keyed posts carry."""
+    own_bot_ids = {
+        m["bot_id"] for m in tail if m.get("user") == bot_user_id and m.get("bot_id")
+    }
+    recent = [
+        m
+        for m in reversed(tail)
+        if _author(m)
+        and m.get("ts") != exclude_ts
+        and m.get("user") != bot_user_id
+        and m.get("bot_id") not in own_bot_ids
+    ]
+    preset = {
+        m["bot_id"]: m.get("username")
+        or (m.get("bot_profile") or {}).get("name")
+        or m["bot_id"]
+        for m in recent
+        if not m.get("user")
+    }
+    return recent, preset
+
+
+async def _finalize(
+    kept: tuple[MessageHistoryEntry, ...],
+    *,
+    names: dict[str, str],
+    strip_mentions: Callable[[str], Awaitable[str]],
+) -> tuple[MessageHistoryEntry, ...]:
     entries = []
     for e in kept:
         text = await strip_mentions(e.text)

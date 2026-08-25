@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+import yaml
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
@@ -427,8 +428,6 @@ async def test_callback_failure_reads_the_code_from_a_real_sdk_response():
 def test_scopes_match_the_app_manifest():
     # oauth._SCOPES carries a "must stay in sync with app-manifest.yaml"
     # comment; this is the thing that enforces it.
-    import yaml
-
     manifest = yaml.safe_load(
         Path(oauth.__file__).with_name("app-manifest.yaml").read_text()
     )
