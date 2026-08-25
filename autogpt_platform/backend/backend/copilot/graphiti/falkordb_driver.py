@@ -173,6 +173,12 @@ class AutoGPTFalkorDriver(FalkorDriver):
         """
         if database == self._database:
             return self
+        # Upstream also special-cases ``default_group_id`` ('\\_') and maps it to
+        # a 'default_db' database. That branch is unreachable here: both
+        # graphiti.py clone sites call validate_group_id() first, whose
+        # ^[a-zA-Z0-9_-]+$ pattern rejects the backslash, and the group_id=None
+        # path never clones. Noted rather than mirrored — if it ever did become
+        # reachable, this would create a graph literally named '\\_'.
         return AutoGPTFalkorDriver(
             falkor_db=self.client, database=database, build_indices=False
         )
