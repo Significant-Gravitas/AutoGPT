@@ -127,7 +127,7 @@ describe("SubSessionLive", () => {
     expect(screen.queryByText("Done. Discord clone is built.")).toBeNull();
   });
 
-  it("shows who is on it before a blocking delegate returns", () => {
+  it("shows who is on it — and nothing else — before a blocking delegate returns", () => {
     render(
       <ToolResult
         row={{
@@ -142,8 +142,46 @@ describe("SubSessionLive", () => {
     );
 
     expect(screen.getByText("Sub-AutoPilot")).toBeDefined();
-    expect(screen.getByText("Create a chat app")).toBeDefined();
     expect(screen.getByText("running")).toBeDefined();
+    // A teammate's thread is their own workspace: the delegated card is
+    // status-only, so the prompt preview stays out of the parent chain.
+    expect(screen.queryByText("Create a chat app")).toBeNull();
+  });
+
+  it("keeps a finished delegate card to name, role, status, time, and link", () => {
+    render(
+      <ToolResult
+        row={{
+          key: "delegate",
+          category: "agent",
+          text: "Teammate handled it",
+          state: "done",
+          tool: "delegate_to_expert",
+          input: {},
+          output: {
+            status: "completed",
+            response: "Here is the full brief the teammate wrote.",
+            sub_session_id: "sub-1",
+            sub_autopilot_session_link: "/copilot?sessionId=sub-1",
+            elapsed_seconds: 75,
+            expert: { name: "Vera", role: "Research" },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Vera/)).toBeDefined();
+    expect(screen.getByText("Research")).toBeDefined();
+    expect(screen.getByText("completed")).toBeDefined();
+    expect(screen.getByText("1m 15s")).toBeDefined();
+    expect(
+      screen
+        .getByRole("link", { name: "Open sub-session" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=sub-1");
+    expect(
+      screen.queryByText("Here is the full brief the teammate wrote."),
+    ).toBeNull();
   });
 
   it("finds the delegate's running session behind a wall of pinned ones", async () => {

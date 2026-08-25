@@ -45,7 +45,9 @@ describe("ChainRowView - live sub-session rows", () => {
     );
 
     expect(await screen.findByText("Sub-AutoPilot")).toBeDefined();
-    expect(screen.getByText("Create a chat app")).toBeDefined();
+    // Delegated cards are status-only — the prompt stays in the teammate's
+    // own thread, not in the parent chain.
+    expect(screen.queryByText("Create a chat app")).toBeNull();
   });
 
   it("does not auto-open a result-poll row with no output (nothing to show)", () => {

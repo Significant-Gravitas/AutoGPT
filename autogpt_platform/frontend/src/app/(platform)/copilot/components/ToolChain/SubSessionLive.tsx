@@ -238,7 +238,13 @@ function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
  *  polling their session list; when only the session is known, the expert
  *  is read off the polled session itself. Swapped for the full
  *  SubSessionCard the moment the tool returns. */
-export function SubSessionPendingCard({ input }: { input: unknown }) {
+export function SubSessionPendingCard({
+  input,
+  minimal = false,
+}: {
+  input: unknown;
+  minimal?: boolean;
+}) {
   const { expertsById } = useExpertMap();
   const args = asObject(input) ?? {};
   const inputExpertId = str(args, "expert_id");
@@ -289,12 +295,14 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
           </Link>
         )}
       </div>
-      {prompt && (
+      {!minimal && prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
           {prompt}
         </p>
       )}
-      {liveSessionId && <SubSessionLive subSessionId={liveSessionId} active />}
+      {!minimal && liveSessionId && (
+        <SubSessionLive subSessionId={liveSessionId} active />
+      )}
     </div>
   );
 }
@@ -346,9 +354,20 @@ export function useSubSessionEffectiveStatus(
   status: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
+  // Own polling (capped) rather than piggybacking on SubSessionLive's
+  // cache-shared query — minimal delegate cards render no live view, so
+  // this hook is the only thing left that can flip running → completed.
+  const mountedAtRef = useRef(Date.now());
   const { data, isError } = useGetV2GetSession(subSessionId ?? "", undefined, {
     query: {
       enabled: stale && !!subSessionId,
+      refetchInterval: (query) => {
+        if (query.state.status === "error") return false;
+        if (Date.now() - mountedAtRef.current > POLL_CAP_MS) return false;
+        const raw = query.state.data;
+        const polled = raw && raw.status === 200 ? raw.data : null;
+        return !polled || isSessionLive(polled) ? POLL_MS : false;
+      },
       select: (res) => (res.status === 200 ? res.data : null),
     },
   });

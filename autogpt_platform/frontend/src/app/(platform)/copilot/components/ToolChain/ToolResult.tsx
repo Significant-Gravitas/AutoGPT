@@ -255,17 +255,25 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "run_sub_session":
     case "get_sub_session_result":
     case "delegate_to_expert":
-    case "handoff_to_expert":
+    case "handoff_to_expert": {
+      // A teammate's thread is their own workspace: delegated cards stay
+      // minimal (who, status, elapsed, link) — no response preview, no live
+      // step feed. Only the model's own run_sub_session shows its work here.
+      const delegated =
+        row.tool === "delegate_to_expert" ||
+        row.tool === "handoff_to_expert" ||
+        !!(output && asObject(output.expert));
       if (output && str(output, "status"))
-        return <SubSessionCard output={output} />;
+        return <SubSessionCard output={output} minimal={delegated} />;
       // A blocking delegate has no output while the teammate works — show
       // who's on it and what they were asked from the tool input instead.
       // Not for result polls: the delegation card above is already showing
       // this sub-session live, a second identical card would stack under it.
       return row.state === "running" &&
         row.tool !== "get_sub_session_result" ? (
-        <SubSessionPendingCard input={row.input} />
+        <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
+    }
     case "hire_expert":
     case "raise_expert":
     case "update_expert":
