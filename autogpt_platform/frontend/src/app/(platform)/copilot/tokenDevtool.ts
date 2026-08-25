@@ -106,10 +106,9 @@ export const useTokenDevtoolStore = create<TokenDevtoolState>((set) => ({
     set((state) => ({
       turnsBySession: {
         ...state.turnsBySession,
-        [sessionId]: [
-          ...(state.turnsBySession[sessionId] ?? []),
-          turn,
-        ].slice(-KEPT_TURNS),
+        [sessionId]: [...(state.turnsBySession[sessionId] ?? []), turn].slice(
+          -KEPT_TURNS,
+        ),
       },
     }));
   },
@@ -184,10 +183,9 @@ export function updateHistoryBreakdown(sessionId: string, messages: unknown[]) {
 const USAGE_COMMENT = /^:\s*usage\s+(\{.*\})$/;
 const COMPACTION_MARKER = '"context_compaction"';
 
-export function parseUsageComment(line: string): Omit<
-  TokenTurn,
-  "compacted"
-> | null {
+export function parseUsageComment(
+  line: string,
+): Omit<TokenTurn, "compacted"> | null {
   const match = USAGE_COMMENT.exec(line.trim());
   if (!match) return null;
   try {

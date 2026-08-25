@@ -118,7 +118,10 @@ describe("computeBreakdown", () => {
 
   it("counts assistant reasoning as assistant text", () => {
     const breakdown = computeBreakdown([
-      { role: "assistant", parts: [{ type: "reasoning", text: "a".repeat(40) }] },
+      {
+        role: "assistant",
+        parts: [{ type: "reasoning", text: "a".repeat(40) }],
+      },
     ]);
     expect(breakdown.assistantTokens).toBe(10);
     expect(breakdown.toolTokens).toBe(0);

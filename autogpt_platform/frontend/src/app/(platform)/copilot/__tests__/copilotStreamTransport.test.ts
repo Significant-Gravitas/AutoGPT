@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "http://test.local",
+    // Devtool gate reads these; keep it off so these tests exercise the
+    // plain fetch path rather than the usage-capturing wrapper.
+    isDevelopmentBuild: () => false,
+    isLocal: () => false,
+    isDev: () => false,
   },
 }));
 

@@ -1,0 +1,230 @@
+import { render, screen } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  useTokenDevtoolStore,
+  type ContextBreakdown,
+  type TokenTurn,
+} from "../../../tokenDevtool";
+import { TokenDevtoolBadge } from "../TokenDevtoolBadge";
+
+const SESSION = "session-1";
+
+// BASE_CONTEXT_ESTIMATE (65k) + 5k + 3k + 2k = 75k.
+const BREAKDOWN: ContextBreakdown = {
+  userTokens: 5000,
+  assistantTokens: 3000,
+  toolTokens: 2000,
+};
+
+function turn(overrides: Partial<TokenTurn> = {}): TokenTurn {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    compacted: false,
+    at: 1,
+    ...overrides,
+  };
+}
+
+function seed({
+  turns,
+  breakdown,
+  sessionId = SESSION,
+}: {
+  turns?: TokenTurn[];
+  breakdown?: ContextBreakdown;
+  sessionId?: string;
+}) {
+  useTokenDevtoolStore.setState({
+    turnsBySession: turns ? { [sessionId]: turns } : {},
+    breakdownBySession: breakdown ? { [sessionId]: breakdown } : {},
+  });
+}
+
+function getTrigger() {
+  return screen.getByRole("button", { name: "Token devtool" });
+}
+
+async function openPopover() {
+  await userEvent.click(getTrigger());
+  return screen.findByText("Context window");
+}
+
+afterEach(() => {
+  useTokenDevtoolStore.setState({ turnsBySession: {}, breakdownBySession: {} });
+});
+
+describe("TokenDevtoolBadge trigger", () => {
+  it("shows the em-dash state when the session has no data", () => {
+    seed({ turns: [turn({ cacheCreationTokens: 40000 })], sessionId: "other" });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+
+    expect(getTrigger().textContent).toContain("ctx —");
+    expect(getTrigger().textContent).not.toContain("~");
+  });
+
+  it("shows the seeded history estimate before any live turn", () => {
+    seed({ breakdown: BREAKDOWN });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+
+    expect(getTrigger().textContent).toContain("ctx ~75k");
+  });
+
+  it("keeps the seeded estimate while the live cache-write sum is below it", () => {
+    seed({
+      breakdown: BREAKDOWN,
+      turns: [turn({ cacheCreationTokens: 20000 })],
+    });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+
+    expect(getTrigger().textContent).toContain("ctx ~75k");
+  });
+
+  it("switches to the live cache-write sum once it exceeds the seed", () => {
+    seed({
+      breakdown: BREAKDOWN,
+      turns: [
+        turn({ cacheCreationTokens: 20000 }),
+        turn({ cacheCreationTokens: 90000 }),
+      ],
+    });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+
+    expect(getTrigger().textContent).toContain("ctx ~110k");
+  });
+
+  it("drops the seed and restarts the sum after a compaction turn", () => {
+    seed({
+      breakdown: BREAKDOWN,
+      turns: [
+        turn({ cacheCreationTokens: 90000 }),
+        turn({ cacheCreationTokens: 40000, compacted: true }),
+      ],
+    });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+
+    expect(getTrigger().textContent).toContain("ctx ~40k");
+  });
+});
+
+describe("TokenDevtoolBadge popover", () => {
+  it("reveals the context window readout against the model window", async () => {
+    seed({ breakdown: BREAKDOWN });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    expect(screen.queryByText("Context window")).toBeNull();
+
+    await openPopover();
+
+    expect(screen.getByText(/~75k \/ 200k/)).toBeDefined();
+    expect(screen.getByText("summarizes ~100k")).toBeDefined();
+    expect(
+      screen.getByTitle("Backend triggers summarization around 100k tokens"),
+    ).toBeDefined();
+  });
+
+  it("shows an em-dash readout when the session has no data", async () => {
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    expect(screen.getByText(/^— \/ 200k$/)).toBeDefined();
+  });
+
+  it("splits the seeded estimate into labelled breakdown rows", async () => {
+    seed({ breakdown: BREAKDOWN });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    expect(screen.getByText("system + tools + skills")).toBeDefined();
+    expect(screen.getByText("fixed est.")).toBeDefined();
+    expect(screen.getByText("~65k")).toBeDefined();
+    expect(screen.getByText("your messages")).toBeDefined();
+    expect(screen.getByText("~5k")).toBeDefined();
+    expect(screen.getByText("assistant replies")).toBeDefined();
+    expect(screen.getByText("~3k")).toBeDefined();
+    expect(screen.getByText("tool calls + results")).toBeDefined();
+    expect(screen.getByText("~2k")).toBeDefined();
+  });
+
+  it("omits the breakdown section until the history estimate exists", async () => {
+    seed({ turns: [turn({ cacheCreationTokens: 20000 })] });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    expect(screen.queryByText("your messages")).toBeNull();
+    expect(screen.queryByText("system + tools + skills")).toBeNull();
+  });
+
+  it("hints that live data starts next message when no turns exist", async () => {
+    seed({ breakdown: BREAKDOWN });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    expect(
+      screen.getByText("Live per-turn data starts with your next message."),
+    ).toBeDefined();
+  });
+
+  it("lists per-turn input, output, and cache-write usage", async () => {
+    seed({
+      turns: [
+        turn({
+          promptTokens: 1200,
+          completionTokens: 300,
+          cacheReadTokens: 40000,
+          cacheCreationTokens: 2000,
+        }),
+        turn({
+          promptTokens: 500,
+          completionTokens: 120,
+          cacheReadTokens: 60000,
+          cacheCreationTokens: 4500,
+          at: 2,
+        }),
+      ],
+    });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    expect(
+      screen.queryByText("Live per-turn data starts with your next message."),
+    ).toBeNull();
+    expect(screen.getByText("#1")).toBeDefined();
+    expect(screen.getByText("in 43.2k")).toBeDefined();
+    expect(screen.getByText("out 300")).toBeDefined();
+    expect(screen.getByText("w 2k")).toBeDefined();
+    expect(screen.getByText("#2")).toBeDefined();
+    expect(screen.getByText("in 65k")).toBeDefined();
+    expect(screen.getByText("out 120")).toBeDefined();
+    expect(screen.getByText("w 4.5k")).toBeDefined();
+  });
+
+  it("marks a compacted turn with the ⟲ glyph and only that turn", async () => {
+    seed({
+      turns: [
+        turn({ cacheCreationTokens: 90000 }),
+        turn({ cacheCreationTokens: 40000, compacted: true, at: 2 }),
+      ],
+    });
+
+    render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+
+    const markers = screen.getAllByTitle("Transcript summarized this turn");
+    expect(markers).toHaveLength(1);
+    expect(markers[0].textContent).toBe("⟲");
+    expect(screen.getByText("#2")).toBeDefined();
+  });
+});
