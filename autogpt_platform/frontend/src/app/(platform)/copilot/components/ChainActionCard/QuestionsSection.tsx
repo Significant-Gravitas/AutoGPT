@@ -10,6 +10,7 @@ import {
 import { m } from "framer-motion";
 import { useState } from "react";
 import type { QuestionRequest } from "./helpers";
+import { QuestionAnswerField } from "./QuestionAnswerField";
 
 interface Props {
   requests: QuestionRequest[];
@@ -66,21 +67,14 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
         className="flex flex-col gap-1.5 px-4 py-3"
       >
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-zinc-700">{question.question}</span>
-          <input
-            type="text"
-            required
-            autoFocus={current > 0}
-            value={request.answers[question.keyword] ?? ""}
-            onChange={(e) => request.onAnswer(question.keyword, e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAction()}
-            placeholder={
-              question.example ? `e.g. ${question.example}` : "Type your answer"
-            }
-            className="rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
-          />
-        </label>
+        <span className="text-sm text-zinc-700">{question.question}</span>
+        <QuestionAnswerField
+          question={question}
+          value={request.answers[question.keyword] ?? ""}
+          autoFocus={current > 0}
+          onChange={(value) => request.onAnswer(question.keyword, value)}
+          onSubmit={handleAction}
+        />
       </m.div>
 
       <div className="flex items-center justify-between px-4 pb-3 pt-1">

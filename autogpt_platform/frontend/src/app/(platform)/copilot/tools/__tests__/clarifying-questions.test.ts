@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildClarificationAnswersMessage,
+  extractClarifyingQuestions,
   normalizeClarifyingQuestions,
 } from "../clarifying-questions";
 
@@ -58,6 +59,68 @@ describe("normalizeClarifyingQuestions", () => {
 
   it("returns an empty array for empty input", () => {
     expect(normalizeClarifyingQuestions([])).toEqual([]);
+  });
+
+  it("keeps string options and drops blank or non-string entries", () => {
+    const result = normalizeClarifyingQuestions([
+      { question: "Q1", keyword: "k1", options: ["Email", "  ", 42, "Slack"] },
+      { question: "Q2", keyword: "k2", options: [] },
+      { question: "Q3", keyword: "k3", options: "Email" },
+    ]);
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toBeUndefined();
+    expect(result[2].options).toBeUndefined();
+  });
+});
+
+describe("extractClarifyingQuestions", () => {
+  it("reads options straight from the output when present", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
+
+  it("recovers options from the input when the output collapsed them", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+      output: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            example: "Email, Slack",
+          },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[0].example).toBe("Email, Slack");
+  });
+
+  it("leaves options unset when neither side carries them", () => {
+    const result = extractClarifyingQuestions({
+      output: {
+        questions: [{ question: "Which channel?", keyword: "channel" }],
+      },
+    });
+    expect(result[0].options).toBeUndefined();
   });
 });
 

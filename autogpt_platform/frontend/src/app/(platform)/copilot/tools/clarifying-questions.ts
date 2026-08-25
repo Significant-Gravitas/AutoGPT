@@ -2,10 +2,25 @@ export interface ClarifyingQuestion {
   question: string;
   keyword: string;
   example?: string;
+  options?: string[];
+}
+
+function toOptions(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const options = value.filter(
+    (option): option is string =>
+      typeof option === "string" && option.trim().length > 0,
+  );
+  return options.length > 0 ? options : undefined;
 }
 
 export function normalizeClarifyingQuestions(
-  questions: Array<{ question: string; keyword: string; example?: unknown }>,
+  questions: Array<{
+    question: string;
+    keyword: string;
+    example?: unknown;
+    options?: unknown;
+  }>,
 ): ClarifyingQuestion[] {
   const seen = new Set<string>();
 
@@ -32,6 +47,8 @@ export function normalizeClarifyingQuestions(
         ? q.example.trim()
         : null;
     if (example) item.example = example;
+    const options = toOptions(q.options);
+    if (options) item.options = options;
     return item;
   });
 }
@@ -64,6 +81,15 @@ export function extractClarifyingQuestions(source: {
   output?: unknown;
 }): ClarifyingQuestion[] {
   const raw = questionItems(source.output) ?? questionItems(source.input) ?? [];
+  // Older tool outputs collapse options into the example string, so when the
+  // output is the source the selectable options only survive in the input.
+  const inputOptions = new Map<string, string[]>();
+  for (const item of questionItems(source.input) ?? []) {
+    const options = toOptions(item.options);
+    if (options && typeof item.question === "string") {
+      inputOptions.set(item.question.trim(), options);
+    }
+  }
   const valid = raw.flatMap((item) =>
     typeof item.question === "string" &&
     item.question.trim() &&
@@ -73,6 +99,8 @@ export function extractClarifyingQuestions(source: {
             question: item.question.trim(),
             keyword: item.keyword,
             example: item.example,
+            options:
+              toOptions(item.options) ?? inputOptions.get(item.question.trim()),
           },
         ]
       : [],

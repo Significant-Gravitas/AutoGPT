@@ -51,7 +51,11 @@ class AskQuestionTool(BaseTool):
                             "options": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Options for this question.",
+                                "description": (
+                                    "Options for this question, rendered as "
+                                    "tappable choices; the user can always "
+                                    "type a custom answer instead."
+                                ),
                             },
                             "keyword": {
                                 "type": "string",
@@ -159,4 +163,5 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         question=text.strip(),
         keyword=keyword,
         example=", ".join(options) if options else None,
+        options=options,
     )

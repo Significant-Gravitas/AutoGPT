@@ -510,6 +510,72 @@ describe("ChainActionCard", () => {
       expect(onProceed).toHaveBeenCalledOnce();
     });
 
+    it("renders options as choices and selects one on click", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      renderCard({ questions: [request] });
+
+      expect(screen.queryByPlaceholderText("Type your answer")).toBeNull();
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+    });
+
+    it("marks the option matching the answer as selected", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      expect(
+        screen.getByRole("radio", { name: "Europe" }).getAttribute(
+          "aria-checked",
+        ),
+      ).toBe("true");
+      expect(
+        screen.getByRole("radio", { name: "Americas" }).getAttribute(
+          "aria-checked",
+        ),
+      ).toBe("false");
+    });
+
+    it("swaps to free text via Type something and clears a picked option", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+
+      fireEvent.click(screen.getByText("Choose from options instead"));
+      expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
+    });
+
     it("keeps the questions card sendable when an unready sibling exists", () => {
       // An unconnected MCP row must not freeze the questions footer.
       const { onProceed } = renderCard({

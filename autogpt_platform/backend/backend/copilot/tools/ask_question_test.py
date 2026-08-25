@@ -57,6 +57,7 @@ async def test_single_question_with_options(
     assert isinstance(result, ClarificationNeededResponse)
     q = result.questions[0]
     assert q.example == "Email, Slack, Google Docs"
+    assert q.options == ["Email", "Slack", "Google Docs"]
 
 
 @pytest.mark.asyncio
