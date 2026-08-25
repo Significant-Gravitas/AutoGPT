@@ -24,14 +24,20 @@ interface Props {
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
   const sectionId = useId();
+  // Keywords are only unique within a request, so anything identifying a
+  // question across the whole pager has to carry the request id too.
   const questions = requests.flatMap((request) =>
-    request.questions.map((question) => ({ request, question })),
+    request.questions.map((question) => ({
+      request,
+      question,
+      id: `${request.id}-${question.keyword}`,
+    })),
   );
   if (questions.length === 0) return null;
 
   const current = Math.min(step, questions.length - 1);
-  const { request, question } = questions[current];
-  const labelId = `${sectionId}-${question.keyword}`;
+  const { request, question, id } = questions[current];
+  const labelId = `${sectionId}-${id}`;
   const answered = (request.answers[question.keyword] ?? "").trim().length > 0;
   const isLast = current === questions.length - 1;
   const actionEnabled = isLast ? isReady : answered;
@@ -63,7 +69,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       </div>
 
       <m.div
-        key={question.keyword}
+        key={id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
@@ -94,9 +100,9 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             <Icon icon={ArrowLeft01Icon} size={14} />
           </button>
           <span className="flex items-center gap-1.5">
-            {questions.map(({ question: q }, i) => (
+            {questions.map(({ id: questionId }, i) => (
               <button
-                key={q.keyword}
+                key={questionId}
                 type="button"
                 aria-label={`Go to question ${i + 1}`}
                 aria-current={i === current ? "step" : undefined}

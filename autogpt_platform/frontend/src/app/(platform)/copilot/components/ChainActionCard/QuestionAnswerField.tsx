@@ -82,7 +82,7 @@ export function QuestionAnswerField({
         options={options}
         value={value}
         labelId={labelId}
-        autoFocus={cameBackToOptions}
+        autoFocus={autoFocus || cameBackToOptions}
         onChange={onChange}
       />
       <button

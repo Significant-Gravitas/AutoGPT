@@ -677,6 +677,64 @@ describe("ChainActionCard", () => {
       ).toBe("-1");
     });
 
+    it("focuses the active option when the pager reaches a question", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              { question: "Which region?", keyword: "region" },
+              {
+                question: "Which channel?",
+                keyword: "channel",
+                options: ["Email", "Slack"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: "Email" }),
+      );
+    });
+
+    it("does not leak the free-text toggle between same-keyword requests", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            id: "questions-1",
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+          questionRequest({
+            id: "questions-2",
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Notion", "Drive"],
+              },
+            ],
+            answers: {},
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+      expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
+    });
+
     it("keeps the questions card sendable when an unready sibling exists", () => {
       // An unconnected MCP row must not freeze the questions footer.
       const { onProceed } = renderCard({
