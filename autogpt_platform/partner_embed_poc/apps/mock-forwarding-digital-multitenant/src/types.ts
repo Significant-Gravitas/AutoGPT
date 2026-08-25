@@ -1,6 +1,5 @@
 export interface DirectoryUser {
   id: string;
-  email: string;
   name: string;
   organizations: string[];
 }

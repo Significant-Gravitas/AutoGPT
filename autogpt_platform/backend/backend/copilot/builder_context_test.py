@@ -24,6 +24,7 @@ from backend.copilot.builder_context import (
 )
 from backend.copilot.model import ChatMessage, ChatSession
 
+
 @pytest.fixture(scope="session", autouse=True)
 def graph_cleanup():
     yield

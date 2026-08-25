@@ -27,7 +27,6 @@ PROVISION_BODY = {
     "partner_id": "forwarding-digital",
     "external_subject": "user-123",
     "external_account_id": "forwarder-42",
-    "email": "jon@example.com",
     "display_name": "Jon Heavyside",
     "account_name": "Acme Forwarding",
     "is_admin": True,
@@ -110,6 +109,7 @@ def test_stream_rejects_a_session_from_another_customer_account(mocker):
         "backend.api.features.partner_embed.routes.get_chat_session_metadata",
         return_value=SimpleNamespace(
             organization_id="another-org",
+            team_id=PRINCIPAL.team_id,
             metadata=SimpleNamespace(
                 source_platform=PRINCIPAL.partner_id,
                 external_account_id=PRINCIPAL.external_account_id,
@@ -132,9 +132,34 @@ def test_stream_rejects_a_session_from_another_external_account(mocker):
         "backend.api.features.partner_embed.routes.get_chat_session_metadata",
         return_value=SimpleNamespace(
             organization_id=PRINCIPAL.organization_id,
+            team_id=PRINCIPAL.team_id,
             metadata=SimpleNamespace(
                 source_platform=PRINCIPAL.partner_id,
                 external_account_id="another-account",
+            ),
+        ),
+    )
+    stream = mocker.patch("backend.api.features.partner_embed.routes.stream_chat_post")
+
+    response = client.post(
+        "/api/embed/v1/sessions/session-1/stream",
+        json={"message": "Summarize today's shipments"},
+    )
+
+    assert response.status_code == 404
+    stream.assert_not_awaited()
+
+
+def test_stream_rejects_a_session_from_another_team(mocker):
+    mocker.patch(
+        "backend.api.features.partner_embed.routes.get_chat_session_metadata",
+        return_value=SimpleNamespace(
+            organization_id=PRINCIPAL.organization_id,
+            team_id="another-team",
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id=PRINCIPAL.external_account_id,
+                external_capabilities=PRINCIPAL.capabilities,
             ),
         ),
     )
@@ -154,6 +179,7 @@ def test_stream_forwards_locked_identity_to_autopilot(mocker):
         "backend.api.features.partner_embed.routes.get_chat_session_metadata",
         return_value=SimpleNamespace(
             organization_id=PRINCIPAL.organization_id,
+            team_id=PRINCIPAL.team_id,
             metadata=SimpleNamespace(
                 source_platform=PRINCIPAL.partner_id,
                 external_account_id=PRINCIPAL.external_account_id,

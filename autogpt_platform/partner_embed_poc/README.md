@@ -28,6 +28,8 @@ Open <http://127.0.0.1:8789> for the separate Angular 22 host. It uses the publi
 
 The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published; the mock MCP service is Docker-internal:
 
+The mock user picker is not authentication. Do not publish these hosts to a LAN or the internet. An explicit temporary LAN override for phone testing assumes every client on that network is trusted and must be removed after testing; production requires the partner's real authentication, TLS, secure cookies, rate limits, and budget controls.
+
 | URL                     | Purpose                                     |
 | ----------------------- | ------------------------------------------- |
 | `http://127.0.0.1:8787` | Minimal React Forwarding Digital host + BFF |
@@ -74,7 +76,7 @@ sequenceDiagram
     API-->>Browser: AI SDK data stream
 ```
 
-The partner assertion contains `sub`, `account_id`, `email`, `name`, `account_name`, `roles`, `jti`, `iss`, `aud`, `iat`, and `exp`. AutoGPT verifies the signature through the configured JWKS, requires the configured issuer and `autogpt-partner-exchange` audience, and maps immutable partner subject/account IDs to deterministic internal IDs. Email is profile data, not an identity key.
+The partner assertion contains `sub`, `account_id`, `name`, `account_name`, `roles`, `capabilities`, `jti`, `iss`, `aud`, `iat`, and `exp`. AutoGPT verifies the signature through the configured JWKS, requires the configured issuer and `autogpt-partner-exchange` audience, and maps immutable partner subject/account IDs to account-scoped deterministic internal IDs. Partner email remains in the partner application and is not sent to AutoGPT.
 
 The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `partner_embed` token type, and `embed:chat` scope. A normal AutoGPT user token cannot call these routes, and request bodies cannot select another organization, team, user, or partner.
 
@@ -89,7 +91,7 @@ Forwarding Digital assigns capabilities from its own user membership. They are s
 - `autogpt:block:<block-id-or-name>` enables only that AutoGPT block plus the find/run/continue block tools.
 - `autogpt:tool:<tool-name>` explicitly enables one additional AutoPilot tool.
 
-Capabilities are part of session identity, not mutable UI preferences. A token with a different partner, organization, account, user, or capability set cannot resume the session. The MCP service independently verifies the tenant and capability set in its 60-second service token, filters `tools/list`, and rejects an unauthorized `tools/call` even if a model attempts it.
+Capabilities are part of session identity, not mutable UI preferences. A token with a different partner, organization, account, team, user, or capability set cannot resume the session. Each partner registry entry defines AutoGPT's maximum allowed capabilities, and the exchange rejects signed claims outside that ceiling. The MCP service independently verifies the tenant and capability set in its 60-second service token, filters `tools/list`, and rejects an unauthorized `tools/call` even if a model attempts it.
 
 The restricted BFF/API surface used by the component is:
 
@@ -236,7 +238,7 @@ No package is published by this PoC.
 
 - Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
-- No distributed `jti` replay store yet; assertions expire after 60 seconds.
+- Assertion `jti` values are not yet consumed atomically, so the same 60-second assertion can be exchanged more than once. Embed-token lifetime is capped by the remaining assertion lifetime and exchange responses are non-cacheable.
 - Interactive chat, session history, and artifacts only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
-- Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Production must use managed organization credentials, budgets, metering, and rotation.
+- Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Partner sessions replace Claude Code's built-in identity-bearing prompt preset so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.

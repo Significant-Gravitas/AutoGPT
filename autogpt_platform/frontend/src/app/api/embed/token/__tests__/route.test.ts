@@ -19,6 +19,7 @@ vi.mock("@/lib/partner-embed/provision", () => ({
 vi.mock("@/lib/partner-embed/embed-token", () => ({
   mintPartnerEmbedToken: (...args: unknown[]) => mintTokenMock(...args),
   PARTNER_EMBED_TOKEN_TTL_SECONDS: 300,
+  partnerEmbedTokenTTL: () => 300,
 }));
 
 import { POST } from "../route";
@@ -35,7 +36,6 @@ const identity = {
   partnerID: "forwarding-digital",
   externalSubject: "user-123",
   externalAccountID: "forwarder-42",
-  email: "jon@example.com",
   displayName: "Jon Heavyside",
   accountName: "Acme Forwarding",
   isAdmin: true,
@@ -70,6 +70,7 @@ describe("POST /api/embed/token", () => {
     const response = await POST(request({ assertion: "partner-jwt" }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({
       access_token: "embed-token",
       token_type: "Bearer",

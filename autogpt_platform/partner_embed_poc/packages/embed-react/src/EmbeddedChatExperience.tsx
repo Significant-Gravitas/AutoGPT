@@ -211,12 +211,30 @@ export function AutoGPTEmbeddedChat({
           <p className="agpt-embed__eyebrow">{brandName}</p>
           <h2>{title}</h2>
         </div>
-        <span
-          className="agpt-embed__status"
-          data-state={isLoading ? "loading" : "ready"}
-        >
-          {isLoading ? "Connecting" : "Ready"}
-        </span>
+        <div className="agpt-embed__header-actions">
+          {canShowArtifacts ? (
+            <ArtifactPanel
+              artifacts={artifacts}
+              isOpen={artifactsOpen}
+              onToggle={() => setArtifactsOpen((open) => !open)}
+              onDownload={(artifact) => {
+                if (!selectedID) return;
+                void downloadEmbedArtifact(
+                  apiBaseURL,
+                  selectedID,
+                  artifact,
+                  () => tokenProviderRef.current(),
+                ).catch((error) => setShellError(errorMessage(error)));
+              }}
+            />
+          ) : null}
+          <span
+            className="agpt-embed__status"
+            data-state={isLoading ? "loading" : "ready"}
+          >
+            {isLoading ? "Connecting" : "Ready"}
+          </span>
+        </div>
       </header>
 
       <div className="agpt-embed__body">
@@ -254,20 +272,6 @@ export function AutoGPTEmbeddedChat({
             <LoadingState />
           )}
         </main>
-
-        {canShowArtifacts ? (
-          <ArtifactPanel
-            artifacts={artifacts}
-            isOpen={artifactsOpen}
-            onToggle={() => setArtifactsOpen((open) => !open)}
-            onDownload={(artifact) => {
-              if (!selectedID) return;
-              void downloadEmbedArtifact(apiBaseURL, selectedID, artifact, () =>
-                tokenProviderRef.current(),
-              ).catch((error) => setShellError(errorMessage(error)));
-            }}
-          />
-        ) : null}
       </div>
     </section>
   );
@@ -299,6 +303,7 @@ function SessionChat({
     onFinish,
   });
   const isBusy = status === "submitted" || status === "streaming";
+  const messageSegments = visibleMessageSegments(messages);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -332,11 +337,16 @@ function SessionChat({
         aria-live="polite"
         aria-busy={isBusy}
       >
-        {messages.length === 0 ? (
+        {messageSegments.length === 0 ? (
           <EmptyState />
         ) : (
-          messages.map((message) => (
-            <NativeMessage key={message.id} message={message} />
+          messageSegments.map(({ message, parts, showLabel }) => (
+            <NativeMessage
+              key={message.id}
+              message={message}
+              parts={parts}
+              showLabel={showLabel}
+            />
           ))
         )}
         {isBusy ? (
@@ -383,18 +393,26 @@ function SessionChat({
   );
 }
 
-function NativeMessage({ message }: { message: UIMessage }) {
+interface NativeMessageProps {
+  message: UIMessage;
+  parts: UIMessage["parts"];
+  showLabel: boolean;
+}
+
+function NativeMessage({ message, parts, showLabel }: NativeMessageProps) {
   return (
     <article
       className="agpt-embed__message"
       data-slot="message"
       data-role={message.role}
     >
-      <span className="agpt-embed__message-label">
-        {message.role === "user" ? "You" : "AutoPilot"}
-      </span>
+      {showLabel ? (
+        <span className="agpt-embed__message-label">
+          {message.role === "user" ? "You" : "AutoPilot"}
+        </span>
+      ) : null}
       <div className="agpt-embed__message-content">
-        {message.parts.map((part, index) => (
+        {parts.map((part, index) => (
           <MessagePart key={partKey(part, index)} part={part} />
         ))}
       </div>
@@ -402,11 +420,42 @@ function NativeMessage({ message }: { message: UIMessage }) {
   );
 }
 
+function visibleMessageSegments(messages: UIMessage[]) {
+  const segments: {
+    message: UIMessage;
+    parts: UIMessage["parts"];
+    showLabel: boolean;
+  }[] = [];
+  let previousRole: UIMessage["role"] | null = null;
+
+  for (const message of messages) {
+    const parts = message.parts.filter(isRenderablePart);
+    if (parts.length === 0) continue;
+    segments.push({
+      message,
+      parts,
+      showLabel: message.role !== previousRole,
+    });
+    previousRole = message.role;
+  }
+
+  return segments;
+}
+
+function isRenderablePart(part: UIMessage["parts"][number]): boolean {
+  if (part.type === "text" || part.type === "reasoning") {
+    return part.text.trim().length > 0;
+  }
+  return part.type === "dynamic-tool" || part.type.startsWith("tool-");
+}
+
 function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
   if (part.type === "text") {
     return (
       <div className="agpt-embed__prose" data-slot="message-markdown">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.text}</ReactMarkdown>
+        <ReactMarkdown disallowedElements={["img"]} remarkPlugins={[remarkGfm]}>
+          {part.text}
+        </ReactMarkdown>
       </div>
     );
   }
@@ -539,6 +588,7 @@ function ArtifactPanel({
         className="agpt-embed__artifact-toggle"
         type="button"
         aria-expanded={isOpen}
+        aria-label={`Artifacts (${artifacts.length})`}
         onClick={onToggle}
       >
         Artifacts <span>{artifacts.length}</span>

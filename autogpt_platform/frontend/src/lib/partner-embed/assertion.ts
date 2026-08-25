@@ -8,7 +8,6 @@ const jwksByURL = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 const partnerClaimsSchema = z.object({
   sub: z.string().min(1),
   account_id: z.string().min(1),
-  email: z.string().email(),
   name: z.string().min(1),
   account_name: z.string().min(1),
   roles: z.array(z.string()).default([]),
@@ -30,15 +29,18 @@ export async function verifyPartnerAssertion(
     clockTolerance: 5,
   });
   const claims = partnerClaimsSchema.parse(payload);
+  const capabilities = validatePartnerCapabilities(
+    claims.capabilities,
+    config.allowedCapabilities,
+  );
   return {
     partnerID: config.partnerID,
     externalSubject: claims.sub,
     externalAccountID: claims.account_id,
-    email: claims.email,
     displayName: claims.name,
     accountName: claims.account_name,
     isAdmin: claims.roles.includes("admin"),
-    capabilities: [...new Set(claims.capabilities)].sort(),
+    capabilities,
     jwtID: claims.jti,
     expiresAt: claims.exp,
   };
@@ -50,4 +52,19 @@ function getJWKS(url: string) {
   const jwks = createRemoteJWKSet(new URL(url));
   jwksByURL.set(url, jwks);
   return jwks;
+}
+
+export function validatePartnerCapabilities(
+  claimed: string[],
+  allowed: string[],
+): string[] {
+  const capabilities = [...new Set(claimed)].sort();
+  const ceiling = new Set(allowed);
+  const denied = capabilities.filter((capability) => !ceiling.has(capability));
+  if (denied.length > 0) {
+    throw new Error(
+      `Partner assertion requests capabilities outside its configured ceiling: ${denied.join(", ")}`,
+    );
+  }
+  return capabilities;
 }

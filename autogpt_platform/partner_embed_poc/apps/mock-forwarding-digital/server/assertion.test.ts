@@ -16,6 +16,7 @@ describe("partner assertion issuer", () => {
       name: "Alex Morgan",
       accountName: "Northstar Freight",
       roles: ["operator", "manager"],
+      capabilities: ["jobs.read"],
     });
 
     const { payload } = await jwtVerify(token, createLocalJWKSet(issuer.jwks), {
@@ -27,5 +28,6 @@ describe("partner assertion issuer", () => {
     expect(payload.sub).toBe("fd-user-1042");
     expect(payload.account_id).toBe("fd-account-77");
     expect(payload.exp! - payload.iat!).toBe(60);
+    expect(payload.email).toBeUndefined();
   });
 });

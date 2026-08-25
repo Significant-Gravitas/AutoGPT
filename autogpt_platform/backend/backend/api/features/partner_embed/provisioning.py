@@ -32,7 +32,7 @@ def derive_shadow_identity_ids(
     """Derive stable internal IDs without using mutable email addresses."""
     user_id = uuid.uuid5(
         _PARTNER_IDENTITY_NAMESPACE,
-        f"{request.partner_id}:user:{request.external_subject}",
+        f"{request.partner_id}:account:{request.external_account_id}:user:{request.external_subject}",
     )
     organization_id = uuid.uuid5(
         _PARTNER_IDENTITY_NAMESPACE,
@@ -83,7 +83,6 @@ def _build_context(request: ProvisionPartnerIdentityRequest) -> _ProvisioningCon
                 "partner_embed": {
                     "partner_id": request.partner_id,
                     "external_subject": request.external_subject,
-                    "external_email": str(request.email),
                 }
             }
         ),

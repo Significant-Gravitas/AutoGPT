@@ -245,6 +245,7 @@ def _session_matches_principal(
 ) -> bool:
     return (
         session.organization_id == principal.organization_id
+        and session.team_id == principal.team_id
         and session.metadata.source_platform == principal.partner_id
         and session.metadata.external_account_id == principal.external_account_id
         and session.metadata.external_capabilities == principal.capabilities

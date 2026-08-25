@@ -7,7 +7,7 @@ import {
 } from "@/lib/partner-embed/config";
 import {
   mintPartnerEmbedToken,
-  PARTNER_EMBED_TOKEN_TTL_SECONDS,
+  partnerEmbedTokenTTL,
 } from "@/lib/partner-embed/embed-token";
 import { provisionPartnerIdentity } from "@/lib/partner-embed/provision";
 
@@ -56,11 +56,14 @@ export async function POST(request: Request) {
   try {
     const provisioned = await provisionPartnerIdentity(identity);
     const accessToken = await mintPartnerEmbedToken(identity, provisioned);
-    return Response.json({
-      access_token: accessToken,
-      token_type: "Bearer",
-      expires_in: PARTNER_EMBED_TOKEN_TTL_SECONDS,
-    });
+    return Response.json(
+      {
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: partnerEmbedTokenTTL(identity),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch {
     return Response.json(
       { error: "Partner token exchange failed" },

@@ -1599,18 +1599,20 @@ async def _apply_building_mode_restart(
     # registered across a restart (registration happens once, before it), so
     # dropping their disclosure rules here would leave the model able to
     # delegate silently for the rest of the turn.
+    partner_session_suffix = build_partner_system_prompt_suffix(session)
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
         + graphiti_supplement
         + building_suffix
+        + partner_session_suffix
         + expert_session_suffix
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
         system_prompt,
-        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+        cross_user_cache=_use_cli_prompt_preset(session),
     )
     # Resume the CLI session the interrupted run was writing —
     # spike-verified: --resume accepts a changed append and the
@@ -2246,6 +2248,13 @@ def _raise_deferred_codex_cleanup_error(
     if turn_error is not None and turn_error is not cleanup_error:
         raise cleanup_error from turn_error
     raise cleanup_error
+
+
+def _use_cli_prompt_preset(session: ChatSession) -> bool:
+    """Keep provider authentication identity out of partner model context."""
+    if session.metadata.source_platform is not None:
+        return False
+    return config.claude_agent_cross_user_prompt_cache
 
 
 def _build_system_prompt_value(
@@ -4524,7 +4533,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
-            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+            cross_user_cache=_use_cli_prompt_preset(session),
         )
 
         sdk_options = ClaudeAgentOptions(
@@ -4981,7 +4990,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # claude-agent-sdk >= 0.1.64).
                 sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
-                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+                    cross_user_cache=_use_cli_prompt_preset(session),
                 )
                 state.options = sdk_options_retry
                 # Retry intentionally omits prior_messages (transcript+gap context) and

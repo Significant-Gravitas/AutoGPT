@@ -4,13 +4,13 @@ export interface PartnerEmbedConfig {
   jwksURL: string;
   audience: string;
   algorithms: string[];
+  allowedCapabilities: string[];
 }
 
 export interface VerifiedPartnerIdentity {
   partnerID: string;
   externalSubject: string;
   externalAccountID: string;
-  email: string;
   displayName: string;
   accountName: string;
   isAdmin: boolean;

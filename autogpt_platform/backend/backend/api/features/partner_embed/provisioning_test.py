@@ -13,7 +13,6 @@ def identity(
         partner_id="forwarding-digital",
         external_subject=subject,
         external_account_id=account_id,
-        email="jon@example.com",
         display_name="Jon Heavyside",
         account_name="Acme Forwarding",
         is_admin=True,
@@ -32,11 +31,11 @@ def test_shadow_ids_are_stable_for_the_same_partner_identity():
     )
 
 
-def test_user_identity_does_not_change_between_customer_accounts():
+def test_user_identity_is_isolated_between_customer_accounts():
     first = derive_shadow_identity_ids(identity(account_id="forwarder-1"))
     second = derive_shadow_identity_ids(identity(account_id="forwarder-2"))
 
-    assert first.user_id == second.user_id
+    assert first.user_id != second.user_id
     assert first.organization_id != second.organization_id
     assert first.team_id != second.team_id
 

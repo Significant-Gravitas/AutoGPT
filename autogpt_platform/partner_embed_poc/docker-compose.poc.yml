@@ -17,7 +17,7 @@ services:
   frontend:
     environment:
       PARTNER_EMBED_CONFIGS: >-
-        [{"partnerID":"forwarding-digital","issuer":"http://localhost:8787","jwksURL":"http://mock-forwarding-digital:8787/.well-known/jwks.json","audience":"autogpt-partner-exchange"},{"partnerID":"forwarding-digital","issuer":"http://localhost:8788","jwksURL":"http://mock-forwarding-digital-multitenant:8788/.well-known/jwks.json","audience":"autogpt-partner-exchange"},{"partnerID":"forwarding-digital","issuer":"http://localhost:8789","jwksURL":"http://mock-forwarding-digital-angular:8789/.well-known/jwks.json","audience":"autogpt-partner-exchange"}]
+        [{"partnerID":"forwarding-digital","issuer":"http://localhost:8787","jwksURL":"http://mock-forwarding-digital:8787/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]},{"partnerID":"forwarding-digital","issuer":"http://localhost:8788","jwksURL":"http://mock-forwarding-digital-multitenant:8788/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]},{"partnerID":"forwarding-digital","issuer":"http://localhost:8789","jwksURL":"http://mock-forwarding-digital-angular:8789/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]}]
 
   mock-forwarding-digital:
     build:

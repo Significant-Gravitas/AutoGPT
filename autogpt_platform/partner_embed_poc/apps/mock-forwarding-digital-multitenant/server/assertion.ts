@@ -40,7 +40,6 @@ export async function createPartnerAssertionIssuer(
       const issuedAt = Math.floor(Date.now() / 1000);
       return new SignJWT({
         account_id: identity.accountID,
-        email: identity.email,
         name: identity.name,
         account_name: identity.accountName,
         roles: identity.roles,

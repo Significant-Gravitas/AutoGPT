@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { getPartnerEmbedConfig } from "./config";
+import { validatePartnerCapabilities } from "./assertion";
 
 const originalConfigs = process.env.PARTNER_EMBED_CONFIGS;
 
@@ -32,6 +33,7 @@ describe("getPartnerEmbedConfig", () => {
       jwksURL: "https://partner.internal/.well-known/jwks.json",
       audience: "autogpt-partner-exchange",
       algorithms: ["RS256"],
+      allowedCapabilities: [],
     });
   });
 
@@ -48,5 +50,23 @@ describe("getPartnerEmbedConfig", () => {
     expect(() =>
       getPartnerEmbedConfig(assertion("https://attacker.example.com")),
     ).toThrow("issuer is not configured");
+  });
+
+  it("deduplicates capabilities within the configured ceiling", () => {
+    expect(
+      validatePartnerCapabilities(
+        ["reports.read", "jobs.read", "jobs.read"],
+        ["jobs.read", "reports.read"],
+      ),
+    ).toEqual(["jobs.read", "reports.read"]);
+  });
+
+  it("rejects capabilities outside the configured ceiling", () => {
+    expect(() =>
+      validatePartnerCapabilities(
+        ["jobs.read", "autogpt:tool:bash_exec"],
+        ["jobs.read"],
+      ),
+    ).toThrow("outside its configured ceiling");
   });
 });

@@ -29,7 +29,6 @@ export async function provisionPartnerIdentity(
         partner_id: identity.partnerID,
         external_subject: identity.externalSubject,
         external_account_id: identity.externalAccountID,
-        email: identity.email,
         display_name: identity.displayName,
         account_name: identity.accountName,
         is_admin: identity.isAdmin,

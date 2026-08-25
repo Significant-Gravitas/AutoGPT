@@ -1,7 +1,9 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import type { UIMessage } from "ai";
+import { cleanup, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AutoGPTEmbeddedChat } from "./AutoGPTEmbeddedChat";
+const sessionChatMock = vi.hoisted(() => ({ messages: [] as UIMessage[] }));
 
 vi.mock("./api", () => ({
   createEmbedSession: vi.fn().mockResolvedValue({
@@ -49,7 +51,7 @@ vi.mock("./session-api", () => ({
 
 vi.mock("./useSessionChat", () => ({
   useSessionChat: () => ({
-    messages: [],
+    messages: sessionChatMock.messages,
     sendMessage: vi.fn(),
     stop: vi.fn(),
     status: "ready",
@@ -58,6 +60,11 @@ vi.mock("./useSessionChat", () => ({
 }));
 
 describe("AutoGPTEmbeddedChat", () => {
+  beforeEach(() => {
+    cleanup();
+    sessionChatMock.messages = [];
+  });
+
   it("restores native chat surfaces without asking for AutoGPT credentials", async () => {
     render(
       <AutoGPTEmbeddedChat
@@ -78,5 +85,52 @@ describe("AutoGPTEmbeddedChat", () => {
     expect(screen.getByText("1 AutoGPT block enabled")).toBeDefined();
     expect(screen.getByRole("button", { name: /artifacts/i })).toBeDefined();
     expect(screen.queryByText(/sign in to autogpt/i)).toBeNull();
+  });
+
+  it("groups adjacent assistant segments and docks artifacts in the header", async () => {
+    sessionChatMock.messages = [
+      {
+        id: "user-1",
+        role: "user",
+        parts: [{ type: "text", text: "Yeah" }],
+      },
+      {
+        id: "empty-assistant",
+        role: "assistant",
+        parts: [{ type: "text", text: " " }],
+      },
+      {
+        id: "reasoning",
+        role: "assistant",
+        parts: [{ type: "reasoning", text: "Checking", state: "done" }],
+      },
+      {
+        id: "answer",
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: "Done ![pixel](https://tracker.test/pixel.png)",
+          },
+        ],
+      },
+    ];
+
+    render(
+      <AutoGPTEmbeddedChat
+        apiBaseURL="http://localhost:8006"
+        brandName="Forwarding Digital"
+        getAccessToken={vi.fn().mockResolvedValue("embed-token")}
+        title="Forwarding Assistant"
+      />,
+    );
+
+    await screen.findByLabelText("Message Forwarding Assistant");
+    expect(screen.getAllByText("AutoPilot")).toHaveLength(1);
+    const artifactButton = screen.getByRole("button", {
+      name: "Artifacts (1)",
+    });
+    expect(artifactButton.closest("header")).not.toBeNull();
+    expect(document.querySelector("img")).toBeNull();
   });
 });

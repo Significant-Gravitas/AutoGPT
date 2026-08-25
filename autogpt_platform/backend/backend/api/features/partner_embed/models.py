@@ -1,13 +1,12 @@
 """Public request and response models for partner embedding."""
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class ProvisionPartnerIdentityRequest(BaseModel):
     partner_id: str = Field(min_length=1, max_length=80)
     external_subject: str = Field(min_length=1, max_length=255)
     external_account_id: str = Field(min_length=1, max_length=255)
-    email: EmailStr
     display_name: str = Field(min_length=1, max_length=120)
     account_name: str = Field(min_length=1, max_length=120)
     is_admin: bool = False

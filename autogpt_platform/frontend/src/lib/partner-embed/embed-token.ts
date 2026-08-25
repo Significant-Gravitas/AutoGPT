@@ -8,6 +8,15 @@ import type {
 
 export const PARTNER_EMBED_TOKEN_AUDIENCE = "autogpt-partner-embed";
 export const PARTNER_EMBED_TOKEN_TTL_SECONDS = 300;
+export function partnerEmbedTokenTTL(
+  identity: VerifiedPartnerIdentity,
+  issuedAt = Math.floor(Date.now() / 1000),
+): number {
+  return Math.max(
+    1,
+    Math.min(PARTNER_EMBED_TOKEN_TTL_SECONDS, identity.expiresAt - issuedAt),
+  );
+}
 
 type SignJWTContext = Parameters<typeof signJWT>[0];
 
@@ -18,6 +27,7 @@ export async function mintPartnerEmbedToken(
   const { auth } = await import("@/lib/auth/auth");
   const context = await auth.$context;
   const issuedAt = Math.floor(Date.now() / 1000);
+  const ttl = partnerEmbedTokenTTL(identity, issuedAt);
   return signJWT({ context } as unknown as SignJWTContext, {
     options: { jwks: { keyPairConfig: { alg: JWKS_ALG } } },
     payload: {
@@ -31,7 +41,7 @@ export async function mintPartnerEmbedToken(
       scope: "embed:chat",
       capabilities: identity.capabilities,
       iat: issuedAt,
-      exp: issuedAt + PARTNER_EMBED_TOKEN_TTL_SECONDS,
+      exp: issuedAt + ttl,
     },
   });
 }

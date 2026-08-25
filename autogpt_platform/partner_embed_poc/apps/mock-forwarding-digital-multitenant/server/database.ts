@@ -53,7 +53,9 @@ export interface SessionView {
   sync: SyncMapping | null;
 }
 
-export interface DirectoryUser extends UserRow {
+export interface DirectoryUser {
+  id: string;
+  name: string;
   organizations: string[];
 }
 
@@ -68,8 +70,8 @@ export class PartnerDatabase {
 
   directory(): DirectoryUser[] {
     const users = this.database
-      .prepare("SELECT id, email, name FROM users ORDER BY name")
-      .all() as unknown as UserRow[];
+      .prepare("SELECT id, name FROM users ORDER BY name")
+      .all() as unknown as Pick<UserRow, "id" | "name">[];
     return users.map((user) => ({
       ...user,
       organizations: this.organizationsForUser(user.id).map((org) => org.name),
