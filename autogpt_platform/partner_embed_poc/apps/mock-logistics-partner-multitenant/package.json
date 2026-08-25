@@ -1,0 +1,32 @@
+{
+  "name": "@autogpt/mock-logistics-partner-multitenant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && tsc --project tsconfig.server.json",
+    "dev": "concurrently --kill-others --names bff,web \"tsx watch server/index.ts\" \"vite --port 5175\"",
+    "start": "node server-dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@autogpt/embedded-chat": "workspace:*",
+    "@fastify/cookie": "11.0.2",
+    "@fastify/static": "10.1.2",
+    "fastify": "5.8.5",
+    "jose": "6.1.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "6.1.0",
+    "concurrently": "9.2.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.0"
+  }
+}

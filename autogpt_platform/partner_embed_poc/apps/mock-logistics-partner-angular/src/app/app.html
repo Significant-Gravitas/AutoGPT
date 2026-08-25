@@ -1,0 +1,416 @@
+@if (loading()) {
+<main class="loading" aria-live="polite">Loading Portside Cloud…</main>
+} @else if (!session()) {
+<main class="signin-shell">
+  <section class="signin-card" aria-labelledby="signin-heading">
+    <div class="brand">
+      <span aria-hidden="true">PC</span>
+      <div>
+        <strong>Portside Cloud</strong>
+        <small>Freight operations platform</small>
+      </div>
+    </div>
+    <p class="eyebrow">Native Angular Host</p>
+    <h1 id="signin-heading">
+      {{ accessRequired() ? "Open the Team Demo" : "Choose Your Demo Workspace"
+      }}
+    </h1>
+    <p>
+      {{ accessRequired() ? "Enter the shared team access code before choosing a
+      synthetic freight workspace." : "Continue with an existing host identity.
+      The embedded assistant never asks users to create a second account." }}
+    </p>
+    @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+    } @if (accessRequired()) {
+    <form
+      class="access-form"
+      aria-label="Team demo access"
+      (submit)="$event.preventDefault(); unlockDemo(accessCode())"
+    >
+      <label for="portside-demo-access">Team access code</label>
+      <input
+        id="portside-demo-access"
+        name="demo-access-code"
+        type="password"
+        autocomplete="current-password"
+        [value]="accessCode()"
+        (input)="accessCode.set($any($event.target).value)"
+        [attr.aria-invalid]="error() ? 'true' : null"
+      />
+      <button type="submit" [disabled]="busy() || !accessCode()">
+        {{ busy() ? "Checking access…" : "Continue to workspaces" }}
+      </button>
+    </form>
+    } @else {
+    <div class="user-list">
+      @for (user of directory(); track user.id) {
+      <button type="button" [disabled]="busy()" (click)="signIn(user.id)">
+        <span>{{ user.name.slice(0, 1) }}</span>
+        <div>
+          <strong>{{ user.name }}</strong>
+          <small>{{ user.email }}</small>
+        </div>
+        <em>Continue</em>
+      </button>
+      }
+    </div>
+    }
+  </section>
+</main>
+} @else { @let current = session()!;
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span aria-hidden="true">PC</span>
+      <div>
+        <strong>Portside Cloud</strong>
+        <small>Freight operations</small>
+      </div>
+    </div>
+    <nav aria-label="Primary navigation">
+      @for (item of navigation; track item.id) {
+      <a
+        [href]="'#' + item.id"
+        [attr.aria-current]="activePage() === item.id ? 'page' : null"
+        (click)="navigate(item.id)"
+      >
+        {{ item.label }}
+      </a>
+      }
+    </nav>
+    <div class="sidebar-footer">
+      <div class="identity">
+        <span aria-hidden="true">{{ current.user.name.slice(0, 1) }}</span>
+        <div>
+          <strong>{{ current.user.name }}</strong>
+          <small>{{ current.user.email }}</small>
+        </div>
+      </div>
+      <button type="button" class="signout" (click)="signOut()">
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <main class="workspace" id="main-content">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">{{ pageEyebrow(activePage()) }}</p>
+        <h1>{{ pageTitle(activePage()) }}</h1>
+      </div>
+      <div class="topbar-actions">
+        <label>
+          <span>Active Organization</span>
+          <select
+            name="active-organization"
+            [disabled]="busy()"
+            [value]="current.activeOrganization.id"
+            (change)="switchOrganization($any($event.target).value)"
+          >
+            @for (organization of current.organizations; track organization.id)
+            {
+            <option [value]="organization.id">{{ organization.name }}</option>
+            }
+          </select>
+        </label>
+        @if (activePage() !== "automations") {
+        <button
+          type="button"
+          class="assistant-button"
+          (click)="openAssistant()"
+        >
+          Open Freight Copilot
+        </button>
+        }
+      </div>
+    </header>
+
+    @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+    } @if (assistantNotice()) {
+    <p class="success" role="status">{{ assistantNotice() }}</p>
+    } @if (activePage() === "overview") {
+    <section class="summary-grid" aria-label="Organization Summary">
+      <article>
+        <span>Open Shipments</span>
+        <strong>
+          {{ current.activeOrganization.id === "fd-account-77" ? 148 : 61 }}
+        </strong>
+      </article>
+      <article class="attention">
+        <span>Exceptions</span>
+        <strong>
+          {{ current.activeOrganization.id === "fd-account-77" ? 7 : 2 }}
+        </strong>
+      </article>
+      <article>
+        <span>Arriving This Week</span>
+        <strong>{{ jobsFor(current.activeOrganization.id).length }}</strong>
+      </article>
+      <article>
+        <span>Automation Coverage</span>
+        <strong>{{ canManageAgents(current) ? "72%" : "View" }}</strong>
+      </article>
+    </section>
+
+    <section class="overview-grid">
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Live Network</p>
+            <h2>Priority Movements</h2>
+          </div>
+          <button type="button" (click)="navigate('shipments')">
+            View All Shipments
+          </button>
+        </div>
+        <div class="job-list">
+          @for (job of jobsFor(current.activeOrganization.id); track
+          job.reference) {
+          <article>
+            <div>
+              <strong>{{ job.reference }}</strong>
+              <span>{{ job.lane }}</span>
+            </div>
+            <time [attr.datetime]="job.eta">{{ formatETA(job.eta) }}</time>
+            <em [attr.data-status]="statusKind(job.status)">
+              {{ job.status }}
+            </em>
+          </article>
+          }
+        </div>
+      </section>
+
+      <aside class="copilot-callout">
+        <span class="copilot-mark" aria-hidden="true">✦</span>
+        <p class="eyebrow">Freight Copilot</p>
+        <h2>Work across live freight data without leaving the desk.</h2>
+        <p>
+          Explore tenant-scoped MCP data, generate documents, and turn repeated
+          work into scheduled agents.
+        </p>
+        <button type="button" (click)="openAssistant()">Ask About Today</button>
+        <button
+          type="button"
+          class="secondary"
+          (click)="navigate('automations')"
+        >
+          Build an Automation
+        </button>
+      </aside>
+    </section>
+    } @else if (activePage() === "shipments") {
+    <section class="panel table-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Active Book</p>
+          <h2>Shipment Register</h2>
+        </div>
+        <button type="button" (click)="openAssistant()">
+          Analyze With Copilot
+        </button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Reference</th>
+              <th scope="col">Customer</th>
+              <th scope="col">Lane</th>
+              <th scope="col">Mode</th>
+              <th scope="col">ETA</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (job of jobsFor(current.activeOrganization.id); track
+            job.reference) {
+            <tr>
+              <td><strong>{{ job.reference }}</strong></td>
+              <td>{{ job.customer }}</td>
+              <td>{{ job.lane }}</td>
+              <td>{{ job.mode }}</td>
+              <td>
+                <time [attr.datetime]="job.eta">{{ formatETA(job.eta) }}</time>
+              </td>
+              <td>
+                <span
+                  class="status-pill"
+                  [attr.data-status]="statusKind(job.status)"
+                >
+                  {{ job.status }}
+                </span>
+              </td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+    } @else if (activePage() === "documents") {
+    <section class="documents-grid">
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Document Desk</p>
+            <h2>Upcoming Work</h2>
+          </div>
+          <button type="button" (click)="openAssistant()">
+            Generate With Copilot
+          </button>
+        </div>
+        <div class="document-list">
+          @for (document of documentsFor(current.activeOrganization.id); track
+          document.name) {
+          <article>
+            <span class="document-icon" aria-hidden="true">DOC</span>
+            <div>
+              <strong>{{ document.name }}</strong>
+              <span>{{ document.type }}</span>
+            </div>
+            <em>{{ document.state }}</em>
+          </article>
+          }
+        </div>
+      </section>
+      <aside class="context-panel">
+        <p class="eyebrow">Embedded Workflow</p>
+        <h2>Create files in the same tenant-scoped conversation.</h2>
+        <p>
+          Generated artifacts stay attached to the session and download through
+          the host-authorized surface.
+        </p>
+        <button type="button" (click)="openAssistant()">
+          Open Document Assistant
+        </button>
+      </aside>
+    </section>
+    } @else {
+    <section class="automation-grid">
+      <aside class="automation-guide">
+        <p class="eyebrow">Agent Workspace</p>
+        <h2>Build, run, and schedule in conversation.</h2>
+        <p>
+          Tool and block access comes from the active host role and is frozen
+          onto the secure chat session.
+        </p>
+        <ol>
+          <li>
+            <strong>Describe the outcome</strong>
+            <span>Use a suggestion or write a workflow in plain language.</span>
+          </li>
+          <li>
+            <strong>Review tool activity</strong>
+            <span
+              >Inspect discovery, graph validation, runs, and schedules.</span
+            >
+          </li>
+          <li>
+            <strong>Open the saved resource</strong>
+            <span>Navigation stays inside the host automation library.</span>
+          </li>
+        </ol>
+        <p
+          class="permission"
+          [class.success]="canManageAgents(current)"
+          role="status"
+        >
+          {{ agentPermissionMessage(current) }}
+        </p>
+        <div class="sync-card">
+          <div>
+            <p class="eyebrow">Secure AI Workspace</p>
+            <h3>{{ current.sync ? "Tenant synced" : "Ready to sync" }}</h3>
+          </div>
+          <p>
+            The server locks the user, organization, role, and team before a
+            chat starts.
+          </p>
+          <button type="button" [disabled]="busy()" (click)="syncTenant()">
+            {{ current.sync ? "Refresh Mapping" : "Sync Workspace" }}
+          </button>
+        </div>
+      </aside>
+
+      <section class="inline-assistant" aria-label="Freight Copilot">
+        <p class="tenant-lock">
+          <span aria-hidden="true">●</span>
+          Scoped to <strong>{{ current.activeOrganization.name }}</strong>
+          <small
+            >{{ current.activeOrganization.tools.length }} capabilities</small
+          >
+        </p>
+        <autogpt-embedded-chat
+          api-base-url=""
+          artifacts-enabled="true"
+          sessions-enabled="true"
+          brand-name="Portside Intelligence"
+          chat-title="Freight Copilot"
+          [attr.tenant-key]="
+            current.user.id + ':' + current.activeOrganization.id
+          "
+          [accessTokenProvider]="accessTokenProvider"
+          [suggestedPrompts]="promptsFor('automations')"
+          (autogpt-navigate)="handleAssistantNavigation($event)"
+        ></autogpt-embedded-chat>
+      </section>
+    </section>
+    }
+  </main>
+
+  @if (activePage() !== "automations") {
+  <button
+    type="button"
+    class="assistant-launcher"
+    aria-label="Open Freight Copilot"
+    (click)="openAssistant()"
+  >
+    <span aria-hidden="true">✦</span>
+    Ask Copilot
+  </button>
+  } @if (assistantOpen() && activePage() !== "automations") {
+  <div class="assistant-overlay">
+    <button
+      type="button"
+      class="assistant-backdrop"
+      aria-label="Close Freight Copilot"
+      (click)="closeAssistant()"
+    ></button>
+    <aside
+      class="assistant-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Freight Copilot"
+    >
+      <div class="drawer-heading">
+        <div>
+          <p class="eyebrow">Contextual Assistant</p>
+          <strong>{{ current.activeOrganization.name }}</strong>
+        </div>
+        <button
+          type="button"
+          aria-label="Close Freight Copilot"
+          (click)="closeAssistant()"
+        >
+          ×
+        </button>
+      </div>
+      <autogpt-embedded-chat
+        api-base-url=""
+        artifacts-enabled="true"
+        sessions-enabled="true"
+        brand-name="Portside Intelligence"
+        chat-title="Freight Copilot"
+        [attr.tenant-key]="
+          current.user.id + ':' + current.activeOrganization.id
+        "
+        [accessTokenProvider]="accessTokenProvider"
+        [suggestedPrompts]="promptsFor(activePage())"
+        (autogpt-navigate)="handleAssistantNavigation($event)"
+      ></autogpt-embedded-chat>
+    </aside>
+  </div>
+  }
+</div>
+}

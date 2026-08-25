@@ -64,6 +64,7 @@ from backend.copilot.model import (
 from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import ResolvedModel, resolve_model_route
 from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.partner_context import build_partner_system_prompt_suffix
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -116,6 +117,7 @@ from backend.copilot.tools import (
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+    partner_tool_disabled_groups,
 )
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
@@ -1850,12 +1852,14 @@ async def stream_chat_completion_baseline(
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
+    partner_session_suffix = build_partner_system_prompt_suffix(session)
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
         + graphiti_supplement
         + builder_session_suffix
+        + partner_session_suffix
         + expert_session_suffix
     )
 
@@ -2106,6 +2110,9 @@ async def stream_chat_completion_baseline(
         expert_tool_disabled_groups(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
+    )
+    disabled_tool_groups.extend(
+        partner_tool_disabled_groups(session.metadata.source_platform)
     )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 

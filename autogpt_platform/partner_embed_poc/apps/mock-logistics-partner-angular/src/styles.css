@@ -1,0 +1,34 @@
+:root {
+  --fd-accent: #087f5b;
+  --fd-border: #dce6df;
+  --fd-ink: #17221c;
+  --fd-muted: #64766b;
+  --fd-shadow: 0 24px 70px rgb(22 48 34 / 14%);
+  color: var(--fd-ink);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background:
+    radial-gradient(circle at top right, #dcf2e8, transparent 34rem), #eef3f1;
+  margin: 0;
+  min-width: 320px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

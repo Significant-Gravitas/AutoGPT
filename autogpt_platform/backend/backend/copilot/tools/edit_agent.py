@@ -5,6 +5,12 @@ from typing import Any
 
 from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
+from backend.copilot.partner_context import (
+    AGENTS_CREATE_CAPABILITY,
+    partner_allowed_graph_block_ids,
+    partner_disallowed_graph_block_ids,
+    partner_session_has_capability,
+)
 from backend.data.model import is_credentials_field_name
 
 from .agent_generator import get_agent_as_json
@@ -79,6 +85,12 @@ class EditAgentTool(BaseTool):
         if library_agent_ids is None:
             library_agent_ids = []
         session_id = session.session_id if session else None
+        if not partner_session_has_capability(session, AGENTS_CREATE_CAPABILITY):
+            return ErrorResponse(
+                message="Example Logistics did not grant agent creation for this session.",
+                error="partner_capability_required",
+                session_id=session_id,
+            )
 
         # Builder-bound sessions are locked to a specific graph: default
         # missing agent_id to the bound graph, and reject any other id so
@@ -125,6 +137,16 @@ class EditAgentTool(BaseTool):
             return resolve_error
         assert agent_json is not None  # narrowed: resolve_error covers the None case
 
+        denied_blocks = partner_disallowed_graph_block_ids(session, agent_json)
+        if denied_blocks:
+            return ErrorResponse(
+                message=(
+                    "This agent uses blocks outside the Example Logistics "
+                    f"allowlist: {', '.join(denied_blocks)}"
+                ),
+                error="partner_block_capability_required",
+                session_id=session_id,
+            )
         nodes = agent_json.get("nodes", [])
         if not nodes:
             return ErrorResponse(
@@ -176,6 +198,7 @@ class EditAgentTool(BaseTool):
             is_update=True,
             default_name="Updated Agent",
             library_agents=library_agents,
+            allowed_block_ids=partner_allowed_graph_block_ids(session),
         )
 
 

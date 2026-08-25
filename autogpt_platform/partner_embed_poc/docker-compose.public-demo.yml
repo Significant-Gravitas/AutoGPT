@@ -1,0 +1,16 @@
+services:
+  mock-logistics-partner-multitenant:
+    environment:
+      DEMO_PUBLIC_MODE: "true"
+      DEMO_ACCESS_CODE: ${PARTNER_DEMO_ACCESS_CODE:?Set PARTNER_DEMO_ACCESS_CODE to a high-entropy shared code}
+      DEMO_ACCESS_COOKIE_SECURE: "true"
+    ports: !override
+      - "127.0.0.1:8788:8788"
+
+  mock-logistics-partner-angular:
+    environment:
+      DEMO_PUBLIC_MODE: "true"
+      DEMO_ACCESS_CODE: ${PARTNER_DEMO_ACCESS_CODE:?Set PARTNER_DEMO_ACCESS_CODE to a high-entropy shared code}
+      DEMO_ACCESS_COOKIE_SECURE: "true"
+    ports: !override
+      - "127.0.0.1:8789:8789"

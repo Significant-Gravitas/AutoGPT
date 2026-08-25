@@ -1,0 +1,287 @@
+# Partner-embedded AutoGPT chat PoC
+
+This project demonstrates Example Logistics users opening an AutoGPT-powered chat without creating or signing into an AutoGPT account. The host application remains the identity authority, while AutoGPT issues a five-minute token that is valid only for the restricted partner chat API and one mapped customer tenant.
+
+## Run it
+
+The compose overlay explicitly disables `CHAT_TEST_MODE`. For local development it runs AutoGPT's Claude Agent SDK using a Claude Code subscription login. From `autogpt_platform`, create a private writable copy of your Claude config and then start the stack:
+
+```bash
+partner_claude_dir="$(mktemp -d)"
+install -m 600 ~/.claude/.credentials.json "$partner_claude_dir/.credentials.json"
+export PARTNER_CLAUDE_CONFIG_DIR="$partner_claude_dir"
+
+docker compose \
+  -f docker-compose.yml \
+  -f partner_embed_poc/docker-compose.poc.yml \
+  -f partner_embed_poc/docker-compose.isolation.yml \
+  -f partner_embed_poc/docker-compose.claude-subscription.yml \
+  up -d --build
+```
+
+The subscription profile and private writable copy are only for local development. The copy lets Claude refresh OAuth without modifying the desktop credential file and must never be committed. Shared demos use the separate direct-Anthropic profile instead.
+
+For an explicitly shared demo, set a high-entropy access code and include the fail-closed public profile. It refuses to start without the code or secure cookies, binds both shareable hosts to loopback, rate-limits unlock attempts, and exchanges the code for an eight-hour HTTP-only cookie with a server-verified expiry:
+
+```bash
+export PARTNER_DEMO_ACCESS_CODE="replace-with-at-least-16-random-characters"
+export PARTNER_ANTHROPIC_API_KEY="replace-with-a-managed-anthropic-key"
+
+docker compose \
+  -f docker-compose.yml \
+  -f partner_embed_poc/docker-compose.poc.yml \
+  -f partner_embed_poc/docker-compose.isolation.yml \
+  -f partner_embed_poc/docker-compose.anthropic-demo.yml \
+  -f partner_embed_poc/docker-compose.public-demo.yml \
+  up -d --build
+
+sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8788
+sudo tailscale funnel --bg --https=10000 http://127.0.0.1:8789
+```
+
+The direct-Anthropic profile refuses to resolve without a key, disables subscription and OpenRouter routing in both backend processes, and applies explicit platform caps of $1 per user per day and $5 per user per week. Override those caps with `PARTNER_DEMO_DAILY_COST_LIMIT_MICRODOLLARS` and `PARTNER_DEMO_WEEKLY_COST_LIMIT_MICRODOLLARS`, and also set an account-level provider spend cap.
+
+Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Example Logistics user, and send a message to the Forwarding Assistant.
+
+Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
+
+Open <http://127.0.0.1:8789> for the separate Angular 22 host. It uses the publishable `@autogpt/embedded-chat-element` custom element and the same BFF, token exchange, tenant mapping, real Autopilot, and MCP path.
+
+The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published; the mock MCP service is Docker-internal:
+
+The mock user picker is not authentication. Only the full React host on 8788 and Angular host on 8789 support the shared-demo gate; never publish the minimal 8787 host. The gate only reduces exposure for a temporary synthetic-data demo. Production still requires the partner's real authentication, budget controls, monitoring, and per-customer limits. Set a hard provider spend cap before attaching a billable API key.
+
+| URL                     | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `http://127.0.0.1:8787` | Minimal React Example Logistics host + BFF |
+| `http://127.0.0.1:8788` | Multi-tenant React host + BFF              |
+| `http://127.0.0.1:8789` | Multi-tenant Angular host + BFF            |
+| `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange     |
+| `http://127.0.0.1:8006` | AutoGPT backend diagnostics                |
+
+Stop this isolated stack with the same files:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f partner_embed_poc/docker-compose.poc.yml \
+  -f partner_embed_poc/docker-compose.isolation.yml \
+  down
+```
+
+Disable the two public routes separately so a later process reusing either port cannot become public accidentally:
+
+```bash
+sudo tailscale funnel --yes --https=8443 off
+sudo tailscale funnel --yes --https=10000 off
+```
+
+The overlay uses dedicated Docker networks and does not reuse or restart unrelated AutoGPT or RabbitMQ containers.
+
+## Trust flow
+
+```mermaid
+sequenceDiagram
+    participant Browser as Example Logistics browser
+    participant Partner as Example Logistics BFF
+    participant Broker as AutoGPT Better Auth broker
+    participant API as Restricted AutoGPT API
+    participant MCP as Example Logistics MCP
+
+    Browser->>Partner: Existing Example Logistics session cookie
+    Partner->>Broker: 60-second RS256 partner assertion
+    Broker->>Partner: Resolve signing key from partner JWKS
+    Broker->>API: Service-authenticated JIT identity provision
+    Broker-->>Partner: 5-minute embed-only access token
+    Partner-->>Browser: Access token response
+    Browser->>Partner: Create/stream chat through same-origin proxy
+    Partner->>API: Bearer token on restricted embed routes
+    API->>API: Lock user, organization, team, partner, and external account
+    API->>API: Real Autopilot chooses tenant-safe partner tool
+    API->>MCP: 60-second HMAC service token derived from session tenancy
+    MCP->>MCP: Verify token and select tenant dataset server-side
+    MCP-->>API: Tenant-specific tool result
+    API-->>Browser: AI SDK data stream
+```
+
+The partner assertion contains `sub`, `account_id`, `name`, `account_name`, `roles`, `capabilities`, `jti`, `iss`, `aud`, `iat`, and `exp`. AutoGPT verifies the signature through the configured JWKS, requires the configured issuer and `autogpt-partner-exchange` audience, and maps immutable partner subject/account IDs to account-scoped deterministic internal IDs. Partner email remains in the partner application and is not sent to AutoGPT.
+
+The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `partner_embed` token type, and `embed:chat` scope. A normal AutoGPT user token cannot call these routes, and request bodies cannot select another organization, team, user, or partner.
+
+## Capability and session boundary
+
+Example Logistics assigns capabilities from its own user membership. They are signed into the partner assertion, copied into the short-lived embed token, frozen onto the AutoGPT chat session, and checked again before either AutoPilot or the MCP server exposes a tool. The PoC uses these capability names:
+
+- `jobs.read` enables arrivals and exceptions MCP reports.
+- `reports.read` enables the operations summary MCP report.
+- `documents.read` enables workspace reads and the session artifact list/download APIs.
+- `documents.write` enables workspace file creation.
+- `agents.create` enables the native guided create/edit agent flow.
+- `agents.run` enables immediate runs of allowed agent graphs.
+- `agents.schedule` enables recurring agent runs plus schedule listing/deletion.
+- `autogpt:block:<block-id-or-name>` enables only that AutoGPT block plus the find/run/continue block tools.
+- `autogpt:tool:<tool-name>` explicitly enables one additional AutoPilot tool.
+
+Capabilities are part of session identity, not mutable UI preferences. A token with a different partner, organization, account, team, user, or capability set cannot resume the session. Each partner registry entry defines AutoGPT's maximum allowed capabilities, and the exchange rejects signed claims outside that ceiling. The MCP service independently verifies the tenant and capability set in its 60-second service token, filters `tools/list`, and rejects an unauthorized `tools/call` even if a model attempts it.
+Agent creation, edits, immediate runs, preset runs, and schedules re-check every node in the flattened graph against the session's `autogpt:block:*` allowlist. The seeded Northstar manager receives all three lifecycle grants plus the generic input, output, and calculator blocks; operator memberships do not.
+
+The restricted BFF/API surface used by the component is:
+
+| Method | Route                                                              | Purpose                                     |
+| ------ | ------------------------------------------------------------------ | ------------------------------------------- |
+| `POST` | `/api/embed/v1/sessions`                                           | Create a capability-bound chat session      |
+| `GET`  | `/api/embed/v1/sessions`                                           | List the signed-in user's matching sessions |
+| `GET`  | `/api/embed/v1/sessions/:sessionId`                                | Restore sanitized messages and capabilities |
+| `POST` | `/api/embed/v1/sessions/:sessionId/stream`                         | Stream a real AutoPilot turn                |
+| `GET`  | `/api/embed/v1/sessions/:sessionId/artifacts`                      | List session-owned artifacts                |
+| `GET`  | `/api/embed/v1/sessions/:sessionId/artifacts/:artifactId/download` | Download a session-owned artifact           |
+
+The UI renders persisted and streaming Markdown, reasoning disclosures, native-style tool call cards, session navigation, and artifact downloads. Artifact access additionally requires `documents.read`; paths are checked against the selected session before download.
+
+## Components
+
+- `packages/embed-react` builds the publishable `@autogpt/embedded-chat` React package. It owns chat state and AI SDK streaming but delegates token retrieval to the host.
+- `packages/embed-element` builds the publishable `@autogpt/embedded-chat-element` custom element. Angular and other frameworks assign an `accessTokenProvider` property and brand it through attributes and CSS variables.
+- `apps/mock-logistics-partner` is the minimal representative freight dashboard and partner BFF.
+- `apps/mock-logistics-partner-multitenant` owns partner users, organizations, role/tool memberships, sessions, and a durable mapping ledger. Switching tenant remounts chat, and its BFF checks every chat token against the active user and organization before proxying.
+- `apps/mock-logistics-partner-angular` is a separate Angular 22 host using the custom-element package.
+- `apps/mock-logistics-partner-mcp` is an internal Streamable HTTP MCP server with three tools and separate Northstar/Harbour datasets.
+- Each host uses an opaque, HTTP-only partner session cookie. The browser never receives a partner signing key and never signs into AutoGPT.
+- `frontend/src/app/api/embed/token` is the Better Auth-side assertion exchange and token broker.
+- `backend/api/features/partner_embed` is the restricted FastAPI façade, deterministic JIT provisioning, external-account session anchor, and server-owned model-transport selector.
+- `backend/copilot/tools/logistics_partner.py` is the Autopilot-to-MCP bridge. The model selects only a report; the server derives the tenant.
+- `docker-compose.poc.yml` disables the dummy engine and joins the hosts and internal MCP service to the platform network.
+- `docker-compose.isolation.yml` avoids global container names, dedicated network collisions, and nonessential host ports.
+
+## Consume the component
+
+The host application supplies its own BFF token callback:
+
+```tsx
+import { AutoGPTEmbeddedChat } from "@autogpt/embedded-chat";
+import "@autogpt/embedded-chat/styles.css";
+
+async function getAccessToken() {
+  const response = await fetch("/api/autogpt/token", { method: "POST" });
+  if (!response.ok) throw new Error("Assistant authorization failed");
+  const body = (await response.json()) as { access_token: string };
+  return body.access_token;
+}
+
+export function AssistantPanel() {
+  return (
+    <AutoGPTEmbeddedChat
+      apiBaseURL=""
+      brandName="Relay Freight AI"
+      getAccessToken={getAccessToken}
+      onNavigate={(href) => navigateInsideHost(href)}
+      suggestedPrompts={["Summarize today's shipment exceptions."]}
+      title="Operations Copilot"
+    />
+  );
+}
+```
+
+Angular and other framework hosts use the custom element:
+
+```ts
+import "@autogpt/embedded-chat-element";
+
+export class App {
+  readonly accessTokenProvider = async () => {
+    const response = await fetch("/api/autogpt/token", { method: "POST" });
+    if (!response.ok) throw new Error("Assistant authorization failed");
+    const body = (await response.json()) as { access_token: string };
+    return body.access_token;
+  };
+}
+```
+
+```html
+<autogpt-embedded-chat
+  api-base-url=""
+  brand-name="Portside Intelligence"
+  chat-title="Freight Copilot"
+  tenant-key="partner-user:partner-account"
+  [accessTokenProvider]="accessTokenProvider"
+  [suggestedPrompts]="suggestedPrompts"
+  (autogpt-navigate)="handleAssistantNavigation($event)"
+></autogpt-embedded-chat>
+```
+
+The callback is invoked for session creation and every chat turn, so the host can refresh short-lived tokens without exposing partner signing keys to the browser. The `apiBaseURL` can be empty or use a same-origin BFF path; cross-origin bearer transport is rejected.
+
+`suggestedPrompts` lets each host placement offer contextual starting points without auto-submitting a turn. React hosts receive assistant links through `onNavigate`; the custom element emits the bubbling `autogpt-navigate` event with `detail.href`. The host owns that navigation, so relative agent and artifact links never escape into an unrelated partner route.
+
+### Theming and feature switches
+
+React hosts can enable the session/artifact surfaces independently and use either the light/dark defaults or a typed semantic theme:
+
+```tsx
+<AutoGPTEmbeddedChat
+  apiBaseURL=""
+  getAccessToken={getAccessToken}
+  sessionsEnabled
+  artifactsEnabled
+  appearance="light"
+  theme={{
+    background: "#f5f7f2",
+    accent: "#087f5b",
+    radius: "14px",
+  }}
+/>
+```
+
+The custom element exposes the same switches without framework coupling:
+
+- `appearance`, `sessions-enabled`, and `artifacts-enabled` configure presentation.
+- `api-base-url`, `brand-name`, `chat-title`, and `tenant-key` configure the host integration and remount boundary.
+- `api-base-url` must be empty or same-origin. Keep bearer-token exchange behind the host application's BFF instead of sending embed tokens directly to another origin.
+
+Both packages accept public `--autogpt-embed-*` CSS variables for the semantic colors, font, radius, shadow, height, minimum height, and width. These tokens inherit through the custom element without Angular- or framework-specific selectors.
+
+```css
+autogpt-embedded-chat {
+  --autogpt-embed-accent: #dd5b2e;
+  --autogpt-embed-background: #f8f5f2;
+  --autogpt-embed-radius: 12px;
+  --autogpt-embed-height: 100%;
+  --autogpt-embed-min-height: 0px;
+  --autogpt-embed-width: 100%;
+}
+```
+
+Stable `data-slot`, `data-role`, and `data-state` attributes are available for host-level testing and carefully scoped overrides. Capability switches still come only from the signed identity chain; hiding a UI surface never grants or revokes a server permission.
+
+Build, test, or prepare a registry artifact independently:
+
+```bash
+cd partner_embed_poc
+corepack pnpm install
+corepack pnpm test
+corepack pnpm build
+corepack pnpm --filter @autogpt/embedded-chat pack
+corepack pnpm --filter @autogpt/embedded-chat-element pack
+```
+
+No package is published by this PoC.
+
+## Production work after the PoC
+
+1. Replace the environment-configured issuer allowlist with a managed partner registry containing issuer, JWKS URL, audiences, allowed algorithms, status, and key-rotation metadata.
+2. Store consumed assertion `jti` values in Redis or Postgres until `exp` and reject replay atomically across broker replicas.
+3. Replace in-memory partner sessions and the ephemeral demo signing key with Example Logistics's real session store and managed signing keys.
+4. Add customer and user lifecycle hooks for suspension, account moves, offboarding, role changes, and audit export. JIT provisioning must not grant permissions beyond the partner assertion.
+5. Add per-partner/account/user rate limits, concurrency limits, budget enforcement, and metering in customer language such as completed runs or document pages.
+6. Promote scheduling into a dedicated partner façade and run-history UI only after its approval model, idempotency, cancellation, and budget caps are defined. The PoC currently schedules allowed native agent graphs through capability-gated chat tools.
+7. Replace the three-tool mock MCP with Example Logistics's 72-tool production server and a managed token-exchange trust relationship. Preserve the same rule: AutoGPT derives tenancy from the authenticated session, while Example Logistics remains authoritative for role and tool permissions on every call.
+8. Add production TLS, CSP and allowed-origin configuration, structured audit events, secret rotation, availability targets, data retention controls, and incident revocation.
+
+## Deliberate PoC limitations
+
+- Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
+- Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
+- Assertion `jti` values are not yet consumed atomically, so the same 60-second assertion can be exchanged more than once. Embed-token lifetime is capped by the remaining assertion lifetime and exchange responses are non-cacheable.
+- Interactive chat, session history, artifacts, and manager-only create/run/schedule flows are implemented. Scheduled graphs are deliberately limited to the three seeded safe blocks; scheduled Example Logistics MCP automations and the real 72-tool server remain architectural follow-ons.
+- Local development may use the explicit Claude subscription profile and a private config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Shared demos use the direct-Anthropic profile and a managed API key. Partner sessions replace Claude Code's built-in identity-bearing prompt preset in subscription mode so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
+- Both component packages are built and packable but are not published to npm.

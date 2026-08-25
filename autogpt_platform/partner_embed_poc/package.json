@@ -1,0 +1,21 @@
+{
+  "name": "autogpt-partner-embed-poc",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @autogpt/embedded-chat build && pnpm --filter @autogpt/embedded-chat-element build && pnpm --filter @autogpt/mock-logistics-partner build && pnpm --filter @autogpt/mock-logistics-partner-multitenant build && pnpm --filter @autogpt/mock-logistics-partner-mcp build && pnpm --filter @autogpt/mock-logistics-partner-angular build",
+    "dev": "pnpm --filter @autogpt/mock-logistics-partner dev",
+    "format": "prettier --write .",
+    "test": "pnpm --filter @autogpt/embedded-chat test && pnpm --filter @autogpt/embedded-chat-element test && pnpm --filter @autogpt/mock-logistics-partner test && pnpm --filter @autogpt/mock-logistics-partner-multitenant test && pnpm --filter @autogpt/mock-logistics-partner-mcp test && pnpm --filter @autogpt/mock-logistics-partner-angular test"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.1",
+      "shell-quote": "1.9.0"
+    }
+  }
+}

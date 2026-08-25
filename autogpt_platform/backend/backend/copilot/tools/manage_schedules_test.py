@@ -375,3 +375,15 @@ async def test_delete_schedule_allows_same_expert_job(delete_tool):
     mock_client.delete_schedule.assert_awaited_once_with(
         schedule_id="expert-job", user_id=_USER
     )
+
+
+@pytest.mark.asyncio
+async def test_partner_schedule_management_requires_capability(list_tool):
+    session = make_session(_USER)
+    session.metadata.source_platform = "logistics-partner"
+    session.metadata.external_account_id = "fd-account-77"
+
+    result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "partner_capability_required"

@@ -20,8 +20,14 @@ from backend.copilot.builder_context import (
     BUILDER_SESSION_TAG,
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
+    resolve_session_permissions,
 )
 from backend.copilot.model import ChatMessage, ChatSession
+
+
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    yield
 
 
 def _session(
@@ -53,6 +59,103 @@ def _agent_json(
     }
     base.update(overrides)
     return base
+
+
+def test_partner_session_permissions_are_capability_whitelists():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="logistics-partner",
+        external_account_id="fd-account-77",
+        external_capabilities=[
+            "reports.read",
+            "documents.read",
+            "autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+        ],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools_exclude is False
+    assert permissions.blocks_exclude is False
+    assert permissions.blocks == ["b1ab9b19-67a6-406d-abf5-2dba76d00c79"]
+    assert set(permissions.tools) == {
+        "query_logistics_partner",
+        "list_workspace_files",
+        "read_workspace_file",
+        "find_block",
+        "run_block",
+        "continue_run_block",
+    }
+
+
+def test_partner_without_block_capability_cannot_run_blocks():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="logistics-partner",
+        external_account_id="fd-account-88",
+        external_capabilities=["jobs.read"],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools == ["query_logistics_partner"]
+    assert permissions.blocks == []
+
+
+def test_partner_agent_lifecycle_capabilities_map_to_native_tools():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="logistics-partner",
+        external_account_id="fd-account-77",
+        external_capabilities=[
+            "agents.create",
+            "agents.run",
+            "agents.schedule",
+        ],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert set(permissions.tools) == {
+        "create_agent",
+        "delete_schedule",
+        "edit_agent",
+        "enter_agent_building_mode",
+        "find_agent",
+        "find_block",
+        "find_library_agent",
+        "fix_agent_graph",
+        "get_agent_building_guide",
+        "list_schedules",
+        "run_agent",
+        "validate_agent_graph",
+        "view_agent_output",
+    }
+    assert permissions.blocks == []
+
+
+def test_unknown_embedded_partner_defaults_to_capability_whitelist():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="future-partner",
+        external_account_id="future-account",
+        external_capabilities=[],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools_exclude is False
+    assert permissions.tools == []
+    assert permissions.blocks_exclude is False
+    assert permissions.blocks == []
 
 
 # ---------------------------------------------------------------------------

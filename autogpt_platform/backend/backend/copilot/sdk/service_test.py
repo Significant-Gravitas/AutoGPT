@@ -12,6 +12,7 @@ import pytest
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
+from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
@@ -37,6 +38,7 @@ from .service import (
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
+    _use_cli_prompt_preset,
 )
 
 
@@ -983,6 +985,20 @@ class TestSystemPromptPreset:
 
         assert isinstance(result, str)
         assert result == custom_prompt
+
+    def test_partner_session_replaces_provider_identity_preset(self):
+        session = ChatSession.new(
+            user_id="user-1",
+            dry_run=False,
+            source_platform="logistics-partner",
+            external_account_id="account-1",
+        )
+
+        result = _build_system_prompt_value(
+            "partner prompt", cross_user_cache=_use_cli_prompt_preset(session)
+        )
+
+        assert result == "partner prompt"
 
     def test_empty_string_with_cache_enabled(self):
         """Empty system_prompt with cross_user_cache=True produces append=''."""

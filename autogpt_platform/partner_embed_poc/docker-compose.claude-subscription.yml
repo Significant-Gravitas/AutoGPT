@@ -1,0 +1,10 @@
+services:
+  rest_server:
+    environment:
+      CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "true"
+
+  copilot_executor:
+    environment:
+      CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "true"
+    volumes:
+      - ${PARTNER_CLAUDE_CONFIG_DIR:?Set PARTNER_CLAUDE_CONFIG_DIR to a private copy of ~/.claude}:/root/.claude

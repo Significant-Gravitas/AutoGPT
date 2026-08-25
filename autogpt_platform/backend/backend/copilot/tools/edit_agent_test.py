@@ -308,3 +308,35 @@ async def test_execute_allows_non_trigger_edit(tool, mocker) -> None:
 
     assert result is sentinel
     saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_partner_edit_requires_capability_and_allowed_blocks():
+    tool = EditAgentTool()
+    session = make_session(_USER_ID)
+    session.metadata.source_platform = "logistics-partner"
+    session.metadata.external_account_id = "fd-account-77"
+
+    denied = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="agent-1",
+        agent_json={"nodes": [{"block_id": "allowed-block"}], "links": []},
+    )
+
+    assert isinstance(denied, ErrorResponse)
+    assert denied.error == "partner_capability_required"
+
+    session.metadata.external_capabilities = [
+        "agents.create",
+        "autogpt:block:allowed-block",
+    ]
+    denied_block = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="agent-1",
+        agent_json={"nodes": [{"block_id": "denied-block"}], "links": []},
+    )
+
+    assert isinstance(denied_block, ErrorResponse)
+    assert denied_block.error == "partner_block_capability_required"

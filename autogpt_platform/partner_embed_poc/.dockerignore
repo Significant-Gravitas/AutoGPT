@@ -1,0 +1,5 @@
+**/.angular
+**/dist
+**/node_modules
+**/server-dist
+*.tgz

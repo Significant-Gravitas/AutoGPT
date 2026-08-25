@@ -1,0 +1,43 @@
+{
+  "name": "@autogpt/embedded-chat-element",
+  "version": "0.1.0",
+  "description": "Framework-neutral AutoGPT embedded chat custom element",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Significant-Gravitas/autogpt-embedded-chat.git",
+    "directory": "packages/embed-element"
+  },
+  "type": "module",
+  "files": [
+    "dist/AutoGPTEmbeddedChatElement.js",
+    "dist/index.d.ts",
+    "dist/embedded-chat-element.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/AutoGPTEmbeddedChatElement.js"
+    },
+    "./styles.css": "./dist/embedded-chat-element.css"
+  },
+  "scripts": {
+    "build": "vite build && tsc --project tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "3.0.61",
+    "@autogpt/embedded-chat": "workspace:*",
+    "ai": "6.0.134",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "6.1.0",
+    "happy-dom": "20.8.9",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.0"
+  }
+}

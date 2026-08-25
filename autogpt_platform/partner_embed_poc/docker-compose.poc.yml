@@ -1,0 +1,119 @@
+services:
+  rest_server:
+    environment:
+      CHAT_TEST_MODE: "false"
+      LOGISTICS_PARTNER_MCP_URL: http://mock-logistics-partner-mcp:8790/mcp
+      LOGISTICS_PARTNER_MCP_SHARED_SECRET: local-logistics-partner-mcp-poc-secret
+
+  copilot_executor:
+    environment:
+      CHAT_TEST_MODE: "false"
+      LOGISTICS_PARTNER_MCP_URL: http://mock-logistics-partner-mcp:8790/mcp
+      LOGISTICS_PARTNER_MCP_SHARED_SECRET: local-logistics-partner-mcp-poc-secret
+  frontend:
+    environment:
+      PARTNER_EMBED_CONFIGS: >-
+        [{"partnerID":"logistics-partner","issuer":"http://localhost:8787","jwksURL":"http://mock-logistics-partner:8787/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","agents.create","agents.run","agents.schedule","autogpt:block:c0a8e994-ebf1-4a9c-a4d8-89d09c86741b","autogpt:block:363ae599-353e-4804-937e-b2ee3cef3da4","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]},{"partnerID":"logistics-partner","issuer":"http://localhost:8788","jwksURL":"http://mock-logistics-partner-multitenant:8788/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","agents.create","agents.run","agents.schedule","autogpt:block:c0a8e994-ebf1-4a9c-a4d8-89d09c86741b","autogpt:block:363ae599-353e-4804-937e-b2ee3cef3da4","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]},{"partnerID":"logistics-partner","issuer":"http://localhost:8789","jwksURL":"http://mock-logistics-partner-angular:8789/.well-known/jwks.json","audience":"autogpt-partner-exchange","allowedCapabilities":["jobs.read","reports.read","documents.read","documents.write","agents.create","agents.run","agents.schedule","autogpt:block:c0a8e994-ebf1-4a9c-a4d8-89d09c86741b","autogpt:block:363ae599-353e-4804-937e-b2ee3cef3da4","autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79"]}]
+
+  mock-logistics-partner:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    depends_on:
+      frontend:
+        condition: service_started
+      rest_server:
+        condition: service_started
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      PARTNER_ORIGIN: http://localhost:8787
+      AUTOGPT_FRONTEND_URL: http://frontend:3000
+      AUTOGPT_BACKEND_URL: http://rest_server:8006
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks:
+      - app-network
+
+  mock-logistics-partner-multitenant:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    command:
+      - pnpm
+      - --filter
+      - "@autogpt/mock-logistics-partner-multitenant"
+      - start
+    depends_on:
+      frontend:
+        condition: service_started
+      rest_server:
+        condition: service_started
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8788"
+      PARTNER_ORIGIN: http://localhost:8788
+      AUTOGPT_FRONTEND_URL: http://frontend:3000
+      AUTOGPT_BACKEND_URL: http://rest_server:8006
+      DATABASE_PATH: /data/logistics-partner.sqlite
+      DEMO_PUBLIC_MODE: ${PARTNER_DEMO_PUBLIC_MODE:-false}
+      DEMO_ACCESS_CODE: ${PARTNER_DEMO_ACCESS_CODE:-}
+      DEMO_ACCESS_COOKIE_SECURE: ${PARTNER_DEMO_ACCESS_COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - logistics-partner-multitenant-data:/data
+    networks:
+      - app-network
+
+  mock-logistics-partner-angular:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    command:
+      - pnpm
+      - --filter
+      - "@autogpt/mock-logistics-partner-multitenant"
+      - start
+    depends_on:
+      frontend:
+        condition: service_started
+      rest_server:
+        condition: service_started
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8789"
+      PARTNER_ORIGIN: http://localhost:8789
+      AUTOGPT_FRONTEND_URL: http://frontend:3000
+      AUTOGPT_BACKEND_URL: http://rest_server:8006
+      DATABASE_PATH: /data/logistics-partner-angular.sqlite
+      DEMO_PUBLIC_MODE: ${PARTNER_DEMO_PUBLIC_MODE:-false}
+      DEMO_ACCESS_CODE: ${PARTNER_DEMO_ACCESS_CODE:-}
+      DEMO_ACCESS_COOKIE_SECURE: ${PARTNER_DEMO_ACCESS_COOKIE_SECURE:-false}
+      STATIC_ROOT: /app/apps/mock-logistics-partner-angular/dist/logistics-partner-angular/browser
+    ports:
+      - "127.0.0.1:8789:8789"
+    volumes:
+      - logistics-partner-angular-data:/data
+    networks:
+      - app-network
+
+  mock-logistics-partner-mcp:
+    build:
+      context: ./partner_embed_poc
+      dockerfile: Dockerfile
+    command:
+      - pnpm
+      - --filter
+      - "@autogpt/mock-logistics-partner-mcp"
+      - start
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8790"
+      PARTNER_MCP_SHARED_SECRET: local-logistics-partner-mcp-poc-secret
+    networks:
+      - app-network
+
+volumes:
+  logistics-partner-angular-data:
+  logistics-partner-multitenant-data:

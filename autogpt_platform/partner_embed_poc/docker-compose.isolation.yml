@@ -1,0 +1,54 @@
+services:
+  rest_server:
+    ports: !override
+      - "127.0.0.1:8006:8006"
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+
+  rabbitmq:
+    container_name: autogpt-partner-poc-rabbitmq
+    ports: !override []
+
+  clamav:
+    ports: !override []
+
+  copilot_executor:
+    ports: !override []
+
+  database_manager:
+    ports: !override []
+
+  db:
+    ports: !override []
+
+  executor:
+    ports: !override []
+
+  falkordb:
+    ports: !override []
+
+  notification_server:
+    ports: !override []
+
+  redis-0:
+    ports: !override []
+
+  redis-1:
+    ports: !override []
+
+  redis-2:
+    ports: !override []
+
+  scheduler_server:
+    ports: !override []
+
+  websocket_server:
+    ports: !override []
+
+networks:
+  app-network:
+    name: autogpt-partner-poc-network
+  shared-network:
+    name: autogpt-partner-poc-shared-network

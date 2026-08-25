@@ -40,6 +40,7 @@ from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
+from .logistics_partner import LogisticsPartnerTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -125,6 +126,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delegate_to_expert": DelegateToExpertTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
+    "query_logistics_partner": LogisticsPartnerTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
@@ -185,7 +187,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "delegation", "logistics_partner"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -211,6 +215,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    "query_logistics_partner": "logistics_partner",
 }
 
 
@@ -227,6 +232,13 @@ def expert_tool_disabled_groups(
     if not experts_enabled:
         return ["experts", "expert_admin", "delegation"]
     return ["expert_admin"] if expert_id else ["experts"]
+
+
+def partner_tool_disabled_groups(source_platform: str | None) -> list[ToolGroup]:
+    """Hide partner-specific tools outside their authenticated session origin."""
+    if source_platform == "logistics-partner":
+        return []
+    return ["logistics_partner"]
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

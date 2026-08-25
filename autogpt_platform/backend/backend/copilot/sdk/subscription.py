@@ -135,10 +135,6 @@ def validate_subscription() -> None:
                 "Claude CLI reports loggedIn=false. Set CLAUDE_CODE_OAUTH_TOKEN "
                 "or run `claude login`."
             )
-        logger.info(
-            "Claude subscription auth: method=%s, email=%s",
-            status.get("authMethod"),
-            status.get("email"),
-        )
+        logger.info("Claude subscription auth: method=%s", status.get("authMethod"))
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")

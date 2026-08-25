@@ -1,0 +1,284 @@
+:root {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: #16241f;
+  background: #f3f6f4;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+button {
+  font: inherit;
+}
+.loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+.shell {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.sidebar {
+  background: #102d25;
+  color: white;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.02em;
+}
+.brand span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #d8ff64;
+  color: #102d25;
+  font-weight: 900;
+}
+.brand--dark {
+  color: #102d25;
+}
+.sidebar nav {
+  display: grid;
+  gap: 8px;
+  margin-top: 48px;
+}
+.sidebar nav a {
+  color: #b9cbc5;
+  text-decoration: none;
+  padding: 11px 13px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.sidebar nav a.active {
+  color: white;
+  background: #22483e;
+}
+.sign-out {
+  margin-top: auto;
+  border: 0;
+  background: transparent;
+  color: #b9cbc5;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+.workspace {
+  padding: 32px;
+  min-width: 0;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  margin-bottom: 26px;
+}
+.topbar p,
+.section-heading p {
+  margin: 0 0 4px;
+  color: #70817b;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+}
+.topbar h1,
+.section-heading h2 {
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+.account {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  font-size: 14px;
+}
+.account small {
+  color: #70817b;
+  margin-top: 3px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.metric {
+  background: white;
+  border: 1px solid #dde5e1;
+  border-radius: 13px;
+  padding: 18px;
+  display: grid;
+}
+.metric p {
+  margin: 0;
+  color: #64756f;
+  font-size: 13px;
+}
+.metric strong {
+  font-size: 30px;
+  margin: 8px 0;
+  letter-spacing: -0.04em;
+}
+.metric span {
+  color: #70817b;
+  font-size: 12px;
+}
+.metric--alert {
+  border-color: #e6bd83;
+  background: #fffaf2;
+}
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+.jobs-card {
+  background: white;
+  border: 1px solid #dde5e1;
+  border-radius: 13px;
+  overflow: hidden;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+}
+.section-heading button {
+  border: 1px solid #ced9d4;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: #29473e;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  color: #70817b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  background: #f7f9f8;
+}
+th,
+td {
+  padding: 13px 16px;
+  border-top: 1px solid #e6ece9;
+}
+.job-status {
+  display: inline-block;
+  padding: 4px 7px;
+  border-radius: 99px;
+  background: #eaf4ef;
+  color: #2e6c56;
+  font-size: 11px;
+}
+.job-status--exception {
+  background: #fff0e7;
+  color: #9d4c23;
+}
+.job-status--docs-due {
+  background: #fff8dc;
+  color: #806816;
+}
+.sign-in {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, #e5ffd1, transparent 34%), #eef3f0;
+}
+.sign-in__card {
+  width: min(440px, 100%);
+  background: white;
+  border: 1px solid #d6e0db;
+  border-radius: 18px;
+  padding: 34px;
+  box-shadow: 0 20px 60px rgba(25, 55, 45, 0.12);
+}
+.sign-in__card > p:first-of-type {
+  margin-top: 34px;
+  color: #678078;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sign-in__card h1 {
+  letter-spacing: -0.04em;
+  margin-bottom: 10px;
+}
+.sign-in__card p {
+  color: #62726d;
+  line-height: 1.5;
+}
+.sign-in__card button {
+  width: 100%;
+  margin-top: 12px;
+  background: #173e33;
+  color: white;
+  border: 0;
+  border-radius: 9px;
+  padding: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace {
+    padding: 20px;
+  }
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+  .topbar {
+    align-items: start;
+    gap: 16px;
+  }
+  .account {
+    display: none;
+  }
+  .jobs-card {
+    overflow-x: auto;
+  }
+}
