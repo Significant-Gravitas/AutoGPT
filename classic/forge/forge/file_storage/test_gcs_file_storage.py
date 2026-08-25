@@ -135,7 +135,7 @@ def test_list_folders(gcs_storage_with_files: GCSFileStorage):
 
 def test_list_folders_at_path_excludes_prefix_siblings(
     gcs_storage_with_files: GCSFileStorage,
-):
+) -> None:
     # "existing_test_file_1" etc. are flat files at the bucket root that share a
     # raw string prefix with the "existing/" folder without being nested under it.
     # list_folders("existing") must not treat them as descendants of "existing".
