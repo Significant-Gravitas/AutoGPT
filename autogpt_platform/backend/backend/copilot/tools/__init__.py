@@ -213,8 +213,8 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
-    # Reading the roster is as side-effect-free as delegating is not, but it
-    # shares the gate: with the flag off there is no team to list.
+    # Read-only, but it shares the same gate: with the flag off there is no
+    # team to list.
     "list_team": "delegation",
 }
 
