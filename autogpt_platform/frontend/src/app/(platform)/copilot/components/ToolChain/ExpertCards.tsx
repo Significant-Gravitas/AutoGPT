@@ -111,7 +111,7 @@ export function ExpertChangeCard({ output }: Props) {
       </div>
       <div
         id={detailsID}
-        className="t-resize overflow-hidden"
+        className="overflow-hidden transition-[height] duration-300 ease-out-quint motion-reduce:transition-none"
         style={{ height }}
       >
         <div ref={contentRef} className="flex flex-col gap-1 pt-1.5">

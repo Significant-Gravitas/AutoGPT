@@ -167,23 +167,3 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 [data-streamdown="table-wrapper"] td {
   padding: 0.875rem 1rem; /* py-3.5 px-4 */
 }
-
-/* Card resize — transitions.dev recipe. Tweens a container between two
-   heights when its layout state changes. Needs an explicit height (auto is
-   not interpolable) — see useCardResize. */
-:root {
-  --resize-dur: 300ms;
-  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.t-resize {
-  transition:
-    width var(--resize-dur) var(--resize-ease),
-    height var(--resize-dur) var(--resize-ease);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .t-resize {
-    transition: none !important;
-  }
-}

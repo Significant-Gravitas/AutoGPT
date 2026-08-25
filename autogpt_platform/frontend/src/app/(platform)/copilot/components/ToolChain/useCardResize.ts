@@ -2,9 +2,9 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 
-/** Measures the card body so a `.t-resize` wrapper can tween between the
+/** Measures the card body so its clipping wrapper can tween between the
  *  collapsed and expanded heights — `height: auto` is not interpolable, so
- *  the recipe needs a real pixel value on both sides of the change. */
+ *  the transition needs a real pixel value on both sides of the change. */
 export function useCardResize(expanded: boolean) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number>();
