@@ -16,19 +16,38 @@ import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
 import { WorkspaceFilesPopover } from "../components/WorkspaceFilesPopover";
 
-// Popover renders through a portal and only shows content while open in
-// real usage; mocking it as an always-mounted pair of divs (the pattern
-// used by UsagePopover's tests) lets us assert the section content and
-// wiring without fighting Radix positioning/portal internals in jsdom.
-vi.mock("@/components/molecules/Popover/Popover", () => {
-  function Popover({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
+// Popover renders through a portal in real usage; mocking it as plain divs
+// that still honour `open` (the trigger toggles it, the content mounts only
+// while it's set) lets us assert the section content and wiring without
+// fighting Radix positioning/portal internals in jsdom.
+vi.mock("@/components/molecules/Popover/Popover", async () => {
+  const { createContext, useContext } = await import("react");
+  const OpenContext = createContext<{
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }>({ open: false, onOpenChange: () => {} });
+  function Popover({
+    open,
+    onOpenChange,
+    children,
+  }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <OpenContext.Provider value={{ open, onOpenChange }}>
+        {children}
+      </OpenContext.Provider>
+    );
   }
   function PopoverTrigger({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
+    const { open, onOpenChange } = useContext(OpenContext);
+    return <div onClick={() => onOpenChange(!open)}>{children}</div>;
   }
   function PopoverContent({ children }: { children: React.ReactNode }) {
-    return <div>{children}</div>;
+    const { open } = useContext(OpenContext);
+    return open ? <div>{children}</div> : null;
   }
   return { Popover, PopoverTrigger, PopoverContent };
 });
@@ -39,6 +58,15 @@ function listResponse(
   files: ListFilesResponse["files"] = [],
 ): ListFilesResponse {
   return { files, offset: 0, has_more: false };
+}
+
+function openPopover() {
+  fireEvent.click(screen.getByLabelText("Workspace files"));
+}
+
+// Long enough for a mounted list query to reach the MSW handler.
+function flushRequests() {
+  return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
 function activityMessages(): UIMessage[] {
@@ -72,6 +100,7 @@ describe("WorkspaceFilesPopover", () => {
   it("shows the empty state when there are no files, runs, or schedules", async () => {
     server.use(getListWorkspaceFilesMockHandler200(listResponse()));
     render(<WorkspaceFilesPopover sessionId={SESSION} />);
+    openPopover();
 
     expect(await screen.findByText("Nothing here yet.")).toBeDefined();
   });
@@ -94,6 +123,7 @@ describe("WorkspaceFilesPopover", () => {
       ),
     );
     render(<WorkspaceFilesPopover sessionId={SESSION} />);
+    openPopover();
 
     fireEvent.click(await screen.findByTitle("result.csv"));
 
@@ -130,6 +160,7 @@ describe("WorkspaceFilesPopover", () => {
       }),
     );
     render(<WorkspaceFilesPopover sessionId={SESSION} />);
+    openPopover();
 
     fireEvent.click(await screen.findByLabelText("Delete result.csv"));
     fireEvent.click(await screen.findByRole("button", { name: /^Delete$/ }));
@@ -144,9 +175,28 @@ describe("WorkspaceFilesPopover", () => {
       .setMessageSnapshot(SESSION, activityMessages());
 
     render(<WorkspaceFilesPopover sessionId={SESSION} />);
+    openPopover();
 
     expect(await screen.findByText(/^Runs \(1\)/)).toBeDefined();
     expect(screen.getByText("Daily Digest")).toBeDefined();
     expect(screen.queryByText("Nothing here yet.")).toBeNull();
+  });
+
+  it("requests the file list only once the popover opens", async () => {
+    let listRequests = 0;
+    server.use(
+      getListWorkspaceFilesMockHandler200(() => {
+        listRequests += 1;
+        return listResponse();
+      }),
+    );
+    render(<WorkspaceFilesPopover sessionId={SESSION} />);
+    await flushRequests();
+    expect(listRequests).toBe(0);
+
+    openPopover();
+
+    expect(await screen.findByText("Nothing here yet.")).toBeDefined();
+    expect(listRequests).toBeGreaterThan(0);
   });
 });

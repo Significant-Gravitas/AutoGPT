@@ -2,14 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import { WorkspaceFilesPopover } from "../WorkspaceFileCards/components/WorkspaceFilesPopover";
-import {
-  CheckListIcon,
-  Folder01Icon,
-  SidebarRightIcon,
-} from "@hugeicons/core-free-icons";
+import { File02Icon, SidebarRightIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -22,36 +18,12 @@ export function ContextPanelToggle({ sessionId }: Props) {
     (s) => s.artifactPanel.activeArtifact != null,
   );
   const activeTab = useCopilotUIStore((s) => s.artifactPanel.activeTab);
-  const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const lastArtifact = useCopilotUIStore((s) => s.artifactPanel.lastArtifact);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  // The side panel carries its own close button, so the trigger hides while
-  // it's open. The new-UI card grid sits inline in the chat column instead, so
-  // the icon has to stay put and behave as a real toggle.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
-
-  if (!isNewToolUI) {
-    if (isOpen || hasArtifact) return null;
-    return (
-      <div className="flex shrink-0 items-start p-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={toggleContextPanel}
-          aria-label="Open workspace panel"
-          aria-pressed={false}
-        >
-          <Icon icon={Folder01Icon} className="!size-5" />
-        </Button>
-      </div>
-    );
-  }
-
   // Sized and stroked like the sidebar's nav icons so the chat's top-right
   // controls read as the same family.
   const buttonClass =
@@ -63,10 +35,10 @@ export function ContextPanelToggle({ sessionId }: Props) {
   // one control that closes them — the panel carries no close button.
   const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
   // While the right sidebar owns that region the inline files card has
-  // nowhere to sit, so the task-list trigger becomes a popover; it returns
-  // to the pinned card as soon as the sidebar closes.
+  // nowhere to sit, so the workspace-files trigger becomes a popover; it
+  // returns to the pinned card as soon as the sidebar closes.
   const showFilesAsPopover = isRightSidebarOpen;
-  const isFilesCardOpen = isOpen && !isRightSidebarOpen;
+  const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
 
   function handleSidebarToggle() {
     if (hasArtifact) {
@@ -98,12 +70,12 @@ export function ContextPanelToggle({ sessionId }: Props) {
           size="icon"
           onClick={() => toggleContextPanelTab("files")}
           aria-label={
-            isFilesCardOpen ? "Hide workspace files" : "Open workspace panel"
+            isFilesCardOpen ? "Hide workspace files" : "Open workspace files"
           }
           aria-pressed={isFilesCardOpen}
           className={cn(buttonClass, isFilesCardOpen && "bg-zinc-200/70")}
         >
-          <Icon icon={CheckListIcon} className={iconClass} />
+          <Icon icon={File02Icon} className={iconClass} />
         </Button>
       )}
       <Button

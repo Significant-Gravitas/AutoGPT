@@ -8,6 +8,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
+  /** The new layout floats its sidebar/files controls over the chat's
+   *  top-left corner on small viewports. */
+  hasFloatingControls?: boolean;
 }
 
 /**
@@ -18,6 +21,7 @@ interface Props {
 export function CopilotChatHost({
   droppedFiles,
   onDroppedFilesConsumed,
+  hasFloatingControls,
 }: Props) {
   const {
     sessionId,
@@ -94,6 +98,7 @@ export function CopilotChatHost({
           isResolvingExpertIdentity={isResolvingExpertIdentity}
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
+          hasFloatingControls={hasFloatingControls}
         />
       </div>
       <RateLimitGate
