@@ -2002,11 +2002,16 @@ async def _iter_sdk_messages(
             )
 
             if wake is not None and wake_task in done:
+                # Woken: hand the sentinel over BEFORE any message that
+                # landed in the same tick, or the row the hook announced
+                # would be closed by the very message meant to follow it.
                 wake_task = None
                 wake.clear()
+                yield None
+                continue
 
             if pending_task not in done:
-                yield None  # heartbeat sentinel (interval elapsed or woken)
+                yield None  # heartbeat sentinel: the interval elapsed
                 continue
 
             msg_task, pending_task = pending_task, None
