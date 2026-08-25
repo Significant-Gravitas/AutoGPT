@@ -5,7 +5,7 @@ import {
   combineSearchHits,
   failedAttachmentMessage,
   limitSearchHits,
-  parseCredits,
+  parseBudget,
   scoreSearchHit,
   toRaiseAttachments,
   type SearchHit,
@@ -25,12 +25,23 @@ const storeAgent = {
 } as StoreAgent;
 
 describe("kit helpers", () => {
-  test("parses credit amounts and rejects junk", () => {
-    expect(parseCredits("500")).toBe(500);
-    expect(parseCredits(" 0 ")).toBe(0);
-    expect(parseCredits("")).toBeNull();
-    expect(parseCredits("12.5")).toBeNull();
-    expect(parseCredits("-1")).toBeNull();
+  test("parses dollar amounts into credits and rejects junk", () => {
+    expect(parseBudget("5")).toBe(500);
+    expect(parseBudget(" $7.50 ")).toBe(750);
+    expect(parseBudget("1,000")).toBe(100_000);
+    expect(parseBudget(" 0 ")).toBe(0);
+    expect(parseBudget("")).toBeNull();
+    expect(parseBudget("12.555")).toBeNull();
+    expect(parseBudget("-1")).toBeNull();
+    expect(parseBudget("10001")).toBeNull();
+  });
+
+  test("rejects malformed thousands separators instead of stripping them", () => {
+    expect(parseBudget("1,2")).toBeNull();
+    expect(parseBudget("12,34")).toBeNull();
+    expect(parseBudget("1,0000")).toBeNull();
+    expect(parseBudget(",500")).toBeNull();
+    expect(parseBudget("$1,234.56")).toBe(123_456);
   });
 
   test("combines marketplace and library workflows in marketplace scope", () => {
