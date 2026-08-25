@@ -208,7 +208,7 @@ class RaiseExpertTool(BaseTool):
             )
         try:
             duplicate = await _active_expert_named(user_id, params.name)
-        except Exception as e:
+        except _RosterUnavailable as e:
             # Nothing downstream enforces name uniqueness, so a roster read we
             # could not perform must not pass for "no duplicate".
             logger.warning(f"raise_expert duplicate-name check failed: {e}")
@@ -266,14 +266,21 @@ class RaiseExpertTool(BaseTool):
         )
 
 
+class _RosterUnavailable(Exception):
+    """The roster could not be read — distinct from "nobody has this name"."""
+
+
 async def _active_expert_named(user_id: str, name: str) -> Expert | None:
     """The active expert already carrying *name*, or None.
 
-    Raises on a roster-read failure so the caller can tell "nobody has this
-    name" apart from "I could not look".
+    Only the read is treated as recoverable: a bug in the matching below is
+    not a roster outage and propagates instead of being retried forever.
     """
+    try:
+        experts = await experts_db().list_experts(user_id, with_metrics=False)
+    except Exception as e:
+        raise _RosterUnavailable(str(e)) from e
     wanted = name.strip().casefold()
-    experts = await experts_db().list_experts(user_id, with_metrics=False)
     return next(
         (
             expert

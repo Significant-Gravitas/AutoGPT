@@ -299,6 +299,18 @@ class TestPreviewNeverWrites:
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_matching_bug_is_not_dressed_up_as_a_roster_outage(self):
+        """Only the read is recoverable — a bug in the name matching would
+        otherwise be retried forever behind a "try again" message."""
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(id="exp-7", name=None, role="Ops", is_archived=False)
+            ]
+            with pytest.raises(AttributeError):
+                await _raise(make_session(_USER), **_CHARTER)
+            db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_raise_allows_reusing_an_archived_name(self):
         with _env() as db:
             db.list_experts.return_value = [
