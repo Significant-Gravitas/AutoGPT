@@ -22,7 +22,6 @@ import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { revealKickoffMessages } from "../../expertKickoff";
-import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
@@ -99,6 +98,11 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
+  /** The host's floating workspace-files card is open, so the header and
+   *  the column slide aside for it. Only the copilot chat mounts that card;
+   *  every other host (share viewer, memory and builder panels) leaves this
+   *  off, whatever the persisted panel state says. */
+  areFilesOpen?: boolean;
 }
 
 /**
@@ -298,6 +302,7 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
   hasFloatingControls = false,
+  areFilesOpen = false,
 }: Props) {
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
@@ -305,9 +310,6 @@ export function ChatMessagesContainer({
   );
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  // The workspace-files card floats over the column's right side, so the
-  // centred content slides left to make room for it.
-  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);

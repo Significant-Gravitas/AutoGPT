@@ -131,7 +131,8 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // The composer only slides aside while the floating files card is shown.
+  // The composer and the message column only slide aside while the floating
+  // files card is shown; this host is the one that mounts the card.
   const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
@@ -265,6 +266,7 @@ export const ChatContainer = ({
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
                   hasFloatingControls={hasFloatingControls}
+                  areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
