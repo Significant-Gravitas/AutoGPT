@@ -258,7 +258,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "handoff_to_expert": {
       // A teammate's thread is their own workspace: delegated cards stay
       // minimal (who, status, elapsed, link) — no response preview, no live
-      // step feed. Only the model's own run_sub_session shows its work here.
+      // step feed. Only the model's own run_sub_session shows its work here,
+      // and it always will: `expert` is written solely by the backend's
+      // apply_delegated_expert, which run_sub_session never calls (its subs
+      // are same-scope by construction, so the identity is None anyway).
       const delegated =
         row.tool === "delegate_to_expert" ||
         row.tool === "handoff_to_expert" ||
