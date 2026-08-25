@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import re
 from collections.abc import Awaitable
 from typing import Any, cast
 
@@ -31,6 +32,35 @@ _PENDING_QUEUE_OVERFLOW = "max pending queries exceeded"
 # one wait into minutes. At default settings total backoff stays well within the
 # warm-context timeout budget.
 _MAX_RETRY_DELAY_SECONDS = 2.0
+
+
+# Cypher clauses that mutate the graph. Deliberately CONSERVATIVE: anything
+# matching takes the write path, so a false positive merely preserves today's
+# behaviour, while a false negative would send a real write to RO_QUERY and
+# fail it. The runtime fallback below covers that case anyway.
+_WRITE_CLAUSE_RE = re.compile(
+    r"\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH)\b", re.IGNORECASE
+)
+
+# FalkorDB's error when the graph key does not exist yet.
+_EMPTY_KEY_ERROR = "invalid graph operation on empty key"
+
+# FalkorDB's error when a write is attempted through GRAPH.RO_QUERY.
+_RO_VIOLATION = "read-only"
+
+
+def _is_read_only_cypher(cypher_query_: str) -> bool:
+    """True when the query contains no mutating clause.
+
+    Read-only queries go to ``GRAPH.RO_QUERY``. This matters far more than
+    performance: ``GRAPH.QUERY`` MATERIALIZES THE GRAPH even for a pure MATCH,
+    so routing reads through it silently creates an empty, permanently
+    resident graph for every user merely looked at. That is what filled
+    FalkorDB to its maxmemory ceiling twice (2026-08-16 and again 2026-08-23,
+    the latter in a single weekly community-rebuild sweep: 91 -> 19,033
+    graphs, 100% of sampled ones empty).
+    """
+    return not _WRITE_CLAUSE_RE.search(cypher_query_ or "")
 
 
 def _is_pending_queue_overflow(exc: Exception) -> bool:
@@ -118,12 +148,39 @@ class AutoGPTFalkorDriver(FalkorDriver):
         # runtime call upstream ``FalkorDriver.execute_query`` makes.
         params = cast(dict[str, object], convert_datetimes_to_strings(dict(kwargs)))
         attempts = max(1, graphiti_config.falkordb_query_max_attempts)
+        read_only = _is_read_only_cypher(cypher_query_)
 
         for attempt in range(attempts):
             try:
-                result = await cast(Awaitable[Any], graph.query(cypher_query_, params))
+                if read_only:
+                    result = await cast(
+                        Awaitable[Any], graph.ro_query(cypher_query_, params)
+                    )
+                else:
+                    result = await cast(
+                        Awaitable[Any], graph.query(cypher_query_, params)
+                    )
                 return self._to_records(result)
             except Exception as e:
+                message = str(e).lower()
+                if read_only and _EMPTY_KEY_ERROR in message:
+                    # No graph for this group yet, which simply means no
+                    # memories. Return an empty result rather than raising —
+                    # and deliberately do NOT retry via ``graph.query``, since
+                    # that would materialize the graph and reintroduce the bug
+                    # this routing exists to prevent.
+                    return [], [], None
+                if read_only and _RO_VIOLATION in message:
+                    # The classifier called a write read-only. Degrade to the
+                    # write path rather than failing the caller, and log it so
+                    # the missing clause can be added to _WRITE_CLAUSE_RE.
+                    logger.warning(
+                        "Query classified read-only but rejected by RO_QUERY; "
+                        "retrying as a write. Query: %s",
+                        cypher_query_,
+                    )
+                    read_only = False
+                    continue
                 if "already indexed" in str(e):
                     _UPSTREAM_QUERY_LOGGER.info(f"Index already exists: {e}")
                     return None
