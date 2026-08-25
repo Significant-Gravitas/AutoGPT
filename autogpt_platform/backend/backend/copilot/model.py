@@ -1680,6 +1680,47 @@ async def update_session_title(
         return False
 
 
+async def update_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    """Move an existing chat onto a different connection, from the next turn.
+
+    The session's metadata is segment zero -- where the chat started, and the
+    answer for any turn that carries no stamp of its own. Changing it does not
+    rewrite history: turns already stamped keep the connection they ran on, so
+    a chat that hit a limit and continued elsewhere reads as what it was.
+
+    Written through the same cache the title update uses, because a stale
+    cached session would send the next turn back to the connection the user
+    just moved off.
+    """
+    try:
+        updated = await chat_db().update_chat_session_llm_route(
+            session_id, user_id, llm_auth_provider, llm_credential_id
+        )
+        if not updated:
+            return False
+
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.llm_auth_provider = llm_auth_provider
+                cached.metadata.llm_credential_id = llm_credential_id
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update route for session {session_id}: {e}")
+        return False
+
+
 async def update_session_pinned(
     session_id: str,
     user_id: str,
