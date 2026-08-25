@@ -8,7 +8,6 @@ import {
 import { environment } from "@/services/environment";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
-// Must match the "✍️ Signup" step of the DataFast "Site to Paid" funnel.
 const ACCOUNT_CREATED_GOAL = "signup";
 const DATAFAST_VISITOR_COOKIE = "datafast_visitor_id";
 const USER_CREATED_HEADER = "X-AutoGPT-User-Created";
@@ -58,18 +57,12 @@ export async function scheduleAccountCreatedGoal(method: SignupMethod) {
 
 const reportedConfigErrors = new Set<string>();
 
-/**
- * A missing or malformed key is one deploy-time mistake, not one failure per
- * signup. Report it once per server instance so a misconfiguration stays
- * visible without burying the project in thousands of identical events.
- */
 function reportConfigurationError(message: string) {
   if (reportedConfigErrors.has(message)) return;
   reportedConfigErrors.add(message);
   reportTrackingError(new Error(message));
 }
 
-/** Restores the once-per-instance reporting state between tests. */
 export function resetConfigErrorReportingForTests() {
   reportedConfigErrors.clear();
 }

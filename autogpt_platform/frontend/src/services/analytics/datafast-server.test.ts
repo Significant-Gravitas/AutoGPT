@@ -17,8 +17,6 @@ const VISITOR_ID = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd";
 describe("DataFast server-side account creation tracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Misconfiguration is reported once per server instance; give each test a
-    // clean instance so the assertions stay independent of test order.
     resetConfigErrorReportingForTests();
     vi.stubEnv("DATAFAST_API_KEY", "df_test");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
@@ -58,8 +56,6 @@ describe("DataFast server-side account creation tracking", () => {
           Authorization: "Bearer df_test",
           "Content-Type": "application/json",
         },
-        // The goal name has to match the "✍️ Signup" step of the DataFast
-        // "Site to Paid" funnel; any other name drops out of the funnel.
         body: JSON.stringify({
           datafast_visitor_id: VISITOR_ID,
           name: "signup",
