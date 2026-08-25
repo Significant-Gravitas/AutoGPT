@@ -46,8 +46,14 @@ _WRITE_CLAUSE_RE = re.compile(
 # FalkorDB's error when the graph key does not exist yet.
 _EMPTY_KEY_ERROR = "invalid graph operation on empty key"
 
-# FalkorDB's error when a write is attempted through GRAPH.RO_QUERY.
-_RO_VIOLATION = "read-only"
+# FalkorDB's error when a write is attempted through GRAPH.RO_QUERY:
+# "graph.RO_QUERY is to be executed only on read-only queries".
+#
+# Match the full phrase, not a bare "read-only" substring. A spurious match
+# would send a genuine READ down the write path and materialize the graph —
+# the exact bug this routing exists to prevent. Redis's own replica error says
+# "read only" with no hyphen, so it cannot collide with this.
+_RO_VIOLATION = "read-only quer"
 
 
 # Quoted string literals, and // or /* */ comments. Stripped before clause

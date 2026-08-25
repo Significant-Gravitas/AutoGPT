@@ -374,7 +374,9 @@ async def test_missing_graph_returns_empty_without_creating(
 @pytest.mark.asyncio
 async def test_ro_violation_falls_back_to_write(driver: AutoGPTFalkorDriver) -> None:
     """If the classifier is wrong, degrade to the write path rather than fail."""
-    ro = _set_ro_query(driver, Exception("ERR graph is read-only for this command"))
+    ro = _set_ro_query(
+        driver, Exception("graph.RO_QUERY is to be executed only on read-only queries")
+    )
     write = _set_query(driver, [_FakeResult([("x", "n")], [[1]])])
     await driver.execute_query("MATCH (n) RETURN count(n)")
     ro.assert_awaited_once()
@@ -409,7 +411,9 @@ async def test_ro_violation_on_final_attempt_still_writes(
     attempt would exit the loop having never issued the write, hitting the
     "unreachable" AssertionError.
     """
-    ro = _set_ro_query(driver, Exception("ERR graph is read-only for this command"))
+    ro = _set_ro_query(
+        driver, Exception("graph.RO_QUERY is to be executed only on read-only queries")
+    )
     write = _set_query(driver, [_FakeResult([("x", "n")], [[1]])])
     with patch(
         "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
@@ -430,8 +434,10 @@ async def test_ro_violation_on_final_attempt_still_writes(
         # graphiti-core builds all three fulltext indices this way. `\bCREATE\b`
         # does NOT match `createNodeIndex`, so these were classified read-only
         # and bounced off RO_QUERY on every new group's first write.
-        "CALL db.idx.fulltext.createNodeIndex({label: 'Episodic', stopwords: []},"
-        " 'content', 'source', 'source_description', 'group_id')",
+        (
+            "CALL db.idx.fulltext.createNodeIndex({label: 'Episodic', stopwords: []},"
+            " 'content', 'source', 'source_description', 'group_id')"
+        ),
         "CALL db.idx.fulltext.createNodeIndex({label: 'Entity'}, 'name')",
         "CALL db.idx.fulltext.createNodeIndex({label: 'Community'}, 'name')",
         "CALL db.idx.fulltext.drop('Entity')",
@@ -460,3 +466,20 @@ def test_clone_returns_subclass_with_indices_disabled() -> None:
     assert isinstance(cloned, AutoGPTFalkorDriver)
     assert cloned._build_indices_at_init is False
     assert driver.clone("user_a") is driver
+
+
+@pytest.mark.asyncio
+async def test_unrelated_readonly_wording_does_not_trigger_write_fallback(
+    driver: AutoGPTFalkorDriver,
+) -> None:
+    """A spurious RO-violation match would send a genuine READ down the write
+    path and materialize the graph. Redis's replica error ("read only", no
+    hyphen) must not be mistaken for FalkorDB's RO_QUERY rejection."""
+    ro = _set_ro_query(
+        driver, Exception("READONLY You can't write against a read only replica.")
+    )
+    write = _set_query(driver, [_FakeResult([("x", "n")], [[1]])])
+    with pytest.raises(Exception, match="read only replica"):
+        await driver.execute_query("MATCH (n) RETURN count(n)")
+    ro.assert_awaited()
+    write.assert_not_called()
