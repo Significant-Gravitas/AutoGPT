@@ -5,6 +5,7 @@ import re
 from collections.abc import Awaitable
 from typing import Any, cast
 
+from graphiti_core.driver.driver import GraphDriver
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.helpers import validate_group_ids
@@ -63,6 +64,19 @@ _CYPHER_NOISE_RE = re.compile(
 )
 
 
+# Procedure calls that WRITE but contain no standalone clause keyword, so
+# _WRITE_CLAUSE_RE alone misses them: `\bCREATE\b` does not match
+# `createNodeIndex` — there is no word boundary between "create" and "Node".
+# graphiti-core builds its three fulltext indices this way
+# (graphiti_core/graph_queries.py), so every one of them was classified
+# read-only and bounced off RO_QUERY on the first write for every new group.
+_WRITE_PROCEDURE_RE = re.compile(
+    r"\bdb\.idx\.fulltext\.(createNodeIndex|createRelationshipIndex|drop)\b"
+    r"|\bdb\.create\.",
+    re.IGNORECASE,
+)
+
+
 def _strip_cypher_noise(cypher_query_: str) -> str:
     """Blank out literals/comments so only real clause keywords remain."""
     return _CYPHER_NOISE_RE.sub(" ", cypher_query_ or "")
@@ -79,7 +93,8 @@ def _is_read_only_cypher(cypher_query_: str) -> bool:
     the latter in a single weekly community-rebuild sweep: 91 -> 19,033
     graphs, 100% of sampled ones empty).
     """
-    return not _WRITE_CLAUSE_RE.search(_strip_cypher_noise(cypher_query_))
+    text = _strip_cypher_noise(cypher_query_)
+    return not (_WRITE_CLAUSE_RE.search(text) or _WRITE_PROCEDURE_RE.search(text))
 
 
 def _is_pending_queue_overflow(exc: Exception) -> bool:
@@ -143,6 +158,25 @@ class AutoGPTFalkorDriver(FalkorDriver):
         """
         await super().build_indices_and_constraints()
 
+    def clone(self, database: str) -> "GraphDriver":
+        """Clone onto the SUBCLASS, never a plain upstream ``FalkorDriver``.
+
+        Upstream's ``clone()`` constructs a bare ``FalkorDriver``, which would
+        re-enable the init-time ``build_indices`` task (#14052) *and* route
+        every read back through ``graph.query`` — resurrecting both mass
+        graph-materialization bugs with no test covering it.
+
+        Not exercised today: every AutoGPT call site passes a single group_id.
+        graphiti-core clones only when ``group_id != driver._database`` or when
+        a search spans 2+ groups, so this is one line of insurance against a
+        future multi-group read.
+        """
+        if database == self._database:
+            return self
+        return AutoGPTFalkorDriver(
+            falkor_db=self.client, database=database, build_indices=False
+        )
+
     async def execute_query(
         self, cypher_query_, **kwargs
     ) -> tuple[list[dict[str, Any]], list[str], None] | None:
@@ -183,6 +217,21 @@ class AutoGPTFalkorDriver(FalkorDriver):
                     # and deliberately do NOT retry via ``graph.query``, since
                     # that would materialize the graph and reintroduce the bug
                     # this routing exists to prevent.
+                    #
+                    # CAVEAT: FalkorDB checks key existence BEFORE
+                    # read-only-ness, so a MISCLASSIFIED WRITE against a
+                    # missing graph lands here rather than in the RO-violation
+                    # branch below, and is silently dropped. The classifier
+                    # covers every write in graphiti-core and this repo today
+                    # (clause keywords + write procedures), but log the query
+                    # so a future novel write clause is traceable rather than
+                    # invisible. Debug level because a genuine read against a
+                    # group with no memories yet is entirely normal and common.
+                    logger.debug(
+                        "Read on a group with no graph yet; returning empty. "
+                        "Query: %s",
+                        cypher_query_,
+                    )
                     return [], [], None
                 if read_only and _RO_VIOLATION in message:
                     # The classifier called a write read-only. Degrade to the

@@ -419,3 +419,44 @@ async def test_ro_violation_on_final_attempt_still_writes(
     assert records == [{"n": 1}]
     ro.assert_awaited_once()
     write.assert_awaited_once()
+
+
+# --- guards for the fulltext index-creation writes -------------------------
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        # graphiti-core builds all three fulltext indices this way. `\bCREATE\b`
+        # does NOT match `createNodeIndex`, so these were classified read-only
+        # and bounced off RO_QUERY on every new group's first write.
+        "CALL db.idx.fulltext.createNodeIndex({label: 'Episodic', stopwords: []},"
+        " 'content', 'source', 'source_description', 'group_id')",
+        "CALL db.idx.fulltext.createNodeIndex({label: 'Entity'}, 'name')",
+        "CALL db.idx.fulltext.createNodeIndex({label: 'Community'}, 'name')",
+        "CALL db.idx.fulltext.drop('Entity')",
+    ],
+)
+def test_write_procedures_are_not_read_only(cypher) -> None:
+    assert fdb._is_read_only_cypher(cypher) is False
+
+
+def test_fulltext_query_procedure_stays_read_only() -> None:
+    """The search path must keep using RO_QUERY."""
+    assert (
+        fdb._is_read_only_cypher(
+            "CALL db.idx.fulltext.queryNodes('Entity', $query) YIELD node RETURN node"
+        )
+        is True
+    )
+
+
+def test_clone_returns_subclass_with_indices_disabled() -> None:
+    """Upstream clone() builds a plain FalkorDriver, which would re-enable the
+    init-time index task and route reads back through the creating path."""
+    driver = AutoGPTFalkorDriver(falkor_db=MagicMock())
+    driver._database = "user_a"
+    cloned = driver.clone("user_b")
+    assert isinstance(cloned, AutoGPTFalkorDriver)
+    assert cloned._build_indices_at_init is False
+    assert driver.clone("user_a") is driver
