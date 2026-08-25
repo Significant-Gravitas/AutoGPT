@@ -177,9 +177,16 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
         # unprovisioned — otherwise one successful heal buries its own signal
         # under ~19 tracebacks claiming it failed.
         if await prisma.user.find_unique(where={"id": user_id}) is not None:
-            logger.debug(
-                f"User {user_id} has a platform row despite the error — "
-                "not a provisioning failure"
+            # The row exists, so the account is not stranded — but this is not
+            # necessarily a clean lost race: we may have created the row and
+            # then failed inside ensure_personal_org. Keep the traceback at
+            # WARNING, which LoggingIntegration attaches as a breadcrumb
+            # without raising a Sentry event, so the detail survives without
+            # the ~19-per-heal noise that reporting it as an error caused.
+            logger.warning(
+                f"Provisioning for user {user_id} raised, but the platform row "
+                "exists; the caller's org bootstrap will finish or report",
+                exc_info=True,
             )
             return
         logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)

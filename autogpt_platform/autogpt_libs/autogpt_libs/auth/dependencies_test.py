@@ -788,6 +788,10 @@ class TestEnsurePlatformUserRaceLogging:
         await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
 
         logger.error.assert_not_called()
+        # The traceback still has to survive somewhere: WARNING is a Sentry
+        # breadcrumb, not an event, so the detail is kept without the noise.
+        logger.warning.assert_called_once()
+        assert logger.warning.call_args.kwargs.get("exc_info") is True
 
     @pytest.mark.asyncio
     async def test_genuine_failure_is_still_reported(self, mocker: MockerFixture):
