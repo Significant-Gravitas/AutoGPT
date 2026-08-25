@@ -12,21 +12,26 @@ export function SignIn({ users, error, onSignIn }: Props) {
     <main className="sign-in">
       <section className="sign-in-card">
         <div className="brand brand--login">
-          <span className="brand-mark">FD</span>
+          <span className="brand-mark">RF</span>
           <div>
-            <strong>forwarding digital</strong>
-            <small>Partner identity provider</small>
+            <strong>Relay Freight OS</strong>
+            <small>Secure partner workspace</small>
           </div>
         </div>
-        <p className="eyebrow">Multi-tenant integration</p>
-        <h1>Choose a Forwarding Digital user</h1>
+        <p className="eyebrow">Freight Operations Platform</p>
+        <h1>Choose Your Demo Workspace</h1>
         <p>
-          These are partner-owned identities. No AutoGPT sign-in is presented.
+          Continue with an existing host identity. The embedded assistant never
+          asks users to create a second account.
         </p>
         {error && <div className="error-banner">{error}</div>}
         <div className="user-list">
           {users.map((user) => (
-            <button key={user.id} onClick={() => void onSignIn(user.id)}>
+            <button
+              key={user.id}
+              type="button"
+              onClick={() => void onSignIn(user.id)}
+            >
               <span>{initials(user.name)}</span>
               <div>
                 <strong>{user.name}</strong>

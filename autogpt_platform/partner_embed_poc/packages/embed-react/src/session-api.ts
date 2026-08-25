@@ -1,4 +1,4 @@
-import type { AccessTokenProvider } from "./api";
+import { normalizeSameOriginApiBaseURL, type AccessTokenProvider } from "./api";
 
 export interface EmbedSessionSummary {
   id: string;
@@ -126,8 +126,9 @@ async function authorizedFetch(
   path: string,
   getAccessToken: AccessTokenProvider,
 ): Promise<Response> {
+  const baseURL = normalizeSameOriginApiBaseURL(apiBaseURL);
   const token = await getAccessToken();
-  const response = await fetch(apiBaseURL.replace(/\/+$/, "") + path, {
+  const response = await fetch(baseURL + path, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {

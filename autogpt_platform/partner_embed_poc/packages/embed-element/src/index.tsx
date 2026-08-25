@@ -3,6 +3,7 @@ import "@autogpt/embedded-chat/styles.css";
 import { createRoot, type Root } from "react-dom/client";
 
 export type AccessTokenProvider = () => Promise<string>;
+export type SuggestedPrompts = string[];
 
 const DEFAULT_TAG_NAME = "autogpt-embedded-chat";
 
@@ -19,13 +20,19 @@ export class AutoGPTEmbeddedChatElement extends HTMLElement {
 
   private reactRoot: Root | undefined;
   private tokenProvider: AccessTokenProvider | undefined;
-
-  get accessTokenProvider(): AccessTokenProvider | undefined {
-    return this.tokenProvider;
-  }
+  private promptSuggestions: SuggestedPrompts = [];
 
   set accessTokenProvider(value: AccessTokenProvider | undefined) {
     this.tokenProvider = value;
+    this.renderChat();
+  }
+
+  get suggestedPrompts(): SuggestedPrompts {
+    return this.promptSuggestions;
+  }
+
+  set suggestedPrompts(value: SuggestedPrompts) {
+    this.promptSuggestions = Array.isArray(value) ? value : [];
     this.renderChat();
   }
 
@@ -63,6 +70,16 @@ export class AutoGPTEmbeddedChatElement extends HTMLElement {
         artifactsEnabled={this.getAttribute("artifacts-enabled") !== "false"}
         brandName={this.getAttribute("brand-name") ?? "AI assistant"}
         getAccessToken={this.tokenProvider}
+        onNavigate={(href) =>
+          this.dispatchEvent(
+            new CustomEvent("autogpt-navigate", {
+              bubbles: true,
+              composed: true,
+              detail: { href },
+            }),
+          )
+        }
+        suggestedPrompts={this.promptSuggestions}
         title={this.getAttribute("chat-title") ?? "Assistant"}
         sessionsEnabled={this.getAttribute("sessions-enabled") !== "false"}
       />,

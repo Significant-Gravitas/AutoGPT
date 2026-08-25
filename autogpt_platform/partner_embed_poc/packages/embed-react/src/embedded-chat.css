@@ -1,15 +1,27 @@
 .agpt-embed {
-  --agpt-embed-background: #f7f8f7;
-  --agpt-embed-foreground: #17221c;
-  --agpt-embed-surface: #ffffff;
-  --agpt-embed-surface-muted: #eef2ef;
-  --agpt-embed-accent: #087f5b;
-  --agpt-embed-accent-foreground: #ffffff;
-  --agpt-embed-border: #dce6df;
-  --agpt-embed-danger: #a53030;
-  --agpt-embed-radius: 18px;
-  --agpt-embed-font: Inter, ui-sans-serif, system-ui, sans-serif;
-  --agpt-embed-shadow: 0 20px 60px rgb(22 48 34 / 12%);
+  --agpt-embed-background: var(--autogpt-embed-background, #f7f8f7);
+  --agpt-embed-foreground: var(--autogpt-embed-foreground, #17221c);
+  --agpt-embed-surface: var(--autogpt-embed-surface, #ffffff);
+  --agpt-embed-surface-muted: var(--autogpt-embed-surface-muted, #eef2ef);
+  --agpt-embed-accent: var(--autogpt-embed-accent, #087f5b);
+  --agpt-embed-accent-foreground: var(
+    --autogpt-embed-accent-foreground,
+    #ffffff
+  );
+  --agpt-embed-border: var(--autogpt-embed-border, #dce6df);
+  --agpt-embed-danger: var(--autogpt-embed-danger, #a53030);
+  --agpt-embed-radius: var(--autogpt-embed-radius, 18px);
+  --agpt-embed-font: var(
+    --autogpt-embed-font,
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    sans-serif
+  );
+  --agpt-embed-shadow: var(
+    --autogpt-embed-shadow,
+    0 20px 60px rgb(22 48 34 / 12%)
+  );
   background: var(--agpt-embed-background);
   border: 1px solid var(--agpt-embed-border);
   border-radius: var(--agpt-embed-radius);
@@ -19,11 +31,11 @@
   font-family: var(--agpt-embed-font);
   grid-template-rows: auto minmax(0, 1fr);
   container-type: inline-size;
-  height: min(760px, calc(100dvh - 32px));
-  min-height: 560px;
+  height: var(--autogpt-embed-height, min(760px, calc(100dvh - 32px)));
+  min-height: var(--autogpt-embed-min-height, 560px);
   overflow: hidden;
   position: relative;
-  width: min(100%, 960px);
+  width: var(--autogpt-embed-width, min(100%, 960px));
 }
 
 .agpt-embed[data-appearance="dark"] {
@@ -137,8 +149,7 @@
 }
 
 .agpt-embed__body {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  display: block;
   min-height: 0;
   position: relative;
 }
@@ -146,10 +157,17 @@
 .agpt-embed__sessions {
   background: var(--agpt-embed-surface);
   border-right: 1px solid var(--agpt-embed-border);
+  bottom: 0;
+  box-shadow: 18px 0 48px rgb(0 0 0 / 20%);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  left: 0;
+  max-width: min(86%, 320px);
   min-width: 0;
   padding: 14px 10px;
+  position: absolute;
+  top: 0;
+  width: 100%;
   z-index: 3;
 }
 
@@ -161,7 +179,7 @@
 }
 
 .agpt-embed__panel-header button {
-  display: none;
+  display: inline-flex;
 }
 
 .agpt-embed__new-chat {
@@ -261,6 +279,28 @@
   display: block;
   font-size: 17px;
   margin-bottom: 8px;
+}
+
+.agpt-embed__suggestions {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.agpt-embed__suggestions button {
+  background: var(--agpt-embed-surface);
+  border: 1px solid var(--agpt-embed-border);
+  border-radius: 10px;
+  color: var(--agpt-embed-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.agpt-embed__suggestions button:hover {
+  border-color: var(--agpt-embed-accent);
 }
 
 .agpt-embed__empty p {
@@ -605,35 +645,11 @@
 @media (max-width: 700px) {
   .agpt-embed {
     border-radius: min(var(--agpt-embed-radius), 16px);
-    height: min(740px, calc(100dvh - 20px));
-    min-height: 500px;
+    height: var(--autogpt-embed-height, min(740px, calc(100dvh - 20px)));
+    min-height: var(--autogpt-embed-min-height, 500px);
   }
   .agpt-embed__status {
     display: none;
-  }
-
-  .agpt-embed__body {
-    display: block;
-  }
-
-  .agpt-embed__sessions {
-    bottom: 0;
-    box-shadow: 18px 0 48px rgb(0 0 0 / 20%);
-    left: 0;
-    max-width: min(86%, 300px);
-    position: absolute;
-    top: 0;
-    transform: translateX(-105%);
-    transition: transform 180ms ease;
-    width: 100%;
-  }
-
-  .agpt-embed__sessions[data-state="open"] {
-    transform: translateX(0);
-  }
-
-  .agpt-embed__panel-header button {
-    display: inline-flex;
   }
 
   .agpt-embed__main {
@@ -663,30 +679,6 @@
   .agpt-embed__status {
     display: none;
   }
-  .agpt-embed__body {
-    display: block;
-  }
-
-  .agpt-embed__sessions {
-    bottom: 0;
-    box-shadow: 18px 0 48px rgb(0 0 0 / 20%);
-    left: 0;
-    max-width: min(86%, 300px);
-    position: absolute;
-    top: 0;
-    transform: translateX(-105%);
-    transition: transform 180ms ease;
-    width: 100%;
-  }
-
-  .agpt-embed__sessions[data-state="open"] {
-    transform: translateX(0);
-  }
-
-  .agpt-embed__panel-header button {
-    display: inline-flex;
-  }
-
   .agpt-embed__main {
     height: 100%;
   }

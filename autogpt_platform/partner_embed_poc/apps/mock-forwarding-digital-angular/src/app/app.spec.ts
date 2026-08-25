@@ -3,7 +3,7 @@ import { vi } from "vitest";
 
 import { App } from "./app";
 
-describe("Angular Forwarding Digital host", () => {
+describe("Angular Portside Cloud host", () => {
   beforeEach(async () => {
     vi.stubGlobal(
       "fetch",
@@ -44,7 +44,7 @@ describe("Angular Forwarding Digital host", () => {
       expect(fixture.nativeElement.textContent).toContain("Alex Morgan");
     });
     expect(fixture.nativeElement.textContent).toContain(
-      "AutoGPT never asks for a second login",
+      "embedded assistant never asks users to create a second account",
     );
   });
 });

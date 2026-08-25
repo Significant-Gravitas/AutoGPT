@@ -144,9 +144,11 @@ export function AssistantPanel() {
   return (
     <AutoGPTEmbeddedChat
       apiBaseURL=""
-      brandName="Forwarding Digital"
+      brandName="Relay Freight AI"
       getAccessToken={getAccessToken}
-      title="Forwarding Assistant"
+      onNavigate={(href) => navigateInsideHost(href)}
+      suggestedPrompts={["Summarize today's shipment exceptions."]}
+      title="Operations Copilot"
     />
   );
 }
@@ -170,14 +172,18 @@ export class App {
 ```html
 <autogpt-embedded-chat
   api-base-url=""
-  brand-name="Forwarding Digital"
-  chat-title="Forwarding Assistant"
+  brand-name="Portside Intelligence"
+  chat-title="Freight Copilot"
   tenant-key="partner-user:partner-account"
   [accessTokenProvider]="accessTokenProvider"
+  [suggestedPrompts]="suggestedPrompts"
+  (autogpt-navigate)="handleAssistantNavigation($event)"
 ></autogpt-embedded-chat>
 ```
 
-The callback is invoked for session creation and every chat turn, so the host can refresh short-lived tokens without exposing partner signing keys to the browser. The `apiBaseURL` can be empty for a same-origin BFF or point at an explicitly allowed API origin.
+The callback is invoked for session creation and every chat turn, so the host can refresh short-lived tokens without exposing partner signing keys to the browser. The `apiBaseURL` can be empty or use a same-origin BFF path; cross-origin bearer transport is rejected.
+
+`suggestedPrompts` lets each host placement offer contextual starting points without auto-submitting a turn. React hosts receive assistant links through `onNavigate`; the custom element emits the bubbling `autogpt-navigate` event with `detail.href`. The host owns that navigation, so relative agent and artifact links never escape into an unrelated partner route.
 
 ### Theming and feature switches
 
@@ -202,13 +208,18 @@ The custom element exposes the same switches without framework coupling:
 
 - `appearance`, `sessions-enabled`, and `artifacts-enabled` configure presentation.
 - `api-base-url`, `brand-name`, `chat-title`, and `tenant-key` configure the host integration and remount boundary.
+- `api-base-url` must be empty or same-origin. Keep bearer-token exchange behind the host application's BFF instead of sending embed tokens directly to another origin.
 
-Both packages accept `--agpt-embed-background`, `--agpt-embed-foreground`, `--agpt-embed-surface`, `--agpt-embed-surface-muted`, `--agpt-embed-accent`, `--agpt-embed-accent-foreground`, `--agpt-embed-border`, `--agpt-embed-danger`, `--agpt-embed-radius`, `--agpt-embed-font`, and `--agpt-embed-shadow` CSS variables.
+Both packages accept public `--autogpt-embed-*` CSS variables for the semantic colors, font, radius, shadow, height, minimum height, and width. These tokens inherit through the custom element without Angular- or framework-specific selectors.
 
 ```css
 autogpt-embedded-chat {
-  --agpt-embed-accent: #005b96;
-  --agpt-embed-radius: 12px;
+  --autogpt-embed-accent: #dd5b2e;
+  --autogpt-embed-background: #f8f5f2;
+  --autogpt-embed-radius: 12px;
+  --autogpt-embed-height: 100%;
+  --autogpt-embed-min-height: 0px;
+  --autogpt-embed-width: 100%;
 }
 ```
 

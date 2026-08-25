@@ -13,7 +13,7 @@ export function SyncPanel({ mapping, syncing, onSync }: Props) {
       <div className="panel-heading">
         <div>
           <p>Identity bridge</p>
-          <h2>AutoGPT tenant mapping</h2>
+          <h2>AI workspace mapping</h2>
         </div>
         <span className={mapping ? "sync-status synced" : "sync-status"}>
           {mapping ? "Synced" : "Not synced"}
@@ -46,7 +46,7 @@ export function SyncPanel({ mapping, syncing, onSync }: Props) {
         </p>
       )}
       <button disabled={syncing} onClick={() => void onSync()}>
-        {syncing ? "Syncing…" : mapping ? "Refresh mapping" : "Sync to AutoGPT"}
+        {syncing ? "Syncing…" : mapping ? "Refresh mapping" : "Sync Workspace"}
       </button>
     </section>
   );

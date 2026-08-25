@@ -1,6 +1,6 @@
 import { DefaultChatTransport, type UIMessage } from "ai";
 
-import type { AccessTokenProvider } from "./api";
+import { normalizeSameOriginApiBaseURL, type AccessTokenProvider } from "./api";
 
 interface CreateEmbeddedTransportArgs {
   apiBaseURL: string;
@@ -13,7 +13,8 @@ export function createEmbeddedTransport({
   sessionID,
   getAccessToken,
 }: CreateEmbeddedTransportArgs) {
-  const api = `${apiBaseURL.replace(/\/+$/, "")}/api/embed/v1/sessions/${sessionID}/stream`;
+  const baseURL = normalizeSameOriginApiBaseURL(apiBaseURL);
+  const api = `${baseURL}/api/embed/v1/sessions/${sessionID}/stream`;
   return new DefaultChatTransport<UIMessage>({
     api,
     prepareSendMessagesRequest: async ({ messages }) => {

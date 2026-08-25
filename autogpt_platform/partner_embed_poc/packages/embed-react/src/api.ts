@@ -5,18 +5,35 @@ export interface EmbedSession {
 
 export type AccessTokenProvider = () => Promise<string>;
 
+export function normalizeSameOriginApiBaseURL(apiBaseURL: string): string {
+  const normalized = apiBaseURL.trim().replace(/\/+$/, "");
+  if (!normalized) return "";
+
+  const location = globalThis.location;
+  if (!location || location.origin === "null") {
+    if (normalized.startsWith("/") && !normalized.startsWith("//")) {
+      return normalized;
+    }
+    throw new Error("Embedded chat API must use the host page origin");
+  }
+
+  const resolved = new URL(normalized, location.href);
+  if (resolved.origin !== location.origin) {
+    throw new Error("Embedded chat API must use the host page origin");
+  }
+  return normalized.startsWith("/") ? normalized : resolved.href;
+}
+
 export async function createEmbedSession(
   apiBaseURL: string,
   getAccessToken: AccessTokenProvider,
 ): Promise<EmbedSession> {
+  const baseURL = normalizeSameOriginApiBaseURL(apiBaseURL);
   const token = await getAccessToken();
-  const response = await fetch(
-    `${apiBaseURL.replace(/\/+$/, "")}/api/embed/v1/sessions`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const response = await fetch(`${baseURL}/api/embed/v1/sessions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!response.ok) {
     throw new Error(`Unable to create embedded chat (${response.status})`);
   }

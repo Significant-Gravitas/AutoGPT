@@ -20,22 +20,16 @@ describe("createEmbedSession", () => {
     vi.stubGlobal("fetch", fetchMock);
     const getAccessToken = vi.fn().mockResolvedValue("embed-token");
 
-    const session = await createEmbedSession(
-      "http://localhost:8006/",
-      getAccessToken,
-    );
+    const session = await createEmbedSession("", getAccessToken);
 
     expect(session).toEqual({
       id: "session-1",
       createdAt: "2026-08-24T12:00:00+00:00",
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8006/api/embed/v1/sessions",
-      {
-        method: "POST",
-        headers: { Authorization: "Bearer embed-token" },
-      },
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/embed/v1/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer embed-token" },
+    });
   });
 
   it("does not hide a rejected embed token", async () => {
@@ -44,8 +38,17 @@ describe("createEmbedSession", () => {
       vi.fn().mockResolvedValue(new Response("Unauthorized", { status: 401 })),
     );
 
+    await expect(createEmbedSession("", async () => "expired")).rejects.toThrow(
+      "Unable to create embedded chat (401)",
+    );
+  });
+
+  it("rejects a cross-origin API before requesting a bearer token", async () => {
+    const getAccessToken = vi.fn().mockResolvedValue("embed-token");
+
     await expect(
-      createEmbedSession("http://localhost:8006", async () => "expired"),
-    ).rejects.toThrow("Unable to create embedded chat (401)");
+      createEmbedSession("https://attacker.example", getAccessToken),
+    ).rejects.toThrow("Embedded chat API must use the host page origin");
+    expect(getAccessToken).not.toHaveBeenCalled();
   });
 });

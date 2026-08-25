@@ -49,6 +49,8 @@ export interface AutoGPTEmbeddedChatProps {
   sessionsEnabled?: boolean;
   artifactsEnabled?: boolean;
   appearance?: "light" | "dark";
+  suggestedPrompts?: string[];
+  onNavigate?: (href: string) => void;
 }
 
 export function AutoGPTEmbeddedChat({
@@ -60,7 +62,10 @@ export function AutoGPTEmbeddedChat({
   sessionsEnabled = true,
   artifactsEnabled = true,
   appearance = "light",
+  suggestedPrompts = [],
+  onNavigate,
 }: AutoGPTEmbeddedChatProps) {
+  const navigationID = useId();
   const [sessions, setSessions] = useState<EmbedSessionSummary[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [detail, setDetail] = useState<EmbedSessionDetail | null>(null);
@@ -200,7 +205,10 @@ export function AutoGPTEmbeddedChat({
         <button
           type="button"
           className="agpt-embed__icon-button"
-          aria-label="Open chat sessions"
+          aria-controls={navigationID}
+          aria-label={
+            navigationOpen ? "Close chat sessions" : "Open chat sessions"
+          }
           aria-expanded={navigationOpen}
           onClick={() => setNavigationOpen((open) => !open)}
           hidden={!sessionsEnabled}
@@ -216,6 +224,7 @@ export function AutoGPTEmbeddedChat({
             <ArtifactPanel
               artifacts={artifacts}
               isOpen={artifactsOpen}
+              title={title}
               onToggle={() => setArtifactsOpen((open) => !open)}
               onDownload={(artifact) => {
                 if (!selectedID) return;
@@ -238,8 +247,9 @@ export function AutoGPTEmbeddedChat({
       </header>
 
       <div className="agpt-embed__body">
-        {sessionsEnabled ? (
+        {sessionsEnabled && navigationOpen ? (
           <SessionNavigation
+            id={navigationID}
             sessions={sessions}
             selectedID={selectedID}
             isOpen={navigationOpen}
@@ -266,6 +276,8 @@ export function AutoGPTEmbeddedChat({
               detail={detail}
               getAccessToken={() => tokenProviderRef.current()}
               title={title}
+              suggestedPrompts={suggestedPrompts}
+              onNavigate={onNavigate}
               onFinish={() => void refreshAfterTurn()}
             />
           ) : (
@@ -282,6 +294,8 @@ interface SessionChatProps {
   detail: EmbedSessionDetail;
   getAccessToken: () => Promise<string>;
   title: string;
+  suggestedPrompts: string[];
+  onNavigate?: (href: string) => void;
   onFinish: () => void;
 }
 
@@ -290,10 +304,12 @@ function SessionChat({
   detail,
   getAccessToken,
   title,
+  suggestedPrompts,
+  onNavigate,
   onFinish,
 }: SessionChatProps) {
   const composerID = useId();
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
   const { messages, sendMessage, stop, status, error } = useSessionChat({
     apiBaseURL,
@@ -306,7 +322,8 @@ function SessionChat({
   const messageSegments = visibleMessageSegments(messages);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
+    const messageList = messagesRef.current;
+    if (messageList) messageList.scrollTop = messageList.scrollHeight;
   }, [messages, status]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -331,6 +348,7 @@ function SessionChat({
   return (
     <>
       <div
+        ref={messagesRef}
         className="agpt-embed__messages"
         data-slot="conversation"
         role="log"
@@ -338,7 +356,11 @@ function SessionChat({
         aria-busy={isBusy}
       >
         {messageSegments.length === 0 ? (
-          <EmptyState />
+          <EmptyState
+            title={title}
+            suggestedPrompts={suggestedPrompts}
+            onSelectPrompt={setDraft}
+          />
         ) : (
           messageSegments.map(({ message, parts, showLabel }) => (
             <NativeMessage
@@ -346,21 +368,22 @@ function SessionChat({
               message={message}
               parts={parts}
               showLabel={showLabel}
+              title={title}
+              onNavigate={onNavigate}
             />
           ))
         )}
         {isBusy ? (
           <div className="agpt-embed__working" data-state={status}>
             <span aria-hidden="true" />
-            AutoPilot is working
+            {title} is working
           </div>
         ) : null}
-        <div ref={endRef} />
       </div>
 
       {error ? (
         <p className="agpt-embed__error" role="alert">
-          {error.message}
+          {chatErrorMessage(error)}
         </p>
       ) : null}
 
@@ -372,10 +395,12 @@ function SessionChat({
         <label htmlFor={composerID}>Message {title}</label>
         <textarea
           id={composerID}
+          autoComplete="off"
+          name="message"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask AutoPilot about jobs, reports, documents, or exceptions…"
+          placeholder={`Ask ${title} about jobs, reports, documents, or exceptions…`}
           rows={2}
         />
         <div className="agpt-embed__actions">
@@ -397,9 +422,17 @@ interface NativeMessageProps {
   message: UIMessage;
   parts: UIMessage["parts"];
   showLabel: boolean;
+  title: string;
+  onNavigate?: (href: string) => void;
 }
 
-function NativeMessage({ message, parts, showLabel }: NativeMessageProps) {
+function NativeMessage({
+  message,
+  parts,
+  showLabel,
+  title,
+  onNavigate,
+}: NativeMessageProps) {
   return (
     <article
       className="agpt-embed__message"
@@ -408,12 +441,16 @@ function NativeMessage({ message, parts, showLabel }: NativeMessageProps) {
     >
       {showLabel ? (
         <span className="agpt-embed__message-label">
-          {message.role === "user" ? "You" : "AutoPilot"}
+          {message.role === "user" ? "You" : title}
         </span>
       ) : null}
       <div className="agpt-embed__message-content">
         {parts.map((part, index) => (
-          <MessagePart key={partKey(part, index)} part={part} />
+          <MessagePart
+            key={partKey(part, index)}
+            part={part}
+            onNavigate={onNavigate}
+          />
         ))}
       </div>
     </article>
@@ -449,11 +486,40 @@ function isRenderablePart(part: UIMessage["parts"][number]): boolean {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
 }
 
-function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
+interface MessagePartProps {
+  part: UIMessage["parts"][number];
+  onNavigate?: (href: string) => void;
+}
+
+function MessagePart({ part, onNavigate }: MessagePartProps) {
   if (part.type === "text") {
     return (
       <div className="agpt-embed__prose" data-slot="message-markdown">
-        <ReactMarkdown disallowedElements={["img"]} remarkPlugins={[remarkGfm]}>
+        <ReactMarkdown
+          components={{
+            a({ href, children, ...props }) {
+              if (!href) return <span>{children}</span>;
+              const external = /^https?:\/\//i.test(href);
+              return (
+                <a
+                  {...props}
+                  href={href}
+                  rel={external ? "noreferrer" : undefined}
+                  target={external ? "_blank" : undefined}
+                  onClick={(event) => {
+                    if (!onNavigate) return;
+                    event.preventDefault();
+                    onNavigate(href);
+                  }}
+                >
+                  {children}
+                </a>
+              );
+            },
+          }}
+          disallowedElements={["img"]}
+          remarkPlugins={[remarkGfm]}
+        >
           {part.text}
         </ReactMarkdown>
       </div>
@@ -502,6 +568,7 @@ function MessagePart({ part }: { part: UIMessage["parts"][number] }) {
 }
 
 interface SessionNavigationProps {
+  id: string;
   sessions: EmbedSessionSummary[];
   selectedID: string | null;
   isOpen: boolean;
@@ -512,6 +579,7 @@ interface SessionNavigationProps {
 }
 
 function SessionNavigation({
+  id,
   sessions,
   selectedID,
   isOpen,
@@ -522,6 +590,7 @@ function SessionNavigation({
 }: SessionNavigationProps) {
   return (
     <nav
+      id={id}
       className="agpt-embed__sessions"
       data-slot="session-navigation"
       data-state={isOpen ? "open" : "closed"}
@@ -558,7 +627,7 @@ function SessionNavigation({
         ))}
       </div>
       <p className="agpt-embed__capabilities">
-        {blockCount} AutoGPT {blockCount === 1 ? "block" : "blocks"} enabled
+        {blockCount} automation {blockCount === 1 ? "block" : "blocks"} enabled
       </p>
     </nav>
   );
@@ -567,6 +636,7 @@ function SessionNavigation({
 interface ArtifactPanelProps {
   artifacts: EmbedArtifact[];
   isOpen: boolean;
+  title: string;
   onToggle: () => void;
   onDownload: (artifact: EmbedArtifact) => void;
 }
@@ -574,6 +644,7 @@ interface ArtifactPanelProps {
 function ArtifactPanel({
   artifacts,
   isOpen,
+  title,
   onToggle,
   onDownload,
 }: ArtifactPanelProps) {
@@ -595,7 +666,7 @@ function ArtifactPanel({
       </button>
       <div className="agpt-embed__artifact-content">
         {artifacts.length === 0 ? (
-          <p>Files created by AutoPilot in this chat will appear here.</p>
+          <p>Files created by {title} in this chat will appear here.</p>
         ) : (
           artifacts.map((artifact) => (
             <article key={artifact.id} data-slot="artifact-card">
@@ -617,14 +688,37 @@ function ArtifactPanel({
   );
 }
 
-function EmptyState() {
+interface EmptyStateProps {
+  title: string;
+  suggestedPrompts: string[];
+  onSelectPrompt: (prompt: string) => void;
+}
+
+function EmptyState({
+  title,
+  suggestedPrompts,
+  onSelectPrompt,
+}: EmptyStateProps) {
   return (
     <div className="agpt-embed__empty">
-      <strong>What would you like AutoPilot to do?</strong>
+      <strong>What would you like {title} to do?</strong>
       <p>
         Review arrivals, investigate exceptions, run an enabled block, or create
         a document.
       </p>
+      {suggestedPrompts.length > 0 ? (
+        <div className="agpt-embed__suggestions" aria-label="Suggested prompts">
+          {suggestedPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => onSelectPrompt(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -718,4 +812,21 @@ function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Unable to load embedded chat";
+}
+
+function chatErrorMessage(error: Error): string {
+  let detail = error.message.trim();
+  try {
+    const parsed = JSON.parse(detail) as { detail?: unknown };
+    if (typeof parsed.detail === "string") detail = parsed.detail;
+  } catch {}
+  if (/daily usage limit/i.test(detail)) {
+    const reset = detail.match(/resets?\s+in\s+[^.]+/i)?.[0];
+    return `The demo AI provider has reached its usage limit. ${
+      reset
+        ? `${reset[0].toUpperCase()}${reset.slice(1)}.`
+        : "Try again later or contact the demo host."
+    }`;
+  }
+  return detail || "The assistant could not complete this request. Try again.";
 }

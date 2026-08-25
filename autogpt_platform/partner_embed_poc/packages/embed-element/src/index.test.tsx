@@ -30,13 +30,26 @@ describe("AutoGPTEmbeddedChatElement", () => {
     );
   });
 
-  it("exposes a typed token-provider property", () => {
+  it("accepts a write-only token-provider property", () => {
     const element = new AutoGPTEmbeddedChatElement();
     const provider = async () => "token";
 
+    const descriptor = Object.getOwnPropertyDescriptor(
+      AutoGPTEmbeddedChatElement.prototype,
+      "accessTokenProvider",
+    );
+
     element.accessTokenProvider = provider;
 
-    expect(element.accessTokenProvider).toBe(provider);
+    expect(descriptor?.set).toEqual(expect.any(Function));
+    expect(descriptor?.get).toBeUndefined();
+  });
+
+  it("exposes host-provided prompt suggestions", () => {
+    const element = new AutoGPTEmbeddedChatElement();
+    element.suggestedPrompts = ["Review today's exceptions"];
+
+    expect(element.suggestedPrompts).toEqual(["Review today's exceptions"]);
   });
 
   it("observes public branding and tenant attributes", () => {
