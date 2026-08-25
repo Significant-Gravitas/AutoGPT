@@ -23,7 +23,17 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { revealKickoffMessages } from "../../expertKickoff";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import { getTurnMessages, parseSpecialMarkers } from "./helpers";
+import {
+  getLastCompactionCallId,
+  getLatestCompactionPhase,
+  getLatestCompactionStats,
+  getTurnMessages,
+  parseSpecialMarkers,
+} from "./helpers";
+import {
+  getLatestAssistantStatusMessage,
+  isBookkeepingPart,
+} from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
@@ -337,15 +347,9 @@ export function ChatMessagesContainer({
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
-    // data-status is transient copy for the Thinking indicator; neither
-    // counts as "real" content that hides the indicator.
-    const parts = lastMessage.parts.filter(
-      (p) =>
-        p.type !== "data-cursor" &&
-        p.type !== "data-status" &&
-        p.type !== "data-dream-operations",
-    );
+    // Ignore bookkeeping parts — none of them counts as "real" content that
+    // hides the Thinking indicator. See `isBookkeepingPart` for the list.
+    const parts = lastMessage.parts.filter((p) => !isBookkeepingPart(p));
     if (parts.length === 0) return false;
 
     const lastPart = parts[parts.length - 1];
@@ -380,21 +384,17 @@ export function ChatMessagesContainer({
   // the Thinking indicator is up — but only if it wasn't invalidated by a
   // more recent content part (in which case the model has moved on and the
   // status is stale).
-  const latestStatusMessage = (() => {
-    if (lastMessage?.role !== "assistant") return null;
-    for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
-      const part = lastMessage.parts[i];
-      if (part.type === "data-cursor") continue;
-      if (part.type === "data-dream-operations") continue;
-      if (part.type === "data-status") {
-        const data = (part as { data?: { message?: unknown } }).data;
-        return typeof data?.message === "string" ? data.message : null;
-      }
-      // Any other part = the model has produced output past the status.
-      return null;
-    }
-    return null;
-  })();
+  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+
+  // A live compaction narrates itself via CompactionCard — the generic
+  // Thinking indicator must not stack a second spinner and timer under it.
+  // The `rebuilding` phase arrives after the tool row has already closed,
+  // so `hasInflight` alone cannot cover that window.
+  const liveCompactionPhase =
+    isActivelyStreaming && lastMessage?.role === "assistant"
+      ? getLatestCompactionPhase(lastMessage.parts)
+      : null;
 
   // Suppressed during active-session restore so the ThinkingIndicator and
   // the "Retrieving latest messages" spinner can't both render — the
@@ -402,8 +402,8 @@ export function ChatMessagesContainer({
   // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
   const showThinking =
     !isRestoringActiveSession &&
+    liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
-  const isActivelyStreaming = status === "streaming" || status === "submitted";
   const { elapsedSeconds } = useElapsedTimer(
     isActivelyStreaming,
     activeStreamStartedAt,
@@ -535,12 +535,33 @@ export function ChatMessagesContainer({
               isAssistant &&
               messageIndex <= messages.length - 1 &&
               (!nextMessage || nextMessage.role === "user");
-            // data-cursor / data-status parts are internal bookkeeping —
-            // strip them before any render/split logic so they never reach
-            // the user UI. data-status surfaces via ThinkingIndicator.
+            // Bookkeeping parts are stripped before any render/split logic so
+            // they never reach the user UI, and so one landing between two
+            // tool calls can't split a chain. data-status surfaces via
+            // ThinkingIndicator; data-compaction via CompactionCard.
             const renderableParts = message.parts.filter(
-              (p) => p.type !== "data-cursor" && p.type !== "data-status",
+              (p) => !isBookkeepingPart(p),
             );
+            // Only a message that is actively streaming can have a live
+            // compaction phase — a stopped or failed turn must not leave an
+            // eternal progress bar. Replayed/settled messages never carry
+            // `data-compaction` parts, so they derive null either way.
+            const compactionPhase = isCurrentlyStreaming
+              ? getLatestCompactionPhase(message.parts)
+              : null;
+            // The phase belongs to the LAST compaction row only; earlier
+            // (settled) rows in the same message stay settled.
+            const liveCompactionCallId =
+              compactionPhase !== null
+                ? getLastCompactionCallId(message.parts)
+                : null;
+            // Stats streamed on the `data-compaction` parts pace the live
+            // progress curve while the tool row is still open (its own
+            // output stats only exist once it closes).
+            const liveCompactionStats =
+              compactionPhase !== null
+                ? getLatestCompactionStats(message.parts)
+                : undefined;
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
                 p.type === "text",
@@ -590,6 +611,9 @@ export function ChatMessagesContainer({
                       fileUrlBuilder={fileUrlBuilder}
                       forceArtifacts={readOnly}
                       readOnly={readOnly}
+                      compactionPhase={compactionPhase}
+                      liveCompactionCallId={liveCompactionCallId}
+                      liveCompactionStats={liveCompactionStats}
                     />
                   ) : (
                     <UserMessageClamp>
@@ -602,6 +626,10 @@ export function ChatMessagesContainer({
                           fileUrlBuilder={fileUrlBuilder}
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
+                          compactionPhase={compactionPhase}
+                          liveCompactionCallId={liveCompactionCallId}
+                          liveCompactionStats={liveCompactionStats}
+                          isCurrentlyStreaming={isCurrentlyStreaming}
                         />
                       ))}
                     </UserMessageClamp>

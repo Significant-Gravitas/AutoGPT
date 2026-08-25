@@ -1,7 +1,14 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
-import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ArtifactRef } from "../../store";
+import {
+  COMPACTION_DATA_PART_TYPE,
+  readCompactionStats,
+  type CompactionPhase,
+  type CompactionStats,
+} from "../CompactionCard/helpers";
+import { COMPACTION_PART_TYPE } from "../ToolChain/helpers";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -13,7 +20,99 @@ export type MessagePart = UIMessage<
 // compact result view for known backend tools and a structured fallback for
 // SDK or future tools, so no tool ever renders as a bare top-level part.
 export function isChainableToolPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE) return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
+}
+
+const COMPACTION_PHASES = new Set(["summarizing", "rebuilding"]);
+
+// All `data-*` parts are transient bookkeeping (status, cursor,
+// pending-drained, mode-changed, …) — none of them is content that settles
+// a compaction row, and neither may any future one. Enumerating them here
+// would silently kill the bar the day a new data part ships mid-compaction.
+function isCompactionTransparentPart(part: MessagePart): boolean {
+  return (
+    part.type.startsWith("data-") ||
+    part.type === COMPACTION_PART_TYPE ||
+    part.type === "step-start"
+  );
+}
+
+/**
+ * A row closed by the abort sentinel (output "") or an error never compacted
+ * anything — any phase parts it left behind are stale, and the row itself
+ * renders nothing. This is a cross-language contract with the backend's
+ * close paths, so it lives here once: `MessagePartRenderer` decides what to
+ * draw with the same predicate `getLatestCompactionPhase` decides with.
+ */
+export function isRetiredCompactionRow(part: MessagePart): boolean {
+  if (part.type !== COMPACTION_PART_TYPE || !("state" in part)) return false;
+  const tool = part as ToolUIPart;
+  if (tool.state === "output-error") return true;
+  return (
+    tool.state === "output-available" &&
+    typeof tool.output === "string" &&
+    tool.output.trim() === ""
+  );
+}
+
+/**
+ * Latest `data-compaction` phase on a message, or null once real content has
+ * landed past it (at which point the compaction row is settled history).
+ */
+export function getLatestCompactionPhase(
+  parts: MessagePart[],
+): CompactionPhase | null {
+  const lastRow = parts.findLast((p) => p.type === COMPACTION_PART_TYPE);
+  if (lastRow && isRetiredCompactionRow(lastRow)) return null;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === COMPACTION_DATA_PART_TYPE) {
+      const data = (part as { data?: { phase?: unknown } }).data;
+      const phase = data?.phase;
+      if (typeof phase === "string" && COMPACTION_PHASES.has(phase)) {
+        return phase as CompactionPhase;
+      }
+      return null;
+    }
+    if (isCompactionTransparentPart(part)) continue;
+    if (part.type === "text" && "text" in part && !part.text.trim()) continue;
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Stats carried by the message's `data-compaction` parts, merged in stream
+ * order (later phases override earlier ones). They pace the live progress
+ * curve before the tool row closes with its own — authoritative — stats.
+ */
+export function getLatestCompactionStats(
+  parts: MessagePart[],
+): CompactionStats {
+  const stats: CompactionStats = {};
+  for (const part of parts) {
+    if (part.type !== COMPACTION_DATA_PART_TYPE) continue;
+    const data = (part as { data?: unknown }).data;
+    if (typeof data !== "object" || data === null) continue;
+    Object.assign(stats, readCompactionStats(data as Record<string, unknown>));
+  }
+  return stats;
+}
+
+/**
+ * Tool-call ID of the message's last `tool-context_compaction` part. The live
+ * phase applies only to this row — without the ID gate, a second compaction
+ * cycle's `summarizing` part would flip earlier (settled) rows back to live.
+ */
+export function getLastCompactionCallId(parts: MessagePart[]): string | null {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.type === COMPACTION_PART_TYPE && "toolCallId" in part) {
+      return (part as ToolUIPart).toolCallId ?? null;
+    }
+  }
+  return null;
 }
 
 // Default workspace-file URL shape: ``/api/proxy/api/workspace/files/<uuid>/download``.

@@ -26,7 +26,6 @@ import {
 import {
   deduplicateMessages,
   extractSendMessageText,
-  getLatestAssistantStatusMessage,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -34,6 +33,7 @@ import {
   resolveModeChangedMode,
 } from "./helpers";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
+import { getLatestAssistantStatusMessage } from "./messageParts";
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
