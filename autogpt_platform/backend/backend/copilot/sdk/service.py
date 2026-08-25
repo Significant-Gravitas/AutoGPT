@@ -332,19 +332,20 @@ async def _open_sdk_compaction_row(
 
 async def _measure_sdk_compaction(
     ctx: "_StreamContext", state: "_RetryState"
-) -> tuple[list[dict] | None, CompactionStats | None]:
+) -> tuple[bool, list[dict] | None, CompactionStats | None]:
     """Read what the CLI kept after compacting and size the row's payoff.
 
     Runs before the row closes so the settled output carries the numbers.
-    The compacted entries are handed back so the caller can sync the
-    transcript builder without reading the session file twice.
+    Returns ``(measured, compacted, stats)``: ``measured`` is False when no
+    cycle was pending, and the compacted entries are handed back so the
+    caller can sync the transcript builder without a second read.
     """
     # Let a PreCompact hook that raced this message land before we look —
     # ``emit_end_if_ready`` yields for the same reason.
     await asyncio.sleep(0)
     path = ctx.compaction.pending_transcript_path
     if path is None:
-        return None, None
+        return False, None, None
     compacted = await asyncio.to_thread(read_compacted_entries, path)
     stats = await asyncio.to_thread(
         sdk_compaction_stats,
@@ -353,7 +354,7 @@ async def _measure_sdk_compaction(
         model=_compression_model(),
         start=ctx.compaction.start_stats,
     )
-    return compacted, stats
+    return True, compacted, stats
 
 
 async def _consume_sdk_until_done(
@@ -666,7 +667,7 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        compacted, end_stats = await _measure_sdk_compaction(ctx, state)
+        measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
         compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
             # Compaction events end with StreamFinishStep, which maps to
@@ -686,11 +687,19 @@ async def _consume_sdk_until_done(
         for ev in compact_result.events:
             yield ev
         entries_replaced = False
-        if compact_result.just_ended and compacted is not None:
-            state.transcript_builder.replace_entries(
-                compacted, log_prefix=ctx.log_prefix
-            )
-            entries_replaced = True
+        if compact_result.just_ended:
+            if not measured and compact_result.transcript_path:
+                # The hook landed in the one yield between the measurement
+                # and the close: the row went out without numbers, but the
+                # builder must still mirror what the CLI kept.
+                compacted = await asyncio.to_thread(
+                    read_compacted_entries, compact_result.transcript_path
+                )
+            if compacted is not None:
+                state.transcript_builder.replace_entries(
+                    compacted, log_prefix=ctx.log_prefix
+                )
+                entries_replaced = True
 
         # --- Hard circuit breaker for empty tool calls ---
         breaker = _check_empty_tool_breaker(
