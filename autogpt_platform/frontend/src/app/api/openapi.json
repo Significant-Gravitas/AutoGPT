@@ -16863,6 +16863,11 @@
           "example": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Example"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
           }
         },
         "type": "object",

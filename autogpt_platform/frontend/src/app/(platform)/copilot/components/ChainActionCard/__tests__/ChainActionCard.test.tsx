@@ -544,14 +544,14 @@ describe("ChainActionCard", () => {
       });
 
       expect(
-        screen.getByRole("radio", { name: "Europe" }).getAttribute(
-          "aria-checked",
-        ),
+        screen
+          .getByRole("radio", { name: "Europe" })
+          .getAttribute("aria-checked"),
       ).toBe("true");
       expect(
-        screen.getByRole("radio", { name: "Americas" }).getAttribute(
-          "aria-checked",
-        ),
+        screen
+          .getByRole("radio", { name: "Americas" })
+          .getAttribute("aria-checked"),
       ).toBe("false");
     });
 
