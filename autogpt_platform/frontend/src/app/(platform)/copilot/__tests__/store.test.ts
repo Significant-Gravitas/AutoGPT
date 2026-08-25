@@ -232,14 +232,6 @@ describe("context panel open/close guards", () => {
     useCopilotUIStore.getState().openContextPanelForFiles();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
-
-  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
-    useCopilotUIStore.getState().openContextPanelForProgress();
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
-    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
 });
 
 describe("useCopilotUIStore", () => {
@@ -545,6 +537,13 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     vi.resetModules();
     const { useCopilotUIStore: fresh } = await import("../store");
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
+  });
+
+  it("falls back to the files card for a persisted tab the sidebar no longer has", async () => {
+    window.localStorage.setItem("copilot-context-panel-tab", "progress");
+    vi.resetModules();
+    const { useCopilotUIStore: fresh } = await import("../store");
+    expect(fresh.getState().artifactPanel.activeTab).toBe("files");
   });
 });
 

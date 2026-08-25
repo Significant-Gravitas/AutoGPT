@@ -85,7 +85,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     TASK_PROGRESS_BAR: "TASK_PROGRESS_BAR",
-    NEW_TOOL_UI: "NEW_TOOL_UI",
   },
   useGetFlag: (flag: string) =>
     flag === "ARTIFACTS" ? flagState.artifacts : false,

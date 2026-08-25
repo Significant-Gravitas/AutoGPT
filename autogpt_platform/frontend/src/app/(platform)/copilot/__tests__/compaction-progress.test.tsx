@@ -367,7 +367,7 @@ describe("context compaction progress", () => {
       // (or, before it opens, the step-start marker) keeps `hasInflight`
       // true throughout the compaction turn, so this holds from the very
       // first chunk onward — not just once the bar is visible.
-      expect(screen.queryByText("Thinking...")).toBeNull();
+      expect(screen.queryByText("Thinking…")).toBeNull();
     });
   });
 
@@ -576,7 +576,7 @@ describe("context compaction progress", () => {
       // With the row closed, `hasInflight` is false — without the live-
       // compaction gate the ThinkingIndicator would stack its own spinner
       // and timer directly under the CompactionCard's.
-      expect(screen.queryByText("Thinking...")).toBeNull();
+      expect(screen.queryByText("Thinking…")).toBeNull();
     });
     expect(screen.getByRole("progressbar")).toBeDefined();
   });
