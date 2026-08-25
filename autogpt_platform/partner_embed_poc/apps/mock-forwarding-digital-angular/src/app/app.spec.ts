@@ -1,7 +1,13 @@
 import { TestBed } from "@angular/core/testing";
 import { vi } from "vitest";
 
-import { App, assistantNoticeFor, documentsForJobs } from "./app";
+import {
+  App,
+  agentPermissionMessageFor,
+  assistantNoticeFor,
+  documentsForJobs,
+  suggestedPromptsFor,
+} from "./app";
 
 describe("Angular Portside Cloud host", () => {
   beforeEach(async () => {
@@ -69,5 +75,46 @@ describe("Angular Portside Cloud host", () => {
       "Arrival notice · HBR-2208",
       "Bill of lading · HBR-2231",
     ]);
+  });
+
+  it("offers restricted operators only capability-safe prompts", () => {
+    const capabilities = ["jobs.read", "documents.read"];
+
+    expect(suggestedPromptsFor("documents", capabilities)).toEqual([
+      "Find jobs with missing documents and produce an exception summary.",
+    ]);
+    expect(suggestedPromptsFor("automations", capabilities)).toEqual([
+      "Turn the current shipment exceptions into a repeatable checklist a manager could automate.",
+      "Review this tenant's document gaps and outline the safest manual follow-up workflow.",
+    ]);
+  });
+
+  it("offers the full agent lifecycle only with matching capabilities", () => {
+    const prompts = suggestedPromptsFor("automations", [
+      "agents.create",
+      "agents.run",
+      "agents.schedule",
+      "autogpt:block:calculator",
+    ]);
+
+    expect(prompts).toHaveLength(3);
+    expect(prompts[0]).toContain("Create and save");
+    expect(prompts[1]).toContain("Run the saved");
+    expect(prompts[2]).toContain("schedule the saved");
+  });
+
+  it("describes partial agent controls without overclaiming access", () => {
+    expect(agentPermissionMessageFor(["agents.run"])).toBe(
+      "Agent controls enabled for this role: run. Other actions remain unavailable.",
+    );
+    expect(
+      agentPermissionMessageFor([
+        "agents.create",
+        "agents.run",
+        "agents.schedule",
+      ]),
+    ).toBe(
+      "Agent controls enabled for this role: run and schedule. Other actions remain unavailable.",
+    );
   });
 });

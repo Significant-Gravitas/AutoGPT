@@ -393,6 +393,7 @@ function SessionChat({
       >
         {messageSegments.length === 0 ? (
           <EmptyState
+            capabilities={detail.capabilities}
             title={title}
             suggestedPrompts={suggestedPrompts}
             onSelectPrompt={setDraft}
@@ -745,12 +746,14 @@ function ArtifactPanel({
 }
 
 interface EmptyStateProps {
+  capabilities: string[];
   title: string;
   suggestedPrompts: string[];
   onSelectPrompt: (prompt: string) => void;
 }
 
 function EmptyState({
+  capabilities,
   title,
   suggestedPrompts,
   onSelectPrompt,
@@ -758,10 +761,7 @@ function EmptyState({
   return (
     <div className="agpt-embed__empty">
       <strong>What would you like {title} to do?</strong>
-      <p>
-        Review arrivals, investigate exceptions, run an enabled block, or create
-        a document.
-      </p>
+      <p>{emptyStateDescription(capabilities)}</p>
       {suggestedPrompts.length > 0 ? (
         <div className="agpt-embed__suggestions" aria-label="Suggested prompts">
           {suggestedPrompts.map((prompt) => (
@@ -777,6 +777,30 @@ function EmptyState({
       ) : null}
     </div>
   );
+}
+
+function emptyStateDescription(capabilities: string[]) {
+  const enabled = new Set(capabilities);
+  const actions: string[] = [];
+  if (enabled.has("jobs.read") || enabled.has("reports.read")) {
+    actions.push("review arrivals and investigate exceptions");
+  }
+  if (enabled.has("documents.read")) actions.push("read session documents");
+  if (enabled.has("documents.write")) actions.push("create documents");
+  if (
+    capabilities.some((capability) => capability.startsWith("autogpt:block:"))
+  ) {
+    actions.push("run enabled blocks");
+  }
+  if (enabled.has("agents.create")) actions.push("create agents");
+  if (enabled.has("agents.run")) actions.push("run agents");
+  if (enabled.has("agents.schedule")) actions.push("schedule agents");
+  if (actions.length === 0) {
+    return "Ask questions within the access granted by your host application.";
+  }
+  if (actions.length === 1) return `You can ${actions[0]}.`;
+  if (actions.length === 2) return `You can ${actions.join(" and ")}.`;
+  return `You can ${actions.slice(0, -1).join(", ")}, and ${actions.at(-1)}.`;
 }
 
 function LoadingState() {

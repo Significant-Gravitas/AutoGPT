@@ -127,6 +127,35 @@ describe("AutoGPTEmbeddedChat", () => {
       "Create a Monday exception report",
     );
   });
+  it("describes only the capabilities granted to a restricted session", async () => {
+    vi.mocked(getEmbedSession).mockResolvedValueOnce({
+      id: "session-1",
+      title: null,
+      createdAt: "2026-08-24T10:00:00Z",
+      updatedAt: "2026-08-24T11:00:00Z",
+      chatStatus: "idle",
+      messages: [],
+      hasMoreMessages: false,
+      oldestSequence: null,
+      capabilities: ["jobs.read", "documents.read"],
+    });
+
+    render(
+      <AutoGPTEmbeddedChat
+        apiBaseURL="http://localhost:8006"
+        getAccessToken={vi.fn().mockResolvedValue("embed-token")}
+        title="Operations Copilot"
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "You can review arrivals and investigate exceptions and read session documents.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/run enabled blocks/i)).toBeNull();
+    expect(screen.queryByText(/create documents/i)).toBeNull();
+  });
 
   it("delegates assistant links to the host application", async () => {
     const onNavigate = vi.fn();

@@ -311,16 +311,13 @@
             <span>Navigation stays inside the host automation library.</span>
           </li>
         </ol>
-        @if (canManageAgents(current)) {
-        <p class="permission success" role="status">
-          Manager controls enabled: create, run, and schedule.
+        <p
+          class="permission"
+          [class.success]="canManageAgents(current)"
+          role="status"
+        >
+          {{ agentPermissionMessage(current) }}
         </p>
-        } @else {
-        <p class="permission" role="status">
-          This role can analyze operations but cannot create, run, or schedule
-          agents.
-        </p>
-        }
         <div class="sync-card">
           <div>
             <p class="eyebrow">Secure AI Workspace</p>

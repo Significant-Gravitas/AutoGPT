@@ -8,10 +8,17 @@ import { useEffect, useState } from "react";
 import { SignIn } from "./components/SignIn";
 import { Summary } from "./components/Summary";
 import { SyncPanel } from "./components/SyncPanel";
-import { assistantNoticeFor, documentsForJobs, initials } from "./helpers";
+import {
+  agentPermissionMessageFor,
+  assistantNoticeFor,
+  documentsForJobs,
+  initials,
+  type PromptPageID,
+  suggestedPromptsFor,
+} from "./helpers";
 import type { DirectoryUser, Session, TokenResponse } from "./types";
 
-type PageID = "overview" | "shipments" | "documents" | "automations";
+type PageID = PromptPageID;
 
 interface Job {
   reference: string;
@@ -73,26 +80,6 @@ const jobsByOrganization: Record<string, Job[]> = {
       mode: "Road",
       status: "On track",
     },
-  ],
-};
-
-const suggestionsByPage: Record<PageID, string[]> = {
-  overview: [
-    "Summarize today's exceptions and name the jobs that need attention.",
-    "List the next 2 arrivals with ETA and current exception status.",
-  ],
-  shipments: [
-    "Compare the active shipment lanes and flag the highest operational risk.",
-    "List the next 2 arrivals for this tenant. Do not invent data.",
-  ],
-  documents: [
-    "Create an arrival-notice checklist for the next eligible ocean shipment.",
-    "Find jobs with missing documents and produce an exception summary.",
-  ],
-  automations: [
-    "Create and save a calculator agent that adds 10 to one numeric input using only enabled blocks.",
-    "List my saved agents and schedules, including the next run time.",
-    "Schedule the saved calculator agent for every Monday at 09:00 UTC.",
   ],
 };
 
@@ -294,7 +281,11 @@ export default function App() {
   const jobs = jobsByOrganization[session.activeOrganization.id] ?? [];
   const canManageAgents =
     session.activeOrganization.tools.includes("agents.create") &&
-    session.activeOrganization.tools.includes("agents.schedule");
+    session.activeOrganization.tools.includes("agents.run") &&
+    session.activeOrganization.tools.includes("agents.schedule") &&
+    session.activeOrganization.tools.some((tool) =>
+      tool.startsWith("autogpt:block:"),
+    );
 
   return (
     <div className="app-shell">
@@ -437,7 +428,10 @@ export default function App() {
             <Assistant
               getAccessToken={getAccessToken}
               onNavigate={handleAssistantNavigation}
-              prompts={suggestionsByPage[activePage]}
+              prompts={suggestedPromptsFor(
+                activePage,
+                session.activeOrganization.tools,
+              )}
               session={session}
             />
           </aside>
@@ -731,16 +725,12 @@ function AutomationsPage({
             </span>
           </li>
         </ol>
-        {!canManageAgents ? (
-          <p className="permission-note" role="status">
-            Your current role can analyze operations but cannot create, run, or
-            schedule agents.
-          </p>
-        ) : (
-          <p className="permission-note success" role="status">
-            Manager controls enabled: create, run, and schedule.
-          </p>
-        )}
+        <p
+          className={`permission-note${canManageAgents ? " success" : ""}`}
+          role="status"
+        >
+          {agentPermissionMessageFor(session.activeOrganization.tools)}
+        </p>
         <SyncPanel mapping={session.sync} syncing={syncing} onSync={onSync} />
       </aside>
       <div className="inline-assistant">
@@ -752,7 +742,10 @@ function AutomationsPage({
         <Assistant
           getAccessToken={getAccessToken}
           onNavigate={onAssistantNavigation}
-          prompts={suggestionsByPage.automations}
+          prompts={suggestedPromptsFor(
+            "automations",
+            session.activeOrganization.tools,
+          )}
           session={session}
         />
       </div>
