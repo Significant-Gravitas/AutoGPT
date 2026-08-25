@@ -1623,7 +1623,7 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 async def test_partner_run_and_schedule_capabilities_are_independent():
     tool = RunAgentTool()
     session = make_session("partner-run-user")
-    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.source_platform = "logistics-partner"
     session.metadata.external_account_id = "fd-account-77"
     session.metadata.external_capabilities = ["agents.schedule"]
 

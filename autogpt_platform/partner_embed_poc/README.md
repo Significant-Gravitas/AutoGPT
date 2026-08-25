@@ -1,6 +1,6 @@
 # Partner-embedded AutoGPT chat PoC
 
-This project demonstrates Forwarding Digital users opening an AutoGPT-powered chat without creating or signing into an AutoGPT account. The host application remains the identity authority, while AutoGPT issues a five-minute token that is valid only for the restricted partner chat API and one mapped customer tenant.
+This project demonstrates Example Logistics users opening an AutoGPT-powered chat without creating or signing into an AutoGPT account. The host application remains the identity authority, while AutoGPT issues a five-minute token that is valid only for the restricted partner chat API and one mapped customer tenant.
 
 ## Run it
 
@@ -41,7 +41,7 @@ sudo tailscale funnel --bg --https=10000 http://127.0.0.1:8789
 
 The direct-Anthropic profile refuses to resolve without a key, disables subscription and OpenRouter routing in both backend processes, and applies explicit platform caps of $1 per user per day and $5 per user per week. Override those caps with `PARTNER_DEMO_DAILY_COST_LIMIT_MICRODOLLARS` and `PARTNER_DEMO_WEEKLY_COST_LIMIT_MICRODOLLARS`, and also set an account-level provider spend cap.
 
-Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant.
+Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Example Logistics user, and send a message to the Forwarding Assistant.
 
 Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
 
@@ -51,13 +51,13 @@ The first build compiles the full AutoGPT platform and can take several minutes.
 
 The mock user picker is not authentication. Only the full React host on 8788 and Angular host on 8789 support the shared-demo gate; never publish the minimal 8787 host. The gate only reduces exposure for a temporary synthetic-data demo. Production still requires the partner's real authentication, budget controls, monitoring, and per-customer limits. Set a hard provider spend cap before attaching a billable API key.
 
-| URL                     | Purpose                                     |
-| ----------------------- | ------------------------------------------- |
-| `http://127.0.0.1:8787` | Minimal React Forwarding Digital host + BFF |
-| `http://127.0.0.1:8788` | Multi-tenant React host + BFF               |
-| `http://127.0.0.1:8789` | Multi-tenant Angular host + BFF             |
-| `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange      |
-| `http://127.0.0.1:8006` | AutoGPT backend diagnostics                 |
+| URL                     | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `http://127.0.0.1:8787` | Minimal React Example Logistics host + BFF |
+| `http://127.0.0.1:8788` | Multi-tenant React host + BFF              |
+| `http://127.0.0.1:8789` | Multi-tenant Angular host + BFF            |
+| `http://127.0.0.1:3000` | AutoGPT Better Auth and token exchange     |
+| `http://127.0.0.1:8006` | AutoGPT backend diagnostics                |
 
 Stop this isolated stack with the same files:
 
@@ -82,13 +82,13 @@ The overlay uses dedicated Docker networks and does not reuse or restart unrelat
 
 ```mermaid
 sequenceDiagram
-    participant Browser as Forwarding Digital browser
-    participant Partner as Forwarding Digital BFF
+    participant Browser as Example Logistics browser
+    participant Partner as Example Logistics BFF
     participant Broker as AutoGPT Better Auth broker
     participant API as Restricted AutoGPT API
-    participant MCP as Forwarding Digital MCP
+    participant MCP as Example Logistics MCP
 
-    Browser->>Partner: Existing Forwarding Digital session cookie
+    Browser->>Partner: Existing Example Logistics session cookie
     Partner->>Broker: 60-second RS256 partner assertion
     Broker->>Partner: Resolve signing key from partner JWKS
     Broker->>API: Service-authenticated JIT identity provision
@@ -110,7 +110,7 @@ The resulting AutoGPT token uses a separate `autogpt-partner-embed` audience, `p
 
 ## Capability and session boundary
 
-Forwarding Digital assigns capabilities from its own user membership. They are signed into the partner assertion, copied into the short-lived embed token, frozen onto the AutoGPT chat session, and checked again before either AutoPilot or the MCP server exposes a tool. The PoC uses these capability names:
+Example Logistics assigns capabilities from its own user membership. They are signed into the partner assertion, copied into the short-lived embed token, frozen onto the AutoGPT chat session, and checked again before either AutoPilot or the MCP server exposes a tool. The PoC uses these capability names:
 
 - `jobs.read` enables arrivals and exceptions MCP reports.
 - `reports.read` enables the operations summary MCP report.
@@ -142,14 +142,14 @@ The UI renders persisted and streaming Markdown, reasoning disclosures, native-s
 
 - `packages/embed-react` builds the publishable `@autogpt/embedded-chat` React package. It owns chat state and AI SDK streaming but delegates token retrieval to the host.
 - `packages/embed-element` builds the publishable `@autogpt/embedded-chat-element` custom element. Angular and other frameworks assign an `accessTokenProvider` property and brand it through attributes and CSS variables.
-- `apps/mock-forwarding-digital` is the minimal representative freight dashboard and partner BFF.
-- `apps/mock-forwarding-digital-multitenant` owns partner users, organizations, role/tool memberships, sessions, and a durable mapping ledger. Switching tenant remounts chat, and its BFF checks every chat token against the active user and organization before proxying.
-- `apps/mock-forwarding-digital-angular` is a separate Angular 22 host using the custom-element package.
-- `apps/mock-forwarding-digital-mcp` is an internal Streamable HTTP MCP server with three tools and separate Northstar/Harbour datasets.
+- `apps/mock-logistics-partner` is the minimal representative freight dashboard and partner BFF.
+- `apps/mock-logistics-partner-multitenant` owns partner users, organizations, role/tool memberships, sessions, and a durable mapping ledger. Switching tenant remounts chat, and its BFF checks every chat token against the active user and organization before proxying.
+- `apps/mock-logistics-partner-angular` is a separate Angular 22 host using the custom-element package.
+- `apps/mock-logistics-partner-mcp` is an internal Streamable HTTP MCP server with three tools and separate Northstar/Harbour datasets.
 - Each host uses an opaque, HTTP-only partner session cookie. The browser never receives a partner signing key and never signs into AutoGPT.
 - `frontend/src/app/api/embed/token` is the Better Auth-side assertion exchange and token broker.
 - `backend/api/features/partner_embed` is the restricted FastAPI façade, deterministic JIT provisioning, external-account session anchor, and server-owned model-transport selector.
-- `backend/copilot/tools/forwarding_digital.py` is the Autopilot-to-MCP bridge. The model selects only a report; the server derives the tenant.
+- `backend/copilot/tools/logistics_partner.py` is the Autopilot-to-MCP bridge. The model selects only a report; the server derives the tenant.
 - `docker-compose.poc.yml` disables the dummy engine and joins the hosts and internal MCP service to the platform network.
 - `docker-compose.isolation.yml` avoids global container names, dedicated network collisions, and nonessential host ports.
 
@@ -270,11 +270,11 @@ No package is published by this PoC.
 
 1. Replace the environment-configured issuer allowlist with a managed partner registry containing issuer, JWKS URL, audiences, allowed algorithms, status, and key-rotation metadata.
 2. Store consumed assertion `jti` values in Redis or Postgres until `exp` and reject replay atomically across broker replicas.
-3. Replace in-memory partner sessions and the ephemeral demo signing key with Forwarding Digital's real session store and managed signing keys.
+3. Replace in-memory partner sessions and the ephemeral demo signing key with Example Logistics's real session store and managed signing keys.
 4. Add customer and user lifecycle hooks for suspension, account moves, offboarding, role changes, and audit export. JIT provisioning must not grant permissions beyond the partner assertion.
 5. Add per-partner/account/user rate limits, concurrency limits, budget enforcement, and metering in customer language such as completed runs or document pages.
 6. Promote scheduling into a dedicated partner façade and run-history UI only after its approval model, idempotency, cancellation, and budget caps are defined. The PoC currently schedules allowed native agent graphs through capability-gated chat tools.
-7. Replace the three-tool mock MCP with Forwarding Digital's 72-tool production server and a managed token-exchange trust relationship. Preserve the same rule: AutoGPT derives tenancy from the authenticated session, while Forwarding Digital remains authoritative for role and tool permissions on every call.
+7. Replace the three-tool mock MCP with Example Logistics's 72-tool production server and a managed token-exchange trust relationship. Preserve the same rule: AutoGPT derives tenancy from the authenticated session, while Example Logistics remains authoritative for role and tool permissions on every call.
 8. Add production TLS, CSP and allowed-origin configuration, structured audit events, secret rotation, availability targets, data retention controls, and incident revocation.
 
 ## Deliberate PoC limitations
@@ -282,6 +282,6 @@ No package is published by this PoC.
 - Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - Assertion `jti` values are not yet consumed atomically, so the same 60-second assertion can be exchanged more than once. Embed-token lifetime is capped by the remaining assertion lifetime and exchange responses are non-cacheable.
-- Interactive chat, session history, artifacts, and manager-only create/run/schedule flows are implemented. Scheduled graphs are deliberately limited to the three seeded safe blocks; scheduled Forwarding Digital MCP automations and the real 72-tool server remain architectural follow-ons.
+- Interactive chat, session history, artifacts, and manager-only create/run/schedule flows are implemented. Scheduled graphs are deliberately limited to the three seeded safe blocks; scheduled Example Logistics MCP automations and the real 72-tool server remain architectural follow-ons.
 - Local development may use the explicit Claude subscription profile and a private config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Shared demos use the direct-Anthropic profile and a managed API key. Partner sessions replace Claude Code's built-in identity-bearing prompt preset in subscription mode so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.

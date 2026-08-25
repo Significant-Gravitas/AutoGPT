@@ -25,7 +25,7 @@ vi.mock("@/lib/partner-embed/embed-token", () => ({
 import { POST } from "../route";
 
 const config = {
-  partnerID: "forwarding-digital",
+  partnerID: "logistics-partner",
   issuer: "http://localhost:8787",
   jwksURL: "http://localhost:8787/.well-known/jwks.json",
   audience: "autogpt-partner-exchange",
@@ -33,10 +33,10 @@ const config = {
 };
 
 const identity = {
-  partnerID: "forwarding-digital",
+  partnerID: "logistics-partner",
   externalSubject: "user-123",
   externalAccountID: "forwarder-42",
-  displayName: "Jon Heavyside",
+  displayName: "Jordan Avery",
   accountName: "Acme Forwarding",
   isAdmin: true,
   capabilities: ["jobs.read", "reports.read"],

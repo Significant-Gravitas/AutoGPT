@@ -69,7 +69,7 @@ export default function App() {
   }
 
   if (loading)
-    return <main className="loading">Loading Forwarding Digital…</main>;
+    return <main className="loading">Loading Example Logistics…</main>;
   if (!user) return <SignIn onSignIn={signIn} />;
 
   return (
@@ -77,7 +77,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <span>FD</span>
-          <strong>forwarding digital</strong>
+          <strong>example logistics</strong>
         </div>
         <nav aria-label="Primary navigation">
           <a className="active" href="#dashboard">
@@ -162,7 +162,7 @@ export default function App() {
           </div>
           <AutoGPTEmbeddedChat
             apiBaseURL=""
-            brandName="Forwarding Digital"
+            brandName="Example Logistics"
             getAccessToken={getAccessToken}
             title="Forwarding Assistant"
           />
@@ -178,12 +178,12 @@ function SignIn({ onSignIn }: { onSignIn: () => Promise<void> }) {
       <div className="sign-in__card">
         <div className="brand brand--dark">
           <span>FD</span>
-          <strong>forwarding digital</strong>
+          <strong>example logistics</strong>
         </div>
         <p>Partner embed proof of concept</p>
         <h1>Northstar Freight workspace</h1>
         <p>
-          Sign in to the mock Forwarding Digital account. No AutoGPT login is
+          Sign in to the mock Example Logistics account. No AutoGPT login is
           used.
         </p>
         <button onClick={() => void onSignIn()}>Continue as Alex Morgan</button>

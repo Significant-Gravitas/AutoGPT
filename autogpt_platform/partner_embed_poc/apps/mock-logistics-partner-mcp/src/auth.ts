@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual, type BinaryLike } from "node:crypto";
 
 export interface PartnerMCPClaims {
   version: 1;
-  partner_id: "forwarding-digital";
+  partner_id: "logistics-partner";
   user_id: string;
   organization_id: string;
   external_account_id: string;
@@ -71,7 +71,7 @@ function isClaims(value: unknown): value is PartnerMCPClaims {
   const claims = value as Partial<PartnerMCPClaims>;
   return (
     claims.version === 1 &&
-    claims.partner_id === "forwarding-digital" &&
+    claims.partner_id === "logistics-partner" &&
     isNonEmptyString(claims.user_id) &&
     isNonEmptyString(claims.organization_id) &&
     isNonEmptyString(claims.external_account_id) &&

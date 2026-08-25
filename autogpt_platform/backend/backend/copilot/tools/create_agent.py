@@ -101,7 +101,7 @@ class CreateAgentTool(BaseTool):
         session_id = session.session_id if session else None
         if not partner_session_has_capability(session, AGENTS_CREATE_CAPABILITY):
             return ErrorResponse(
-                message="Forwarding Digital did not grant agent creation for this session.",
+                message="Example Logistics did not grant agent creation for this session.",
                 error="partner_capability_required",
                 session_id=session_id,
             )
@@ -142,7 +142,7 @@ class CreateAgentTool(BaseTool):
         if denied_blocks:
             return ErrorResponse(
                 message=(
-                    "This agent uses blocks outside the Forwarding Digital "
+                    "This agent uses blocks outside the Example Logistics "
                     f"allowlist: {', '.join(denied_blocks)}"
                 ),
                 error="partner_block_capability_required",

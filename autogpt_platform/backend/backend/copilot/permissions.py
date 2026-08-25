@@ -118,7 +118,7 @@ ToolName = Literal[
     "move_agents_to_folder",
     "move_folder",
     "post_to_chat_platform",
-    "query_forwarding_digital",
+    "query_logistics_partner",
     "raise_expert",
     "read_skill",
     "read_workspace_file",

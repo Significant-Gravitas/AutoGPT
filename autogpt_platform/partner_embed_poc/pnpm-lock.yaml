@@ -15,7 +15,7 @@ importers:
         specifier: 3.6.2
         version: 3.6.2
 
-  apps/mock-forwarding-digital:
+  apps/mock-logistics-partner:
     dependencies:
       "@autogpt/embedded-chat":
         specifier: workspace:*
@@ -67,7 +67,7 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(happy-dom@20.8.9)(jsdom@28.0.0)(vite@8.2.2(@types/node@24.10.1)(esbuild@0.28.1)(sass@1.101.0)(tsx@4.21.0))
 
-  apps/mock-forwarding-digital-angular:
+  apps/mock-logistics-partner-angular:
     dependencies:
       "@angular/common":
         specifier: 22.1.3
@@ -110,7 +110,7 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.0)(@types/node@26.2.0)(happy-dom@20.8.9)(jsdom@28.0.0)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.1)(sass@1.101.0)(tsx@4.21.0))
 
-  apps/mock-forwarding-digital-mcp:
+  apps/mock-logistics-partner-mcp:
     dependencies:
       fastify:
         specifier: 5.8.5
@@ -126,7 +126,7 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.0)(@types/node@24.10.1)(happy-dom@20.8.9)(jsdom@28.0.0)(vite@8.2.2(@types/node@24.10.1)(esbuild@0.28.1)(sass@1.101.0)(tsx@4.21.0))
 
-  apps/mock-forwarding-digital-multitenant:
+  apps/mock-logistics-partner-multitenant:
     dependencies:
       "@autogpt/embedded-chat":
         specifier: workspace:*

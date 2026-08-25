@@ -18,7 +18,7 @@ describe("getPartnerEmbedConfig", () => {
   it("selects an allowlisted issuer", () => {
     process.env.PARTNER_EMBED_CONFIGS = JSON.stringify([
       {
-        partnerID: "forwarding-digital",
+        partnerID: "logistics-partner",
         issuer: "https://partner.example.com",
         jwksURL: "https://partner.internal/.well-known/jwks.json",
         audience: "autogpt-partner-exchange",
@@ -28,7 +28,7 @@ describe("getPartnerEmbedConfig", () => {
     expect(
       getPartnerEmbedConfig(assertion("https://partner.example.com")),
     ).toEqual({
-      partnerID: "forwarding-digital",
+      partnerID: "logistics-partner",
       issuer: "https://partner.example.com",
       jwksURL: "https://partner.internal/.well-known/jwks.json",
       audience: "autogpt-partner-exchange",
@@ -40,7 +40,7 @@ describe("getPartnerEmbedConfig", () => {
   it("rejects an issuer that is not allowlisted", () => {
     process.env.PARTNER_EMBED_CONFIGS = JSON.stringify([
       {
-        partnerID: "forwarding-digital",
+        partnerID: "logistics-partner",
         issuer: "https://partner.example.com",
         jwksURL: "https://partner.internal/.well-known/jwks.json",
         audience: "autogpt-partner-exchange",

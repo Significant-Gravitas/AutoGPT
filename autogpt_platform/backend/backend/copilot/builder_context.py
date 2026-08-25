@@ -31,8 +31,8 @@ BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
 )
 
 _PARTNER_CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
-    "jobs.read": ("query_forwarding_digital",),
-    "reports.read": ("query_forwarding_digital",),
+    "jobs.read": ("query_logistics_partner",),
+    "reports.read": ("query_logistics_partner",),
     "documents.read": ("list_workspace_files", "read_workspace_file"),
     "documents.write": ("write_workspace_file",),
     "agents.create": (

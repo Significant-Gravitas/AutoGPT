@@ -20,7 +20,7 @@ describe("persistedMessagesToUI", () => {
           {
             id: "call-1",
             function: {
-              name: "query_forwarding_digital",
+              name: "query_logistics_partner",
               arguments: '{"report":"operations_summary"}',
             },
           },
@@ -43,7 +43,7 @@ describe("persistedMessagesToUI", () => {
     });
     expect(messages[1].parts[0]).toMatchObject({
       type: "dynamic-tool",
-      toolName: "query_forwarding_digital",
+      toolName: "query_logistics_partner",
       state: "output-available",
       output: { active_jobs: 148 },
     });

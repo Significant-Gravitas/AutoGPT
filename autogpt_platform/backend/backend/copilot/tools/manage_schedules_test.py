@@ -380,7 +380,7 @@ async def test_delete_schedule_allows_same_expert_job(delete_tool):
 @pytest.mark.asyncio
 async def test_partner_schedule_management_requires_capability(list_tool):
     session = make_session(_USER)
-    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.source_platform = "logistics-partner"
     session.metadata.external_account_id = "fd-account-77"
 
     result = await list_tool._execute(user_id=_USER, session=session)

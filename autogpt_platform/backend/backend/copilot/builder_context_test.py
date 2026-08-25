@@ -65,7 +65,7 @@ def test_partner_session_permissions_are_capability_whitelists():
     session = ChatSession.new(
         "test-user",
         dry_run=False,
-        source_platform="forwarding-digital",
+        source_platform="logistics-partner",
         external_account_id="fd-account-77",
         external_capabilities=[
             "reports.read",
@@ -81,7 +81,7 @@ def test_partner_session_permissions_are_capability_whitelists():
     assert permissions.blocks_exclude is False
     assert permissions.blocks == ["b1ab9b19-67a6-406d-abf5-2dba76d00c79"]
     assert set(permissions.tools) == {
-        "query_forwarding_digital",
+        "query_logistics_partner",
         "list_workspace_files",
         "read_workspace_file",
         "find_block",
@@ -94,7 +94,7 @@ def test_partner_without_block_capability_cannot_run_blocks():
     session = ChatSession.new(
         "test-user",
         dry_run=False,
-        source_platform="forwarding-digital",
+        source_platform="logistics-partner",
         external_account_id="fd-account-88",
         external_capabilities=["jobs.read"],
     )
@@ -102,7 +102,7 @@ def test_partner_without_block_capability_cannot_run_blocks():
     permissions = resolve_session_permissions(session)
 
     assert permissions is not None
-    assert permissions.tools == ["query_forwarding_digital"]
+    assert permissions.tools == ["query_logistics_partner"]
     assert permissions.blocks == []
 
 
@@ -110,7 +110,7 @@ def test_partner_agent_lifecycle_capabilities_map_to_native_tools():
     session = ChatSession.new(
         "test-user",
         dry_run=False,
-        source_platform="forwarding-digital",
+        source_platform="logistics-partner",
         external_account_id="fd-account-77",
         external_capabilities=[
             "agents.create",

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "./app.js";
 import { createAccessToken, type PartnerMCPClaims } from "./auth.js";
 
-const SECRET = "forwarding-digital-mcp-test-secret";
+const SECRET = "logistics-partner-mcp-test-secret";
 const apps: ReturnType<typeof buildApp>[] = [];
 
 afterEach(async () => {
@@ -23,7 +23,7 @@ function token(
   return createAccessToken(
     {
       version: 1,
-      partner_id: "forwarding-digital",
+      partner_id: "logistics-partner",
       user_id: "autogpt-user-1",
       organization_id: "autogpt-org-1",
       external_account_id: externalAccountID,
@@ -82,7 +82,7 @@ async function callSummary(
   });
 }
 
-describe("Forwarding Digital MCP", () => {
+describe("Example Logistics MCP", () => {
   it("rejects requests without a valid bearer token", async () => {
     const response = await app().inject({
       method: "POST",

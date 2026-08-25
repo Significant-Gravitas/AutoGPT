@@ -265,7 +265,7 @@ class RunAgentTool(BaseTool):
         if not partner_session_has_capability(session, required_capability):
             action = "scheduling" if is_schedule else "agent runs"
             return ErrorResponse(
-                message=f"Forwarding Digital did not grant {action} for this session.",
+                message=f"Example Logistics did not grant {action} for this session.",
                 error="partner_capability_required",
                 session_id=session_id,
             )
@@ -361,7 +361,7 @@ class RunAgentTool(BaseTool):
             if denied_blocks:
                 return ErrorResponse(
                     message=(
-                        "This agent uses blocks outside the Forwarding Digital "
+                        "This agent uses blocks outside the Example Logistics "
                         f"allowlist: {', '.join(denied_blocks)}"
                     ),
                     error="partner_block_capability_required",
@@ -810,7 +810,7 @@ class RunAgentTool(BaseTool):
         if denied_blocks:
             return ErrorResponse(
                 message=(
-                    "This agent uses blocks outside the Forwarding Digital "
+                    "This agent uses blocks outside the Example Logistics "
                     f"allowlist: {', '.join(denied_blocks)}"
                 ),
                 error="partner_block_capability_required",

@@ -116,7 +116,7 @@ async def fix_validate_and_save(
         if denied_blocks:
             return ErrorResponse(
                 message=(
-                    "This agent uses blocks outside the Forwarding Digital "
+                    "This agent uses blocks outside the Example Logistics "
                     f"allowlist: {', '.join(denied_blocks)}"
                 ),
                 error="partner_block_capability_required",

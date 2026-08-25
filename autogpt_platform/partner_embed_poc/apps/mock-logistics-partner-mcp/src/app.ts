@@ -85,7 +85,7 @@ export function buildApp(options: MCPServerOptions) {
           protocolVersion: "2025-03-26",
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
-            name: "forwarding-digital-tenant-mcp",
+            name: "logistics-partner-tenant-mcp",
             version: "0.1.0",
           },
         }),

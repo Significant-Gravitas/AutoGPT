@@ -990,7 +990,7 @@ class TestSystemPromptPreset:
         session = ChatSession.new(
             user_id="user-1",
             dry_run=False,
-            source_platform="forwarding-digital",
+            source_platform="logistics-partner",
             external_account_id="account-1",
         )
 

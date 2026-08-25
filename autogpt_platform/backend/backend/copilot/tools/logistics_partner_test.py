@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.blocks.mcp.client import MCPCallResult
-from backend.copilot.tools.forwarding_digital import (
-    ForwardingDigitalTool,
+from backend.copilot.tools.logistics_partner import (
+    LogisticsPartnerTool,
     _create_access_token,
 )
 from backend.copilot.tools.models import ResponseType
 
-_MODULE = "backend.copilot.tools.forwarding_digital"
+_MODULE = "backend.copilot.tools.logistics_partner"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -26,7 +26,7 @@ def session():
         session_id="session-1",
         organization_id="autogpt-org-77",
         metadata=SimpleNamespace(
-            source_platform="forwarding-digital",
+            source_platform="logistics-partner",
             external_account_id="fd-account-77",
             external_capabilities=["jobs.read", "reports.read"],
         ),
@@ -48,7 +48,7 @@ def test_token_contains_server_derived_tenant_claims():
 
     assert payload == {
         "version": 1,
-        "partner_id": "forwarding-digital",
+        "partner_id": "logistics-partner",
         "user_id": "user-1",
         "organization_id": "org-1",
         "external_account_id": "fd-account-77",
@@ -58,27 +58,27 @@ def test_token_contains_server_derived_tenant_claims():
 
 
 def test_schema_has_no_tenant_input():
-    schema = ForwardingDigitalTool().parameters
+    schema = LogisticsPartnerTool().parameters
 
     assert set(schema["properties"]) == {"report"}
     assert schema["additionalProperties"] is False
 
 
 def test_tool_availability_requires_url_and_secret(monkeypatch):
-    tool = ForwardingDigitalTool()
-    monkeypatch.delenv("FORWARDING_DIGITAL_MCP_URL", raising=False)
-    monkeypatch.delenv("FORWARDING_DIGITAL_MCP_SHARED_SECRET", raising=False)
+    tool = LogisticsPartnerTool()
+    monkeypatch.delenv("LOGISTICS_PARTNER_MCP_URL", raising=False)
+    monkeypatch.delenv("LOGISTICS_PARTNER_MCP_SHARED_SECRET", raising=False)
     assert tool.is_available is False
 
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_URL", "http://partner-mcp/mcp")
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_SHARED_SECRET", "secret")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_URL", "http://partner-mcp/mcp")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_SHARED_SECRET", "secret")
     assert tool.is_available is True
 
 
 @pytest.mark.asyncio
 async def test_queries_mcp_with_session_tenant(session, monkeypatch):
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_URL", "http://partner-mcp/mcp")
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_SHARED_SECRET", "test-shared-secret")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_URL", "http://partner-mcp/mcp")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_SHARED_SECRET", "test-shared-secret")
     client = SimpleNamespace(
         initialize=AsyncMock(),
         call_tool=AsyncMock(
@@ -103,7 +103,7 @@ async def test_queries_mcp_with_session_tenant(session, monkeypatch):
     )
 
     with patch(_MODULE + ".MCPClient", return_value=client) as client_factory:
-        result = await ForwardingDigitalTool()._execute(
+        result = await LogisticsPartnerTool()._execute(
             "user-1", session, report="operations_summary"
         )
 
@@ -129,7 +129,7 @@ async def test_rejects_non_partner_session_without_network(session):
     session.metadata.source_platform = "discord"
 
     with patch(_MODULE + ".MCPClient") as client_factory:
-        result = await ForwardingDigitalTool()._execute(
+        result = await LogisticsPartnerTool()._execute(
             "user-1", session, report="operations_summary"
         )
 
@@ -143,7 +143,7 @@ async def test_rejects_missing_external_account_without_network(session):
     session.metadata.external_account_id = None
 
     with patch(_MODULE + ".MCPClient") as client_factory:
-        result = await ForwardingDigitalTool()._execute(
+        result = await LogisticsPartnerTool()._execute(
             "user-1", session, report="operations_summary"
         )
 
@@ -154,8 +154,8 @@ async def test_rejects_missing_external_account_without_network(session):
 
 @pytest.mark.asyncio
 async def test_closes_mcp_session_when_call_fails(session, monkeypatch):
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_URL", "http://partner-mcp/mcp")
-    monkeypatch.setenv("FORWARDING_DIGITAL_MCP_SHARED_SECRET", "test-shared-secret")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_URL", "http://partner-mcp/mcp")
+    monkeypatch.setenv("LOGISTICS_PARTNER_MCP_SHARED_SECRET", "test-shared-secret")
     client = SimpleNamespace(
         initialize=AsyncMock(),
         call_tool=AsyncMock(side_effect=RuntimeError("unavailable")),
@@ -164,7 +164,7 @@ async def test_closes_mcp_session_when_call_fails(session, monkeypatch):
 
     with patch(_MODULE + ".MCPClient", return_value=client):
         with pytest.raises(RuntimeError, match="unavailable"):
-            await ForwardingDigitalTool()._execute(
+            await LogisticsPartnerTool()._execute(
                 "user-1", session, report="operations_summary"
             )
 

@@ -28,12 +28,12 @@ def _session(
     )
 
 
-def test_forwarding_digital_session_gets_mcp_instructions():
+def test_logistics_partner_session_gets_mcp_instructions():
     result = build_partner_system_prompt_suffix(
-        _session("forwarding-digital", "fd-account-77")
+        _session("logistics-partner", "fd-account-77")
     )
 
-    assert "query_forwarding_digital" in result
+    assert "query_logistics_partner" in result
     assert "tenant-bound" in result
     assert "fd-account-77" not in result
 
@@ -41,13 +41,13 @@ def test_forwarding_digital_session_gets_mcp_instructions():
 def test_partner_lifecycle_prompt_matches_capabilities():
     manager = build_partner_system_prompt_suffix(
         _session(
-            "forwarding-digital",
+            "logistics-partner",
             "fd-account-77",
             ["agents.create", "agents.run", "agents.schedule"],
         )
     )
     operator = build_partner_system_prompt_suffix(
-        _session("forwarding-digital", "fd-account-77", ["jobs.read"])
+        _session("logistics-partner", "fd-account-77", ["jobs.read"])
     )
 
     assert "enter_agent_building_mode" in manager
@@ -60,14 +60,12 @@ def test_non_partner_session_gets_no_partner_instructions():
 
 
 def test_partner_session_without_account_fails_closed():
-    assert (
-        build_partner_system_prompt_suffix(_session("forwarding-digital", None)) == ""
-    )
+    assert build_partner_system_prompt_suffix(_session("logistics-partner", None)) == ""
 
 
 def test_partner_capability_check_fails_closed():
     session = _session(
-        "forwarding-digital",
+        "logistics-partner",
         "fd-account-77",
         ["agents.create"],
     )
@@ -93,7 +91,7 @@ def test_unknown_embedded_partner_defaults_to_denied():
 
 def test_partner_graph_blocks_include_nested_subgraphs():
     session = _session(
-        "forwarding-digital",
+        "logistics-partner",
         "fd-account-77",
         ["autogpt:block:allowed-block"],
     )

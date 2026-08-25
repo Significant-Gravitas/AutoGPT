@@ -86,7 +86,7 @@ describe("AutoGPTEmbeddedChat", () => {
     render(
       <AutoGPTEmbeddedChat
         apiBaseURL="http://localhost:8006"
-        brandName="Forwarding Digital"
+        brandName="Example Logistics"
         getAccessToken={vi.fn().mockResolvedValue("embed-token")}
         title="Forwarding Assistant"
       />,
@@ -242,7 +242,7 @@ describe("AutoGPTEmbeddedChat", () => {
     render(
       <AutoGPTEmbeddedChat
         apiBaseURL="http://localhost:8006"
-        brandName="Forwarding Digital"
+        brandName="Example Logistics"
         getAccessToken={vi.fn().mockResolvedValue("embed-token")}
         title="Forwarding Assistant"
       />,

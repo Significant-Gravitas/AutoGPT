@@ -10,10 +10,10 @@ def identity(
     account_id: str = "forwarder-42",
 ) -> ProvisionPartnerIdentityRequest:
     return ProvisionPartnerIdentityRequest(
-        partner_id="forwarding-digital",
+        partner_id="logistics-partner",
         external_subject=subject,
         external_account_id=account_id,
-        display_name="Jon Heavyside",
+        display_name="Jordan Avery",
         account_name="Acme Forwarding",
         is_admin=True,
     )

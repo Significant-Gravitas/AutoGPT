@@ -12,7 +12,7 @@ const configSchema = z.object({
   allowedCapabilities: z.array(z.string().min(1)).max(256).default([]),
 });
 
-const forwardingDigitalCapabilities = [
+const logisticsPartnerCapabilities = [
   "jobs.read",
   "reports.read",
   "documents.read",
@@ -26,12 +26,12 @@ const forwardingDigitalCapabilities = [
 ];
 
 const localConfigs: PartnerEmbedConfig[] = [8787, 8788].map((port) => ({
-  partnerID: "forwarding-digital",
+  partnerID: "logistics-partner",
   issuer: `http://localhost:${port}`,
   jwksURL: `http://localhost:${port}/.well-known/jwks.json`,
   audience: "autogpt-partner-exchange",
   algorithms: ["RS256"],
-  allowedCapabilities: forwardingDigitalCapabilities,
+  allowedCapabilities: logisticsPartnerCapabilities,
 }));
 
 export class PartnerEmbedConfigurationError extends Error {}

@@ -314,7 +314,7 @@ async def test_execute_allows_non_trigger_edit(tool, mocker) -> None:
 async def test_partner_edit_requires_capability_and_allowed_blocks():
     tool = EditAgentTool()
     session = make_session(_USER_ID)
-    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.source_platform = "logistics-partner"
     session.metadata.external_account_id = "fd-account-77"
 
     denied = await tool._execute(

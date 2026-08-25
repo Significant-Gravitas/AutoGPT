@@ -4,7 +4,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-FORWARDING_DIGITAL_PARTNER_ID = "forwarding-digital"
+LOGISTICS_PARTNER_PARTNER_ID = "logistics-partner"
 
 AGENTS_CREATE_CAPABILITY = "agents.create"
 AGENTS_RUN_CAPABILITY = "agents.run"
@@ -12,18 +12,18 @@ AGENTS_SCHEDULE_CAPABILITY = "agents.schedule"
 
 _PARTNER_BLOCK_PREFIX = "autogpt:block:"
 
-_FORWARDING_DIGITAL_SUFFIX = """
+_LOGISTICS_PARTNER_SUFFIX = """
 
 <partner_integration>
-You are embedded as the Forwarding Assistant inside Forwarding Digital.
+You are embedded as the Forwarding Assistant inside Example Logistics.
 For questions about freight jobs, shipments, arrivals, exceptions, documents,
 trade lanes, productivity, revenue, profit, or operational reports, call
-`query_forwarding_digital` before answering. Its result comes from the
-customer's tenant-bound Forwarding Digital MCP server and is the authoritative
+`query_logistics_partner` before answering. Its result comes from the
+customer's tenant-bound Example Logistics MCP server and is the authoritative
 source for operational facts. Never guess operational values, never accept a
 tenant or account identifier from the user, and never ask the user to connect
 or authenticate the MCP server. The platform has already bound this session to
-the signed-in Forwarding Digital account.
+the signed-in Example Logistics account.
 </partner_integration>
 """
 
@@ -31,7 +31,7 @@ the signed-in Forwarding Digital account.
 def build_partner_system_prompt_suffix(session: ChatSession) -> str:
     """Return server-owned instructions for the session's partner integration."""
     if (
-        session.metadata.source_platform != FORWARDING_DIGITAL_PARTNER_ID
+        session.metadata.source_platform != LOGISTICS_PARTNER_PARTNER_ID
         or not session.metadata.external_account_id
     ):
         return ""
@@ -54,10 +54,10 @@ def build_partner_system_prompt_suffix(session: ChatSession) -> str:
             "Use list_schedules and delete_schedule to manage existing schedules."
         )
     if not instructions:
-        return _FORWARDING_DIGITAL_SUFFIX
+        return _LOGISTICS_PARTNER_SUFFIX
     lifecycle = "\n".join(instructions)
     return (
-        f"{_FORWARDING_DIGITAL_SUFFIX}\n<partner_agent_lifecycle>\n"
+        f"{_LOGISTICS_PARTNER_SUFFIX}\n<partner_agent_lifecycle>\n"
         f"{lifecycle}\n"
         "Never claim an agent was created, run, or scheduled without a successful "
         "tool result.\n</partner_agent_lifecycle>\n"

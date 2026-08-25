@@ -268,24 +268,24 @@ class TestSdkExpertsFlagGuard:
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
-        assert "query_forwarding_digital" in hidden
+        assert "query_logistics_partner" in hidden
 
 
 class TestSdkPartnerToolGate:
     @pytest.mark.asyncio
-    async def test_forwarding_digital_turn_registers_tenant_tool_and_prompt(
+    async def test_logistics_partner_turn_registers_tenant_tool_and_prompt(
         self,
     ) -> None:
         mcp_server_mock, _, system_prompt_value_mock = await _run_sdk_turn(
             user_id="test-user",
             hire_experts_enabled=False,
-            source_platform="forwarding-digital",
+            source_platform="logistics-partner",
             external_account_id="fd-account-77",
         )
 
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
-        assert "query_forwarding_digital" not in hidden
+        assert "query_logistics_partner" not in hidden
         system_prompt = system_prompt_value_mock.call_args.args[0]
         assert "<partner_integration>" in system_prompt
-        assert "query_forwarding_digital" in system_prompt
+        assert "query_logistics_partner" in system_prompt
         assert "fd-account-77" not in system_prompt

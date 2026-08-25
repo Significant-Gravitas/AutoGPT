@@ -15,7 +15,7 @@ client = TestClient(app, raise_server_exceptions=False)
 
 PRINCIPAL = EmbedPrincipal(
     user_id="0234dc86-e049-5c61-8b7e-826f7a7c225f",
-    partner_id="forwarding-digital",
+    partner_id="logistics-partner",
     organization_id="70d89c3b-2af3-5f56-8a21-2951b469ba95",
     team_id="600e3708-3a7a-54c7-b527-53d2c62b8d5b",
     external_account_id="forwarder-42",
@@ -24,10 +24,10 @@ PRINCIPAL = EmbedPrincipal(
 )
 
 PROVISION_BODY = {
-    "partner_id": "forwarding-digital",
+    "partner_id": "logistics-partner",
     "external_subject": "user-123",
     "external_account_id": "forwarder-42",
-    "display_name": "Jon Heavyside",
+    "display_name": "Jordan Avery",
     "account_name": "Acme Forwarding",
     "is_admin": True,
 }

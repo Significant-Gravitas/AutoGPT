@@ -6,7 +6,7 @@
     "analytics": false
   },
   "projects": {
-    "forwarding-digital-angular": {
+    "logistics-partner-angular": {
       "projectType": "application",
       "root": "",
       "sourceRoot": "src",
@@ -50,10 +50,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "forwarding-digital-angular:build:production"
+              "buildTarget": "logistics-partner-angular:build:production"
             },
             "development": {
-              "buildTarget": "forwarding-digital-angular:build:development"
+              "buildTarget": "logistics-partner-angular:build:development"
             }
           },
           "defaultConfiguration": "development"

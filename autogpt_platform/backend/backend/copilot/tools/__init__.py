@@ -30,7 +30,6 @@ from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
-from .forwarding_digital import ForwardingDigitalTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
@@ -41,6 +40,7 @@ from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
+from .logistics_partner import LogisticsPartnerTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -126,7 +126,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delegate_to_expert": DelegateToExpertTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
-    "query_forwarding_digital": ForwardingDigitalTool(),
+    "query_logistics_partner": LogisticsPartnerTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
     "search_docs": SearchDocsTool(),
@@ -188,7 +188,7 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
 ToolGroup = Literal[
-    "graphiti", "experts", "expert_admin", "delegation", "forwarding_digital"
+    "graphiti", "experts", "expert_admin", "delegation", "logistics_partner"
 ]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
@@ -215,7 +215,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
-    "query_forwarding_digital": "forwarding_digital",
+    "query_logistics_partner": "logistics_partner",
 }
 
 
@@ -236,9 +236,9 @@ def expert_tool_disabled_groups(
 
 def partner_tool_disabled_groups(source_platform: str | None) -> list[ToolGroup]:
     """Hide partner-specific tools outside their authenticated session origin."""
-    if source_platform == "forwarding-digital":
+    if source_platform == "logistics-partner":
         return []
-    return ["forwarding_digital"]
+    return ["logistics_partner"]
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

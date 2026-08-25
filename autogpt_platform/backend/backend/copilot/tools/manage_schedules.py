@@ -139,7 +139,7 @@ class ListSchedulesTool(BaseTool):
         session_id = session.session_id if session else None
         if not partner_session_has_capability(session, AGENTS_SCHEDULE_CAPABILITY):
             return ErrorResponse(
-                message="Forwarding Digital did not grant schedule management for this session.",
+                message="Example Logistics did not grant schedule management for this session.",
                 error="partner_capability_required",
                 session_id=session_id,
             )
@@ -232,7 +232,7 @@ class DeleteScheduleTool(BaseTool):
         session_id = session.session_id if session else None
         if not partner_session_has_capability(session, AGENTS_SCHEDULE_CAPABILITY):
             return ErrorResponse(
-                message="Forwarding Digital did not grant schedule management for this session.",
+                message="Example Logistics did not grant schedule management for this session.",
                 error="partner_capability_required",
                 session_id=session_id,
             )

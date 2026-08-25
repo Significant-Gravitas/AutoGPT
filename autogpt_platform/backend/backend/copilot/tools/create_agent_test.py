@@ -326,7 +326,7 @@ async def test_local_mode_no_auth_returns_error(tool, session):
 @pytest.mark.asyncio
 async def test_partner_create_requires_capability_and_allowed_blocks(tool):
     session = make_session(_TEST_USER_ID)
-    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.source_platform = "logistics-partner"
     session.metadata.external_account_id = "fd-account-77"
 
     denied = await tool._execute(
@@ -355,7 +355,7 @@ async def test_partner_create_requires_capability_and_allowed_blocks(tool):
 @pytest.mark.asyncio
 async def test_partner_create_rechecks_blocks_after_autofix(tool):
     session = make_session(_TEST_USER_ID)
-    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.source_platform = "logistics-partner"
     session.metadata.external_account_id = "fd-account-77"
     session.metadata.external_capabilities = [
         "agents.create",
