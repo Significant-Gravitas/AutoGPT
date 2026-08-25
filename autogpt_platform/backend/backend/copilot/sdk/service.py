@@ -319,7 +319,7 @@ async def _consume_sdk_until_done(
     fires a synthetic re-prompt and invokes this again for the second
     pass — bounded to one re-prompt per turn.
     """
-    async for sdk_msg in _iter_sdk_messages(client):
+    async for sdk_msg in _iter_sdk_messages(client, wake=ctx.compaction.hook_fired):
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()
@@ -1904,10 +1904,16 @@ async def _safe_close_sdk_client(
 
 async def _iter_sdk_messages(
     client: ClaudeSDKClient,
+    wake: asyncio.Event | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield SDK messages with heartbeat-based timeouts.
 
     Uses an explicit async iterator with non-cancelling heartbeats.
+
+    ``wake`` cuts a heartbeat short: when it is set, the generator yields
+    the heartbeat sentinel at once and clears the event instead of waiting
+    out ``_HEARTBEAT_INTERVAL``.  The PreCompact hook sets it so the
+    compaction row opens before the CLI's next message can close it.
 
     CRITICAL: we must NOT cancel `__anext__()` mid-flight — doing so
     (via `asyncio.timeout` or `wait_for`) corrupts the SDK's internal
@@ -1924,6 +1930,7 @@ async def _iter_sdk_messages(
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
+    wake_task: asyncio.Task[Any] | None = None
 
     async def _next_msg() -> Any:
         """Await the next SDK message, wrapped for use with `asyncio.Task`."""
@@ -1933,25 +1940,39 @@ async def _iter_sdk_messages(
         while True:
             if pending_task is None:
                 pending_task = asyncio.create_task(_next_msg())
+            waiters: set[asyncio.Task[Any]] = {pending_task}
+            if wake is not None:
+                if wake_task is None:
+                    wake_task = asyncio.create_task(wake.wait())
+                waiters.add(wake_task)
 
-            done, _ = await asyncio.wait({pending_task}, timeout=_HEARTBEAT_INTERVAL)
+            done, _ = await asyncio.wait(
+                waiters,
+                timeout=_HEARTBEAT_INTERVAL,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
 
-            if not done:
-                yield None  # heartbeat sentinel
+            if wake is not None and wake_task in done:
+                wake_task = None
+                wake.clear()
+
+            if pending_task not in done:
+                yield None  # heartbeat sentinel (interval elapsed or woken)
                 continue
 
-            pending_task = None
+            msg_task, pending_task = pending_task, None
             try:
-                yield done.pop().result()
+                yield msg_task.result()
             except StopAsyncIteration:
                 return
     finally:
-        if pending_task is not None and not pending_task.done():
-            pending_task.cancel()
-            try:
-                await pending_task
-            except (asyncio.CancelledError, StopAsyncIteration):
-                pass
+        for task in (pending_task, wake_task):
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, StopAsyncIteration):
+                    pass
 
 
 def _normalize_model_name(raw_model: str) -> str:

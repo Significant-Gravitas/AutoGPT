@@ -176,6 +176,12 @@ class TestCompactionTracker:
         assert tracker.attempt_count == 1
         assert list(tracker._pending_transcript_paths) == [""]
 
+    def test_on_compact_sets_hook_fired(self):
+        tracker = CompactionTracker()
+        assert not tracker.hook_fired.is_set()
+        tracker.on_compact()
+        assert tracker.hook_fired.is_set()
+
     def test_emit_start_if_ready_no_event(self):
         tracker = CompactionTracker()
         assert tracker.emit_start_if_ready() == []

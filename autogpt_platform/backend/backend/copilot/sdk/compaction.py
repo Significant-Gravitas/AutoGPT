@@ -243,10 +243,16 @@ class CompactionTracker:
 
     2. **SDK-internal** — ``PreCompact`` hook fires mid-stream.
        Call :meth:`emit_start_if_ready` on heartbeat ticks and
-       :meth:`emit_end_if_ready` when a message arrives.
+       :meth:`emit_end_if_ready` when a message arrives.  The hook also
+       sets :attr:`hook_fired`; the SDK message loop waits on it so the
+       row opens as soon as the hook lands instead of at the next
+       heartbeat — otherwise a compaction that finishes inside one
+       heartbeat interval collapses into a self-contained row and the
+       live bar never shows.
     """
 
     def __init__(self) -> None:
+        self.hook_fired = asyncio.Event()
         self._start_emitted = False
         self._tool_call_id = ""
         self._active_transcript_path: str = ""
@@ -296,6 +302,7 @@ class CompactionTracker:
         """Callback for the PreCompact hook. Queues an SDK compaction attempt."""
         self._attempted_sources.append("sdk_internal")
         self._pending_transcript_paths.append(transcript_path)
+        self.hook_fired.set()
 
     # ------------------------------------------------------------------
     # Pre-query compaction
@@ -378,6 +385,7 @@ class CompactionTracker:
         self._tool_call_id = ""
         self._active_transcript_path = ""
         self._pending_transcript_paths.clear()
+        self.hook_fired.clear()
 
     def emit_start_if_ready(self) -> list[StreamBaseResponse]:
         """If the PreCompact hook fired, emit start events (spinning tool)."""

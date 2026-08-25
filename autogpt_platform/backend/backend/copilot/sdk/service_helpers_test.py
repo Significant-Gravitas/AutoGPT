@@ -296,6 +296,49 @@ class TestIterSdkMessages:
         assert all(m is None for m in received)
 
     @pytest.mark.asyncio
+    async def test_wake_event_cuts_heartbeat_short(self) -> None:
+        """A set ``wake`` yields the sentinel without waiting out the interval."""
+        client = AsyncMock()
+        wake = asyncio.Event()
+
+        async def _slow_receive() -> AsyncGenerator[str]:
+            await asyncio.sleep(100)  # never completes
+            yield "never"  # pragma: no cover — unreachable, yield makes this an async generator
+
+        client.receive_response = _slow_receive
+
+        with patch("backend.copilot.sdk.service._HEARTBEAT_INTERVAL", 100):
+            gen = _iter_sdk_messages(client, wake=wake)
+            asyncio.get_running_loop().call_later(0.01, wake.set)
+            first = await asyncio.wait_for(gen.__anext__(), timeout=1)
+            await gen.aclose()
+
+        assert first is None
+        assert not wake.is_set()
+
+    @pytest.mark.asyncio
+    async def test_wake_sentinel_precedes_concurrent_message(self) -> None:
+        """A message landing with the wake is delivered after the sentinel."""
+        client = AsyncMock()
+        wake = asyncio.Event()
+
+        async def _receive() -> AsyncGenerator[str]:
+            await wake.wait()
+            yield "msg"
+
+        client.receive_response = _receive
+
+        with patch("backend.copilot.sdk.service._HEARTBEAT_INTERVAL", 100):
+            gen = _iter_sdk_messages(client, wake=wake)
+            asyncio.get_running_loop().call_later(0.01, wake.set)
+            received = [
+                await asyncio.wait_for(gen.__anext__(), timeout=1) for _ in range(2)
+            ]
+            await gen.aclose()
+
+        assert received == [None, "msg"]
+
+    @pytest.mark.asyncio
     async def test_exception_propagates(self) -> None:
         client = AsyncMock()
 
