@@ -157,7 +157,14 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     # Under admin impersonation ``user_id`` is the target while the JWT
     # describes the admin, and provisioning from it would create the account
     # under the admin's email.
-    if user_id != jwt_payload.get("sub") or not jwt_payload.get("email"):
+    if user_id != jwt_payload.get("sub"):
+        logger.debug(f"Not provisioning {user_id} from an impersonator's claims")
+        return
+    if not jwt_payload.get("email"):
+        # Nothing to provision with, so this account stays broken. Say so —
+        # a silent return here is the exact failure mode this function exists
+        # to end: bricked and invisible.
+        logger.warning(f"Cannot provision user {user_id}: token carries no email claim")
         return
 
     if await prisma.user.find_unique(where={"id": user_id}) is not None:
@@ -278,7 +285,14 @@ async def get_request_context(
 
             org_id, _ = await get_user_default_team(user_id)
             if org_id is None:
-                logger.error(
+                # Deliberately WARNING, not ERROR. This state is permanent
+                # until something heals it, and the client re-enters it on
+                # every org-scoped request, so a Sentry event here fires at a
+                # cadence the browser controls — thousands per broken account.
+                # The bounded signals carry this instead: _ensure_platform_user
+                # reports the failed provision once per request with a
+                # traceback, and reports a successful heal once per account.
+                logger.warning(
                     f"User {user_id} has no personal org and bootstrap "
                     "failed — account in inconsistent state"
                 )

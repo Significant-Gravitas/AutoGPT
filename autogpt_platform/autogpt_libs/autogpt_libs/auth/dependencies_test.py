@@ -646,12 +646,16 @@ class TestEnsurePlatformUser:
 
     @pytest.mark.asyncio
     async def test_skips_when_token_carries_no_email(self, mocker: MockerFixture):
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
         provision = AsyncMock()
         self._stub_backend(mocker, existing_user=None, provisioner=provision)
 
         await _ensure_platform_user("user-1", {"sub": "user-1"})
 
         provision.assert_not_awaited()
+        # This account stays broken, so the refusal must not be silent —
+        # bricked *and* invisible is the failure mode this function ends.
+        logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_provisioning_failure_is_swallowed(self, mocker: MockerFixture):

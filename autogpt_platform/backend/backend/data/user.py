@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
-from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType, SubscriptionTier
 from prisma.errors import UniqueViolationError
@@ -23,6 +22,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from autogpt_libs.auth.models import DEFAULT_USER_ID
 from backend.data.db import prisma
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
@@ -110,7 +110,13 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
-        raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
+        # Identify by subject only. `user_data` is the decoded JWT (email,
+        # name, role); this error is logged with exc_info on the auth
+        # self-heal path, so interpolating it writes user PII into Sentry
+        # event bodies.
+        raise DatabaseError(
+            f"Failed to get or create user {user_data.get('sub')}: {e}"
+        ) from e
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-
