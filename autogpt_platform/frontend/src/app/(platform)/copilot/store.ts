@@ -190,7 +190,6 @@ interface CopilotUIState {
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
-  setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
@@ -407,19 +406,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  setActiveTab: (tab) =>
-    set((state) => {
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
-      return {
-        // Selecting a tab returns to the tabs view (drops any open preview).
-        artifactPanel: {
-          ...state.artifactPanel,
-          activeTab: tab,
-          activeArtifact: null,
-          history: [],
-        },
-      };
-    }),
   toggleContextPanel: () =>
     set((state) => {
       const nextOpen = !state.artifactPanel.isOpen;
@@ -500,8 +486,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
     }));
   },
-  // Explicit user action (Artifact panel folder button): always opens the
-  // Context panel on the Files tab, dropping any open artifact preview.
+  // Explicit user action (the artifact panel's files button): drops the open
+  // preview and hands the region to the floating files card.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");

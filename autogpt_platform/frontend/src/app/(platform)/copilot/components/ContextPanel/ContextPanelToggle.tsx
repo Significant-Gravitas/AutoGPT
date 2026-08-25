@@ -3,8 +3,9 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import { WorkspaceFilesPopover } from "../WorkspaceFileCards/components/WorkspaceFilesPopover";
-import { CheckListIcon, SidebarRightIcon } from "@hugeicons/core-free-icons";
+import { File02Icon, SidebarRightIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -34,10 +35,10 @@ export function ContextPanelToggle({ sessionId }: Props) {
   // one control that closes them — the panel carries no close button.
   const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
   // While the right sidebar owns that region the inline files card has
-  // nowhere to sit, so the task-list trigger becomes a popover; it returns
-  // to the pinned card as soon as the sidebar closes.
+  // nowhere to sit, so the workspace-files trigger becomes a popover; it
+  // returns to the pinned card as soon as the sidebar closes.
   const showFilesAsPopover = isRightSidebarOpen;
-  const isFilesCardOpen = isOpen && !isRightSidebarOpen;
+  const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
 
   function handleSidebarToggle() {
     if (hasArtifact) {
@@ -74,7 +75,7 @@ export function ContextPanelToggle({ sessionId }: Props) {
           aria-pressed={isFilesCardOpen}
           className={cn(buttonClass, isFilesCardOpen && "bg-zinc-200/70")}
         >
-          <Icon icon={CheckListIcon} className={iconClass} />
+          <Icon icon={File02Icon} className={iconClass} />
         </Button>
       )}
       <Button

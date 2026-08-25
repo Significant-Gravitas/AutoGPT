@@ -273,7 +273,8 @@ export function MessagePartRenderer({
       return <FolderTool key={key} part={part as ToolUIPart} />;
     case "tool-TodoWrite":
       // Hidden inline — the task list surfaces through TaskProgressBar above
-      // the composer, not as a message part.
+      // the composer, not as a message part. That bar is gated on
+      // TASK_PROGRESS_BAR, so until it rolls out the list has no UI.
       return null;
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
