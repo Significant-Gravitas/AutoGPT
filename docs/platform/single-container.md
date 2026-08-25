@@ -439,6 +439,13 @@ with `/data`:
   }
 
   : "${BACKUP_VOLUME:?Container has no named volume mounted at /data}"
+  BACKUP_VOLUME_ANONYMOUS="$(docker volume inspect --format \
+    '{{if .Labels}}{{index .Labels "com.docker.volume.anonymous"}}{{end}}' \
+    "${BACKUP_VOLUME}")"
+  if [[ "${BACKUP_VOLUME_ANONYMOUS}" == true ]]; then
+    echo "Refusing backup because /data uses an anonymous volume" >&2
+    exit 1
+  fi
   if [[ "$(docker inspect --format '{{.State.Running}}' autogpt)" != true ]]; then
     echo "Refusing backup because the autogpt container is not running" >&2
     exit 1
@@ -597,17 +604,38 @@ volumes until the restore is accepted.
 
 Never selectively mix service directories from different backups.
 
+After accepting the restore, make sure no other container uses the `autogpt`
+name or host port, then launch the restored installation with the recorded
+image and the restored volume:
+
+```bash
+docker run --detach --name autogpt \
+  --restart unless-stopped \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  --env-file autogpt.env \
+  --publish 127.0.0.1:3000:3000 \
+  --volume "${RESTORE_VOLUME}:/data" \
+  "${RESTORE_IMAGE}"
+```
+
 ## Upgrade and rollback
 
 Before an upgrade:
 
 1. Record the running image reference and image ID.
-2. Stop the container and take a cold backup.
+2. Run the Cold backup block while the container is running. It stops the
+   appliance for the archive and restarts it afterward.
 3. Pull or build the new image.
-4. Remove only the stopped container.
-5. Repeat the Quick start run command with the same environment file and named
+4. Stop the container again immediately before replacement with
+   `docker stop autogpt`.
+5. Remove only the stopped container with `docker rm autogpt`.
+6. Repeat the Quick start run command with the same environment file and named
    volume but the new image reference.
-6. Wait for full health, then test login, memory, one agent execution, streaming,
+7. Wait for full health, then test login, memory, one agent execution, streaming,
    WebSockets, and persistence across one restart.
 
 Useful image evidence is available with:
