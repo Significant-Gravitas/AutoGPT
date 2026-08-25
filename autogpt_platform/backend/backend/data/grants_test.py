@@ -6,10 +6,13 @@ import pytest
 from prisma.enums import GrantCapability, GrantCredentialMode, GrantPrincipalType
 
 from backend.data.grants import (
+    AmbiguousGrantCredentialModeError,
     GrantPrincipalNotSupportedError,
+    OwnerGrantConsentError,
     grant_covers_version,
     resolve_execution_credentials_owner,
     resolve_graph_grant,
+    validate_execution_credentials_owner,
 )
 
 
@@ -21,6 +24,7 @@ def _grant(
     version=3,
     follow_latest=False,
     grant_id="grant-1",
+    org_id="org-1",
 ):
     row = MagicMock()
     row.id = grant_id
@@ -29,14 +33,24 @@ def _grant(
     row.capability = capability
     row.agentGraphVersion = version
     row.followLatest = follow_latest
+    row.organizationId = org_id
     return row
+
+
+def _membership(team_id="team-1", org_id="org-1"):
+    membership = MagicMock()
+    membership.teamId = team_id
+    membership.Team = MagicMock(orgId=org_id)
+    return membership
 
 
 @pytest.fixture
 def mock_prisma(mocker):
     mock = MagicMock()
     mock.agentgraphgrant.find_many = AsyncMock(return_value=[])
-    mock.teammember.find_first = AsyncMock(return_value=None)
+    mock.teammember.find_many = AsyncMock(return_value=[])
+    mock.orgmember.find_many = AsyncMock(return_value=[MagicMock(orgId="org-1")])
+    mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
     mocker.patch("backend.data.grants.prisma", mock)
     return mock
 
@@ -48,31 +62,36 @@ class TestResolveGraphGrant:
             await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
             is None
         )
-        mock_prisma.teammember.find_first.assert_not_called()
+        mock_prisma.teammember.find_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_active_team_member_gets_grant(self, mock_prisma):
         grant = _grant()
         mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[grant])
-        membership = MagicMock()
-        membership.teamId = "team-1"
-        mock_prisma.teammember.find_first = AsyncMock(return_value=membership)
+        membership = _membership()
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[membership])
 
         result = await resolve_graph_grant(
             "u1", "g1", capability=GrantCapability.EXECUTE
         )
 
         assert result is grant
-        where = mock_prisma.teammember.find_first.call_args.kwargs["where"]
+        where = mock_prisma.teammember.find_many.call_args.kwargs["where"]
         assert where["status"] == "ACTIVE"
         assert where["teamId"] == {"in": ["team-1"]}
         # Archived workspaces must not keep granting access.
         assert where["Team"] == {"is": {"archivedAt": None}}
+        assert mock_prisma.teammember.find_many.call_args.kwargs["include"] == {
+            "Team": True
+        }
+        org_where = mock_prisma.orgmember.find_many.call_args.kwargs["where"]
+        assert org_where["status"] == "ACTIVE"
+        assert org_where["Org"] == {"is": {"deletedAt": None}}
 
     @pytest.mark.asyncio
     async def test_non_member_gets_nothing(self, mock_prisma):
         mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[_grant()])
-        mock_prisma.teammember.find_first = AsyncMock(return_value=None)
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[])
 
         assert (
             await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
@@ -83,9 +102,8 @@ class TestResolveGraphGrant:
     async def test_view_check_satisfied_by_view_or_execute_grant(self, mock_prisma):
         view_grant = _grant(capability=GrantCapability.VIEW)
         mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[view_grant])
-        membership = MagicMock()
-        membership.teamId = "team-1"
-        mock_prisma.teammember.find_first = AsyncMock(return_value=membership)
+        membership = _membership()
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[membership])
 
         assert (
             await resolve_graph_grant("u1", "g1", capability=GrantCapability.VIEW)
@@ -102,7 +120,7 @@ class TestResolveGraphGrant:
             await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
             is None
         )
-        mock_prisma.teammember.find_first.assert_not_called()
+        mock_prisma.teammember.find_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_non_team_principal_raises_loudly(self, mock_prisma):
@@ -127,15 +145,66 @@ class TestResolveGraphGrant:
         first = _grant(principal_id="team-1", grant_id="grant-1")
         second = _grant(principal_id="team-2", grant_id="grant-2")
         mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[first, second])
-        membership = MagicMock()
-        membership.teamId = "team-2"
-        mock_prisma.teammember.find_first = AsyncMock(return_value=membership)
+        membership = _membership("team-2")
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[membership])
 
         result = await resolve_graph_grant(
             "u1", "g1", capability=GrantCapability.EXECUTE
         )
 
         assert result is second
+
+    @pytest.mark.asyncio
+    async def test_multiple_memberships_choose_deterministically(self, mock_prisma):
+        pinned_old = _grant(principal_id="team-1", grant_id="z-grant", version=2)
+        follow_latest = _grant(
+            principal_id="team-2",
+            grant_id="a-grant",
+            version=1,
+            follow_latest=True,
+        )
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(
+            return_value=[pinned_old, follow_latest]
+        )
+        first_membership = _membership("team-1")
+        second_membership = _membership("team-2")
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[first_membership, second_membership]
+        )
+
+        result = await resolve_graph_grant(
+            "u1", "g1", capability=GrantCapability.EXECUTE
+        )
+
+        assert result is follow_latest
+
+    @pytest.mark.asyncio
+    async def test_team_membership_from_different_org_does_not_cover_grant(
+        self, mock_prisma
+    ):
+        grant = _grant(org_id="graph-org")
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[grant])
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[_membership(org_id="different-org")]
+        )
+
+        assert (
+            await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
+            is None
+        )
+
+    @pytest.mark.asyncio
+    async def test_deleted_or_inactive_org_membership_makes_grant_inert(
+        self, mock_prisma
+    ):
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[_grant()])
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[_membership()])
+        mock_prisma.orgmember.find_many = AsyncMock(return_value=[])
+
+        assert (
+            await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
+            is None
+        )
 
 
 class TestGrantCoversVersion:
@@ -163,6 +232,10 @@ def _cred_grant(
     row.organizationId = org_id
     row.agentGraphVersion = version
     row.followLatest = follow_latest
+    row.createdByUserId = "owner-1"
+    row.principalType = GrantPrincipalType.TEAM
+    row.principalId = "team-1"
+    row.capability = GrantCapability.EXECUTE
     return row
 
 
@@ -183,6 +256,7 @@ class TestResolveExecutionCredentialsOwner:
         mock = MagicMock()
         mock.agentgraph.find_unique = AsyncMock(return_value=_cred_graph())
         mock.agentgraph.find_first = AsyncMock(return_value=_cred_graph())
+        mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
         mocker.patch("backend.data.grants.prisma", mock)
         return mock
 
@@ -190,8 +264,8 @@ class TestResolveExecutionCredentialsOwner:
     def patch_grant(self, mocker):
         def _set(grant):
             mocker.patch(
-                "backend.data.grants.resolve_graph_grant",
-                AsyncMock(return_value=grant),
+                "backend.data.grants.resolve_graph_grants",
+                AsyncMock(return_value=[grant] if grant else []),
             )
 
         return _set
@@ -213,10 +287,76 @@ class TestResolveExecutionCredentialsOwner:
         assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
 
     @pytest.mark.asyncio
+    async def test_owner_transfer_requires_fresh_owner_consent(
+        self, mock_prisma, mocker
+    ):
+        grant = _cred_grant()
+        grant.createdByUserId = "previous-owner"
+        mocker.patch(
+            "backend.data.grants.resolve_graph_grants",
+            AsyncMock(return_value=[grant]),
+        )
+
+        with pytest.raises(OwnerGrantConsentError, match="current owner"):
+            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+
+    @pytest.mark.asyncio
+    async def test_owner_org_removal_rejects_owner_mode_resolution(
+        self, mock_prisma, patch_grant
+    ):
+        patch_grant(_cred_grant())
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+
+        with pytest.raises(OwnerGrantConsentError, match="no longer an active member"):
+            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+
+    @pytest.mark.asyncio
+    async def test_conflicting_covering_modes_fail_closed(self, mock_prisma, mocker):
+        owner = _cred_grant(
+            credential_mode=GrantCredentialMode.OWNER,
+            grant_id="grant-owner",
+        )
+        consumer = _cred_grant(
+            credential_mode=GrantCredentialMode.CONSUMER,
+            grant_id="grant-consumer",
+        )
+        mocker.patch(
+            "backend.data.grants.resolve_graph_grants",
+            AsyncMock(return_value=[owner, consumer]),
+        )
+
+        with pytest.raises(AmbiguousGrantCredentialModeError, match="conflicting"):
+            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+
+    @pytest.mark.asyncio
+    async def test_different_version_consumer_grant_is_not_ambiguous(
+        self, mock_prisma, mocker
+    ):
+        owner = _cred_grant(
+            credential_mode=GrantCredentialMode.OWNER,
+            grant_id="grant-owner",
+            version=3,
+        )
+        consumer = _cred_grant(
+            credential_mode=GrantCredentialMode.CONSUMER,
+            grant_id="grant-consumer",
+            version=2,
+        )
+        mocker.patch(
+            "backend.data.grants.resolve_graph_grants",
+            AsyncMock(return_value=[owner, consumer]),
+        )
+
+        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) == (
+            "owner-1",
+            "grant-owner",
+        )
+
+    @pytest.mark.asyncio
     async def test_graph_owner_running_own_graph_is_inert(self, mock_prisma, mocker):
         # Owner runs own graph: never OWNER mode, and no grant lookup needed.
         spy = mocker.patch(
-            "backend.data.grants.resolve_graph_grant", AsyncMock(return_value=None)
+            "backend.data.grants.resolve_graph_grants", AsyncMock(return_value=[])
         )
 
         assert await resolve_execution_credentials_owner("owner-1", "g1", 3) is None
@@ -279,3 +419,147 @@ class TestResolveExecutionCredentialsOwner:
         patch_grant(_cred_grant(follow_latest=True))
 
         assert await resolve_execution_credentials_owner("consumer-1", "g1", 2) is None
+
+
+class TestValidateExecutionCredentialsOwner:
+    @pytest.fixture
+    def mock_prisma(self, mocker):
+        mock = MagicMock()
+        mock.agentgraph.find_unique = AsyncMock(return_value=_cred_graph())
+        mock.agentgraphgrant.find_many = AsyncMock(return_value=[])
+        mock.teammember.find_many = AsyncMock(return_value=[])
+        mock.orgmember.find_many = AsyncMock(return_value=[MagicMock(orgId="org-1")])
+        mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        mock.team.find_first = AsyncMock(return_value=MagicMock())
+        mocker.patch("backend.data.grants.prisma", mock)
+        return mock
+
+    def _authorize(self, mock_prisma):
+        grant = _cred_grant()
+        membership = _membership()
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[grant])
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[membership])
+        return grant
+
+    @pytest.mark.asyncio
+    async def test_exact_selected_grant_is_valid(self, mock_prisma):
+        self._authorize(mock_prisma)
+
+        assert await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_removed_membership_invalidates_queued_grant(self, mock_prisma):
+        self._authorize(mock_prisma)
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[])
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+        mock_prisma.team.find_first.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_owner_change_invalidates_queued_grant(self, mock_prisma):
+        self._authorize(mock_prisma)
+        mock_prisma.agentgraph.find_unique = AsyncMock(
+            return_value=_cred_graph(user_id="new-owner")
+        )
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_owner_org_removal_invalidates_queued_grant(self, mock_prisma):
+        self._authorize(mock_prisma)
+        mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_archived_or_wrong_org_team_invalidates_queued_grant(
+        self, mock_prisma
+    ):
+        self._authorize(mock_prisma)
+        mock_prisma.team.find_first = AsyncMock(return_value=None)
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+        where = mock_prisma.team.find_first.call_args.kwargs["where"]
+        assert where == {"id": "team-1", "orgId": "org-1", "archivedAt": None}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "consumer_mode",
+            "view_capability",
+            "different_pin",
+            "inactive_follow_latest",
+            "stale_consent",
+        ],
+    )
+    async def test_selected_grant_mutations_invalidate_authorization(
+        self, mock_prisma, mutation
+    ):
+        grant = self._authorize(mock_prisma)
+        if mutation == "consumer_mode":
+            grant.credentialMode = GrantCredentialMode.CONSUMER
+        elif mutation == "view_capability":
+            grant.capability = GrantCapability.VIEW
+        elif mutation == "different_pin":
+            grant.agentGraphVersion = 2
+        elif mutation == "inactive_follow_latest":
+            grant.followLatest = True
+            mock_prisma.agentgraph.find_unique = AsyncMock(
+                return_value=_cred_graph(is_active=False)
+            )
+        elif mutation == "stale_consent":
+            grant.createdByUserId = "former-owner"
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_deleted_selected_grant_invalidates_even_if_another_owner_path_exists(
+        self, mock_prisma
+    ):
+        other = _cred_grant(grant_id="grant-2")
+        other.principalId = "team-2"
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[other])
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[_membership("team-2")]
+        )
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_newly_ambiguous_modes_raise_configuration_error(self, mock_prisma):
+        owner = _cred_grant(grant_id="grant-1")
+        consumer = _cred_grant(
+            grant_id="grant-2", credential_mode=GrantCredentialMode.CONSUMER
+        )
+        consumer.principalId = "team-2"
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(
+            return_value=[owner, consumer]
+        )
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[_membership("team-1"), _membership("team-2")]
+        )
+
+        with pytest.raises(AmbiguousGrantCredentialModeError):
+            await validate_execution_credentials_owner(
+                "consumer-1", "g1", 3, "owner-1", "grant-1"
+            )
+
+
+def test_grant_configuration_errors_are_expected_value_errors():
+    assert issubclass(AmbiguousGrantCredentialModeError, ValueError)
+    assert issubclass(OwnerGrantConsentError, ValueError)

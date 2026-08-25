@@ -102,7 +102,7 @@ from .utils import (
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
-    owner_referenced_credential_ids,
+    owner_referenced_credentials,
     validate_exec,
 )
 
@@ -213,6 +213,51 @@ def execute_graph(
 T = TypeVar("T")
 
 
+async def _revalidate_owner_credentials(
+    execution_context: ExecutionContext,
+    *,
+    user_id: str,
+    graph_id: str,
+    graph_version: int,
+) -> None:
+    """Fail closed if an OWNER grant or team membership changed after queueing."""
+    owner_id = execution_context.credentials_owner_id
+    grant_id = execution_context.credentials_grant_id
+    if owner_id is None and grant_id is None:
+        return
+    if owner_id is None or grant_id is None:
+        raise ValueError("Incomplete OWNER credential authorization context")
+
+    is_authorized = await get_db_async_client().validate_execution_credentials_owner(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph_version,
+        owner_user_id=owner_id,
+        grant_id=grant_id,
+    )
+    if not is_authorized:
+        raise ValueError(
+            "OWNER credential authorization changed after this run was queued; "
+            "the grant and active team membership must still match"
+        )
+
+
+def _redact_owner_credentials_from_log(
+    input_data: dict[str, Any],
+    owner_references: dict[str, str],
+) -> dict[str, Any]:
+    redacted = dict(input_data)
+    for field_name in owner_references:
+        value = redacted.get(field_name)
+        if isinstance(value, dict) and "_credentials_id" in value:
+            redacted[field_name] = {
+                key: item for key, item in value.items() if key != "_credentials_id"
+            }
+        else:
+            redacted[field_name] = "<owner credential redacted>"
+    return redacted
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -256,6 +301,13 @@ async def execute_node(
 
     if node_block.disabled:
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
+
+    await _revalidate_owner_credentials(
+        execution_context,
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph_version,
+    )
 
     input_model = cast(type[BlockSchema], node_block.input_schema)
     credential_fields_info = input_model.get_credentials_fields_info()
@@ -307,9 +359,7 @@ async def execute_node(
     data.inputs = input_data
 
     # Execute the node
-    input_data_str = json.dumps(input_data)
-    input_size = len(input_data_str)
-    log_metadata.debug("Executed node with input", input=input_data_str)
+    input_size = len(json.dumps(input_data))
 
     # Create node-specific execution context to avoid race conditions
     # (multiple nodes can execute concurrently and would otherwise mutate shared state)
@@ -362,17 +412,43 @@ async def execute_node(
     # We deliberately re-read the reference from ``node.input_default`` (the
     # owner's baked-in value) rather than trusting ``input_data`` — a consumer
     # must never be able to redirect the lookup to an arbitrary id in the
-    # owner's store (see ``owner_credential_ids`` allowlist for auto-creds).
+    # owner's store; each allowed reference stays bound to its baked field.
     credentials_owner_id = execution_context.credentials_owner_id
-    owner_credential_ids: set[str] = (
-        owner_referenced_credential_ids(node.input_default, input_model)
+    owner_references: dict[str, str] = (
+        owner_referenced_credentials(node.input_default, input_model)
         if credentials_owner_id
-        else set()
+        else {}
+    )
+    owner_field_values = {
+        info["field_name"]: node.input_default[info["field_name"]]
+        for info in input_model.get_auto_credentials_fields().values()
+        if info["field_name"] in owner_references
+        and isinstance(node.input_default.get(info["field_name"]), dict)
+    }
+    log_metadata.debug(
+        "Executed node with input",
+        input=json.dumps(
+            _redact_owner_credentials_from_log(input_data, owner_references)
+        ),
     )
 
     try:
         # Handle regular credentials fields
         for field_name, input_type in input_model.get_credentials_fields().items():
+            field_info = credential_fields_info[field_name]
+            if (
+                field_info.discriminator
+                and field_name not in required_credential_fields
+                and not field_info.requires_credentials(
+                    input_data.get(
+                        field_info.discriminator,
+                        node.input_default.get(field_info.discriminator),
+                    )
+                )
+            ):
+                input_data[field_name] = None
+                continue
+
             # Dry-run platform credentials bypass the credential store.
             # Keep the existing credential metadata so _execute's input_schema(**...)
             # doesn't fail on the required field.  If no metadata is present,
@@ -397,7 +473,7 @@ async def execute_node(
             if (
                 credentials_owner_id
                 and isinstance(owner_ref, dict)
-                and owner_ref.get("id")
+                and owner_references.get(field_name) == owner_ref.get("id")
             ):
                 field_value = owner_ref
                 resolve_user_id = credentials_owner_id
@@ -420,7 +496,11 @@ async def execute_node(
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
-            field_info = credential_fields_info[field_name]
+            if resolve_user_id != user_id and field_info.credential_reference_only:
+                raise ValueError(
+                    "OWNER credential mode does not support runtime-managed "
+                    f"credential references (field '{field_name}')"
+                )
             if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
                     resolve_user_id,
@@ -498,7 +578,7 @@ async def execute_node(
             creds_manager=creds_manager,
             user_id=user_id,
             credentials_owner_id=credentials_owner_id,
-            owner_credential_ids=owner_credential_ids,
+            owner_field_values=owner_field_values,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
         creds_locks.extend(auto_locks)

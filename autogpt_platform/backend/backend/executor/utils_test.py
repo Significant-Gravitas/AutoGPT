@@ -11,6 +11,7 @@ from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
     CRED_ERR_NOT_AVAILABLE_PREFIX,
+    CRED_ERR_OWNER_REFERENCE_ONLY,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
     add_graph_execution,
@@ -576,6 +577,7 @@ async def test_add_graph_execution_owner_mode_threads_owner_and_audits(
     # the ExecutionContext carried to the queue names the owner
     ctx = mock_graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
     assert ctx.credentials_owner_id == "owner-9"
+    assert ctx.credentials_grant_id == "grant-42"
 
     # audit line names graph, owner, grant, consumer — and leaks no secret
     audit = [r.message for r in caplog.records if "OWNER-mode credentials" in r.message]
@@ -1027,6 +1029,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     # Existing row carries org/team; the resume caller's context does not.
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.id = "exec-resume-1"
+    mock_graph_exec.graph_id = "test-graph-id"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
     mock_graph_exec.graph_version = 1
@@ -1034,6 +1037,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.organization_id = "org-row"
     mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = "team-row"
+    mock_graph_exec.parent_execution_id = None
 
     captured_kwargs: dict = {}
 
@@ -1055,6 +1059,9 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+    mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
+        mocker.AsyncMock()
+    )
     mock_get_queue.return_value = mocker.AsyncMock()
     mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
     mocker.patch(
@@ -1353,6 +1360,7 @@ def test_credential_error_markers_cover_all_raise_sites():
     assert is_credential_validation_error_message(
         f"{CRED_ERR_UNKNOWN_PREFIX}abc-123-def"
     )
+    assert is_credential_validation_error_message(CRED_ERR_OWNER_REFERENCE_ONLY)
 
 
 def test_credential_error_marker_matching_is_case_insensitive():
@@ -2115,9 +2123,11 @@ def _mock_add_graph_execution_create_path(
     mock_graph_exec.team_id = team_id
     mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id"
+    mock_graph_exec.graph_id = "g"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
     mock_graph_exec.graph_version = 1
+    mock_graph_exec.parent_execution_id = None
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
     mock_validate = mocker.patch(
@@ -2127,6 +2137,14 @@ def _mock_add_graph_execution_create_path(
 
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+
+    async def get_persisted_execution(*, execution_id: str, **_kwargs):
+        parent = mocker.MagicMock(spec=GraphExecutionWithNodes)
+        parent.id = execution_id
+        parent.parent_execution_id = None
+        return parent
+
+    mock_edb.get_graph_execution = mocker.AsyncMock(side_effect=get_persisted_execution)
     mock_edb.update_graph_execution_stats = mocker.AsyncMock(
         return_value=mock_graph_exec
     )
@@ -2197,11 +2215,13 @@ def _mock_add_graph_execution_requeue_path(
     expert_id: str | None,
     organization_id: str | None,
     team_id: str | None,
+    parent_execution_id: str | None = None,
 ):
-    from backend.data.execution import GraphExecutionWithNodes
+    from backend.data.execution import GraphExecutionMeta, GraphExecutionWithNodes
 
     graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     graph_exec.id = "existing-execution"
+    graph_exec.graph_id = "g"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED
     graph_exec.graph_version = 1
@@ -2209,6 +2229,7 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.expert_id = expert_id
     graph_exec.organization_id = organization_id
     graph_exec.team_id = team_id
+    graph_exec.parent_execution_id = parent_execution_id
 
     captured: dict = {}
 
@@ -2220,7 +2241,21 @@ def _mock_add_graph_execution_requeue_path(
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     execution_store = mocker.patch("backend.executor.utils.execution_db")
-    execution_store.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+
+    persisted_parent = mocker.MagicMock(spec=GraphExecutionMeta)
+    persisted_parent.id = parent_execution_id
+    persisted_parent.parent_execution_id = None
+
+    async def get_persisted_execution(*, execution_id: str, **_kwargs):
+        if execution_id == graph_exec.id:
+            return graph_exec
+        if parent_execution_id and execution_id == parent_execution_id:
+            return persisted_parent
+        return None
+
+    execution_store.get_graph_execution = mocker.AsyncMock(
+        side_effect=get_persisted_execution
+    )
     execution_store.update_graph_execution_stats = mocker.AsyncMock(
         return_value=graph_exec
     )
@@ -2251,6 +2286,165 @@ def _mock_add_graph_execution_requeue_path(
         return_value=event_bus,
     )
     return graph_exec, execution_store, queue, captured
+
+
+@pytest.mark.asyncio
+async def test_persisted_execution_root_walks_all_ancestors(mocker: MockerFixture):
+    from backend.executor.utils import _resolve_persisted_execution_root
+
+    child = mocker.MagicMock(id="child", parent_execution_id="parent")
+    parent = mocker.MagicMock(id="parent", parent_execution_id="root")
+    root = mocker.MagicMock(id="root", parent_execution_id=None)
+    execution_store = mocker.MagicMock()
+    execution_store.get_graph_execution = mocker.AsyncMock(
+        side_effect=lambda *, execution_id, **_: {
+            "parent": parent,
+            "root": root,
+        }.get(execution_id)
+    )
+
+    assert (
+        await _resolve_persisted_execution_root(execution_store, "user", child)
+        == "root"
+    )
+
+
+@pytest.mark.asyncio
+async def test_persisted_execution_root_rejects_missing_parent(
+    mocker: MockerFixture,
+):
+    from backend.executor.utils import _resolve_persisted_execution_root
+
+    child = mocker.MagicMock(id="child", parent_execution_id="missing")
+    execution_store = mocker.MagicMock()
+    execution_store.get_graph_execution = mocker.AsyncMock(return_value=None)
+
+    with pytest.raises(ValueError, match="missing parent #missing"):
+        await _resolve_persisted_execution_root(execution_store, "user", child)
+
+
+@pytest.mark.asyncio
+async def test_persisted_execution_root_rejects_cycles(mocker: MockerFixture):
+    from backend.executor.utils import _resolve_persisted_execution_root
+
+    first = mocker.MagicMock(id="first", parent_execution_id="second")
+    second = mocker.MagicMock(id="second", parent_execution_id="first")
+    execution_store = mocker.MagicMock()
+    execution_store.get_graph_execution = mocker.AsyncMock(
+        side_effect=lambda *, execution_id, **_: {
+            "first": first,
+            "second": second,
+        }.get(execution_id)
+    )
+
+    with pytest.raises(ValueError, match="Cycle detected"):
+        await _resolve_persisted_execution_root(execution_store, "user", first)
+
+
+@pytest.mark.asyncio
+async def test_child_requeue_uses_persisted_hierarchy_and_never_owner_credentials(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="org",
+        team_id="team",
+        parent_execution_id="persisted-parent",
+    )
+    resolve_owner = mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=("owner", "grant")),
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="consumer",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(user_id="consumer"),
+    )
+
+    resolve_owner.assert_not_awaited()
+    context = captured["execution_context"]
+    assert context.parent_execution_id == "persisted-parent"
+    assert context.root_execution_id == "persisted-parent"
+    assert context.credentials_owner_id is None
+    assert context.credentials_grant_id is None
+
+
+@pytest.mark.asyncio
+async def test_top_level_requeue_ignores_stale_caller_parent_and_resolves_owner(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    _, _, _, captured = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="org",
+        team_id="team",
+    )
+    resolve_owner = mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=("owner", "grant")),
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="consumer",
+        graph_exec_id="existing-execution",
+        execution_context=ExecutionContext(
+            user_id="consumer", parent_execution_id="stale-parent"
+        ),
+    )
+
+    resolve_owner.assert_awaited_once_with(
+        user_id="consumer", graph_id="g", graph_version=1
+    )
+    context = captured["execution_context"]
+    assert context.parent_execution_id is None
+    assert context.root_execution_id == "existing-execution"
+    assert context.credentials_owner_id == "owner"
+    assert context.credentials_grant_id == "grant"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("graph_id", "graph_version", "error"),
+    [
+        ("different-graph", None, "does not match persisted execution"),
+        ("g", 2, "does not match persisted execution"),
+    ],
+)
+async def test_requeue_rejects_graph_identity_mismatch_before_owner_resolution(
+    mocker: MockerFixture,
+    graph_id: str,
+    graph_version: int | None,
+    error: str,
+):
+    _, _, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="org",
+        team_id="team",
+    )
+    resolve_owner = mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=("owner", "grant")),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        await add_graph_execution(
+            graph_id=graph_id,
+            graph_version=graph_version,
+            user_id="consumer",
+            graph_exec_id="existing-execution",
+        )
+
+    resolve_owner.assert_not_awaited()
+    queue.publish_message.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2813,3 +3007,54 @@ async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     assert create_kwargs["organization_id"] == "org-sub"
     assert create_kwargs["team_id"] == "team-sub"
     assert create_kwargs["parent_graph_exec_id"] == "parent-123"
+
+
+@pytest.mark.asyncio
+async def test_new_child_derives_root_from_persisted_parent_not_caller_context(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(
+        mocker, org_id="org-sub", team_id="team-sub"
+    )
+    caller_context = ExecutionContext(
+        user_id="user-1",
+        parent_execution_id="persisted-parent",
+        root_execution_id="forged-root",
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="user-1",
+        execution_context=caller_context,
+    )
+
+    context = mock_edb.create_graph_execution.return_value.to_graph_execution_entry.call_args.kwargs[
+        "execution_context"
+    ]
+    assert context.parent_execution_id == "persisted-parent"
+    assert context.root_execution_id == "persisted-parent"
+
+
+@pytest.mark.asyncio
+async def test_new_child_rejects_missing_parent_even_with_caller_root(
+    mocker: MockerFixture,
+):
+    from backend.data.execution import ExecutionContext
+
+    mock_edb, _ = _mock_add_graph_execution_create_path(mocker)
+    mock_edb.get_graph_execution = mocker.AsyncMock(return_value=None)
+
+    with pytest.raises(ValueError, match="missing parent #missing-parent"):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="user-1",
+            execution_context=ExecutionContext(
+                user_id="user-1",
+                parent_execution_id="missing-parent",
+                root_execution_id="forged-root",
+            ),
+        )
+
+    mock_edb.create_graph_execution.assert_not_awaited()

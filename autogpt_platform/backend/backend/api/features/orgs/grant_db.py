@@ -4,12 +4,44 @@ import logging
 
 from prisma.enums import GrantCapability, GrantCredentialMode, GrantPrincipalType
 
+from backend.blocks import get_block
 from backend.data.db import prisma
+from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .grant_model import GrantResponse, ReceivedGrantResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _owner_reference_only_field(graph) -> tuple[str, str] | None:
+    """Return the first active baked runtime-managed credential reference."""
+    for node in graph.Nodes or []:
+        block = get_block(node.agentBlockId)
+        if block is None:
+            raise ValueError(
+                f"Cannot verify OWNER credential safety for unknown block "
+                f"#{node.agentBlockId}"
+            )
+        defaults = node.constantInput if isinstance(node.constantInput, dict) else {}
+        for (
+            field_name,
+            field_info,
+        ) in block.input_schema.get_credentials_fields_info().items():
+            if not field_info.credential_reference_only:
+                continue
+            if field_info.discriminator and not field_info.requires_credentials(
+                defaults.get(field_info.discriminator)
+            ):
+                continue
+            value = defaults.get(field_name)
+            if (
+                isinstance(value, dict)
+                and isinstance(value.get("id"), str)
+                and value["id"].strip()
+            ):
+                return node.id, field_name
+    return None
 
 
 async def upsert_grant(
@@ -57,7 +89,9 @@ async def upsert_grant(
     else:
         graph_where["isActive"] = True
     graph = await prisma.agentgraph.find_first(
-        where=graph_where, order={"version": "desc"}
+        where=graph_where,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
     )
     if graph is None:
         raise NotFoundError(
@@ -79,6 +113,15 @@ async def upsert_grant(
         raise ValueError(
             "OWNER credential-mode grants may only be created by the graph's "
             "owner, not by an org admin sharing another user's graph"
+        )
+    if credential_mode == GrantCredentialMode.OWNER and (
+        unsupported := _owner_reference_only_field(graph)
+    ):
+        node_id, field_name = unsupported
+        raise ValueError(
+            "OWNER credential mode does not yet support runtime-managed "
+            f"credential references (node #{node_id}, field '{field_name}'); "
+            "use CONSUMER mode or the platform transport"
         )
 
     grant = await prisma.agentgraphgrant.upsert(
@@ -106,6 +149,7 @@ async def upsert_grant(
                 "followLatest": follow_latest,
                 "capability": GrantCapability(capability),
                 "credentialMode": GrantCredentialMode(credential_mode),
+                "createdByUserId": created_by_user_id,
             },
         },
     )

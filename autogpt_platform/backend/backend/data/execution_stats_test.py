@@ -6,7 +6,12 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import ExecutionFailureReason
 
 
-def _db_execution(*, status: ExecutionStatus, stats: dict):
+def _db_execution(
+    *,
+    status: ExecutionStatus,
+    stats: dict,
+    parent_execution_id: str | None = None,
+):
     return SimpleNamespace(
         id="exec-1",
         userId="user-1",
@@ -24,6 +29,7 @@ def _db_execution(*, status: ExecutionStatus, stats: dict):
         shareToken=None,
         organizationId=None,
         teamId=None,
+        parentGraphExecutionId=parent_execution_id,
         expertId=None,
     )
 
@@ -99,3 +105,15 @@ def test_persisted_failure_reason_is_preserved():
 
     assert execution.stats is not None
     assert execution.stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
+
+
+def test_parent_execution_id_round_trips_from_persisted_row():
+    execution = GraphExecutionMeta.from_db(
+        _db_execution(
+            status=ExecutionStatus.RUNNING,
+            stats={},
+            parent_execution_id="parent-exec",
+        )
+    )
+
+    assert execution.parent_execution_id == "parent-exec"
