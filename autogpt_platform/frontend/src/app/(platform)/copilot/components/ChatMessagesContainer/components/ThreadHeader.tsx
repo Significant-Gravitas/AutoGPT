@@ -12,6 +12,9 @@ interface Props {
   /** The workspace-files card floats over the column's right side, so the
    *  centred row slides left to make room for it. */
   areFilesOpen: boolean;
+  /** The new layout floats the sidebar and workspace-files controls over the
+   *  chat's top-left corner below `lg`; the row starts past them. */
+  hasFloatingControls?: boolean;
 }
 
 /** Sits above the scroller rather than sticky inside it, so the bar spans the
@@ -22,6 +25,7 @@ export function ThreadHeader({
   expertIdentity,
   readOnly,
   areFilesOpen,
+  hasFloatingControls = false,
 }: Props) {
   return (
     <div
@@ -32,6 +36,7 @@ export function ThreadHeader({
         className={cn(
           "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
           areFilesOpen && "xl:-translate-x-40",
+          hasFloatingControls && "max-md:pl-28 md:max-lg:pl-20",
         )}
       >
         <ExpertAvatar

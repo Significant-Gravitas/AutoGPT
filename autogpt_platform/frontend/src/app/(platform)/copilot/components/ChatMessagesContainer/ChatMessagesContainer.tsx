@@ -96,6 +96,9 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports (see ThreadHeader). */
+  hasFloatingControls?: boolean;
 }
 
 /**
@@ -294,6 +297,7 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
   expertIdentity,
+  hasFloatingControls = false,
 }: Props) {
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
@@ -455,6 +459,7 @@ export function ChatMessagesContainer({
         expertIdentity={expertIdentity}
         readOnly={readOnly}
         areFilesOpen={areFilesOpen}
+        hasFloatingControls={hasFloatingControls}
       />
       <ChatMinimap messages={messages} />
       <Conversation

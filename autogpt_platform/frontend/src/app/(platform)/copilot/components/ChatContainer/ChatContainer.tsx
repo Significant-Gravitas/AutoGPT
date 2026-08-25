@@ -90,6 +90,9 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports; the thread header clears them. */
+  hasFloatingControls?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -124,6 +127,7 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  hasFloatingControls,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -260,6 +264,7 @@ export const ChatContainer = ({
                   queuedMessages={queuedMessages}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  hasFloatingControls={hasFloatingControls}
                 />
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
