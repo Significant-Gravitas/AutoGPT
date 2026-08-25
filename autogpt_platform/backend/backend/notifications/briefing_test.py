@@ -15,6 +15,7 @@ from backend.data.alerts import AlertConditionDTO
 from backend.data.briefing_data import AgentPeriodStats, ScoredRun
 from backend.notifications.alert_causes import AuthExpiredCause
 from backend.notifications.briefing import MAX_HIGHLIGHTS, build_briefing
+from backend.notifications.conftest import make_db_client
 
 USER = "user-1"
 NOW = datetime(2026, 8, 3, 11, 30, tzinfo=timezone.utc)
@@ -57,46 +58,25 @@ def _deferred_condition() -> AlertConditionDTO:
     )
 
 
-def _patches(agents, conditions=None, runs=None, balance=100.0, idle=0):
-    # `idle` is the user's total active-agent count; the Briefing subtracts
-    # the ones that ran.
-    return [
-        patch(
-            "backend.notifications.briefing.briefing_data.get_agent_period_stats",
-            AsyncMock(return_value=agents),
-        ),
-        patch(
-            "backend.notifications.briefing.briefing_data.get_top_scored_runs",
-            AsyncMock(return_value=runs or []),
-        ),
-        patch(
-            "backend.notifications.briefing.briefing_data.count_active_agents",
-            AsyncMock(return_value=idle),
-        ),
-        patch(
-            "backend.notifications.briefing.briefing_data.get_credit_balance",
-            AsyncMock(return_value=balance),
-        ),
-        patch(
-            "backend.notifications.briefing.alerts_db.get_briefing_conditions",
-            AsyncMock(return_value=conditions or []),
-        ),
-        patch(
-            "backend.notifications.briefing.get_graph_execution",
-            AsyncMock(return_value=None),
-        ),
-    ]
+def _db_client(agents, conditions=None, runs=None, balance=100.0, idle=0):
+    """Patch the Briefing's RPC client.
+
+    `idle` is the user's total active-agent count; the Briefing subtracts the
+    ones that ran.
+    """
+    client = make_db_client(
+        get_agent_period_stats=AsyncMock(return_value=agents),
+        get_top_scored_runs=AsyncMock(return_value=runs or []),
+        count_active_agents=AsyncMock(return_value=idle),
+        get_briefing_credit_balance=AsyncMock(return_value=balance),
+        get_briefing_alert_conditions=AsyncMock(return_value=conditions or []),
+    )
+    return patch("backend.notifications.briefing._db", return_value=client)
 
 
 async def _built(agents, **kwargs):
-    ctx = _patches(agents, **kwargs)
-    for p in ctx:
-        p.start()
-    try:
+    with _db_client(agents, **kwargs):
         return await build_briefing(USER, BriefingFrequency.WEEKLY, "UTC", NOW)
-    finally:
-        for p in ctx:
-            p.stop()
 
 
 async def _build(agents, **kwargs):
@@ -204,3 +184,25 @@ async def test_a_run_with_nothing_to_say_still_gets_an_honest_gist():
     data = await _build(_agents(("A", 7, 0, 1.0)), runs=scored)
     assert data is not None
     assert data.highlights[0].gist == "completed 7 runs."
+
+
+@pytest.mark.asyncio
+async def test_a_quiet_period_still_reports_what_is_waiting():
+    """A deferred condition is reported by the Briefing and nowhere else.
+
+    Returning early on a zero-run period read the conditions *after* the
+    return, so anything the Alert engine had capped or deduped was stranded:
+    never emailed, and never marked briefed, so it could sit unreported
+    indefinitely. Nothing actionable is silently dropped is the whole promise.
+    """
+    built = await _built([], conditions=[_deferred_condition()])
+
+    assert built is not None
+    assert [item.agent for item in built.data.attention] == ["Invoice Chaser"]
+    assert built.attention_condition_ids == ["c1"]
+    assert built.data.totals.runs == 0
+
+
+@pytest.mark.asyncio
+async def test_a_period_with_neither_runs_nor_conditions_sends_nothing():
+    assert await _built([], conditions=[]) is None

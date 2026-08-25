@@ -29,12 +29,12 @@ WORTH A LOOK
 {% endif %}
 {% if not quiet %}
 THE LEDGER
-{% for row in ledger[:6] %}
+{% for row in ledger %}
 - {{ row.agent }}: {{ '{:,}'.format(row.runs) }} runs, {{ '%.2f' | format(row.credits) }} credits{% if row.issues_label %}, {{ row.issues_label }}{% endif %}
 
 {% endfor %}
-{% if ledger | length > 6 %}
-- + {{ ledger | length - 6 }} quieter agents: {{ urls.dashboard }}
+{% if ledger_overflow %}
+- + {{ ledger_overflow }} quieter agents: {{ urls.dashboard }}
 {% endif %}
 
 {{ '{:,.2f}'.format(totals.credits_used) }} credits used{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}

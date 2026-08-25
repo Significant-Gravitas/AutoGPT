@@ -98,7 +98,7 @@ def period_window(
         label = (
             f"{_format_day(start_date)} – {_format_day(end_date - timedelta(days=1))}"
         )
-        noun = "this week"
+        noun = "last week"
 
     frequency_word, adjective = _FREQUENCY_LABELS[frequency]
     return PeriodWindow(

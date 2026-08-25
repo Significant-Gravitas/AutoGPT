@@ -110,6 +110,17 @@ def render(
     return RenderedEmail(subject=subject, preheader=preheader, html=html, text=text)
 
 
+def _flatten_for_subject(value):
+    """Collapse newlines in every string reachable from the render context."""
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, dict):
+        return {k: _flatten_for_subject(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_flatten_for_subject(v) for v in value]
+    return value
+
+
 def _build_context(
     notification_type: NotificationType,
     data: BaseNotificationData,
@@ -137,8 +148,16 @@ def _render_subject(family: str, context: dict) -> tuple[str, str]:
 
     The preheader is the lede's second sentence, never "View this email in your
     browser". A template that emits only one line still returns cleanly.
+
+    The split is positional, so the two lines have to come from the *template*.
+    Interpolated values are flattened first: an agent name containing a newline
+    would otherwise cut the subject short and promote its own remainder into the
+    preheader slot, discarding the intended one. `_subject_env` has autoescape
+    off (a subject is not HTML), so nothing else neutralises it.
     """
-    rendered = _subject_env.get_template(f"{family}.subject.j2").render(**context)
+    rendered = _subject_env.get_template(f"{family}.subject.j2").render(
+        **_flatten_for_subject(context)
+    )
     lines = [line.strip() for line in rendered.strip().splitlines() if line.strip()]
     if not lines:
         raise ValueError(f"{family}.subject.j2 rendered no subject line")

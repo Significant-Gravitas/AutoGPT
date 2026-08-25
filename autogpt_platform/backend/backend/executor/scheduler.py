@@ -1734,6 +1734,11 @@ class Scheduler(AppService):
                 trigger="interval",
                 replace_existing=True,
                 seconds=60,
+                # Belt and braces. This only stops APScheduler double-firing
+                # the RPC; the RPC returns as soon as the pass is spawned, so
+                # the real guards are the in-process one in NotificationManager
+                # and the per-user claim the work itself takes.
+                max_instances=1,
                 jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
             )
 
@@ -1745,6 +1750,7 @@ class Scheduler(AppService):
                 id="send_due_briefings",
                 kwargs={},
                 replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
             )
 

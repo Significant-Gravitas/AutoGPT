@@ -7,13 +7,13 @@ from backend.notifications.scoring import ANOMALY_FACTOR, compute_score
 
 
 def _score(status, **over):
-    args = dict(
-        cost_cents=10.0,
-        node_error_count=0,
-        has_activity=True,
-        first_success=False,
-        cost_baseline=None,
-    )
+    args = {
+        "cost_cents": 10.0,
+        "node_error_count": 0,
+        "has_activity": True,
+        "first_success": False,
+        "cost_baseline": None,
+    }
     args.update(over)
     return compute_score(status=status, **args)
 

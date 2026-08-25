@@ -8,7 +8,7 @@ checks.
 """
 
 import pytest
-from prisma.enums import NotificationType
+from prisma.enums import BriefingFrequency, NotificationType
 
 from backend.data.notifications import (
     AlertData,
@@ -17,13 +17,20 @@ from backend.data.notifications import (
     BriefingLedgerRow,
     BriefingPeriod,
     BriefingTotals,
+    CardDetails,
+    NotificationPreference,
     OpsData,
+    PaymentFailedData,
+    PaymentFinalNoticeData,
+    SubscriptionCancelledData,
     SubscriptionEndedData,
     SubscriptionPlan,
+    SubscriptionResumedData,
     SubscriptionWelcomeData,
     VerdictData,
     supports_list_unsubscribe,
 )
+from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
 from backend.notifications.renderer import EmailUrls, render
 
 URLS = EmailUrls(
@@ -148,11 +155,36 @@ def test_the_footer_offers_a_volume_knob_not_just_a_trapdoor():
         assert choice in email.html
 
 
-def test_ops_is_the_one_family_without_one_click_unsubscribe():
+def test_only_the_product_families_carry_one_click_unsubscribe():
     assert not supports_list_unsubscribe(NotificationType.OPS)
-    for notification_type, _ in ALL:
-        if notification_type is not NotificationType.OPS:
-            assert supports_list_unsubscribe(notification_type)
+    for notification_type in (
+        NotificationType.BRIEFING,
+        NotificationType.ALERT,
+        NotificationType.VERDICT,
+    ):
+        assert supports_list_unsubscribe(notification_type)
+
+
+@pytest.mark.parametrize("notification_type", sorted(SERVICE_MESSAGES, key=str))
+def test_we_never_advertise_an_unsubscribe_we_do_not_honour(notification_type):
+    """A header we cannot act on is a broken unsubscribe.
+
+    Service messages are sent whatever the preferences say, so if one carried
+    List-Unsubscribe the subscriber could click it in Gmail, have every
+    preference switched off, and still keep receiving the mail — on the
+    billing sender's own reputation.
+    """
+    unsubscribed = NotificationPreference(
+        user_id="u1",
+        email="sam@example.com",
+        briefing_frequency=BriefingFrequency.OFF,
+        alerts_enabled=False,
+        store_verdicts_enabled=False,
+        daily_limit=0,
+    )
+    still_sends = wants_notification(unsubscribed, notification_type)
+    assert still_sends, "fixture assumes service mail ignores preferences"
+    assert not supports_list_unsubscribe(notification_type)
 
 
 def test_ops_says_it_is_internal_and_offers_no_unsubscribe():
@@ -172,3 +204,67 @@ def test_hero_art_is_hosted_rather_than_inlined():
     email = render(NotificationType.BRIEFING, BRIEFING, "sam@example.com", URLS)
     assert "<img" in email.html
     assert "data:image" not in email.html
+
+
+def test_a_newline_in_user_data_cannot_hijack_the_preheader():
+    """The subject/preheader split is positional, so the two lines must come
+    from the template. An agent name carrying a newline would otherwise cut the
+    subject short and push its own remainder into the preheader slot."""
+    hostile = VERDICT.model_copy(update={"agent_name": "Lead Scout\nBUY CHEAP PILLS"})
+    email = render(NotificationType.VERDICT, hostile, "sam@example.com", URLS)
+
+    assert "\n" not in email.subject
+    assert "BUY CHEAP PILLS" not in email.preheader
+    assert "Lead Scout BUY CHEAP PILLS" in email.subject
+
+
+def test_the_preheader_still_comes_from_the_templates_second_line():
+    """Flattening must not collapse the template's own two lines into one."""
+    email = render(NotificationType.BRIEFING, BRIEFING, "sam@example.com", URLS)
+    assert email.subject
+    assert email.preheader
+    assert email.preheader != email.subject
+
+
+SERVICE_PAYLOADS = {
+    NotificationType.SUBSCRIPTION_WELCOME: WELCOME,
+    NotificationType.SUBSCRIPTION_ENDED: ENDED,
+    NotificationType.PAYMENT_FAILED: PaymentFailedData(
+        user_name="Sam",
+        plan=PLAN,
+        amount_display="$50.00",
+        card=CardDetails(brand="Visa", last4="4242"),
+        next_retry_label="11 Aug 2026",
+    ),
+    NotificationType.PAYMENT_FINAL_NOTICE: PaymentFinalNoticeData(
+        user_name="Sam", plan=PLAN, amount_display="$50.00", pauses_label="22 Aug 2026"
+    ),
+    NotificationType.SUBSCRIPTION_CANCELLED: SubscriptionCancelledData(
+        user_name="Sam", plan=PLAN, access_until_label="8 Sep 2026"
+    ),
+    NotificationType.SUBSCRIPTION_RESUMED: SubscriptionResumedData(
+        user_name="Sam", plan=PLAN, renews_label="8 Sep 2026"
+    ),
+}
+
+
+@pytest.mark.parametrize("notification_type", sorted(SERVICE_MESSAGES, key=str))
+def test_service_mail_offers_preferences_not_an_unsubscribe(notification_type):
+    """The plain-text part has to agree with the header and the HTML.
+
+    Service mail sends whatever the preferences say, so an unsubscribe link in
+    any part of it is a promise we do not keep — it just happened to be the
+    text MIME part that still carried one.
+    """
+    email = render(
+        notification_type, SERVICE_PAYLOADS[notification_type], "sam@example.com", URLS
+    )
+
+    assert URLS.unsubscribe not in email.text
+    assert URLS.unsubscribe not in email.html
+    assert URLS.prefs in email.text
+
+
+def test_every_service_message_has_a_payload_here():
+    """Keeps the check above honest if a seventh service type is added."""
+    assert set(SERVICE_PAYLOADS) == set(SERVICE_MESSAGES)

@@ -17,12 +17,26 @@ If both sides managed the same edge we would double-add or fight over
 removals, so nothing in this module touches the tour → changelog handoff.
 """
 
+import hashlib
 import logging
 
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def _pseudonym(email: str) -> str:
+    """A stable, non-reversible handle for logs.
+
+    A subscriber's address is personal data; putting it in a log line or an
+    exception message copies it into log retention and every downstream sink.
+    The digest is enough to correlate one subscriber's records without storing
+    the address itself.
+    """
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:12]
+
+
 settings = Settings()
 
 API_BASE = "https://connect.mailerlite.com/api"
@@ -62,7 +76,9 @@ async def remove_from_changelog(email: str) -> None:
 
     subscriber_id = await _find_subscriber_id(email)
     if subscriber_id is None:
-        logger.info("No MailerLite subscriber for %s; nothing to remove", email)
+        logger.info(
+            "No MailerLite subscriber for %s; nothing to remove", _pseudonym(email)
+        )
         return
 
     response = await _client().delete(
@@ -72,10 +88,10 @@ async def remove_from_changelog(email: str) -> None:
     # 404 means they are already out of the group, which is the desired state.
     if response.status not in _OK_STATUSES and response.status != 404:
         raise MailerLiteError(
-            f"Removing {email} from the changelog group failed with "
-            f"{response.status}"
+            f"Removing subscriber {_pseudonym(email)} from the changelog group "
+            f"failed with {response.status}"
         )
-    logger.info("Removed %s from the MailerLite changelog group", email)
+    logger.info("Removed %s from the MailerLite changelog group", _pseudonym(email))
 
 
 async def _add_to_group(email: str, group_id: str, description: str) -> None:
@@ -87,9 +103,10 @@ async def _add_to_group(email: str, group_id: str, description: str) -> None:
     )
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"Adding {email} to the {description} group failed with {response.status}"
+            f"Adding subscriber {_pseudonym(email)} to the {description} group "
+            f"failed with {response.status}"
         )
-    logger.info("Added %s to the MailerLite %s group", email, description)
+    logger.info("Added %s to the MailerLite %s group", _pseudonym(email), description)
 
 
 async def _find_subscriber_id(email: str) -> str | None:
@@ -100,7 +117,8 @@ async def _find_subscriber_id(email: str) -> str | None:
         return None
     if response.status not in _OK_STATUSES:
         raise MailerLiteError(
-            f"Looking up MailerLite subscriber {email} failed with {response.status}"
+            f"Looking up MailerLite subscriber {_pseudonym(email)} failed with "
+            f"{response.status}"
         )
     return ((response.json() or {}).get("data") or {}).get("id")
 

@@ -1,114 +1,209 @@
-"""The two scheduled passes.
+"""The two scheduled passes, and the per-user work they fan out.
 
 `flush_matured_alerts` runs every minute and empties the debounce window;
 `send_due_briefings` runs hourly and catches each user's local ~07:30.
 
-Both deliberately queue rather than send: the queue consumer owns preference
-checks, rendering and retries, so one user's failure can't take out the pass.
+**A pass decides who is due and publishes; it never assembles.** Each due user
+becomes one message on the work queue, and a consumer does the reading and
+rendering. That keeps a tick O(1) in the number of users, so a pass physically
+cannot run past its own interval no matter how many users are due — which is
+what the previous shape got wrong, silently falling further behind as the user
+base grew. It also buys per-user retry, failure isolation and a dead-letter
+queue from the same machinery the emails already use.
+
+The work is claimed before it is acted on, because queue delivery is
+at-least-once and the service can run more than one replica.
 """
 
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from zoneinfo import available_timezones
 
-from prisma.enums import BriefingFrequency
-from prisma.models import User
-
-from backend.notifications import alerts, briefing
+from backend.data.notifications import PassWorkEvent, PassWorkKind
+from backend.data.user import BriefingCandidate
+from backend.notifications import alerts, briefing, lifecycle
 from backend.notifications.briefing_period import (
     BRIEFING_HOUR,
     is_briefing_due,
     resolve_zone,
 )
-from backend.notifications.queue import queue_notification_async
+from backend.notifications.dedupe import PASS_CLAIM_TTL_SECONDS, claim_once
+from backend.notifications.queue import queue_notification_async, queue_pass_work
+from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[NotificationRunner]")
 
-# One page of candidate users per pass, so a very large user base degrades into
-# more passes rather than one unbounded query.
+
+def _db():
+    """This service owns no Prisma connection; the DatabaseManager does."""
+    return get_database_manager_async_client()
+
+
+# Page size for the candidate walk. Bounds how many users are held in memory
+# at once; it does not bound how many are considered.
 CANDIDATE_PAGE_SIZE = 5000
 
 
 async def flush_matured_alerts() -> None:
-    """Ten minutes after a condition is raised, everything pending for that
-    user goes out as one email."""
-    user_ids = await alerts.matured_alert_user_ids()
-    if not user_ids:
-        return
-    logger.info(f"Flushing matured alerts for {len(user_ids)} users")
+    """Publish one flush job per user whose conditions have matured."""
+    now = datetime.now(tz=timezone.utc)
+    published = 0
 
-    for user_id in user_ids:
-        try:
-            await _flush_user_alerts(user_id)
-        except Exception:
-            logger.exception(f"Could not flush alerts for user {user_id}")
+    async for user_id in _matured_alert_user_ids():
+        published += 1
+        await queue_pass_work(
+            PassWorkKind.ALERT_FLUSH.value,
+            user_id,
+            PassWorkEvent(
+                kind=PassWorkKind.ALERT_FLUSH, user_id=user_id, scheduled_for=now
+            ).model_dump_json(),
+        )
+
+    if published:
+        logger.info(f"Fanned out {published} alert flushes")
 
 
 async def send_due_briefings() -> None:
-    """Assemble briefings for every user whose local briefing hour this is."""
-    now = datetime.now(tz=timezone.utc)
-    candidates = await _briefing_candidates(now)
-    logger.info(f"Considering {len(candidates)} users for a briefing")
+    """Publish one briefing job per user whose local briefing hour this is.
 
-    for user in candidates:
-        try:
-            await _send_user_briefing(user, now)
-        except Exception:
-            logger.exception(f"Could not build a briefing for user {user.id}")
+    The cadence check stays here because it is cheap and needs no extra read:
+    the candidate row already carries the frequency and the last send. Only
+    users that pass it become messages.
+    """
+    now = datetime.now(tz=timezone.utc)
+    zones = _briefing_hour_timezones(now)
+    considered = published = 0
+
+    async for user in _briefing_candidates(zones):
+        considered += 1
+        if not is_briefing_due(
+            user.briefing_frequency, user.timezone, now, user.last_briefing_at
+        ):
+            continue
+        published += 1
+        await queue_pass_work(
+            PassWorkKind.BRIEFING.value,
+            user.id,
+            PassWorkEvent(
+                kind=PassWorkKind.BRIEFING, user_id=user.id, scheduled_for=now
+            ).model_dump_json(),
+        )
+
+    logger.info(f"Considered {considered} users, fanned out {published} briefings")
+
+
+# ── the work itself, run by the queue consumer ──────────────────────────
+
+
+async def run_pass_work(event: PassWorkEvent) -> None:
+    """Do one user's share of a scheduled pass.
+
+    Claimed first: delivery is at-least-once and there may be several
+    replicas, so without this a redelivery is a second email. The claim key
+    carries the period, so the next period is never suppressed by this one.
+    """
+    key = f"{event.kind.value}:{event.user_id}:{event.scheduled_for.isoformat()}"
+    if not await claim_once(key, ttl_seconds=PASS_CLAIM_TTL_SECONDS):
+        logger.debug(f"{event.kind.value} for {event.user_id} already claimed")
+        return
+
+    if event.kind is PassWorkKind.ALERT_FLUSH:
+        await _flush_user_alerts(event.user_id)
+    elif event.kind is PassWorkKind.WELCOME:
+        await lifecycle.send_welcome_for_session(event.context["session_id"])
+    else:
+        await _build_and_queue_briefing(event.user_id, event.scheduled_for)
 
 
 async def _flush_user_alerts(user_id: str) -> None:
-    user = await User.prisma().find_unique(where={"id": user_id})
-    if user is None:
+    # The preference record, not the user record: whether alerts are wanted is
+    # a preference, and it is the same value the queue consumer gates on.
+    preference = await _db().get_user_notification_preference(user_id)
+    if preference is None:
         return
-    built = await alerts.build_alert_email(user_id, user.alertsEnabled)
+    built = await alerts.build_alert_email(user_id, preference.alerts_enabled)
     if built is None:
         # Deferred into the next briefing, or nothing left to say.
         return
     result = await queue_notification_async(alerts.alert_event(user_id, built.data))
-    if result.success:
-        await alerts.mark_alert_sent(built.condition_ids)
+    if not result.success:
+        raise RuntimeError(f"Could not queue the alert for user {user_id}")
+    await alerts.mark_alert_sent(built.condition_ids)
 
 
-async def _send_user_briefing(user: User, now: datetime) -> None:
-    frequency = BriefingFrequency(user.briefingFrequency)
-    if not is_briefing_due(frequency, user.timezone, now, user.lastBriefingAt):
+async def _build_and_queue_briefing(user_id: str, now: datetime) -> None:
+    preference = await _db().get_user_notification_preference(user_id)
+    if preference is None:
         return
 
-    built = await briefing.build_briefing(user.id, frequency, user.timezone, now)
+    user = await _db().get_briefing_candidate(user_id)
+    if user is None:
+        return
+
+    built = await briefing.build_briefing(
+        user_id, user.briefing_frequency, user.timezone, now
+    )
     if built is None:
         # Never sent empty: a period with nothing to say produces no email.
-        logger.debug(f"Nothing to brief for user {user.id}")
+        logger.debug(f"Nothing to brief for user {user_id}")
         return
 
     result = await queue_notification_async(
-        briefing.briefing_event(user.id, built.data)
+        briefing.briefing_event(user_id, built.data)
     )
     if not result.success:
-        return
+        # Raise so the consumer retries; the claim is period-scoped, so a
+        # redelivery inside the same period is still suppressed and only a
+        # genuine retry of *this* message gets through.
+        raise RuntimeError(f"Could not queue the briefing for user {user_id}")
 
     # Only the conditions this briefing actually reported are marked, so one
     # raised while it was being built still gets its turn next period.
     await briefing.mark_attention_reported(built.attention_condition_ids)
-    await User.prisma().update(where={"id": user.id}, data={"lastBriefingAt": now})
+    await _db().set_last_briefing_at(user_id, now)
 
 
-async def _briefing_candidates(now: datetime) -> list[User]:
+async def _matured_alert_user_ids() -> AsyncIterator[str]:
+    """Every user with a matured PENDING condition, paged.
+
+    The underlying table holds one row per live condition for the whole
+    platform and this runs every minute, so the read is bounded and walked
+    rather than taken in one go.
+    """
+    cursor: str | None = None
+    while True:
+        page = await alerts.matured_alert_user_ids(after_user_id=cursor)
+        if not page:
+            return
+        for user_id in page:
+            yield user_id
+        if len(page) < alerts.MATURED_PAGE_SIZE:
+            return
+        cursor = page[-1]
+
+
+async def _briefing_candidates(zones: list[str]) -> AsyncIterator[BriefingCandidate]:
     """Users for whom it is currently the briefing hour, locally.
 
     Filtering on timezone in SQL keeps each hourly pass to roughly a
     twenty-fourth of the user base; `is_briefing_due` then applies the weekly
     and monthly cadence rules.
+
+    Walks the whole set one page at a time, keyed on the last id seen, so the
+    pass is bounded in memory without being bounded in coverage.
     """
-    return await User.prisma().find_many(
-        where={
-            "briefingFrequency": {"not": BriefingFrequency.OFF},
-            "timezone": {"in": _briefing_hour_timezones(now)},
-        },
-        take=CANDIDATE_PAGE_SIZE,
-        order={"id": "asc"},
-    )
+    cursor: str | None = None
+    while True:
+        page = await _db().get_briefing_candidates(zones, cursor, CANDIDATE_PAGE_SIZE)
+        if not page:
+            return
+        for user in page:
+            yield user
+        if len(page) < CANDIDATE_PAGE_SIZE:
+            return
+        cursor = page[-1].id
 
 
 def _briefing_hour_timezones(now: datetime) -> list[str]:

@@ -48,10 +48,17 @@ UPDATE "User"
 SET "briefingFrequency" = 'OFF'
 WHERE "notifyOnWeeklySummary" = false;
 
+-- Alerts stay on unless the user had switched off *every* alert-shaped
+-- notification. The new AlertCause enum covers block failures and continuous
+-- errors as well as the two balance causes, so consulting only the balance
+-- pair would disable alerts for someone who had explicitly asked for the
+-- other two.
 UPDATE "User"
 SET "alertsEnabled" = false
 WHERE "notifyOnLowBalance" = false
-  AND "notifyOnZeroBalance" = false;
+  AND "notifyOnZeroBalance" = false
+  AND "notifyOnBlockExecutionFailed" = false
+  AND "notifyOnContinuousAgentError" = false;
 
 UPDATE "User"
 SET "notifyOnStoreVerdict" = false

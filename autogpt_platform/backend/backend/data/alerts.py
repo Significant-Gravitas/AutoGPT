@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from prisma.enums import AlertCause, AlertConditionStatus
 from prisma.models import AlertCondition
+from prisma.types import AlertConditionWhereInput
 from pydantic import BaseModel
 
 from backend.util.exceptions import DatabaseError
@@ -32,6 +33,10 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Alerts]")
 # The same cause never re-alerts inside this window; if it persists it
 # escalates into the next Briefing's attention block.
 ALERT_DEDUPE_WINDOW = timedelta(hours=24)
+
+# Only ever used to bound a counting read; well above the real daily cap so the
+# count is never silently truncated below it.
+MAX_ALERT_EMAILS_PER_DAY_CEILING = 100
 
 # Statuses that still describe a live problem, in the sense that the Briefing
 # should tell the user about it.
@@ -68,7 +73,7 @@ class AlertConditionDTO(BaseModel):
         )
 
 
-async def raise_condition(
+async def raise_alert_condition(
     user_id: str,
     cause: AlertCause,
     cause_key: str,
@@ -133,7 +138,7 @@ async def raise_condition(
         ) from e
 
 
-async def resolve_condition(user_id: str, cause_key: str) -> bool:
+async def resolve_alert_condition(user_id: str, cause_key: str) -> bool:
     """Mark a condition fixed. Returns whether a live row was cleared.
 
     Called when the underlying problem goes away — including during the
@@ -159,27 +164,52 @@ async def resolve_condition(user_id: str, cause_key: str) -> bool:
         ) from e
 
 
-async def get_users_with_matured_alerts(matured_before: datetime) -> list[str]:
+async def get_users_with_matured_alerts(
+    matured_before: datetime, after_user_id: str | None = None, limit: int = 1000
+) -> list[str]:
     """Users holding at least one PENDING condition older than the debounce
-    window, i.e. whose pending alerts are ready to go out as one email."""
+    window, i.e. whose pending alerts are ready to go out as one email.
+
+    Bounded and keyset-paged on `userId`. This runs every minute against every
+    PENDING row on the platform; an unbounded `find_many` would pull each row's
+    full JSONB payload across the wire once a minute forever.
+
+    `distinct` is applied by the query engine after the take, so the page is
+    requested by ordered `userId` and de-duplicated here — the caller pages
+    until a short page comes back.
+    """
     try:
+        where: AlertConditionWhereInput = {
+            "status": AlertConditionStatus.PENDING,
+            "createdAt": {"lt": matured_before},
+        }
+        if after_user_id:
+            where["userId"] = {"gt": after_user_id}
         rows = await AlertCondition.prisma().find_many(
-            where={
-                "status": AlertConditionStatus.PENDING,
-                "createdAt": {"lt": matured_before},
-            },
-            distinct=["userId"],
+            where=where,
+            order={"userId": "asc"},
+            take=limit,
         )
-        return [row.userId for row in rows]
+        seen: list[str] = []
+        for row in rows:
+            if not seen or seen[-1] != row.userId:
+                seen.append(row.userId)
+        return seen
     except Exception as e:
         raise DatabaseError(f"Failed to list users with matured alerts: {e}") from e
 
 
-async def get_pending_conditions(user_id: str) -> list[AlertConditionDTO]:
+# One user cannot have more distinct live causes than this before the email
+# stops being readable; the rest stay PENDING for the next flush.
+MAX_CONDITIONS_PER_EMAIL = 50
+
+
+async def get_pending_alert_conditions(user_id: str) -> list[AlertConditionDTO]:
     try:
         rows = await AlertCondition.prisma().find_many(
             where={"userId": user_id, "status": AlertConditionStatus.PENDING},
             order={"createdAt": "asc"},
+            take=MAX_CONDITIONS_PER_EMAIL,
         )
         return [AlertConditionDTO.from_db(row) for row in rows]
     except Exception as e:
@@ -199,6 +229,7 @@ async def count_alerts_sent_since(user_id: str, since: datetime) -> int:
         rows = await AlertCondition.prisma().find_many(
             where={"userId": user_id, "sentAt": {"gte": since}},
             distinct=["sentAt"],
+            take=MAX_ALERT_EMAILS_PER_DAY_CEILING,
         )
         return len(rows)
     except Exception as e:
@@ -207,7 +238,7 @@ async def count_alerts_sent_since(user_id: str, since: datetime) -> int:
         ) from e
 
 
-async def mark_sent(condition_ids: list[str]) -> None:
+async def mark_alert_conditions_sent(condition_ids: list[str]) -> None:
     if not condition_ids:
         return
     try:
@@ -222,7 +253,7 @@ async def mark_sent(condition_ids: list[str]) -> None:
         raise DatabaseError(f"Failed to mark alert conditions sent: {e}") from e
 
 
-async def mark_deferred(condition_ids: list[str]) -> None:
+async def mark_alert_conditions_deferred(condition_ids: list[str]) -> None:
     """Overflow past the daily cap folds into the Briefing rather than being
     dropped — nothing actionable is ever silently lost."""
     if not condition_ids:
@@ -236,7 +267,7 @@ async def mark_deferred(condition_ids: list[str]) -> None:
         raise DatabaseError(f"Failed to defer alert conditions: {e}") from e
 
 
-async def get_briefing_conditions(user_id: str) -> list[AlertConditionDTO]:
+async def get_briefing_alert_conditions(user_id: str) -> list[AlertConditionDTO]:
     """Everything the next Briefing's attention block must absorb: conditions
     capped or deduped during the period, plus any still unresolved, minus the
     ones a previous Briefing already reported."""
@@ -247,6 +278,8 @@ async def get_briefing_conditions(user_id: str) -> list[AlertConditionDTO]:
                 "status": {"in": LIVE_STATUSES},
                 "briefedAt": None,
             },
+            order={"createdAt": "asc"},
+            take=MAX_CONDITIONS_PER_EMAIL,
         )
         return [AlertConditionDTO.from_db(row) for row in rows]
     except Exception as e:
@@ -255,7 +288,7 @@ async def get_briefing_conditions(user_id: str) -> list[AlertConditionDTO]:
         ) from e
 
 
-async def mark_briefed(condition_ids: list[str]) -> None:
+async def mark_alert_conditions_briefed(condition_ids: list[str]) -> None:
     if not condition_ids:
         return
     try:

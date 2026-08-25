@@ -48,6 +48,24 @@ class ReviewResult(BaseModel):
     node_exec_id: str
 
 
+async def _sync_awaiting_review_safely(user_id: str, graph_id: str) -> None:
+    """Keep the awaiting-review alert from deciding whether a review succeeds.
+
+    The alert is a notification side effect. Raising here would report failure
+    for a review that was actually recorded — the node is already paused, or
+    the rows are already marked REJECTED by the time this runs — and would roll
+    the caller back over a notification problem.
+    """
+    try:
+        await sync_awaiting_review(user_id, graph_id)
+    except Exception:
+        logger.warning(
+            "Could not sync the awaiting-review alert for graph %s",
+            graph_id,
+            exc_info=True,
+        )
+
+
 def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
     """Generate the special nodeExecId key for auto-approval records."""
     return f"auto_approve_{graph_exec_id}_{node_id}"
@@ -240,7 +258,7 @@ async def get_or_create_human_review(
     if review.status == ReviewStatus.WAITING:
         # Nothing sends until a human acts, which is exactly the shape of an
         # Alert. The engine debounces and coalesces from here.
-        await sync_awaiting_review(user_id, graph_id)
+        await _sync_awaiting_review_safely(user_id, graph_id)
         return None
     else:
         return ReviewResult(
@@ -659,7 +677,7 @@ async def process_all_reviews_for_execution(
     # Re-derive the "waiting on your review" alert from the live queue, so
     # clearing the last item resolves it rather than leaving a stale alert.
     for review in {(r.userId, r.graphId) for r in reviews_to_process}:
-        await sync_awaiting_review(review[0], review[1])
+        await _sync_awaiting_review_safely(review[0], review[1])
 
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)

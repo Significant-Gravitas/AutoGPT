@@ -38,7 +38,7 @@ async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
         )
         cause_key = f"awaiting_review:{graph_id}"
         if not waiting:
-            await alerts_db.resolve_condition(user_id, cause_key)
+            await alerts_db.resolve_alert_condition(user_id, cause_key)
             return
 
         oldest = waiting[0].createdAt
@@ -49,7 +49,7 @@ async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
             count=len(waiting),
             since_label=f"{oldest.day} {oldest.strftime('%b')}, {oldest.strftime('%H:%M')}",
         )
-        await alerts_db.raise_condition(
+        await alerts_db.raise_alert_condition(
             user_id=user_id,
             cause=AlertCause.AWAITING_REVIEW,
             cause_key=cause_key,

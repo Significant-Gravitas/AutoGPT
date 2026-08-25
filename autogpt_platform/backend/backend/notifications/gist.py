@@ -19,7 +19,9 @@ GIST_MAX_CHARS = 150
 
 # Output names that read as files rather than prose, so they are named by kind
 # and count instead of being quoted.
-_FILE_HINT = re.compile(r"(file|image|video|audio|clip|pdf|doc|csv|sheet)", re.I)
+# Whole words only: "profile" contains "file" and "document" contains "doc",
+# and either would route a text output into the file-describing branch.
+_FILE_HINT = re.compile(r"\b(file|image|video|audio|clip|pdf|doc|csv|sheet)s?\b", re.I)
 _DATA_URI = re.compile(r"^data:([\w.+-]+)/")
 _URL = re.compile(r"^https?://")
 

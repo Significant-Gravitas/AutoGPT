@@ -318,16 +318,27 @@ class AwaitingInputCause(BaseCause[Literal[AlertCause.AWAITING_INPUT]]):
 
 
 class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
+    """The forecast slots are optional on purpose.
+
+    A run-out date is only worth stating when it is derived from what the
+    account actually spends. With too little history the alert still says the
+    balance is low — it just does not invent a date, because a wrong date in
+    this email is worse than no date.
+    """
+
     cause: Literal[AlertCause.LOW_BALANCE] = AlertCause.LOW_BALANCE
-    days_left: int
-    daily_rate_display: str
+    days_left: int | None = None
+    daily_rate_display: str | None = None
     balance_display: str
-    runs_out_label: str
+    runs_out_label: str | None = None
     scheduled_agents: int
 
     @property
     def headline(self) -> str:
-        return f"Your credits run out in about {self.days_left} days"
+        if self.days_left is None:
+            return "Your credits are running low"
+        day_word = "day" if self.days_left == 1 else "days"
+        return f"Your credits run out in about {self.days_left} {day_word}"
 
     @property
     def body(self) -> str:
@@ -336,6 +347,10 @@ class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
             if self.scheduled_agents == 1
             else f"{self.scheduled_agents} scheduled agents would stop"
         )
+        if self.days_left is None:
+            # No usable spend history: state the balance and the stake, and
+            # stop short of a date we cannot stand behind.
+            return f"{self.balance_display} remaining. {agents} when it runs out."
         return (
             f"At {self.daily_rate_display}/day the {self.balance_display} remaining "
             f"run out around {self.runs_out_label}. {agents}."
@@ -351,7 +366,10 @@ class LowBalanceCause(BaseCause[Literal[AlertCause.LOW_BALANCE]]):
 
     @property
     def tag(self) -> str | None:
-        return f"~{self.days_left} days left"
+        if self.days_left is None:
+            return "low balance"
+        day_word = "day" if self.days_left == 1 else "days"
+        return f"~{self.days_left} {day_word} left"
 
 
 class ZeroBalanceCause(BaseCause[Literal[AlertCause.ZERO_BALANCE]]):

@@ -130,7 +130,7 @@
                   <td align="right" style="padding:9px 0 6px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">ISSUES</td>
                   <td align="right" style="padding:9px 0 6px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; letter-spacing:1px; color:#8a86a3;">CREDITS</td>
                 </tr>
-                {%- for row in ledger[:6] %}
+                {%- for row in ledger %}
                 <tr>
                   <td style="padding:8px 8px 8px 0; font-size:14px; color:#17123b; border-top:1px solid #e7e4f4; overflow-wrap:anywhere;">{{ ui.trunc(row.agent, 34) }}</td>
                   <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#17123b; border-top:1px solid #e7e4f4;">{{ '{:,}'.format(row.runs) }}</td>
@@ -142,13 +142,12 @@
                   <td align="right" style="padding:8px 0 8px 12px; white-space:nowrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px; color:#17123b; border-top:1px solid #e7e4f4;">{{ '%.2f' | format(row.credits) }}</td>
                 </tr>
                 {%- endfor %}
-                {%- set rest = ledger[6:] %}
-                {%- if rest %}
-                {%- set rest_runs = rest | map(attribute='runs') | sum %}
-                {%- set rest_issues = rest | selectattr('issues_label') | list | length %}
+                {%- if ledger_overflow %}
+                {%- set rest_runs = ledger_overflow_runs %}
+                {%- set rest_issues = ledger_overflow_issues %}
                 <tr>
                   <td colspan="4" style="padding:8px 0; font-size:13px; color:#8a86a3; border-top:1px solid #e7e4f4;">
-                    + {{ rest | length }} quieter {{ 'agent' if rest | length == 1 else 'agents' }} ran {{ '{:,}'.format(rest_runs) }} {{ 'time' if rest_runs == 1 else 'times' }}{{ ', clean' if rest_issues == 0 else ', ' ~ rest_issues ~ ' with issues' }} &mdash;
+                    + {{ ledger_overflow }} quieter {{ 'agent' if ledger_overflow == 1 else 'agents' }} ran {{ '{:,}'.format(rest_runs) }} {{ 'time' if rest_runs == 1 else 'times' }}{{ ', clean' if rest_issues == 0 else ', ' ~ rest_issues ~ ' with issues' }} &mdash;
                     <a href="{{ urls.dashboard }}" style="color:#6d28d9; font-weight:700; text-decoration:underline;">see the full ledger</a>
                   </td>
                 </tr>

@@ -140,7 +140,7 @@ class User(BaseModel):
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
             subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.NO_TIER,
-            max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
+            max_emails_per_day=prisma_user.maxEmailsPerDay,
             briefing_frequency=BriefingFrequency(prisma_user.briefingFrequency),
             alerts_enabled=prisma_user.alertsEnabled,
             notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,

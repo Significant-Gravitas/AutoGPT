@@ -12,11 +12,8 @@ import logging
 from prisma.enums import BriefingFrequency, NotificationType
 from pydantic import BaseModel
 
-from backend.data import alerts as alerts_db
-from backend.data import briefing_data
 from backend.data.alerts import AlertConditionDTO
 from backend.data.briefing_data import AgentPeriodStats, ScoredRun
-from backend.data.execution import get_graph_execution
 from backend.data.notifications import (
     BriefingAttentionItem,
     BriefingData,
@@ -28,6 +25,7 @@ from backend.data.notifications import (
 from backend.notifications.alert_causes import SEVERITY, parse_cause
 from backend.notifications.briefing_period import period_window
 from backend.notifications.gist import build_gist, fallback_gist
+from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
 
@@ -35,11 +33,23 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Briefing]")
 settings = Settings()
 
 MAX_HIGHLIGHTS = 3
+# The email shows six rows and a "+ N quieter agents" line. Capping here
+# rather than in the template keeps the queued payload the size of the email
+# instead of the size of the account.
+MAX_LEDGER_ROWS = 6
+# Likewise for the attention block: everything beyond this stays unbriefed and
+# is carried by the next period rather than bloating this one.
+MAX_ATTENTION_ITEMS = 6
 # Under this much activity the digest shrinks instead of padding.
 QUIET_RUN_THRESHOLD = 3
 # Roughly what a credit costs, used only for the parenthetical dollar estimate
 # under the ledger.
 CREDITS_PER_USD = 100
+
+
+def _db():
+    """No Prisma connection in the notification service; go via the RPC."""
+    return get_database_manager_async_client()
 
 
 class BuiltBriefing(BaseModel):
@@ -55,31 +65,34 @@ async def build_briefing(
 ) -> BuiltBriefing | None:
     """Assemble one user's briefing, or None when there is nothing to send."""
     window = period_window(frequency, timezone_name, now)
-    agents = await briefing_data.get_agent_period_stats(
-        user_id, window.start, window.end
-    )
-    if not agents:
-        # Never send empty: a zero-run period sends nothing at all.
-        return None
+    agents = await _db().get_agent_period_stats(user_id, window.start, window.end)
+    conditions = await _db().get_briefing_alert_conditions(user_id)
 
-    conditions = await alerts_db.get_briefing_conditions(user_id)
+    if not agents and not conditions:
+        # Never send empty. "Empty" means no runs *and* nothing waiting: a
+        # period with no activity can still be carrying a deferred or
+        # unresolved condition, and the Briefing is the only place those are
+        # reported. Returning before reading them would strand anything
+        # actionable — the one thing this system promises never to drop.
+        return None
     attention = _attention_block(conditions)
     highlights = await _highlights(user_id, window.start, window.end, agents)
-    ledger = [_ledger_row(agent, attention) for agent in agents]
+    all_rows = [_ledger_row(agent, attention) for agent in agents]
+    ledger, overflow = all_rows[:MAX_LEDGER_ROWS], all_rows[MAX_LEDGER_ROWS:]
 
     runs = sum(agent.runs for agent in agents)
     failed = sum(agent.failed for agent in agents)
     credits_used = sum(agent.credits for agent in agents)
     totals = BriefingTotals(
-        # Invariants: runs is the ledger's sum, and agents_active is its length.
+        # Invariants: runs is the sum over every active agent, and
+        # agents_active counts them all — the ledger is the displayed slice,
+        # so the totals are taken before the cap.
         runs=runs,
-        agents_active=len(ledger),
-        agents_idle=max(
-            await briefing_data.count_active_agents(user_id) - len(agents), 0
-        ),
+        agents_active=len(all_rows),
+        agents_idle=max(await _db().count_active_agents(user_id) - len(agents), 0),
         failed=failed,
         credits_used=credits_used,
-        credits_balance=await briefing_data.get_credit_balance(user_id),
+        credits_balance=await _db().get_briefing_credit_balance(user_id),
         usd_estimate=round(credits_used / CREDITS_PER_USD, 2) if credits_used else None,
     )
 
@@ -94,7 +107,10 @@ async def build_briefing(
             attention=attention,
             highlights=highlights,
             ledger=ledger,
-            only_agent=ledger[0].agent if quiet and len(ledger) == 1 else None,
+            ledger_overflow=len(overflow),
+            ledger_overflow_runs=sum(row.runs for row in overflow),
+            ledger_overflow_issues=sum(1 for row in overflow if row.issues_label),
+            only_agent=all_rows[0].agent if quiet and len(all_rows) == 1 else None,
             quiet_summary=_quiet_summary(totals) if quiet else None,
         ),
         attention_condition_ids=[c.id for c in conditions],
@@ -112,7 +128,7 @@ def briefing_event(
 async def mark_attention_reported(condition_ids: list[str]) -> None:
     """Called once the briefing is actually queued, so the same conditions are
     not reported again next period."""
-    await alerts_db.mark_briefed(condition_ids)
+    await _db().mark_alert_conditions_briefed(condition_ids)
 
 
 def _attention_block(
@@ -127,7 +143,7 @@ def _attention_block(
         (parse_cause(c.cause, c.data) for c in conditions),
         key=lambda c: SEVERITY[c.cause],
     )
-    return [cause.attention_item(base_url) for cause in causes]
+    return [cause.attention_item(base_url) for cause in causes[:MAX_ATTENTION_ITEMS]]
 
 
 async def _highlights(
@@ -136,9 +152,7 @@ async def _highlights(
     """At most three notable outputs from the whole period, each a gist and a
     deep link. This is what replaces the old per-run email."""
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
-    runs = await briefing_data.get_top_scored_runs(
-        user_id, start, end, limit=MAX_HIGHLIGHTS
-    )
+    runs = await _db().get_top_scored_runs(user_id, start, end, limit=MAX_HIGHLIGHTS)
     runs_by_graph = {agent.graph_id: agent.runs for agent in agents}
     return [
         BriefingHighlight(
@@ -161,7 +175,7 @@ async def _gist_for(user_id: str, run: ScoredRun, agent_runs: int) -> str:
 
 async def _run_outputs(user_id: str, execution_id: str) -> dict[str, list]:
     try:
-        execution = await get_graph_execution(user_id, execution_id)
+        execution = await _db().get_graph_execution(user_id, execution_id)
     except Exception:
         logger.warning(
             f"Could not load outputs for run {execution_id}; falling back to counts",

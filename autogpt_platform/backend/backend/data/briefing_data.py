@@ -70,8 +70,12 @@ async def get_agent_period_stats(
                   AND g."version" = e."agentGraphVersion"
             WHERE e."userId" = $1
               AND e."isDeleted" = false
-              AND e."endedAt" >= $2::timestamp
-              AND e."endedAt" < $3::timestamp
+              -- `endedAt` is `timestamp without time zone` holding UTC, and the
+              -- driver binds these bounds as `timestamptz`. A bare `::timestamp`
+              -- cast converts using the session's TimeZone, so a non-UTC session
+              -- silently shifts the whole period window.
+              AND e."endedAt" >= ($2::timestamptz AT TIME ZONE 'UTC')
+              AND e."endedAt" < ($3::timestamptz AT TIME ZONE 'UTC')
             GROUP BY e."agentGraphId"
             ORDER BY top_score DESC, runs DESC, graph_id
             """,
@@ -106,8 +110,12 @@ async def get_top_scored_runs(
                   AND g."version" = e."agentGraphVersion"
             WHERE e."userId" = $1
               AND e."isDeleted" = false
-              AND e."endedAt" >= $2::timestamp
-              AND e."endedAt" < $3::timestamp
+              -- `endedAt` is `timestamp without time zone` holding UTC, and the
+              -- driver binds these bounds as `timestamptz`. A bare `::timestamp`
+              -- cast converts using the session's TimeZone, so a non-UTC session
+              -- silently shifts the whole period window.
+              AND e."endedAt" >= ($2::timestamptz AT TIME ZONE 'UTC')
+              AND e."endedAt" < ($3::timestamptz AT TIME ZONE 'UTC')
               AND e."executionStatus" = 'COMPLETED'
             ORDER BY e."interestingness" DESC NULLS LAST, e."endedAt" DESC
             LIMIT $4
@@ -169,7 +177,7 @@ async def count_scheduled_agents(user_id: str) -> int:
         ) from e
 
 
-async def get_credit_balance(user_id: str) -> float:
+async def get_briefing_credit_balance(user_id: str) -> float:
     """Balance in credits (the stored figure is cents)."""
     try:
         balance = await UserBalance.prisma().find_unique(where={"userId": user_id})

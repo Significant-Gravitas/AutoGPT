@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import NotificationType
 
+from backend.data.notifications import NotificationResult, SubscriptionPlan
 from backend.notifications import lifecycle
+from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
 PLAN_PATCH = "backend.notifications.lifecycle.plan_from_subscription"
@@ -78,7 +80,6 @@ def _invoice(**over) -> dict:
 
 
 def _context(user, claim=True):
-    from backend.data.notifications import SubscriptionPlan
 
     plan = SubscriptionPlan(
         name="Pro",
@@ -239,3 +240,131 @@ async def test_the_ended_email_branches_on_which_road_they_took():
 def test_the_platform_does_not_listen_for_trials():
     assert not hasattr(lifecycle, "on_trial_will_end")
     assert not any(name.endswith("TRIAL_ENDING") for name in dir(NotificationType))
+
+
+# ── the shape Stripe actually delivers ──────────────────────────────────
+#
+# Webhook payloads do not expand nested objects: `payment_intent` and
+# `default_payment_method` arrive as ID *strings*, not dicts. The fixtures
+# above omit both keys entirely, so `None or {}` masks it.
+
+
+def test_card_details_survive_an_unexpanded_webhook_invoice():
+    card = card_from_invoice(
+        {"id": "in_1", "payment_intent": "pi_3ABC", "default_payment_method": "pm_1XYZ"}
+    )
+    assert card.brand == "Card"
+    assert card.last4 == "••••"
+
+
+@pytest.mark.asyncio
+async def test_the_payment_failed_email_still_sends_for_a_real_invoice():
+    """The crash lands *after* `claim_once` has already taken the key, so
+    Stripe's retry is deduped away and the email never sends at all."""
+    calls = await _run(
+        lambda: lifecycle.on_payment_failed(
+            _invoice(payment_intent="pi_3ABC", default_payment_method="pm_1XYZ")
+        ),
+        _User(),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.PAYMENT_FAILED
+
+
+@pytest.mark.asyncio
+async def test_a_failed_publish_gives_the_claim_back():
+    """The claim is taken before the send so a Stripe replay cannot
+    double-send. If the send then fails and the key stays spent, every retry is
+    deduped away and the customer never learns their payment failed — the same
+    permanent loss the unexpanded-invoice crash used to cause.
+    """
+    plan = SubscriptionPlan(
+        name="Pro",
+        cycle="monthly",
+        cycle_noun="month",
+        label="Pro — monthly",
+        price_display="$50.00 / month",
+    )
+    with patch(
+        "backend.notifications.lifecycle._user_for", AsyncMock(return_value=_User())
+    ), patch(INVOICE_PLAN_PATCH, AsyncMock(return_value=plan)), patch(
+        "backend.notifications.lifecycle.claim_once", AsyncMock(return_value=True)
+    ), patch(
+        "backend.notifications.lifecycle.queue_notification_async",
+        AsyncMock(
+            return_value=NotificationResult(success=False, message="broker down")
+        ),
+    ), patch(
+        "backend.notifications.lifecycle.release_claim", AsyncMock()
+    ) as released:
+        # Raises so the webhook dispatcher releases its own event claim and
+        # returns 5xx, which is what makes Stripe retry at all.
+        with pytest.raises(RuntimeError):
+            await lifecycle.on_payment_failed(_invoice())
+
+    released.assert_awaited_once_with("payment_failed:in_1")
+
+
+@pytest.mark.asyncio
+async def test_a_successful_publish_keeps_the_claim():
+    plan = SubscriptionPlan(
+        name="Pro",
+        cycle="monthly",
+        cycle_noun="month",
+        label="Pro — monthly",
+        price_display="$50.00 / month",
+    )
+    with patch(
+        "backend.notifications.lifecycle._user_for", AsyncMock(return_value=_User())
+    ), patch(INVOICE_PLAN_PATCH, AsyncMock(return_value=plan)), patch(
+        "backend.notifications.lifecycle.claim_once", AsyncMock(return_value=True)
+    ), patch(
+        "backend.notifications.lifecycle.queue_notification_async",
+        AsyncMock(return_value=NotificationResult(success=True)),
+    ), patch(
+        "backend.notifications.lifecycle.release_claim", AsyncMock()
+    ) as released:
+        await lifecycle.on_payment_failed(_invoice())
+
+    released.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_welcome_publish_gives_the_claim_back():
+    """`welcomeEmailSentAt` is a database flag, not a key with a TTL.
+
+    Marking it before the publish is what stops a Stripe replay double-sending.
+    If the publish then fails and the flag stays set, this customer is marked
+    welcomed forever: every retry takes the returning-customer branch and they
+    are never greeted at all.
+    """
+    user = _User(welcome_sent_at=None)
+    plan = SubscriptionPlan(
+        name="Pro",
+        cycle="monthly",
+        cycle_noun="month",
+        label="Pro — monthly",
+        price_display="$50.00 / month",
+    )
+    with patch(
+        "backend.notifications.lifecycle._user_for", AsyncMock(return_value=user)
+    ), patch(PLAN_PATCH, AsyncMock(return_value=plan)), patch(
+        "backend.notifications.lifecycle._claim_welcome", AsyncMock(return_value=True)
+    ), patch(
+        "backend.notifications.lifecycle.queue_notification_async",
+        AsyncMock(
+            return_value=NotificationResult(success=False, message="broker down")
+        ),
+    ), patch(
+        "backend.notifications.lifecycle.queue_audience_change", AsyncMock()
+    ) as audience, patch(
+        "backend.notifications.lifecycle._release_welcome", AsyncMock()
+    ) as released:
+        with pytest.raises(RuntimeError):
+            await lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER, "mode": "subscription"}, _subscription()
+            )
+
+    released.assert_awaited_once_with(user)
+    # The tour enrolment must not run for a welcome that never went out.
+    audience.assert_not_awaited()

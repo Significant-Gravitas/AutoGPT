@@ -3456,3 +3456,46 @@ async def admin_export_user_history(
             )
         )
     return history
+
+
+# A forecast needs enough history to mean anything; below this the alert says
+# the balance is low without inventing a run-out date.
+SPEND_WINDOW_DAYS = 7
+MIN_SPEND_TRANSACTIONS = 3
+
+
+async def get_recent_daily_spend(user_id: str, days: int = SPEND_WINDOW_DAYS) -> float:
+    """Mean daily spend in credit-cents over the last `days`, or 0.0.
+
+    The runway forecast used to divide the balance by the cost of the single
+    transaction that happened to cross the threshold, so a one-cent charge
+    against a five-credit balance produced a run-out date more than a year
+    out — inside an email whose whole point is that the balance is nearly
+    gone. This reads what the account actually spends.
+
+    Returns 0.0 when there is too little history to forecast from; the caller
+    omits the forecast rather than publishing one built from noise.
+    """
+    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    try:
+        rows = await query_raw_with_schema(
+            """
+            SELECT COALESCE(SUM(ABS("amount")), 0) AS spent, COUNT(*) AS txns
+            FROM {schema_prefix}"CreditTransaction"
+            WHERE "userId" = $1
+              AND "type" = 'USAGE'
+              AND "createdAt" >= ($2::timestamptz AT TIME ZONE 'UTC')
+            """,
+            user_id,
+            since,
+        )
+    except Exception:
+        logger.warning(
+            "Could not read recent spend for user %s; omitting the forecast",
+            user_id,
+            exc_info=True,
+        )
+        return 0.0
+    if not rows or int(rows[0]["txns"] or 0) < MIN_SPEND_TRANSACTIONS:
+        return 0.0
+    return float(rows[0]["spent"] or 0) / days

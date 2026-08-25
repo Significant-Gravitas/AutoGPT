@@ -39,10 +39,13 @@ separate from marketing mail, on their own sending domain and reputation.
   Set `BILLING_SENDER_EMAIL`, `PRODUCT_SENDER_EMAIL`, `OPS_SENDER_EMAIL`.
 - `REFUND_NOTIFICATION_EMAIL` is the refunds team address that Ops mail is
   delivered to.
-- One-click List-Unsubscribe headers are set by the code on every family
-  **except Ops**, which is internal and deliberately not opt-in. Nothing to
-  configure, but do not add a stream-level unsubscribe footer to the ops
-  stream.
+- One-click List-Unsubscribe headers are set by the code on the **product**
+  families only (Briefing, Alert, Verdict) — the mail the preference check can
+  actually stop. Ops is internal, and the billing messages are service mail
+  that sends regardless of preferences, so advertising an opt-out on them would
+  promise something we do not honour and would put a non-functional unsubscribe
+  on the billing sender's reputation. Nothing to configure, but do not add a
+  stream-level unsubscribe footer to the billing or ops streams.
 
 ## 3. Stripe — dunning, and turning off Stripe's own emails
 
@@ -77,9 +80,16 @@ manages who is in each audience.
 
 ### 4a. The onboarding tour
 
-- The automation **already exists** as "Subscription Onboarding — White Glove
-  Tour", currently inactive. **Activate it; do not rebuild it.** The work is
+- The automation is described as **already existing** as "Subscription
+  Onboarding — White Glove Tour", currently inactive, with the work being
   activation plus swapping in the unified design.
+
+  > **Confirm which account that is in.** The MailerLite account reachable with
+  > the token we hold has zero automations, zero campaigns and zero groups. If
+  > the tour lives in a different account, point `MAILERLITE_API_TOKEN` at that
+  > one; if it does not exist anywhere, this is a build rather than an
+  > activation, and the six emails and the final tour→changelog step below all
+  > have to be created.
 - Re-skin its six emails to `templates/onboarding.html.j2` (kept in this repo
   purely as the design reference — the backend never renders it). Content is
   unchanged; days 0, 2, 4, 7, 10, 14.
@@ -136,14 +146,24 @@ manages who is in each audience.
   sitting in those tables before deploying.
 - The old per-type preference columns are dropped. The migration carries intent
   across first: a user who had the weekly summary off keeps their Briefing off,
-  and a user who had every balance notification off keeps Alerts off.
+  and a user who had switched off *every* alert-shaped notification — both
+  balance switches plus block-execution-failed and continuous-agent-error —
+  keeps Alerts off. Consulting only the balance pair would have disabled alerts
+  for someone who had explicitly asked for the other two.
 
 ## 6. Queues
 
 The RabbitMQ queues are renamed to `_v3` (`user_notifications_v3`,
-`ops_notifications_v3`, `audience_changes_v3`, `failed_notifications_v3`). The
-old `_v2` queues are left in place to drain under old-image consumers and can
-be deleted once empty.
+`ops_notifications_v3`, `audience_changes_v3`, `failed_notifications_v3`), plus
+`notification_work_v3`. The old `_v2` queues are left in place to drain under
+old-image consumers and can be deleted once empty.
+
+`notification_work_v3` carries the per-user work the scheduled passes fan out,
+and the welcome dispatch handed over by the Stripe webhook. A pass publishes
+one message per due user and returns, so a tick stays O(1) in the number of
+users and cannot run past its own interval however large the user base grows.
+Each message is claimed before it is acted on, because delivery is
+at-least-once and the service may run more than one replica.
 
 ## 7. Deliberately left in place
 
@@ -210,11 +230,12 @@ staging first.
 - **Starred runs** are listed in the design as an interestingness signal. The
   platform has no way to star a run, so `compute_score` does not use one; add
   the signal when the feature exists.
-- **Four alert causes have no producer yet.** The Alert family renders all nine
-  causes in the catalog, and four are wired to real signals today
-  (`low_balance`, `zero_balance`, `awaiting_review`, and anything raised via
-  `raise_alert`). The remaining five describe platform states that the platform
-  does not currently detect, so nothing calls them:
+- **Six alert causes have no producer yet.** The Alert family renders all nine
+  causes in the catalog, and three are wired to real signals today:
+  `low_balance` and `zero_balance` from `executor/billing.py`, and
+  `awaiting_review` from `notifications/review_alerts.py`. The remaining six
+  describe platform states the platform does not currently detect, so nothing
+  constructs them:
 
   | Cause | What has to exist first |
   | --- | --- |

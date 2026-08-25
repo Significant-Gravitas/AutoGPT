@@ -32,6 +32,34 @@ Toran Bruce Richards
 Founder - AutoGPT
 
 You can change or cancel your plan any time: {{ urls.billing }}
+{% elif kind == 'drip1' %}
+GETTING STARTED - {{ series.n }} OF {{ series.of }}
+
+Ten minutes to your first working agent
+
+Yesterday you joined AutoGPT. Today, let's make it earn its keep. The fastest
+way to understand agents isn't reading about them - it's watching one do a job
+you'd rather not do yourself.
+
+1. Pick a job, not a demo.
+   Something small and real: summarise your unread newsletters, watch a
+   webpage for changes, draft replies to a form inbox.
+
+2. Grab a Marketplace agent.
+   Search for that job - most agents work out of the box, no building
+   required on day one.
+
+3. Connect one thing.
+   A single account (say, Gmail or a webhook) is enough to see the whole
+   loop run.
+
+4. Press run, then schedule it.
+   Run it once manually. Happy with the result? Set a schedule and it's off
+   your plate for good.
+
+Open the Marketplace: {{ urls.marketplace }}
+
+Tomorrow: how to read what your agent did while you weren't looking.
 {% elif kind == 'payment_failed' %}
 NEEDS YOU - PAYMENT DECLINED
 
@@ -151,9 +179,14 @@ john.ababseh@agpt.co
 {% endif %}
 
 --
+{% if kind == 'drip1' %}
+This is part {{ series.n }} of {{ series.of }} of the getting-started series,
+for {{ user_email }}.
+Unsubscribe: {{ urls.unsubscribe }}
+{% else %}
 This is a service message about the AutoGPT account for {{ user_email }} - it's
 sent even if you've opted out of product news.
 Email preferences: {{ urls.prefs }}
+{% endif %}
 
 AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
-Unsubscribe: {{ urls.unsubscribe }}

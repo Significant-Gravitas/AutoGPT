@@ -12,6 +12,7 @@ There is deliberately no trial handler: the platform does not offer a trial, so
 import logging
 from datetime import datetime, timezone
 
+import stripe
 from prisma.enums import NotificationType
 from prisma.models import User
 
@@ -26,7 +27,7 @@ from backend.data.notifications import (
     SubscriptionResumedData,
     SubscriptionWelcomeData,
 )
-from backend.notifications.lifecycle_dedupe import claim_once
+from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
     format_amount,
@@ -40,6 +41,46 @@ from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
 settings = Settings()
+
+
+async def _publish(event, claim_key: str | None = None) -> None:
+    """Publish a billing email, or give its claim back and fail loudly.
+
+    Every one of these is claimed before it is published so a Stripe replay
+    cannot double-send. Ignoring a failed publish turns that safety into a
+    liability: the key is spent, the webhook still returns 200, Stripe never
+    retries, and the customer simply never hears that their payment failed.
+
+    Raising instead lets the webhook dispatcher release its own event claim and
+    return 5xx, and releasing this key first means the retry actually gets
+    through rather than being deduped.
+    """
+    result = await queue_notification_async(event)
+    if result.success:
+        return
+    if claim_key:
+        await release_claim(claim_key)
+    raise RuntimeError(f"Could not queue {event.type.value}: {result.message}")
+
+
+async def send_welcome_for_session(session_id: str) -> None:
+    """Re-read the checkout from Stripe and send the welcome.
+
+    Called from the work queue rather than the webhook, so the Stripe round
+    trip and the email are covered by retry-with-backoff and a dead-letter
+    queue. Re-reading rather than carrying the payload means a message that
+    waited acts on current state.
+
+    Raises on failure so the consumer retries; `on_checkout_completed` is
+    idempotent via the `welcomeEmailSentAt` claim.
+    """
+    session = dict(await stripe.checkout.Session.retrieve_async(session_id))
+    subscription_id = session.get("subscription")
+    if not subscription_id:
+        logger.info(f"Checkout {session_id} has no subscription; nothing to welcome")
+        return
+    subscription = dict(await stripe.Subscription.retrieve_async(str(subscription_id)))
+    await on_checkout_completed(session, subscription)
 
 
 async def on_checkout_completed(session: dict, subscription: dict) -> None:
@@ -64,17 +105,25 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         return
 
     plan = await plan_from_subscription(subscription)
-    await queue_notification_async(
-        NotificationEventModel[SubscriptionWelcomeData](
-            user_id=user.id,
-            type=NotificationType.SUBSCRIPTION_WELCOME,
-            data=SubscriptionWelcomeData(
-                user_name=_greeting_name(user),
-                plan=plan,
-                renews_label=format_date(subscription.get("current_period_end")),
-            ),
+    try:
+        await _publish(
+            NotificationEventModel[SubscriptionWelcomeData](
+                user_id=user.id,
+                type=NotificationType.SUBSCRIPTION_WELCOME,
+                data=SubscriptionWelcomeData(
+                    user_name=_greeting_name(user),
+                    plan=plan,
+                    renews_label=format_date(subscription.get("current_period_end")),
+                ),
+            )
         )
-    )
+    except Exception:
+        # The claim is a database flag, not a Redis key with a TTL, so a failed
+        # publish would otherwise mark this customer as welcomed forever and
+        # every retry would take the returning-customer branch instead.
+        await _release_welcome(user)
+        raise
+
     await queue_audience_change(
         AudienceEventModel(
             action=AudienceAction.ENROLL_TOUR, email=user.email, user_id=user.id
@@ -99,9 +148,10 @@ async def on_payment_failed(invoice: dict) -> None:
             # Automatic retries stay silent: four "payment failed" emails in
             # two weeks reads as a billing crisis.
             return
-        if not await claim_once(f"payment_failed:{invoice_id}"):
+        claim_key = f"payment_failed:{invoice_id}"
+        if not await claim_once(claim_key):
             return
-        await queue_notification_async(
+        await _publish(
             NotificationEventModel[PaymentFailedData](
                 user_id=user.id,
                 type=NotificationType.PAYMENT_FAILED,
@@ -112,13 +162,15 @@ async def on_payment_failed(invoice: dict) -> None:
                     card=card_from_invoice(invoice),
                     next_retry_label=format_date(invoice.get("next_payment_attempt")),
                 ),
-            )
+            ),
+            claim_key,
         )
         return
 
-    if not await claim_once(f"final_notice:{invoice_id}"):
+    claim_key = f"final_notice:{invoice_id}"
+    if not await claim_once(claim_key):
         return
-    await queue_notification_async(
+    await _publish(
         NotificationEventModel[PaymentFinalNoticeData](
             user_id=user.id,
             type=NotificationType.PAYMENT_FINAL_NOTICE,
@@ -130,7 +182,8 @@ async def on_payment_failed(invoice: dict) -> None:
                 # deployment notes for the setting this must agree with.
                 pauses_label=format_date(invoice.get("period_end")),
             ),
-        )
+        ),
+        claim_key,
     )
 
 
@@ -153,9 +206,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
     plan = await plan_from_subscription(subscription)
 
     if is_cancelling:
-        if not await claim_once(f"cancelled:{sub_id}:{period_end}"):
+        claim_key = f"cancelled:{sub_id}:{period_end}"
+        if not await claim_once(claim_key):
             return
-        await queue_notification_async(
+        await _publish(
             NotificationEventModel[SubscriptionCancelledData](
                 user_id=user.id,
                 type=NotificationType.SUBSCRIPTION_CANCELLED,
@@ -164,13 +218,15 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
                     plan=plan,
                     access_until_label=format_date(period_end),
                 ),
-            )
+            ),
+            claim_key,
         )
         return
 
-    if not await claim_once(f"resumed:{sub_id}:{period_end}"):
+    claim_key = f"resumed:{sub_id}:{period_end}"
+    if not await claim_once(claim_key):
         return
-    await queue_notification_async(
+    await _publish(
         NotificationEventModel[SubscriptionResumedData](
             user_id=user.id,
             type=NotificationType.SUBSCRIPTION_RESUMED,
@@ -179,7 +235,8 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
                 plan=plan,
                 renews_label=format_date(period_end),
             ),
-        )
+        ),
+        claim_key,
     )
 
 
@@ -191,12 +248,13 @@ async def on_subscription_deleted(subscription: dict) -> None:
         return
 
     sub_id = str(subscription.get("id") or "")
-    if not await claim_once(f"ended:{sub_id}"):
+    claim_key = f"ended:{sub_id}"
+    if not await claim_once(claim_key):
         return
 
     reason = (subscription.get("cancellation_details") or {}).get("reason")
     plan = await plan_from_subscription(subscription)
-    await queue_notification_async(
+    await _publish(
         NotificationEventModel[SubscriptionEndedData](
             user_id=user.id,
             type=NotificationType.SUBSCRIPTION_ENDED,
@@ -206,7 +264,8 @@ async def on_subscription_deleted(subscription: dict) -> None:
                 ended_label=format_date(subscription.get("ended_at")),
                 due_to_payment=reason == "payment_failed",
             ),
-        )
+        ),
+        claim_key,
     )
     # Churned users get win-back only, never the monthly update.
     await queue_audience_change(
@@ -234,6 +293,20 @@ async def _claim_welcome(user: User) -> bool:
         data={"welcomeEmailSentAt": _now()},
     )
     return claimed > 0
+
+
+async def _release_welcome(user: User) -> None:
+    """Give the welcome claim back so a retry can actually send."""
+    try:
+        await User.prisma().update_many(
+            where={"id": user.id}, data={"welcomeEmailSentAt": None}
+        )
+    except Exception:
+        logger.warning(
+            f"Could not release the welcome claim for user {user.id}; they will "
+            "not be greeted on a retry",
+            exc_info=True,
+        )
 
 
 def _greeting_name(user: User) -> str:

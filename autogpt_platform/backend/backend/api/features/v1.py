@@ -106,7 +106,12 @@ from backend.data.execution_cost_summary import (
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    NotificationPreference,
+    NotificationPreferenceDTO,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
@@ -148,6 +153,7 @@ from backend.monitoring.instrumentation import (
     record_graph_operation,
 )
 from backend.notifications import lifecycle
+from backend.notifications.queue import queue_pass_work
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -1400,25 +1406,40 @@ async def _claim_stripe_event(event_id: str) -> bool:
 async def _notify_checkout_completed(session: dict) -> None:
     """Hand the completed checkout to the lifecycle emails.
 
-    Needs the subscription itself, because the plan name, cycle and price the
-    welcome email is written from live on the subscription rather than the
-    session. Failures here must not fail the webhook: the customer has paid,
-    and Stripe retrying the whole event to re-send a welcome would be worse
-    than the welcome arriving late.
+    Failures here must not fail the webhook: the customer has paid, and Stripe
+    retrying the whole event would re-run `fulfill_checkout`, which grants
+    credits. But swallowing the failure lost the welcome permanently — Stripe
+    does not retry a 200, and `customer.subscription.created` deliberately does
+    not send it either.
+
+    So the work is queued rather than done here. The consumer re-reads the
+    session and subscription from Stripe and sends the welcome, with the same
+    retry-with-backoff and dead-letter queue every other notification gets.
+    Publishing is one small call that either succeeds or is logged; the Stripe
+    API round-trip and the email now sit behind a retry instead of a warning.
     """
     if session.get("mode") != "subscription":
         return
-    subscription_id = session.get("subscription")
-    if not subscription_id:
+    if not session.get("subscription"):
         return
-    try:
-        subscription = await stripe.Subscription.retrieve_async(subscription_id)
-        await lifecycle.on_checkout_completed(session, dict(subscription))
-    except Exception:
+    session_id = session.get("id")
+    if not session_id:
+        return
+    result = await queue_pass_work(
+        PassWorkKind.WELCOME.value,
+        str(session_id),
+        PassWorkEvent(
+            kind=PassWorkKind.WELCOME,
+            user_id="",
+            scheduled_for=datetime.now(tz=timezone.utc),
+            context={"session_id": str(session_id)},
+        ).model_dump_json(),
+    )
+    if not result.success:
         logger.warning(
-            "stripe_webhook: could not queue the welcome email for session %s",
-            session.get("id"),
-            exc_info=True,
+            "stripe_webhook: could not queue the welcome email for session %s: %s",
+            session_id,
+            result.message,
         )
 
 

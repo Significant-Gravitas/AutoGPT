@@ -20,6 +20,7 @@ from prisma.types import (
     ProfileCreateInput,
     UserCreateInput,
     UserUpdateInput,
+    UserWhereInput,
 )
 from pydantic import BaseModel, ConfigDict
 
@@ -557,7 +558,10 @@ def _preference_from_user(user: PrismaUser) -> NotificationPreference:
         briefing_frequency=BriefingFrequency(user.briefingFrequency),
         alerts_enabled=user.alertsEnabled,
         store_verdicts_enabled=user.notifyOnStoreVerdict,
-        daily_limit=user.maxEmailsPerDay or 3,
+        # Not `or 3`: the column is non-nullable, so the only value that
+        # coalesce would catch is 0 — which is precisely what a one-click
+        # unsubscribe sets, and means "send nothing".
+        daily_limit=user.maxEmailsPerDay,
     )
 
 
@@ -780,3 +784,86 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
+
+
+class BriefingCandidate(BaseModel):
+    """The fields the briefing pass needs to decide whether a user is due.
+
+    A narrow model rather than the full `User`, because this crosses the
+    DatabaseManager RPC boundary once per page of candidates.
+    """
+
+    id: str
+    email: str
+    timezone: str
+    briefing_frequency: BriefingFrequency
+    last_briefing_at: datetime | None
+    alerts_enabled: bool
+
+
+async def get_briefing_candidates(
+    timezones: list[str], after_id: str | None, limit: int
+) -> list[BriefingCandidate]:
+    """One page of users for whom it is currently the local briefing hour.
+
+    Keyset-paged on `id` so the caller can walk the whole set: a single capped
+    read would strand every user past the cap behind the same first page,
+    because the ordering never changes and the filter does not exclude users
+    already briefed.
+    """
+    try:
+        where: UserWhereInput = {
+            "briefingFrequency": {"not": BriefingFrequency.OFF},
+            "timezone": {"in": timezones},
+        }
+        if after_id:
+            where["id"] = {"gt": after_id}
+        rows = await prisma.user.find_many(where=where, take=limit, order={"id": "asc"})
+        return [
+            BriefingCandidate(
+                id=row.id,
+                email=row.email,
+                timezone=row.timezone,
+                briefing_frequency=BriefingFrequency(row.briefingFrequency),
+                last_briefing_at=row.lastBriefingAt,
+                alerts_enabled=row.alertsEnabled,
+            )
+            for row in rows
+        ]
+    except Exception as e:
+        raise DatabaseError(f"Failed to list briefing candidates: {e}") from e
+
+
+async def get_briefing_candidate(user_id: str) -> BriefingCandidate | None:
+    """One user's briefing settings, for work picked up off the queue.
+
+    The pass publishes only a user id, so the consumer re-reads rather than
+    trusting settings captured a tick earlier — a user who switched the
+    briefing off in between must not receive one.
+    """
+    try:
+        row = await prisma.user.find_unique(where={"id": user_id})
+        if row is None:
+            return None
+        return BriefingCandidate(
+            id=row.id,
+            email=row.email,
+            timezone=row.timezone,
+            briefing_frequency=BriefingFrequency(row.briefingFrequency),
+            last_briefing_at=row.lastBriefingAt,
+            alerts_enabled=row.alertsEnabled,
+        )
+    except Exception as e:
+        raise DatabaseError(f"Failed to load briefing candidate {user_id}: {e}") from e
+
+
+async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
+    """Advance the cadence clock, once the briefing is safely on the queue."""
+    try:
+        await prisma.user.update(
+            where={"id": user_id}, data={"lastBriefingAt": sent_at}
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to record briefing time for user {user_id}: {e}"
+        ) from e

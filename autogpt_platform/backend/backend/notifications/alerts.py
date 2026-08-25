@@ -19,9 +19,9 @@ from datetime import datetime, timedelta, timezone
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
-from backend.data import alerts as alerts_db
 from backend.data.notifications import AlertData, AlertPrimary, NotificationEventModel
 from backend.notifications.alert_causes import SEVERITY, BaseCause, parse_cause
+from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
 
@@ -30,6 +30,14 @@ settings = Settings()
 
 ALERT_DEBOUNCE = timedelta(minutes=10)
 MAX_ALERT_EMAILS_PER_DAY = 2
+# How many users one flush tick pulls per page.
+MATURED_PAGE_SIZE = 1000
+
+
+def _db():
+    """The notification service owns no Prisma connection; every read and
+    write goes through the DatabaseManager."""
+    return get_database_manager_async_client()
 
 
 async def raise_alert(user_id: str, cause_key: str, cause: BaseCause) -> None:
@@ -39,7 +47,7 @@ async def raise_alert(user_id: str, cause_key: str, cause: BaseCause) -> None:
     email, a line in a coalesced email, or an attention card in the next
     Briefing is the engine's decision, not the caller's.
     """
-    await alerts_db.raise_condition(
+    await _db().raise_alert_condition(
         user_id=user_id,
         cause=cause.cause,
         cause_key=cause_key,
@@ -51,14 +59,17 @@ async def resolve_alert(user_id: str, cause_key: str) -> None:
     """The problem went away. During the debounce window this cancels the send
     outright — the user reconnected Gmail from their phone and never needs to
     hear that it was disconnected."""
-    if await alerts_db.resolve_condition(user_id, cause_key):
+    if await _db().resolve_alert_condition(user_id, cause_key):
         logger.info(f"Alert condition {cause_key} resolved for user {user_id}")
 
 
-async def matured_alert_user_ids() -> list[str]:
-    """Users whose pending conditions have sat out the debounce window."""
-    return await alerts_db.get_users_with_matured_alerts(
-        datetime.now(tz=timezone.utc) - ALERT_DEBOUNCE
+async def matured_alert_user_ids(after_user_id: str | None = None) -> list[str]:
+    """One page of users whose pending conditions have sat out the debounce
+    window. Paged because this runs every minute over a platform-wide table."""
+    return await _db().get_users_with_matured_alerts(
+        datetime.now(tz=timezone.utc) - ALERT_DEBOUNCE,
+        after_user_id,
+        MATURED_PAGE_SIZE,
     )
 
 
@@ -77,23 +88,23 @@ async def build_alert_email(user_id: str, alerts_enabled: bool) -> BuiltAlert | 
     Returns None when nothing should be emailed; in that case the conditions
     have already been marked deferred, so the Briefing will carry them.
     """
-    pending = await alerts_db.get_pending_conditions(user_id)
+    pending = await _db().get_pending_alert_conditions(user_id)
     if not pending:
         return None
 
     condition_ids = [row.id for row in pending]
 
     if not alerts_enabled:
-        await alerts_db.mark_deferred(condition_ids)
+        await _db().mark_alert_conditions_deferred(condition_ids)
         return None
 
-    sent_today = await alerts_db.count_alerts_sent_since(user_id, _start_of_day())
+    sent_today = await _db().count_alerts_sent_since(user_id, _start_of_day())
     if sent_today >= MAX_ALERT_EMAILS_PER_DAY:
         logger.info(
             f"User {user_id} hit the {MAX_ALERT_EMAILS_PER_DAY}-alert daily cap; "
             f"folding {len(condition_ids)} conditions into the next briefing"
         )
-        await alerts_db.mark_deferred(condition_ids)
+        await _db().mark_alert_conditions_deferred(condition_ids)
         return None
 
     causes = sorted(
@@ -125,7 +136,7 @@ async def mark_alert_sent(condition_ids: list[str]) -> None:
     """Called once the email is on the queue. Marking earlier would lose the
     conditions if the publish failed; marking later is the reason the same
     cause can't re-alert for 24 hours."""
-    await alerts_db.mark_sent(condition_ids)
+    await _db().mark_alert_conditions_sent(condition_ids)
 
 
 def alert_event(user_id: str, data: AlertData) -> NotificationEventModel[AlertData]:

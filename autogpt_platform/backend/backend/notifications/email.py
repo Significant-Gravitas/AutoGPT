@@ -26,6 +26,9 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Bounds how long one send can hold a thread-pool worker.
+POSTMARK_TIMEOUT_SECONDS = 30
+
 
 class TypedPostmarkClient(PostmarkClient):
     """Workaround so the type checker sees `emails`; the Postmark library ships
@@ -38,7 +41,11 @@ class EmailSender:
     def __init__(self):
         if settings.secrets.postmark_server_api_token:
             self.postmark = TypedPostmarkClient(
-                server_token=settings.secrets.postmark_server_api_token
+                server_token=settings.secrets.postmark_server_api_token,
+                # postmarker defaults to no timeout, which hands `requests` an
+                # unbounded wait. Every send occupies a thread-pool worker, so a
+                # hung Postmark call would otherwise exhaust the pool.
+                timeout=POSTMARK_TIMEOUT_SECONDS,
             )
         else:
             logger.warning(

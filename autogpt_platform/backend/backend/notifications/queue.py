@@ -33,6 +33,12 @@ USER_NOTIFICATIONS_QUEUE = "user_notifications_v3"
 OPS_NOTIFICATIONS_QUEUE = "ops_notifications_v3"
 AUDIENCE_QUEUE = "audience_changes_v3"
 FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v3"
+# Per-user work fanned out by the scheduled passes. The passes publish one
+# message per due user and return; the consumers do the assembling. That keeps
+# a tick O(1) in the number of users, so a pass can never run past its own
+# interval, and it buys per-user retry, isolation and a DLQ from the same
+# machinery the emails already use.
+PASS_WORK_QUEUE = "notification_work_v3"
 
 _QUORUM = "quorum"
 
@@ -42,6 +48,7 @@ def create_notification_config() -> RabbitMQConfig:
         _queue(USER_NOTIFICATIONS_QUEUE, "notification.user.#", "failed.user"),
         _queue(OPS_NOTIFICATIONS_QUEUE, "notification.ops.#", "failed.ops"),
         _queue(AUDIENCE_QUEUE, "notification.audience.#", "failed.audience"),
+        _queue(PASS_WORK_QUEUE, "notification.work.#", "failed.work"),
         # DLQ destination — quorum so dead letters survive a broker restart.
         Queue(
             name=FAILED_NOTIFICATIONS_QUEUE,
@@ -76,6 +83,16 @@ async def queue_audience_change(event: AudienceEventModel) -> NotificationResult
     return await _publish(
         f"notification.audience.{event.action.value}", event.model_dump_json()
     )
+
+
+async def queue_pass_work(kind: str, user_id: str, payload: str) -> NotificationResult:
+    """Hand one user's share of a scheduled pass to the work queue.
+
+    The pass itself must stay cheap: it decides *who* is due and publishes,
+    and the consumer decides *what* to send. A pass that did the assembling
+    inline would hold the tick open for as long as the slowest user.
+    """
+    return await _publish(f"notification.work.{kind}", payload)
 
 
 async def _publish(routing_key: str, message: str) -> NotificationResult:

@@ -75,3 +75,15 @@ def test_monthly_window_covers_the_previous_calendar_month():
     window = period_window(BriefingFrequency.MONTHLY, "America/New_York", first)
     assert window.period.label == "August 2026"
     assert window.period.noun == "in August"
+
+
+def test_the_weekly_noun_describes_the_window_it_actually_covers():
+    """The weekly window is the seven days *before* today, matching how daily
+    says "yesterday" and monthly names the previous month."""
+    window = period_window(
+        BriefingFrequency.WEEKLY,
+        "UTC",
+        datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc),
+    )
+    assert window.period.noun == "last week"
+    assert (window.end - window.start).days == 7

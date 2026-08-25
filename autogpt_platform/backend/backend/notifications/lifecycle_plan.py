@@ -12,6 +12,7 @@ from typing import Literal
 
 from backend.data.credit import build_price_to_tier_map
 from backend.data.notifications import CardDetails, SubscriptionPlan
+from backend.notifications.stripe_payloads import StripeInvoice
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
@@ -66,17 +67,16 @@ async def plan_from_invoice(invoice: dict) -> SubscriptionPlan:
 
 
 def card_from_invoice(invoice: dict) -> CardDetails:
-    """Card brand and last four for the "Card ···· 4242" row. Falls back to
-    neutral wording rather than inventing digits."""
-    payment = (
-        (invoice.get("payment_intent") or {}).get("charges", {}).get("data") or [{}]
-    )[0]
-    details = ((payment.get("payment_method_details") or {}).get("card")) or {}
-    if not details:
-        details = ((invoice.get("default_payment_method") or {}).get("card")) or {}
+    """Card brand and last four for the "Card ···· 4242" row.
+
+    Falls back to neutral wording rather than inventing digits — and, because
+    it reads through `StripeInvoice`, never raises on an unexpanded webhook
+    payload where the nested objects are ID strings.
+    """
+    card = StripeInvoice.parse(invoice).card
     return CardDetails(
-        brand=str(details.get("brand") or "Card").title(),
-        last4=str(details.get("last4") or "••••"),
+        brand=str((card.brand if card else None) or "Card").title(),
+        last4=str((card.last4 if card else None) or "••••"),
     )
 
 

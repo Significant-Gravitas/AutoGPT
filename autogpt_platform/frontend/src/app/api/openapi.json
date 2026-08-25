@@ -22501,7 +22501,7 @@
           "daily_limit": {
             "type": "integer",
             "title": "Daily Limit",
-            "default": 10
+            "default": 3
           }
         },
         "type": "object",
@@ -22523,8 +22523,8 @@
           "daily_limit": {
             "type": "integer",
             "title": "Daily Limit",
-            "description": "Max emails per day",
-            "default": 10
+            "description": "Max product emails per day; 0 sends none. Account and billing messages are service mail and ignore it.",
+            "default": 3
           }
         },
         "type": "object",

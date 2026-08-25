@@ -10,7 +10,8 @@ import asyncio
 import logging
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from typing import Awaitable, Callable
+from datetime import date, datetime, timezone
+from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
 
@@ -21,15 +22,18 @@ from backend.data.notifications import (
     BaseEventModel,
     NotificationEventModel,
     NotificationResult,
+    PassWorkEvent,
     get_notif_data_type,
 )
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications import briefing_runner, mailerlite
+from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
-from backend.notifications.preferences import wants_notification
+from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
 from backend.notifications.queue import (
     AUDIENCE_QUEUE,
     OPS_NOTIFICATIONS_QUEUE,
+    PASS_WORK_QUEUE,
     USER_NOTIFICATIONS_QUEUE,
     create_notification_config,
     queue_notification_async,
@@ -49,6 +53,13 @@ from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
+
+
+def _utc_today() -> date:
+    """The cap resets at UTC midnight, matching the Alert engine's own daily
+    cap. Both are documented as a follow-up to move to the user's local day."""
+    return datetime.now(tz=timezone.utc).date()
+
 
 MAX_CONSUMER_RETRY_ATTEMPTS = 3
 CONSUMER_RETRY_BACKOFF_SECONDS = 2
@@ -74,6 +85,9 @@ class NotificationManager(AppService):
         self.email_sender = EmailSender()
         self._run_service_future: Future[None] | None = None
         self._run_service_task: asyncio.Task[None] | None = None
+        # In-flight scheduled passes, keyed by name, so a slow tick cannot
+        # overlap the next one and double-send.
+        self._passes: dict[str, asyncio.Task[None]] = {}
 
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
@@ -98,13 +112,52 @@ class NotificationManager(AppService):
     async def flush_matured_alerts(self) -> None:
         """Send everything that has sat out the ten-minute debounce window, one
         coalesced email per user."""
-        asyncio.create_task(briefing_runner.flush_matured_alerts())
+        self._spawn_pass("flush_matured_alerts", briefing_runner.flush_matured_alerts)
 
     @expose
     async def send_due_briefings(self) -> None:
         """Assemble and queue briefings for every user whose local ~07:30 this
         hour is."""
-        asyncio.create_task(briefing_runner.send_due_briefings())
+        self._spawn_pass("send_due_briefings", briefing_runner.send_due_briefings)
+
+    def _spawn_pass(
+        self, name: str, work: Callable[[], Coroutine[None, None, None]]
+    ) -> None:
+        """Run a scheduled pass in the background, at most one at a time.
+
+        The scheduler fires these on a fixed interval and this RPC returns as
+        soon as the task is spawned, so nothing else stops a slow pass from
+        overlapping the next tick. Both passes queue their email *before*
+        marking the rows that suppress a resend, so two concurrent runs read
+        the same PENDING conditions and send the same alert twice.
+
+        The task is also held in a dict rather than left to float: a bare
+        `create_task` reference can be garbage-collected mid-flight.
+        """
+        existing = self._passes.get(name)
+        if existing and not existing.done():
+            logger.warning(
+                f"{name} is still running from the previous tick; skipping this one"
+            )
+            return
+
+        task = asyncio.create_task(work(), name=name)
+        self._passes[name] = task
+        task.add_done_callback(self._clear_pass)
+
+    def _clear_pass(self, task: asyncio.Task) -> None:
+        """Drop a finished pass, but only if it is still the registered one.
+
+        Done callbacks are dispatched via `call_soon`, so a task that finished
+        just before the next tick can have its callback run *after* the
+        successor is registered. Popping by name alone would clear the guard
+        out from under a pass that is still running.
+        """
+        name = task.get_name()
+        if self._passes.get(name) is task:
+            del self._passes[name]
+        if (exc := task.exception()) is not None:
+            logger.error(f"Scheduled pass {name} failed: {exc}", exc_info=exc)
 
     @expose
     async def discord_system_alert(
@@ -151,6 +204,21 @@ class NotificationManager(AppService):
             )
             return True
 
+        # The volume knob's own ceiling, across every product notification.
+        # Service messages are exempt for the same reason they ignore the rest
+        # of the preferences: they are about the customer's account, and a
+        # payment failure has to reach them whatever their inbox settings say.
+        if event.type not in SERVICE_MESSAGES and not await claim_daily_send(
+            event.user_id, preference.daily_limit, _utc_today()
+        ):
+            logger.info(
+                f"Skipping {event.type} for user {event.user_id}: at their "
+                f"limit of {preference.daily_limit} emails a day"
+            )
+            # Acked, not retried: tomorrow's send is a new decision, and a
+            # redelivery today would only be refused again.
+            return True
+
         await self.email_sender.send_notification(
             notification_type=event.type,
             user_email=preference.email,
@@ -172,6 +240,22 @@ class NotificationManager(AppService):
             data=event.data,
             unsubscribe_link="",
         )
+        return True
+
+    async def _process_pass_work(self, message: str) -> bool:
+        """One user's share of a scheduled pass.
+
+        Idempotent by construction: `run_pass_work` claims the user plus the
+        period before it does anything, so a redelivery is a no-op rather than
+        a second email. A transient failure propagates so the retry loop can
+        recover; an unparseable message is permanent and goes to the DLQ.
+        """
+        try:
+            event = PassWorkEvent.model_validate_json(message)
+        except ValueError as e:
+            logger.warning(f"Unparseable pass work (sending to DLQ): {e}")
+            return False
+        await briefing_runner.run_pass_work(event)
         return True
 
     async def _process_audience_change(self, message: str) -> bool:
@@ -232,6 +316,7 @@ class NotificationManager(AppService):
             USER_NOTIFICATIONS_QUEUE: self._process_user_notification,
             OPS_NOTIFICATIONS_QUEUE: self._process_ops_notification,
             AUDIENCE_QUEUE: self._process_audience_change,
+            PASS_WORK_QUEUE: self._process_pass_work,
         }
         tasks = [
             asyncio.create_task(

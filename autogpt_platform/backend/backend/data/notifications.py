@@ -91,8 +91,15 @@ class BriefingData(BaseNotificationData):
     # the strong amber rule and the rest a lighter one.
     attention: list[BriefingAttentionItem] = Field(default_factory=list)
     highlights: list[BriefingHighlight] = Field(default_factory=list)
-    # Arrives pre-sorted by interestingness.
+    # Arrives pre-sorted by interestingness, and already capped: the payload
+    # carries what the email shows plus a count of what it does not, rather
+    # than every row a busy account produced.
     ledger: list[BriefingLedgerRow] = Field(default_factory=list)
+    # Pre-aggregated so the "+ N quieter agents ran M times" line survives the
+    # cap: the rows themselves are dropped, their totals are not.
+    ledger_overflow: int = 0
+    ledger_overflow_runs: int = 0
+    ledger_overflow_issues: int = 0
     only_agent: str | None = None
     quiet_summary: str | None = None
 
@@ -328,10 +335,43 @@ def get_delivery_stream(notification_type: NotificationType) -> DeliveryStream:
     return _STREAMS[notification_type]
 
 
-# Ops is internal mail and is deliberately the one family without one-click
-# unsubscribe headers; every other family gets them.
+# Only the product families carry one-click unsubscribe headers, because they
+# are the only mail the preference check can actually stop.
+#
+# Ops is internal. Billing messages are service mail: `wants_notification`
+# returns True for them whatever the user's preferences say, so advertising
+# List-Unsubscribe on them would promise an opt-out we do not honour — the
+# subscriber unsubscribes, every preference goes off, and the billing mail
+# keeps arriving. Under Gmail/Yahoo bulk-sender rules that is a broken
+# unsubscribe, and it would land on the billing sender's own reputation.
 def supports_list_unsubscribe(notification_type: NotificationType) -> bool:
-    return notification_type is not NotificationType.OPS
+    return get_delivery_stream(notification_type) is DeliveryStream.PRODUCT
+
+
+class PassWorkKind(str, Enum):
+    """Which scheduled pass produced a unit of per-user work."""
+
+    BRIEFING = "briefing"
+    ALERT_FLUSH = "alert_flush"
+    WELCOME = "welcome"
+
+
+class PassWorkEvent(BaseModel):
+    """One user's share of a scheduled pass.
+
+    Carries the pass's own notion of "now" rather than letting the consumer
+    read the clock: a message that waits in the queue must still be assembled
+    for the period it was scheduled for, and the dedupe key has to be stable
+    across a redelivery.
+    """
+
+    kind: PassWorkKind
+    user_id: str
+    scheduled_for: datetime
+    # Only the identifier, never the payload: a checkout session that sat in
+    # the queue is re-read from Stripe so the work acts on current state.
+    # Empty for the scheduled kinds, which key off `user_id` alone.
+    context: dict[str, str] = Field(default_factory=dict)
 
 
 class BaseEventModel(BaseModel):
@@ -383,7 +423,7 @@ class NotificationPreference(BaseModel):
     briefing_frequency: BriefingFrequency = BriefingFrequency.WEEKLY
     alerts_enabled: bool = True
     store_verdicts_enabled: bool = True
-    daily_limit: int = 10
+    daily_limit: int = 3
 
     @property
     def wants_briefing(self) -> bool:
@@ -395,4 +435,8 @@ class NotificationPreferenceDTO(BaseModel):
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool
     store_verdicts_enabled: bool
-    daily_limit: int = Field(default=10, description="Max emails per day")
+    daily_limit: int = Field(
+        default=3,
+        description="Max product emails per day; 0 sends none. Account and "
+        "billing messages are service mail and ignore it.",
+    )

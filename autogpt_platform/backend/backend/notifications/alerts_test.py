@@ -24,6 +24,7 @@ from backend.notifications.alerts import (
     raise_alert,
     resolve_alert,
 )
+from backend.notifications.conftest import make_db_client
 
 USER = "user-1"
 
@@ -69,13 +70,10 @@ async def test_pending_alerts_coalesce_into_one_email():
         _condition(AlertCause.LOW_BALANCE, LOW),
         _condition(AlertCause.ZERO_BALANCE, ZERO),
     ]
-    with patch(
-        "backend.notifications.alerts.alerts_db.get_pending_conditions",
-        AsyncMock(return_value=pending),
-    ), patch(
-        "backend.notifications.alerts.alerts_db.count_alerts_sent_since",
-        AsyncMock(return_value=0),
-    ):
+    client = make_db_client(
+        get_pending_alert_conditions=AsyncMock(return_value=pending)
+    )
+    with patch("backend.notifications.alerts._db", return_value=client):
         built = await build_alert_email(USER, alerts_enabled=True)
 
     assert built is not None
@@ -89,13 +87,12 @@ async def test_pending_alerts_coalesce_into_one_email():
 
 @pytest.mark.asyncio
 async def test_the_cta_verb_is_the_fix_not_view_dashboard():
-    with patch(
-        "backend.notifications.alerts.alerts_db.get_pending_conditions",
-        AsyncMock(return_value=[_condition(AlertCause.AUTH_EXPIRED, AUTH)]),
-    ), patch(
-        "backend.notifications.alerts.alerts_db.count_alerts_sent_since",
-        AsyncMock(return_value=0),
-    ):
+    client = make_db_client(
+        get_pending_alert_conditions=AsyncMock(
+            return_value=[_condition(AlertCause.AUTH_EXPIRED, AUTH)]
+        )
+    )
+    with patch("backend.notifications.alerts._db", return_value=client):
         built = await build_alert_email(USER, alerts_enabled=True)
 
     assert built is not None
@@ -109,17 +106,13 @@ async def test_the_cta_verb_is_the_fix_not_view_dashboard():
 @pytest.mark.asyncio
 async def test_overflow_past_the_daily_cap_folds_into_the_briefing():
     pending = [_condition(AlertCause.AUTH_EXPIRED, AUTH)]
-    with patch(
-        "backend.notifications.alerts.alerts_db.get_pending_conditions",
-        AsyncMock(return_value=pending),
-    ), patch(
-        "backend.notifications.alerts.alerts_db.count_alerts_sent_since",
-        AsyncMock(return_value=MAX_ALERT_EMAILS_PER_DAY),
-    ), patch(
-        "backend.notifications.alerts.alerts_db.mark_deferred", AsyncMock()
-    ) as mark_deferred, patch(
-        "backend.notifications.alerts.alerts_db.mark_sent", AsyncMock()
-    ) as mark_sent:
+    client = make_db_client(
+        get_pending_alert_conditions=AsyncMock(return_value=pending),
+        count_alerts_sent_since=AsyncMock(return_value=MAX_ALERT_EMAILS_PER_DAY),
+    )
+    mark_deferred = client.mark_alert_conditions_deferred
+    mark_sent = client.mark_alert_conditions_sent
+    with patch("backend.notifications.alerts._db", return_value=client):
         built = await build_alert_email(USER, alerts_enabled=True)
 
     assert built is None
@@ -132,12 +125,11 @@ async def test_overflow_past_the_daily_cap_folds_into_the_briefing():
 @pytest.mark.asyncio
 async def test_alerts_switched_off_still_reach_the_briefing():
     pending = [_condition(AlertCause.AUTH_EXPIRED, AUTH)]
-    with patch(
-        "backend.notifications.alerts.alerts_db.get_pending_conditions",
-        AsyncMock(return_value=pending),
-    ), patch(
-        "backend.notifications.alerts.alerts_db.mark_deferred", AsyncMock()
-    ) as mark_deferred:
+    client = make_db_client(
+        get_pending_alert_conditions=AsyncMock(return_value=pending)
+    )
+    mark_deferred = client.mark_alert_conditions_deferred
+    with patch("backend.notifications.alerts._db", return_value=client):
         built = await build_alert_email(USER, alerts_enabled=False)
 
     assert built is None
@@ -146,21 +138,17 @@ async def test_alerts_switched_off_still_reach_the_briefing():
 
 @pytest.mark.asyncio
 async def test_nothing_pending_sends_nothing():
-    with patch(
-        "backend.notifications.alerts.alerts_db.get_pending_conditions",
-        AsyncMock(return_value=[]),
-    ):
+    with patch("backend.notifications.alerts._db", return_value=make_db_client()):
         assert await build_alert_email(USER, alerts_enabled=True) is None
 
 
 @pytest.mark.asyncio
 async def test_raising_a_condition_carries_its_cause_and_payload():
-    with patch(
-        "backend.notifications.alerts.alerts_db.raise_condition", AsyncMock()
-    ) as raise_condition:
+    client = make_db_client()
+    with patch("backend.notifications.alerts._db", return_value=client):
         await raise_alert(USER, "auth_expired:gmail:g1", AUTH)
 
-    kwargs = raise_condition.await_args.kwargs
+    kwargs = client.raise_alert_condition.await_args.kwargs
     assert kwargs["cause"] is AlertCause.AUTH_EXPIRED
     assert kwargs["cause_key"] == "auth_expired:gmail:g1"
     assert kwargs["data"]["provider"] == "Gmail"
@@ -168,13 +156,13 @@ async def test_raising_a_condition_carries_its_cause_and_payload():
 
 @pytest.mark.asyncio
 async def test_a_condition_that_clears_cancels_the_send():
-    with patch(
-        "backend.notifications.alerts.alerts_db.resolve_condition",
-        AsyncMock(return_value=True),
-    ) as resolve_condition:
+    client = make_db_client()
+    with patch("backend.notifications.alerts._db", return_value=client):
         await resolve_alert(USER, "auth_expired:gmail:g1")
 
-    resolve_condition.assert_awaited_once_with(USER, "auth_expired:gmail:g1")
+    client.resolve_alert_condition.assert_awaited_once_with(
+        USER, "auth_expired:gmail:g1"
+    )
 
 
 def test_the_debounce_and_dedupe_windows_match_the_design():

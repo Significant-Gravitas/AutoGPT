@@ -1,15 +1,16 @@
 """Scheduling and queue hand-off tests for alerts and Briefings."""
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import BriefingFrequency
 
-from backend.data.notifications import NotificationResult
+from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 from backend.notifications import briefing_runner
+from backend.notifications.conftest import make_db_client
 
 NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 
@@ -24,12 +25,27 @@ def graph_cleanup() -> Iterator[None]:
     yield
 
 
+def _candidates(users: list) -> object:
+    """Stand-in for the paged async generator `_briefing_candidates` returns."""
+
+    def _generator(*_args, **_kwargs):
+        async def _iter():
+            for user in users:
+                yield user
+
+        return _iter()
+
+    return _generator
+
+
 def _user(user_id: str = "user-1") -> SimpleNamespace:
+    """Shaped like `BriefingCandidate`, which is what the RPC returns."""
     return SimpleNamespace(
         id=user_id,
-        briefingFrequency=BriefingFrequency.DAILY.value,
+        email="sam@example.com",
+        briefing_frequency=BriefingFrequency.DAILY,
         timezone="UTC",
-        lastBriefingAt=None,
+        last_briefing_at=None,
         alertsEnabled=True,
     )
 
@@ -38,64 +54,149 @@ def _result(success: bool) -> NotificationResult:
     return NotificationResult(success=success)
 
 
+# ── the passes: publish, never assemble ─────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_no_matured_alerts_do_no_work():
+async def test_no_matured_alerts_publishes_nothing():
     with patch.object(
-        briefing_runner.alerts,
-        "matured_alert_user_ids",
-        AsyncMock(return_value=[]),
-    ), patch.object(briefing_runner, "_flush_user_alerts", AsyncMock()) as flush_user:
+        briefing_runner.alerts, "matured_alert_user_ids", AsyncMock(return_value=[])
+    ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
         await briefing_runner.flush_matured_alerts()
 
-    flush_user.assert_not_awaited()
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_alert_pass_continues_after_one_user_fails():
+async def test_the_alert_pass_publishes_one_message_per_user():
+    """The tick must stay O(1) in work: it fans out and returns, so a slow
+    user cannot hold the next tick open."""
     with patch.object(
         briefing_runner.alerts,
         "matured_alert_user_ids",
         AsyncMock(return_value=["user-1", "user-2"]),
-    ), patch.object(
-        briefing_runner,
-        "_flush_user_alerts",
-        AsyncMock(side_effect=[RuntimeError("boom"), None]),
-    ) as flush_user:
+    ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
         await briefing_runner.flush_matured_alerts()
 
-    assert [call.args[0] for call in flush_user.await_args_list] == [
-        "user-1",
-        "user-2",
-    ]
+    assert [c.args[1] for c in publish.await_args_list] == ["user-1", "user-2"]
+    for call in publish.await_args_list:
+        event = PassWorkEvent.model_validate_json(call.args[2])
+        assert event.kind is PassWorkKind.ALERT_FLUSH
 
 
 @pytest.mark.asyncio
-async def test_no_briefing_candidates_do_no_work():
+async def test_no_briefing_candidates_publishes_nothing():
     with patch.object(
-        briefing_runner, "_briefing_candidates", AsyncMock(return_value=[])
-    ), patch.object(briefing_runner, "_send_user_briefing", AsyncMock()) as send_user:
+        briefing_runner, "_briefing_candidates", _candidates([])
+    ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
         await briefing_runner.send_due_briefings()
 
-    send_user.assert_not_awaited()
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_briefing_pass_continues_after_one_user_fails():
+async def test_the_briefing_pass_publishes_only_users_that_are_due():
     users = [_user("user-1"), _user("user-2")]
     with patch.object(
-        briefing_runner, "_briefing_candidates", AsyncMock(return_value=users)
+        briefing_runner, "_briefing_candidates", _candidates(users)
     ), patch.object(
-        briefing_runner,
-        "_send_user_briefing",
-        AsyncMock(side_effect=[RuntimeError("boom"), None]),
-    ) as send_user:
+        briefing_runner, "is_briefing_due", side_effect=[True, False]
+    ), patch.object(
+        briefing_runner, "queue_pass_work", AsyncMock()
+    ) as publish:
         await briefing_runner.send_due_briefings()
 
-    assert [call.args[0].id for call in send_user.await_args_list] == [
-        "user-1",
-        "user-2",
-    ]
-    assert send_user.await_args_list[0].args[1] == send_user.await_args_list[1].args[1]
+    assert [c.args[1] for c in publish.await_args_list] == ["user-1"]
+
+
+@pytest.mark.asyncio
+async def test_every_message_carries_the_passes_own_clock():
+    """The consumer must not read the clock itself: a message that waits in the
+    queue still belongs to the period it was scheduled for, and the dedupe key
+    is built from that timestamp."""
+    users = [_user("user-1"), _user("user-2")]
+    with patch.object(
+        briefing_runner, "_briefing_candidates", _candidates(users)
+    ), patch.object(
+        briefing_runner, "is_briefing_due", return_value=True
+    ), patch.object(
+        briefing_runner, "queue_pass_work", AsyncMock()
+    ) as publish:
+        await briefing_runner.send_due_briefings()
+
+    stamps = {
+        PassWorkEvent.model_validate_json(c.args[2]).scheduled_for
+        for c in publish.await_args_list
+    }
+    assert len(stamps) == 1
+
+
+# ── the work: claimed exactly once ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_work_is_claimed_before_anything_is_sent():
+    """Queue delivery is at-least-once and there may be several replicas, so
+    an unclaimed redelivery would be a second email."""
+    event = PassWorkEvent(
+        kind=PassWorkKind.ALERT_FLUSH, user_id="user-1", scheduled_for=NOW
+    )
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(return_value=False)
+    ) as claim, patch.object(
+        briefing_runner, "_flush_user_alerts", AsyncMock()
+    ) as flush:
+        await briefing_runner.run_pass_work(event)
+
+    claim.assert_awaited_once()
+    flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_claim_key_is_scoped_to_the_period():
+    """A month-long key would suppress the *next* period's legitimate send."""
+    first = PassWorkEvent(
+        kind=PassWorkKind.BRIEFING, user_id="user-1", scheduled_for=NOW
+    )
+    later = PassWorkEvent(
+        kind=PassWorkKind.BRIEFING,
+        user_id="user-1",
+        scheduled_for=NOW + timedelta(days=1),
+    )
+    seen = []
+
+    async def record(key, **_kw):
+        seen.append(key)
+        return True
+
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(side_effect=record)
+    ), patch.object(briefing_runner, "_build_and_queue_briefing", AsyncMock()):
+        await briefing_runner.run_pass_work(first)
+        await briefing_runner.run_pass_work(later)
+
+    assert len(set(seen)) == 2, "each period must claim its own key"
+    assert all("user-1" in k for k in seen)
+
+
+@pytest.mark.asyncio
+async def test_each_kind_routes_to_its_own_work():
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(return_value=True)
+    ), patch.object(
+        briefing_runner, "_flush_user_alerts", AsyncMock()
+    ) as flush, patch.object(
+        briefing_runner, "_build_and_queue_briefing", AsyncMock()
+    ) as build:
+        await briefing_runner.run_pass_work(
+            PassWorkEvent(kind=PassWorkKind.ALERT_FLUSH, user_id="u", scheduled_for=NOW)
+        )
+        await briefing_runner.run_pass_work(
+            PassWorkEvent(kind=PassWorkKind.BRIEFING, user_id="u", scheduled_for=NOW)
+        )
+
+    flush.assert_awaited_once()
+    build.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -104,11 +205,13 @@ async def test_alerts_are_marked_sent_only_after_queue_success(queued: bool):
     user = _user()
     built = SimpleNamespace(data=object(), condition_ids=["condition-1"])
     event = object()
-    client = SimpleNamespace(find_unique=AsyncMock(return_value=user))
+    client = make_db_client(
+        get_user_notification_preference=AsyncMock(
+            return_value=SimpleNamespace(alerts_enabled=user.alertsEnabled)
+        )
+    )
 
-    with patch.object(
-        briefing_runner.User, "prisma", return_value=client
-    ), patch.object(
+    with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.alerts,
         "build_alert_email",
         AsyncMock(return_value=built),
@@ -121,7 +224,13 @@ async def test_alerts_are_marked_sent_only_after_queue_success(queued: bool):
     ), patch.object(
         briefing_runner.alerts, "mark_alert_sent", AsyncMock()
     ) as mark_sent:
-        await briefing_runner._flush_user_alerts(user.id)
+        if queued:
+            await briefing_runner._flush_user_alerts(user.id)
+        else:
+            # A failed publish must reach the consumer so its retry can run;
+            # swallowing it would drop the alert silently.
+            with pytest.raises(RuntimeError):
+                await briefing_runner._flush_user_alerts(user.id)
 
     if queued:
         mark_sent.assert_awaited_once_with(["condition-1"])
@@ -131,12 +240,14 @@ async def test_alerts_are_marked_sent_only_after_queue_success(queued: bool):
 
 @pytest.mark.asyncio
 async def test_missing_user_or_empty_alert_build_queues_nothing():
-    missing_client = SimpleNamespace(find_unique=AsyncMock(return_value=None))
+    missing_client = make_db_client(
+        get_user_notification_preference=AsyncMock(return_value=None)
+    )
     build_alert = AsyncMock(return_value=None)
     queue = AsyncMock()
 
     with patch.object(
-        briefing_runner.User, "prisma", return_value=missing_client
+        briefing_runner, "_db", return_value=missing_client
     ), patch.object(
         briefing_runner.alerts, "build_alert_email", build_alert
     ), patch.object(
@@ -148,14 +259,14 @@ async def test_missing_user_or_empty_alert_build_queues_nothing():
     queue.assert_not_awaited()
 
     user = _user()
-    found_client = SimpleNamespace(find_unique=AsyncMock(return_value=user))
-    with patch.object(
-        briefing_runner.User, "prisma", return_value=found_client
-    ), patch.object(
+    found_client = make_db_client(
+        get_user_notification_preference=AsyncMock(
+            return_value=SimpleNamespace(alerts_enabled=user.alertsEnabled)
+        )
+    )
+    with patch.object(briefing_runner, "_db", return_value=found_client), patch.object(
         briefing_runner.alerts, "build_alert_email", build_alert
-    ), patch.object(
-        briefing_runner, "queue_notification_async", queue
-    ):
+    ), patch.object(briefing_runner, "queue_notification_async", queue):
         await briefing_runner._flush_user_alerts(user.id)
 
     build_alert.assert_awaited_once_with(user.id, user.alertsEnabled)
@@ -163,37 +274,17 @@ async def test_missing_user_or_empty_alert_build_queues_nothing():
 
 
 @pytest.mark.asyncio
-async def test_briefing_not_due_is_not_built():
-    user = _user()
-    build = AsyncMock()
-    queue = AsyncMock()
-
-    with patch.object(
-        briefing_runner, "is_briefing_due", return_value=False
-    ), patch.object(briefing_runner.briefing, "build_briefing", build), patch.object(
-        briefing_runner, "queue_notification_async", queue
-    ):
-        await briefing_runner._send_user_briefing(user, NOW)
-
-    build.assert_not_awaited()
-    queue.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_empty_briefing_is_not_queued():
     user = _user()
     queue = AsyncMock()
+    client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
 
-    with patch.object(
-        briefing_runner, "is_briefing_due", return_value=True
-    ), patch.object(
+    with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.briefing,
         "build_briefing",
         AsyncMock(return_value=None),
-    ), patch.object(
-        briefing_runner, "queue_notification_async", queue
-    ):
-        await briefing_runner._send_user_briefing(user, NOW)
+    ), patch.object(briefing_runner, "queue_notification_async", queue):
+        await briefing_runner._build_and_queue_briefing(user.id, NOW)
 
     queue.assert_not_awaited()
 
@@ -203,11 +294,9 @@ async def test_failed_briefing_queue_does_not_mark_or_advance():
     user = _user()
     built = SimpleNamespace(data=object(), attention_condition_ids=["condition-1"])
     event = object()
-    client = SimpleNamespace(update=AsyncMock())
+    client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
 
     with patch.object(
-        briefing_runner, "is_briefing_due", return_value=True
-    ), patch.object(
         briefing_runner.briefing,
         "build_briefing",
         AsyncMock(return_value=built),
@@ -220,12 +309,15 @@ async def test_failed_briefing_queue_does_not_mark_or_advance():
     ), patch.object(
         briefing_runner.briefing, "mark_attention_reported", AsyncMock()
     ) as mark_reported, patch.object(
-        briefing_runner.User, "prisma", return_value=client
+        briefing_runner, "_db", return_value=client
     ):
-        await briefing_runner._send_user_briefing(user, NOW)
+        # A failed publish raises so the consumer retries rather than
+        # advancing the cadence clock on an email that never went out.
+        with pytest.raises(RuntimeError):
+            await briefing_runner._build_and_queue_briefing(user.id, NOW)
 
     mark_reported.assert_not_awaited()
-    client.update.assert_not_awaited()
+    client.set_last_briefing_at.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -235,11 +327,9 @@ async def test_queued_briefing_marks_conditions_and_advances_last_sent():
         data=object(), attention_condition_ids=["condition-1", "condition-2"]
     )
     event = object()
-    client = SimpleNamespace(update=AsyncMock())
+    client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
 
     with patch.object(
-        briefing_runner, "is_briefing_due", return_value=True
-    ), patch.object(
         briefing_runner.briefing,
         "build_briefing",
         AsyncMock(return_value=built),
@@ -252,34 +342,65 @@ async def test_queued_briefing_marks_conditions_and_advances_last_sent():
     ) as queue, patch.object(
         briefing_runner.briefing, "mark_attention_reported", AsyncMock()
     ) as mark_reported, patch.object(
-        briefing_runner.User, "prisma", return_value=client
+        briefing_runner, "_db", return_value=client
     ):
-        await briefing_runner._send_user_briefing(user, NOW)
+        await briefing_runner._build_and_queue_briefing(user.id, NOW)
 
     briefing_event.assert_called_once_with(user.id, built.data)
     queue.assert_awaited_once_with(event)
     mark_reported.assert_awaited_once_with(["condition-1", "condition-2"])
-    client.update.assert_awaited_once_with(
-        where={"id": user.id}, data={"lastBriefingAt": NOW}
-    )
+    client.set_last_briefing_at.assert_awaited_once_with(user.id, NOW)
 
 
 @pytest.mark.asyncio
 async def test_candidate_query_uses_timezones_in_their_local_briefing_hour():
     user = _user()
-    client = SimpleNamespace(find_many=AsyncMock(return_value=[user]))
+    client = make_db_client(get_briefing_candidates=AsyncMock(return_value=[user]))
     zones = ["UTC", "not-set"]
 
-    with patch.object(
-        briefing_runner.User, "prisma", return_value=client
-    ), patch.object(briefing_runner, "_briefing_hour_timezones", return_value=zones):
-        candidates = await briefing_runner._briefing_candidates(NOW)
+    with patch.object(briefing_runner, "_db", return_value=client):
+        candidates = [u async for u in briefing_runner._briefing_candidates(zones)]
 
     assert candidates == [user]
-    assert client.find_many.await_args.kwargs["where"] == {
-        "briefingFrequency": {"not": BriefingFrequency.OFF},
-        "timezone": {"in": zones},
-    }
+    # The timezone filter lives in the DatabaseManager, not here; this asserts
+    # the runner hands it the zones and pages from the start.
+    client.get_briefing_candidates.assert_awaited_once_with(
+        zones, None, briefing_runner.CANDIDATE_PAGE_SIZE
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_candidate_is_considered_not_just_the_first_page():
+    """A capped read strands everyone past the cap behind the same low-id page.
+
+    The ordering is stable and the query does not exclude users already
+    briefed, so a bounded single read returns the *same* users every hour and
+    the tail of the table never receives a briefing at all.
+    """
+    page_size = briefing_runner.CANDIDATE_PAGE_SIZE
+    all_users = [_user(f"user-{i:05d}") for i in range(page_size * 2 + 7)]
+
+    async def paged(_zones, after, limit):
+        remaining = [u for u in all_users if after is None or u.id > after]
+        return remaining[:limit]
+
+    client = make_db_client(get_briefing_candidates=AsyncMock(side_effect=paged))
+    with patch.object(briefing_runner, "_db", return_value=client):
+        seen = [u async for u in briefing_runner._briefing_candidates(["UTC"])]
+
+    assert len(seen) == len(all_users)
+    assert [u.id for u in seen] == [u.id for u in all_users]
+
+
+@pytest.mark.asyncio
+async def test_candidate_walk_stops_once_a_short_page_comes_back():
+    """The walk must terminate rather than spin on an exhausted table."""
+    client = make_db_client(get_briefing_candidates=AsyncMock(return_value=[_user()]))
+    with patch.object(briefing_runner, "_db", return_value=client):
+        seen = [u async for u in briefing_runner._briefing_candidates(["UTC"])]
+
+    assert len(seen) == 1
+    assert client.get_briefing_candidates.await_count == 1
 
 
 def test_timezone_selection_follows_each_users_local_clock():

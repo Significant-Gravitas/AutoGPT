@@ -512,16 +512,35 @@ def _low_balance_cause(
     db_client: "DatabaseManagerClient",
     user_id: str,
 ) -> LowBalanceCause:
-    """Forecast the runway from what this transaction cost, so the alert can
-    say when the credits run out rather than just that they are low."""
-    daily_rate = max(transaction_cost, 1)
+    """Forecast the runway from what the account actually spends.
+
+    The rate used to be the cost of the single transaction that crossed the
+    threshold, which is not a rate at all: a one-cent charge against a
+    five-credit balance forecast a run-out date over a year away, inside an
+    email whose entire point is that the balance is nearly gone. Both the date
+    and the "per day" figure reached the customer.
+
+    With too little history to average, the forecast slots are left unset and
+    the alert says the balance is low without naming a date.
+    """
+    daily_rate = db_client.get_recent_daily_spend(user_id)
+    balance_display = f"{current_balance / 100:,.2f} credits"
+    scheduled_agents = db_client.count_scheduled_agents(user_id)
+
+    if daily_rate <= 0:
+        return LowBalanceCause(
+            cta_path="/settings/billing",
+            balance_display=balance_display,
+            scheduled_agents=scheduled_agents,
+        )
+
     days_left = max(int(current_balance / daily_rate), 0)
     runs_out = datetime.now(tz=timezone.utc) + timedelta(days=days_left)
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
         daily_rate_display=f"{daily_rate / 100:,.2f} credits",
-        balance_display=f"{current_balance / 100:,.2f} credits",
+        balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
-        scheduled_agents=db_client.count_scheduled_agents(user_id),
+        scheduled_agents=scheduled_agents,
     )

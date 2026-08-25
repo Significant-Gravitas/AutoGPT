@@ -52,8 +52,17 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
-from backend.data.alerts import raise_condition as raise_alert_condition
-from backend.data.alerts import resolve_condition as resolve_alert_condition
+from backend.data.alerts import (
+    count_alerts_sent_since,
+    get_briefing_alert_conditions,
+    get_pending_alert_conditions,
+    get_users_with_matured_alerts,
+    mark_alert_conditions_briefed,
+    mark_alert_conditions_deferred,
+    mark_alert_conditions_sent,
+    raise_alert_condition,
+    resolve_alert_condition,
+)
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
@@ -70,9 +79,16 @@ from backend.data.briefing import (
     mark_briefing_delivered,
     update_briefing_content,
 )
-from backend.data.briefing_data import count_scheduled_agents
+from backend.data.briefing_data import (
+    count_active_agents,
+    count_scheduled_agents,
+    get_agent_period_stats,
+    get_briefing_credit_balance,
+    get_top_scored_runs,
+)
 from backend.data.credit import (
     UsageTransactionMetadata,
+    get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
 )
@@ -137,6 +153,8 @@ from backend.data.understanding import (
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
+    get_briefing_candidate,
+    get_briefing_candidates,
     get_user_by_id,
     get_user_credentials,
     get_user_email_by_id,
@@ -144,6 +162,7 @@ from backend.data.user import (
     get_user_integrations,
     get_user_notification_preference,
     get_user_subscription_tier,
+    set_last_briefing_at,
     set_user_credentials,
     update_user_integrations,
 )
@@ -389,7 +408,17 @@ class DatabaseManager(AppService):
     # ============ Alerts ============ #
     raise_alert_condition = _(raise_alert_condition)
     resolve_alert_condition = _(resolve_alert_condition)
+    # The notification service drives the Alert and Briefing passes from here;
+    # it owns no Prisma connection of its own.
+    get_users_with_matured_alerts = _(get_users_with_matured_alerts)
+    get_pending_alert_conditions = _(get_pending_alert_conditions)
+    count_alerts_sent_since = _(count_alerts_sent_since)
+    mark_alert_conditions_sent = _(mark_alert_conditions_sent)
+    mark_alert_conditions_deferred = _(mark_alert_conditions_deferred)
+    get_briefing_alert_conditions = _(get_briefing_alert_conditions)
+    mark_alert_conditions_briefed = _(mark_alert_conditions_briefed)
     count_scheduled_agents = _(count_scheduled_agents)
+    get_recent_daily_spend = _(get_recent_daily_spend)
 
     # ============ Chat Sharing ============ #
     # Exposed so the run_agent tool (running in the CoPilotExecutor
@@ -538,6 +567,17 @@ class DatabaseManager(AppService):
     get_briefing_for_date = _(get_briefing_for_date)
     get_latest_briefings = _(get_latest_briefings)
     mark_briefing_delivered = _(mark_briefing_delivered)
+
+    # ============ Briefing / Alert engine (notification service) ============ #
+    # These run in the NotificationManager process, which owns no Prisma
+    # connection, so every read goes through this RPC surface.
+    get_agent_period_stats = _(get_agent_period_stats)
+    get_top_scored_runs = _(get_top_scored_runs)
+    count_active_agents = _(count_active_agents)
+    get_briefing_credit_balance = _(get_briefing_credit_balance)
+    get_briefing_candidates = _(get_briefing_candidates)
+    get_briefing_candidate = _(get_briefing_candidate)
+    set_last_briefing_at = _(set_last_briefing_at)
     update_briefing_content = _(update_briefing_content)
 
 
@@ -586,6 +626,7 @@ class DatabaseManagerClient(AppServiceClient):
     raise_alert_condition = _(d.raise_alert_condition)
     resolve_alert_condition = _(d.resolve_alert_condition)
     count_scheduled_agents = _(d.count_scheduled_agents)
+    get_recent_daily_spend = _(d.get_recent_daily_spend)
 
     # Library
     list_library_agents = _(d.list_library_agents)
@@ -681,6 +722,25 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     raise_alert_condition = d.raise_alert_condition
     resolve_alert_condition = d.resolve_alert_condition
     count_scheduled_agents = d.count_scheduled_agents
+    get_recent_daily_spend = d.get_recent_daily_spend
+
+    # ============ Briefing / Alert engine (notification service) ============ #
+    # The NotificationManager owns no Prisma connection, so its scheduled
+    # passes read and write exclusively through these.
+    get_users_with_matured_alerts = d.get_users_with_matured_alerts
+    get_pending_alert_conditions = d.get_pending_alert_conditions
+    count_alerts_sent_since = d.count_alerts_sent_since
+    mark_alert_conditions_sent = d.mark_alert_conditions_sent
+    mark_alert_conditions_deferred = d.mark_alert_conditions_deferred
+    get_briefing_alert_conditions = d.get_briefing_alert_conditions
+    mark_alert_conditions_briefed = d.mark_alert_conditions_briefed
+    get_agent_period_stats = d.get_agent_period_stats
+    get_top_scored_runs = d.get_top_scored_runs
+    count_active_agents = d.count_active_agents
+    get_briefing_credit_balance = d.get_briefing_credit_balance
+    get_briefing_candidates = d.get_briefing_candidates
+    get_briefing_candidate = d.get_briefing_candidate
+    set_last_briefing_at = d.set_last_briefing_at
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
