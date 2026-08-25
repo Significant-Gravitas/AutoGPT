@@ -37,6 +37,8 @@ import {
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
+const MAX_INIT_ATTEMPTS = 3;
+
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
@@ -86,6 +88,7 @@ export default function OnboardingProvider({
   const [state, setState] = useState<UserOnboarding | null>(null);
   const [step, setStep] = useState(1);
   const hasInitialized = useRef(false);
+  const failedInitCount = useRef(0);
   const isMounted = useRef(true);
   const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
   const { toast } = useToast();
@@ -218,7 +221,14 @@ export default function OnboardingProvider({
           variant: "destructive",
         });
 
-        hasInitialized.current = false; // Allow retry on next render
+        // Re-arming unconditionally means a persistent failure is retried on
+        // every navigation, so an account that always 500s here keeps emitting
+        // 5xx for as long as the user browses. Bound it: a transient blip
+        // still recovers, a broken account goes quiet.
+        if (failedInitCount.current < MAX_INIT_ATTEMPTS) {
+          failedInitCount.current += 1;
+          hasInitialized.current = false;
+        }
       }
     }
 

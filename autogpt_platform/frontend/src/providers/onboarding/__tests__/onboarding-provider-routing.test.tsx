@@ -37,12 +37,13 @@ vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
 }));
 
 let mockIsCompleted = false;
+let mockCompletedStatus = 200;
 const completedCallCount = { value: 0 };
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () => {
     completedCallCount.value += 1;
     return Promise.resolve({
-      status: 200,
+      status: mockCompletedStatus,
       data: { is_completed: mockIsCompleted },
     });
   },
@@ -59,6 +60,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     mockPathname = "/signup";
     mockIsLoggedIn = true;
     mockIsCompleted = false;
+    mockCompletedStatus = 200;
     completedCallCount.value = 0;
   });
 
@@ -156,6 +158,45 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(routerReplace).not.toHaveBeenCalled();
     expect(completedCallCount.value).toBe(0);
+  });
+
+  test("a persistently failing completion check stops retrying as the user navigates", async () => {
+    // An account with no platform User row 500s this check on every call. The
+    // init guard used to be re-armed on every failure, so each navigation shot
+    // off another doomed request and the user generated 5xx for as long as they
+    // browsed. Retries are bounded now: enough for a transient blip to recover,
+    // not enough to keep a broken account hammering the endpoint.
+    mockCompletedStatus = 500;
+    mockPathname = "/copilot";
+
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(completedCallCount.value).toBe(1));
+
+    for (const path of [
+      "/library",
+      "/marketplace",
+      "/copilot",
+      "/library",
+      "/profile",
+      "/marketplace",
+    ]) {
+      mockPathname = path;
+      rerender(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    // The first attempt plus MAX_INIT_ATTEMPTS retries, and then silence —
+    // not one request per navigation.
+    expect(completedCallCount.value).toBe(4);
   });
 
   test("incomplete user already on /onboarding stays put", async () => {
