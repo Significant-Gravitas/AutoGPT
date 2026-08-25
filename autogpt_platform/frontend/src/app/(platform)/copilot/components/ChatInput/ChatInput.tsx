@@ -43,6 +43,8 @@ import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool";
+import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
@@ -72,6 +74,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Session id for the dev-only token badge in the tray. */
+  sessionId?: string | null;
   /** When true, the submit button is hidden until there is something to send. */
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
@@ -91,6 +95,7 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
 }: Props) {
@@ -267,8 +272,11 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
+  const showTokenDevtool = isTokenDevtoolEnabled() && Boolean(sessionId);
   const hasTrayItems =
-    (showModeToggle && !isStreaming) || (showDryRunToggle && !hasSession);
+    (showModeToggle && !isStreaming) ||
+    (showDryRunToggle && !hasSession) ||
+    showTokenDevtool;
 
   const canSend =
     !disabled &&
@@ -476,6 +484,9 @@ export function ChatInput({
               isDryRun={isDryRun}
               onToggle={handleToggleDryRun}
             />
+          )}
+          {showTokenDevtool && sessionId && (
+            <TokenDevtoolBadge sessionId={sessionId} />
           )}
         </ComposerTray>
       )}

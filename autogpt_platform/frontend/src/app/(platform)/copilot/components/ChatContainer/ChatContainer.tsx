@@ -29,6 +29,10 @@ import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { useCopilotUIStore } from "../../store";
 import {
+  isTokenDevtoolEnabled,
+  updateHistoryBreakdown,
+} from "../../tokenDevtool";
+import {
   getKickoffAttemptToken,
   getKickoffExpertId,
   stripLegacyKickoffMarker,
@@ -203,6 +207,17 @@ export const ChatContainer = ({
     return () => ro.disconnect();
   }, [isLimitReached]);
 
+  // Token devtool: estimate the context from loaded history so the badge
+  // shows a value before the first live turn. Recomputed per message-count
+  // change (not per stream delta — serializing every part is not free).
+  const devtoolMessageCountRef = useRef(0);
+  useEffect(() => {
+    if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
+    if (messages.length === devtoolMessageCountRef.current) return;
+    devtoolMessageCountRef.current = messages.length;
+    updateHistoryBreakdown(sessionId, messages);
+  }, [sessionId, messages]);
+
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -332,6 +347,7 @@ export const ChatContainer = ({
                             droppedFiles={droppedFiles}
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
+                            sessionId={sessionId}
                           />
                         </div>
                       </TooltipTrigger>
