@@ -40,6 +40,18 @@ vi.mock("@/lib/oauth-popup", () => ({
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
 }));
+// The unified connect dialog's method picker pulls in the OAuth and API-key
+// connect hooks; a stub keeps the default-variant test on the dialog itself.
+vi.mock(
+  "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView",
+  () => ({
+    ConnectMethodView: ({ provider }: { provider: { name: string } }) => (
+      <div data-testid="connect-method-view">
+        Connect AutoGPT to {provider.name}
+      </div>
+    ),
+  }),
+);
 
 import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
@@ -865,5 +877,29 @@ describe("CredentialsInput – a removed connection", () => {
     );
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
+  });
+});
+
+describe("CredentialsInput default variant", () => {
+  it("opens the unified connect dialog instead of the per-type action flow", async () => {
+    mockUseCredentials.mockReturnValue(makeCredentialsReturn());
+    const backendAPI = makeBackendAPI();
+    mockUseBackendAPI.mockReturnValue(backendAPI);
+
+    render(
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={undefined}
+        onSelectCredentials={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add account/i }),
+    );
+
+    expect(await screen.findByText(/^Connect AutoGPT to/)).toBeDefined();
+    expect(backendAPI.oAuthLogin).not.toHaveBeenCalled();
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
   });
 });

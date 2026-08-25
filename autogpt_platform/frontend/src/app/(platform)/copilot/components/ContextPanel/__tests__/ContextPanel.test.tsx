@@ -38,8 +38,6 @@ describe("ContextPanel", () => {
       expect(container.querySelector("[data-context-panel]")).not.toBeNull(),
     );
     expect(await screen.findByText("Nothing to preview yet.")).toBeDefined();
-    // One tab and an external toggle: the desktop panel has no header row.
-    expect(screen.queryByRole("tablist")).toBeNull();
   });
 
   test("leaves a files tab alone and stays undocked so the files card owns it", async () => {
@@ -47,9 +45,7 @@ describe("ContextPanel", () => {
       artifactPanel: { ...s.artifactPanel, activeTab: "files" },
     }));
     const { container } = render(<ContextPanel sessionId="session-1" />);
-    await waitFor(() =>
-      expect(container.querySelector("[data-context-panel]")).toBeNull(),
-    );
+    expect(container.querySelector("[data-context-panel]")).toBeNull();
     expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
   });
 

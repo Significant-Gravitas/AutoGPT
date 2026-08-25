@@ -538,6 +538,13 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     const { useCopilotUIStore: fresh } = await import("../store");
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
   });
+
+  it("falls back to the files card for a persisted tab the sidebar no longer has", async () => {
+    window.localStorage.setItem("copilot-context-panel-tab", "progress");
+    vi.resetModules();
+    const { useCopilotUIStore: fresh } = await import("../store");
+    expect(fresh.getState().artifactPanel.activeTab).toBe("files");
+  });
 });
 
 describe("lastArtifact session scoping", () => {

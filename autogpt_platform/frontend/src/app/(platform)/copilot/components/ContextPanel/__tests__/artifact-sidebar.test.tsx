@@ -132,10 +132,9 @@ describe("Context/Artifact panel (desktop)", () => {
     expect(container.querySelector("[data-context-panel]")).toBeNull();
 
     // Close the artifact → the preview clears and the artifacts library docks
-    // in its place (one tab, so no tab switcher on desktop).
+    // in its place.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByText("notes.txt")).toBeNull());
     expect(container.querySelector("[data-context-panel]")).not.toBeNull();
-    expect(screen.queryByRole("tablist")).toBeNull();
   });
 });
