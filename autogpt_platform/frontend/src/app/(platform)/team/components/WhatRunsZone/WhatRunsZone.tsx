@@ -50,13 +50,8 @@ export function WhatRunsZone({ experts, schedules }: Props) {
   const groupEmptyMessage = GROUP_EMPTY_MESSAGES[filter];
 
   return (
-    <section aria-label="What runs" className="flex flex-col gap-4">
-      <div
-        className={cn(
-          "mb-2 border-b border-zinc-100 pb-4",
-          SECTION_INSET_CLASS,
-        )}
-      >
+    <section aria-label="What runs" className="!mt-10 flex flex-col gap-4">
+      <div className={cn("border-b border-zinc-100 pb-4", SECTION_INSET_CLASS)}>
         <Text variant="h4">What runs</Text>
       </div>
 
@@ -72,7 +67,7 @@ export function WhatRunsZone({ experts, schedules }: Props) {
         className="flex flex-col gap-6 duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
       >
         {groups.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {groups.map((group) => (
               <ExpertWorkflowGroup key={group.expert.id} group={group} />
             ))}
