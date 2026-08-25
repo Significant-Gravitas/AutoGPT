@@ -55,10 +55,13 @@ export function ContextPanel({ sessionId, mobile }: Props) {
     </div>
   );
 
+  // The open flag also drives the inline files card, so the sheet — like the
+  // docked desktop panel below — only claims the screen for the artifacts
+  // tab. A "files" tab belongs to the card, not to this sheet.
   if (mobile) {
     return (
       <Sheet
-        open={isOpen}
+        open={isOpen && activeTab === "artifacts"}
         onOpenChange={(open) => !open && closeArtifactPanel()}
       >
         <SheetContent

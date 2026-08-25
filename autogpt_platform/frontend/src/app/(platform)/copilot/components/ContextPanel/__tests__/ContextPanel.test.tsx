@@ -81,4 +81,18 @@ describe("ContextPanel", () => {
     const { container } = render(<ContextPanel sessionId="session-1" />);
     expect(container.querySelector("[data-context-panel]")).toBeNull();
   });
+
+  test("mobile: keeps the sheet closed for the files tab (the inline files card owns it)", () => {
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, activeTab: "files" },
+    }));
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("mobile: opens the sheet on the artifacts tab", async () => {
+    render(<ContextPanel sessionId="session-1" mobile />);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Artifacts" })).toBeDefined();
+  });
 });

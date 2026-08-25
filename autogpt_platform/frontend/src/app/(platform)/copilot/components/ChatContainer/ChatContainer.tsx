@@ -27,7 +27,7 @@ import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
-import { useCopilotUIStore } from "../../store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -127,14 +127,8 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // Mirrors the files card's visibility (useWorkspaceFileCards.isOpen): the
-  // composer only slides aside while the floating card is actually shown.
-  const areFilesOpen = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeArtifact == null &&
-      s.artifactPanel.activeTab !== "artifacts",
-  );
+  // The composer only slides aside while the floating files card is shown.
+  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
     messages,

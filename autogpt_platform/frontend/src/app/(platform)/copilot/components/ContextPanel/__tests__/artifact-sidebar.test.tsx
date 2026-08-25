@@ -121,7 +121,7 @@ describe("Context/Artifact panel (desktop)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the artifact panel when an artifact opens and closes the right region on close", async () => {
+  it("shows the artifact panel when an artifact opens and returns to the artifacts library on close", async () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact());
 
     const { container } = render(<RightRegion sessionId="session-1" />);
@@ -131,13 +131,11 @@ describe("Context/Artifact panel (desktop)", () => {
     expect(await screen.findByText("notes.txt")).toBeDefined();
     expect(container.querySelector("[data-context-panel]")).toBeNull();
 
-    // Close the artifact → the whole right region closes, and the preview is
-    // remembered so the chat's sidebar toggle can bring it back.
+    // Close the artifact → the preview clears and the artifacts library docks
+    // in its place (one tab, so no tab switcher on desktop).
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByText("notes.txt")).toBeNull());
-    expect(container.querySelector("[data-context-panel]")).toBeNull();
-    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact?.id).toBe(
-      ARTIFACT_ID,
-    );
+    expect(container.querySelector("[data-context-panel]")).not.toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
   });
 });

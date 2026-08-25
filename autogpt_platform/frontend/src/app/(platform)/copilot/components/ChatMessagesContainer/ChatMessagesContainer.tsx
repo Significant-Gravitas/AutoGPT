@@ -22,6 +22,7 @@ import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { revealKickoffMessages } from "../../expertKickoff";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getTurnMessages,
   parseSpecialMarkers,
@@ -29,27 +30,22 @@ import {
 } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
-import { useCopilotUIStore } from "../../store";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
-import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
-import { ExpertSchedulesButton } from "./components/ExpertSchedulesButton/ExpertSchedulesButton";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
 import { TaskListNotice } from "./components/TaskListNotice";
+import { ThreadHeader } from "./components/ThreadHeader";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-// Autopilot's product-facing title when a session carries no expert identity.
-const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -306,16 +302,8 @@ export function ChatMessagesContainer({
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   // The workspace-files card floats over the column's right side, so the
-  // centred content slides left to make room for it. The docked artifacts
-  // panel already narrows the column on its own, so it must never also
-  // trigger this slide, or the two shifts stack and push the messages off
-  // screen under the app sidebar.
-  const areFilesOpen = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeArtifact == null &&
-      s.artifactPanel.activeTab !== "artifacts",
-  );
+  // centred content slides left to make room for it.
+  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   const isChatStreaming = status === "streaming" || status === "submitted";
   const hasActiveTaskList =
     !isTaskBarEnabled &&
@@ -480,42 +468,11 @@ export function ChatMessagesContainer({
 
   return (
     <>
-      {/* Sits above the scroller rather than sticky inside it, so the bar
-          spans the full chat width while its row stays aligned with the
-          max-w-3xl message column. An expert session wears the expert's
-          identity and every other session is Autopilot's, so the thread is
-          never anonymous. */}
-      <div
-        data-testid="expert-thread-header"
-        className="z-10 w-full border-b border-b-[#80808017] bg-[#fafafa]/80 backdrop-blur-md"
-      >
-        <div
-          className={cn(
-            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-            areFilesOpen && "xl:-translate-x-40",
-          )}
-        >
-          <ExpertAvatar
-            name={expertIdentity?.name ?? "Autopilot"}
-            avatarUrl={expertIdentity?.avatarUrl ?? null}
-            isAutopilot={!expertIdentity}
-          />
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-zinc-800">
-              {expertIdentity?.name ?? "Autopilot"}
-            </span>
-            <span className="truncate text-xs text-zinc-500">
-              {expertIdentity?.role ?? DEFAULT_EXPERT_ROLE}
-            </span>
-          </div>
-          {expertIdentity && !readOnly && !expertIdentity.isArchived && (
-            <ExpertSchedulesButton
-              expertId={expertIdentity.id}
-              expertName={expertIdentity.name}
-            />
-          )}
-        </div>
-      </div>
+      <ThreadHeader
+        expertIdentity={expertIdentity}
+        readOnly={readOnly}
+        areFilesOpen={areFilesOpen}
+      />
       <ChatMinimap messages={messages} />
       <Conversation
         key={sessionID ?? "new"}

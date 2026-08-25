@@ -14,7 +14,12 @@ import type {
 import React from "react";
 import { CredentialsInput } from "../CredentialsInput";
 
-vi.mock("@/hooks/useCredentials", () => ({ default: vi.fn() }));
+// The default variant mounts ConnectCredentialDialog, which reads the pure
+// getConnectableCredentialTypes helper — keep it while stubbing the hook.
+vi.mock("@/hooks/useCredentials", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useCredentials")>()),
+  default: vi.fn(),
+}));
 vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: vi.fn(),
   BackendAPIProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -510,6 +515,7 @@ describe("CredentialsInput – device auth", () => {
         schema={deviceSchema}
         selectedCredentials={undefined}
         onSelectCredentials={vi.fn()}
+        variant="node"
       />,
     );
   }
