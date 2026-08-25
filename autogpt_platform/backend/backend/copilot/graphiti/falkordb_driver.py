@@ -247,11 +247,15 @@ class AutoGPTFalkorDriver(FalkorDriver):
                     return [], [], None
                 if read_only and _RO_VIOLATION in message:
                     # The classifier called a write read-only. Degrade to the
-                    # write path and log it so the missing clause can be added
-                    # to _WRITE_CLAUSE_RE. Deliberately does NOT consume an
-                    # attempt: on the final attempt (or with max_attempts=1)
-                    # that would exit the loop having never run the write,
-                    # falling through to the "unreachable" assertion.
+                    # write path and log the query so the missing clause or
+                    # procedure can be added to _WRITE_CLAUSE_RE /
+                    # _WRITE_PROCEDURE_RE.
+                    #
+                    # `read_only = False` + `continue` retries on the SAME
+                    # attempt: the counter is not advanced here, so the write
+                    # actually runs. Consuming an attempt instead would, on the
+                    # final attempt or with max_attempts=1, skip the write
+                    # entirely and fall through to the "unreachable" assertion.
                     logger.warning(
                         "Query classified read-only but rejected by RO_QUERY; "
                         "retrying as a write. Query: %s",
