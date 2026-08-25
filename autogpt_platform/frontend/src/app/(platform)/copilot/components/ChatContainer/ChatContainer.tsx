@@ -28,10 +28,8 @@ import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { useCopilotUIStore } from "../../store";
-import {
-  isTokenDevtoolEnabled,
-  updateHistoryBreakdown,
-} from "../../tokenDevtool";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { updateHistoryBreakdown } from "../../tokenDevtool/store";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -209,12 +207,15 @@ export const ChatContainer = ({
 
   // Token devtool: estimate the context from loaded history so the badge
   // shows a value before the first live turn. Recomputed per message-count
-  // change (not per stream delta — serializing every part is not free).
-  const devtoolMessageCountRef = useRef(0);
+  // change (not per stream delta — serializing every part is not free). The
+  // guard is keyed by session too, so switching to a thread that happens to
+  // have the same message count still recomputes.
+  const devtoolBreakdownKeyRef = useRef("");
   useEffect(() => {
     if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
-    if (messages.length === devtoolMessageCountRef.current) return;
-    devtoolMessageCountRef.current = messages.length;
+    const key = `${sessionId}:${messages.length}`;
+    if (key === devtoolBreakdownKeyRef.current) return;
+    devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
   }, [sessionId, messages]);
 

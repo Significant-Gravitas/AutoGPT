@@ -1,18 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { updateHistoryBreakdown, useTokenDevtoolStore } from "../store";
 import {
   BASE_CONTEXT_ESTIMATE,
   breakdownTotal,
   computeBreakdown,
-  createUsageCapturingFetch,
   displayContext,
   estimateContext,
   formatTokenCount,
-  parseUsageComment,
   turnInputTokens,
-  updateHistoryBreakdown,
-  useTokenDevtoolStore,
   type TokenTurn,
-} from "../tokenDevtool";
+} from "../tokenMath";
+import { createUsageCapturingFetch, parseUsageComment } from "../usageTap";
 
 const USAGE_LINE =
   ': usage {"type":"usage","promptTokens":1200,"completionTokens":300,"totalTokens":1500,"cacheReadTokens":40000,"cacheCreationTokens":2000}';
@@ -147,6 +145,8 @@ describe("formatTokenCount", () => {
     expect(formatTokenCount(512)).toBe("512");
     expect(formatTokenCount(1000)).toBe("1k");
     expect(formatTokenCount(45200)).toBe("45.2k");
+    // Scales to "100.0" — only the fractional zero may be trimmed.
+    expect(formatTokenCount(100_000)).toBe("100k");
     expect(formatTokenCount(1_250_000)).toBe("1.25M");
     expect(formatTokenCount(1_000_000)).toBe("1M");
   });
@@ -213,6 +213,41 @@ describe("createUsageCapturingFetch", () => {
       expect(turns).toHaveLength(1);
       expect(turns[0].compacted).toBe(true);
     });
+  });
+
+  it("releases the underlying stream when the consumer aborts", async () => {
+    let sourceCancelled = false;
+    const controller = new AbortController();
+    // Never closes on its own — only cancellation can release it.
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('data: {"type":"text-delta"}\n\n'));
+      },
+      cancel() {
+        sourceCancelled = true;
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+
+    const wrapped = createUsageCapturingFetch("session-abort");
+    const response = await wrapped("http://x/stream", {
+      signal: controller.signal,
+    });
+
+    // A tee'd source is only released once BOTH branches let go — and the
+    // branch's own cancel() promise does not settle until then, so this is
+    // deliberately not awaited yet.
+    const consumerCancelled = response.body!.cancel();
+    expect(sourceCancelled).toBe(false);
+
+    // Without the abort listener the tap would read on and hold the source.
+    controller.abort();
+    await consumerCancelled;
+
+    await vi.waitFor(() => expect(sourceCancelled).toBe(true));
   });
 
   it("returns error responses untouched", async () => {

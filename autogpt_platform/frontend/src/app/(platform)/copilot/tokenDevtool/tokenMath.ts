@@ -1,6 +1,3 @@
-import { environment } from "@/services/environment";
-import { create } from "zustand";
-
 /** One turn's token usage, captured from the backend's `: usage {...}` SSE
  *  comment. The AI SDK parser drops comment lines, so the transport's fetch
  *  taps the raw stream before parsing (see createUsageCapturingFetch).
@@ -18,8 +15,6 @@ export interface TokenTurn {
   compacted: boolean;
   at: number;
 }
-
-const KEPT_TURNS = 50;
 
 /** Claude-family window the copilot engines run against. Devtool-only
  *  constants — the real values live in backend config (see
@@ -58,19 +53,10 @@ export function formatTokenCount(count: number): string {
   return `${trimZeros((count / 1_000_000).toFixed(2))}M`;
 }
 
+/** Trailing zeros are only noise in the fractional part — "1.0" -> "1". An
+ *  integer string is returned untouched, so "100" does not become "1". */
 function trimZeros(value: string): string {
-  return value.replace(/\.?0+$/, "");
-}
-
-/** Dev-only: local/dev environments, and NEXT_PUBLIC_TOKEN_DEVTOOL can turn
- *  it off explicitly (unset = on). */
-export function isTokenDevtoolEnabled(): boolean {
-  if (process.env.NEXT_PUBLIC_TOKEN_DEVTOOL === "false") return false;
-  return (
-    environment.isDevelopmentBuild() ||
-    environment.isLocal() ||
-    environment.isDev()
-  );
+  return value.includes(".") ? value.replace(/\.?0+$/, "") : value;
 }
 
 /** Char-based (~4 chars/token) split of the loaded conversation history.
@@ -91,36 +77,6 @@ export function breakdownTotal(breakdown: ContextBreakdown): number {
     breakdown.toolTokens
   );
 }
-
-interface TokenDevtoolState {
-  turnsBySession: Record<string, TokenTurn[]>;
-  breakdownBySession: Record<string, ContextBreakdown>;
-  record: (sessionId: string, turn: TokenTurn) => void;
-  setBreakdown: (sessionId: string, breakdown: ContextBreakdown) => void;
-}
-
-export const useTokenDevtoolStore = create<TokenDevtoolState>((set) => ({
-  turnsBySession: {},
-  breakdownBySession: {},
-  record(sessionId, turn) {
-    set((state) => ({
-      turnsBySession: {
-        ...state.turnsBySession,
-        [sessionId]: [...(state.turnsBySession[sessionId] ?? []), turn].slice(
-          -KEPT_TURNS,
-        ),
-      },
-    }));
-  },
-  setBreakdown(sessionId, breakdown) {
-    set((state) => ({
-      breakdownBySession: {
-        ...state.breakdownBySession,
-        [sessionId]: breakdown,
-      },
-    }));
-  },
-}));
 
 /** Displayed context: prefer the live cache-write estimate, but until it
  *  can exceed the history estimate (a fresh page load starts the live sum
@@ -170,93 +126,5 @@ function partChars(part: unknown): number {
     return JSON.stringify(part)?.length ?? 0;
   } catch {
     return 0; // Circular/unserializable part — skip it, this is an estimate.
-  }
-}
-
-/** Recompute the session's history breakdown from the loaded messages. */
-export function updateHistoryBreakdown(sessionId: string, messages: unknown[]) {
-  useTokenDevtoolStore
-    .getState()
-    .setBreakdown(sessionId, computeBreakdown(messages));
-}
-
-const USAGE_COMMENT = /^:\s*usage\s+(\{.*\})$/;
-const COMPACTION_MARKER = '"context_compaction"';
-
-export function parseUsageComment(
-  line: string,
-): Omit<TokenTurn, "compacted"> | null {
-  const match = USAGE_COMMENT.exec(line.trim());
-  if (!match) return null;
-  try {
-    const raw = JSON.parse(match[1]) as Record<string, unknown>;
-    return {
-      promptTokens: toCount(raw.promptTokens),
-      completionTokens: toCount(raw.completionTokens),
-      cacheReadTokens: toCount(raw.cacheReadTokens),
-      cacheCreationTokens: toCount(raw.cacheCreationTokens),
-      at: Date.now(),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function toCount(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : 0;
-}
-
-/** Wraps fetch so the copilot SSE stream is teed: the AI SDK consumes one
- *  branch untouched while the other is scanned for usage comments and
- *  compaction tool calls. The tap must never break the chat — every failure
- *  path degrades to "no data". */
-export function createUsageCapturingFetch(sessionId: string): typeof fetch {
-  return async (input, init) => {
-    const response = await fetch(input, init);
-    if (!response.ok || !response.body) return response;
-    const [main, tap] = response.body.tee();
-    void scanForUsage(tap, sessionId);
-    return new Response(main, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  };
-}
-
-async function scanForUsage(
-  stream: ReadableStream<Uint8Array>,
-  sessionId: string,
-): Promise<void> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  // Usage arrives at turn end, after any compaction tool events — so a
-  // marker seen earlier in the stream belongs to the next recorded turn.
-  let sawCompaction = false;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (line.includes(COMPACTION_MARKER)) sawCompaction = true;
-        const usage = parseUsageComment(line);
-        if (usage) {
-          useTokenDevtoolStore
-            .getState()
-            .record(sessionId, { ...usage, compacted: sawCompaction });
-          sawCompaction = false;
-        }
-      }
-    }
-  } catch {
-    // Devtool tap only — swallow so it can never surface as a chat error.
-  } finally {
-    reader.releaseLock();
   }
 }

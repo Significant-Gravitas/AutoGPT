@@ -6,10 +6,8 @@ import { v4 as uuidv4 } from "uuid";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
-import {
-  createUsageCapturingFetch,
-  isTokenDevtoolEnabled,
-} from "./tokenDevtool";
+import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
+import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
 export interface MutableValue<T> {

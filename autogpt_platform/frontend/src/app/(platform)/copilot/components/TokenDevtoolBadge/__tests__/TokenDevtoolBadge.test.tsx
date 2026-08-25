@@ -1,11 +1,11 @@
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  useTokenDevtoolStore,
-  type ContextBreakdown,
-  type TokenTurn,
-} from "../../../tokenDevtool";
+import { useTokenDevtoolStore } from "../../../tokenDevtool/store";
+import type {
+  ContextBreakdown,
+  TokenTurn,
+} from "../../../tokenDevtool/tokenMath";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge";
 
 const SESSION = "session-1";
