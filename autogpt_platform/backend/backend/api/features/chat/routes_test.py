@@ -3817,3 +3817,129 @@ def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
     # enforce scope per-tool via the builder_graph_id guard.
     assert "edit_agent" not in perms.tools
     assert "run_agent" not in perms.tools
+
+
+# ─── Change the connection an existing chat runs on ────────────────────
+
+
+def _transport(auth_provider: str, credential_id: str | None, available: bool = True):
+    from backend.copilot.transports import ChatTransportResponse
+
+    return ChatTransportResponse(
+        auth_provider=auth_provider,  # type: ignore[arg-type]
+        credential_id=credential_id,
+        label="Test",
+        available=available,
+        default=False,
+    )
+
+
+def _mock_route_change(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    transports: list,
+    success: bool = True,
+):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_transports",
+        new_callable=AsyncMock,
+        return_value=transports,
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.update_session_llm_route",
+        new_callable=AsyncMock,
+        return_value=success,
+    )
+
+
+def test_change_connection_moves_the_chat(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The continue-path after a provider stops accepting turns: the run keeps
+    going on a connection the user picked, rather than ending."""
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("sess-1", test_user_id, "platform", None)
+
+
+def test_change_connection_refuses_a_route_the_user_does_not_have(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Otherwise this endpoint would be a way to route a turn down a
+    connection the entitlement checks already refused."""
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-nope"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+    mock_update.assert_not_called()
+
+
+def test_change_connection_refuses_an_unavailable_transport(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(
+        mocker, transports=[_transport("platform", None, available=False)]
+    )
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 503
+    mock_update.assert_not_called()
+
+
+def test_change_connection_rejects_a_credential_on_the_platform_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_called()
+
+
+def test_change_connection_requires_a_credential_for_codex(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(mocker, transports=[_transport("codex", "cred-1")])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex"},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_called()
+
+
+def test_change_connection_on_someone_elses_session_is_a_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """update_session_llm_route filters on the owning user, so a session that
+    is not theirs reports as missing rather than as forbidden."""
+    _mock_route_change(mocker, transports=[_transport("platform", None)], success=False)
+
+    response = client.put(
+        "/sessions/not-mine/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 404

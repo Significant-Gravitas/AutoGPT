@@ -4098,6 +4098,59 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/connection": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Change the connection an existing chat runs on",
+        "description": "Move a chat onto another connection, from the next turn onward.\n\nA chat is latched to the connection it started on so that a turn cannot\nsilently change who pays for it halfway through. This is the deliberate\nexception: when a provider stops accepting turns -- a spent quota, an\nexpired login -- the alternative to switching is the chat simply ending.\n\nIt never happens on its own. The caller is a button the user pressed, and\nthe run continues on the connection they picked rather than on whichever\none happens to work.\n\nHistory is not rewritten. Turns already stamped keep the connection they\nran on, so a chat that hit a limit and carried on elsewhere reads as\nexactly that.",
+        "operationId": "putV2Change the connection an existing chat runs on",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeSessionConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Putv2Change The Connection An Existing Chat Runs On"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/messages/pending": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -16821,6 +16874,26 @@
         "required": ["cancelled"],
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
+      },
+      "ChangeSessionConnectionRequest": {
+        "properties": {
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
+          }
+        },
+        "type": "object",
+        "required": ["llm_auth_provider"],
+        "title": "ChangeSessionConnectionRequest",
+        "description": "The connection the rest of this chat should run on."
       },
       "ChangelogEntry": {
         "properties": {

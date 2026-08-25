@@ -44,6 +44,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_llm_route,
     update_session_pinned,
     update_session_title,
 )
@@ -901,6 +902,77 @@ async def disconnect_session_stream(
     await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
+
+
+class ChangeSessionConnectionRequest(BaseModel):
+    """The connection the rest of this chat should run on."""
+
+    llm_auth_provider: CopilotLlmAuthProvider
+    llm_credential_id: str | None = Field(default=None, max_length=128)
+
+
+@router.put(
+    "/sessions/{session_id}/connection",
+    summary="Change the connection an existing chat runs on",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def change_session_connection_route(
+    session_id: str,
+    request: ChangeSessionConnectionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Move a chat onto another connection, from the next turn onward.
+
+    A chat is latched to the connection it started on so that a turn cannot
+    silently change who pays for it halfway through. This is the deliberate
+    exception: when a provider stops accepting turns -- a spent quota, an
+    expired login -- the alternative to switching is the chat simply ending.
+
+    It never happens on its own. The caller is a button the user pressed, and
+    the run continues on the connection they picked rather than on whichever
+    one happens to work.
+
+    History is not rewritten. Turns already stamped keep the connection they
+    ran on, so a chat that hit a limit and carried on elsewhere reads as
+    exactly that.
+    """
+    auth_provider = request.llm_auth_provider
+    credential_id = request.llm_credential_id
+
+    if auth_provider == "platform" and credential_id is not None:
+        raise HTTPException(status_code=422, detail="codex_credential_not_allowed")
+    if auth_provider == "codex" and credential_id is None:
+        raise HTTPException(status_code=422, detail="codex_credential_required")
+
+    transports = await get_chat_transports(user_id)
+    target = next(
+        (
+            transport
+            for transport in transports
+            if transport.auth_provider == auth_provider
+            and transport.credential_id == credential_id
+            and transport.available
+        ),
+        None,
+    )
+    if target is None:
+        # Same shapes the session-creation path uses, so a client that already
+        # handles them does not need a second vocabulary for the same refusals.
+        if auth_provider == "codex":
+            raise HTTPException(status_code=404, detail="codex_credential_not_found")
+        raise HTTPException(status_code=503, detail="chat_transport_not_configured")
+
+    changed = await update_session_llm_route(
+        session_id, user_id, auth_provider, credential_id
+    )
+    if not changed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
 
 
 @router.patch(
