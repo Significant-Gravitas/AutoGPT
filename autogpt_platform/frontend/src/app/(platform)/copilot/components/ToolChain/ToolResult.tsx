@@ -14,7 +14,7 @@ import {
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
-import { ExpertChangeCard } from "./ExpertCards";
+import { ExpertChangeCard, ExpertChangeCardSkeleton } from "./ExpertCards";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -270,7 +270,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "raise_expert":
     case "update_expert":
     case "confirm_expert_change":
-      return output ? <ExpertChangeCard output={output} /> : null;
+      if (output) return <ExpertChangeCard output={output} />;
+      // The expert is still being written — hold the card's shape so the
+      // real one swaps in without the row jumping.
+      return row.state === "running" ? <ExpertChangeCardSkeleton /> : null;
     case "find_agent":
     case "find_library_agent": {
       const agents = output && asItems(output.agents);

@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
+import { EXPERT_CHANGE_TOOLS } from "./ExpertCards";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
@@ -108,14 +109,23 @@ export function ChainRowView({ row, isLast }: Props) {
     ["running", "queued"].includes(effectiveStatus?.toLowerCase() ?? "");
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
+  // An expert being hired/raised has no output until it lands — the skeleton
+  // card stands in for it, so the row has something to show while running.
+  const pendingExpertChange =
+    !!row.tool &&
+    EXPERT_CHANGE_TOOLS.has(row.tool) &&
+    row.output === undefined &&
+    row.state === "running";
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") || liveSubSession);
-  // Action-required cards (credential setup, review, login) must stay on
-  // screen until resolved — the row cannot be collapsed.
-  const forcedOpen = row.requiresAction === true && hasContent;
-  const showContent = liveReasoning || forcedOpen || (open && hasContent);
+      ((row.output !== undefined && row.output !== "") ||
+        liveSubSession ||
+        pendingExpertChange);
+  useEffect(() => {
+    if (pendingExpertChange) setOpen(true);
+  }, [pendingExpertChange]);
+  const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
       text={
@@ -153,7 +163,7 @@ export function ChainRowView({ row, isLast }: Props) {
         )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
-        {hasContent && !forcedOpen ? (
+        {hasContent ? (
           <button
             type="button"
             onClick={() => setOpen(!open)}

@@ -1,15 +1,27 @@
 "use client";
 
 import {
+  ArrowDown01Icon,
   BubbleChatIcon,
   CheckmarkCircle02Icon,
   PencilIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { CARD, HALF } from "./ResultCards";
+import { cn } from "@/lib/utils";
+import { CARD } from "./ResultCards";
 import { asObject, str } from "./resultHelpers";
+import { useCardResize } from "./useCardResize";
+
+export const EXPERT_CHANGE_TOOLS = new Set([
+  "hire_expert",
+  "raise_expert",
+  "update_expert",
+  "confirm_expert_change",
+]);
 
 interface Props {
   output: Record<string, unknown>;
@@ -34,6 +46,8 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
  *  ``confirm_expert_change`` actually created. Once they exist, the card
  *  offers the two things the user does next: adjust them or talk to them. */
 export function ExpertChangeCard({ output }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const { contentRef, height } = useCardResize(expanded);
   const applied = output.applied === true;
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;
@@ -47,9 +61,11 @@ export function ExpertChangeCard({ output }: Props) {
     typeof expert.weekly_budget === "number" ? expert.weekly_budget : null;
   const appliedLabel = APPLIED_LABELS[str(output, "kind") ?? ""] ?? "Done";
   const failed = applied ? failedWorkflows(output) : [];
+  const clampable = !!about || !!boundaries;
+  const clamp = expanded ? undefined : "line-clamp-2";
 
   return (
-    <div className={`${CARD} ${HALF} p-2.5`}>
+    <div className={cn(CARD, "w-full rounded-3xl p-2.5")}>
       <div className="flex items-center gap-2.5">
         <ExpertAvatar
           name={name}
@@ -72,46 +88,83 @@ export function ExpertChangeCard({ output }: Props) {
             Needs your OK
           </span>
         )}
+        {clampable && (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Show less" : "Show more"}
+            className="group/expand -mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-zinc-100"
+          >
+            <Icon
+              icon={ArrowDown01Icon}
+              size={12}
+              className={cn(
+                "text-zinc-300 transition-transform duration-300 ease-out-quint group-hover/expand:text-zinc-500",
+                expanded && "rotate-180",
+              )}
+            />
+          </button>
+        )}
       </div>
-      {about && (
-        <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
-          {about}
-        </p>
-      )}
-      {boundaries && (
-        <p className="mt-1 line-clamp-2 pl-9 text-xs text-zinc-400">
-          Stops at: {boundaries}
-        </p>
-      )}
-      {budget !== null && (
-        <p className="mt-1 pl-9 text-[11px] text-zinc-400">
-          Weekly budget: {budget} credits
-        </p>
-      )}
-      {failed.length > 0 && (
-        <p className="mt-1 pl-9 text-[11px] text-amber-700">
-          Couldn&apos;t set up: {failed.join(", ")}. Everything else is ready —
-          add {failed.length > 1 ? "them" : "it"} from the expert&apos;s page.
-        </p>
-      )}
-      {applied && id && (
-        <div className="mt-2.5 flex items-center gap-1.5 pl-9">
-          <Link
-            href={`/team/${id}`}
-            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-zinc-200 px-3 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
-          >
-            <Icon icon={PencilIcon} size={13} />
-            Edit
-          </Link>
-          <Link
-            href={`/copilot?expertId=${id}`}
-            className="inline-flex h-7 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
-          >
-            <Icon icon={BubbleChatIcon} size={13} />
-            Chat
-          </Link>
+      <div className="t-resize overflow-hidden" style={{ height }}>
+        <div ref={contentRef} className="flex flex-col gap-1 pt-1.5">
+          {about && (
+            <p className={cn("pl-9 text-sm text-zinc-500", clamp)}>{about}</p>
+          )}
+          {boundaries && (
+            <p className={cn("pl-9 text-sm text-zinc-400", clamp)}>
+              Stops at: {boundaries}
+            </p>
+          )}
+          {budget !== null && (
+            <p className="pl-9 text-sm text-zinc-600">
+              Weekly budget: {budget} credits
+            </p>
+          )}
+          {failed.length > 0 && (
+            <p className="pl-9 text-[11px] text-amber-700">
+              Couldn&apos;t set up: {failed.join(", ")}. Everything else is
+              ready — add {failed.length > 1 ? "them" : "it"} from the
+              expert&apos;s page.
+            </p>
+          )}
+          {applied && id && (
+            <div className="mt-1.5 flex items-center gap-1.5 pl-9">
+              <Link
+                href={`/team/${id}`}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-zinc-200 px-3 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+              >
+                <Icon icon={PencilIcon} size={13} />
+                Edit
+              </Link>
+              <Link
+                href={`/copilot?expertId=${id}`}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
+              >
+                <Icon icon={BubbleChatIcon} size={13} />
+                Chat
+              </Link>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+export function ExpertChangeCardSkeleton() {
+  return (
+    <div className={cn(CARD, "w-full rounded-3xl p-2.5")}>
+      <div className="flex items-center gap-2.5">
+        <Skeleton className="size-7 shrink-0 rounded-full" />
+        <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="ml-auto h-4 w-20 rounded-md" />
+      </div>
+      <div className="flex flex-col gap-1.5 pl-9 pt-2.5">
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-4/5" />
+      </div>
     </div>
   );
 }

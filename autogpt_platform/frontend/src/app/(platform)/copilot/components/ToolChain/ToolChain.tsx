@@ -127,10 +127,10 @@ export function ToolChain({ parts, isStreaming }: Props) {
   // screen. A manual toggle overrides either direction and sticks.
   const open = manualExpanded ?? isStreaming;
   const windowMode = isStreaming && !expanded && !hasRequiredAction;
-  // Action-required cards (credential setup etc.) can never leave the
-  // screen: collapsing the chain hides the other rows but keeps the
-  // action rows visible, and the streaming window is disabled for them.
-  const actionOnly = !open && hasRequiredAction;
+  // Action-required cards (credential setup etc.) stay on screen by default:
+  // a chain that has collapsed on its own still shows its action rows. An
+  // explicit collapse from the user closes them like any other row.
+  const actionOnly = !open && hasRequiredAction && manualExpanded !== false;
   const panelOpen = open || actionOnly;
   // Rows stay mounted while closed so the 0fr collapse can animate — but
   // only the streaming window's rows. Mounting the full list the moment the

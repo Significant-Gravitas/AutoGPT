@@ -59,6 +59,16 @@ function getPanel(header: HTMLElement): HTMLElement | null {
   return panelId ? document.getElementById(panelId) : null;
 }
 
+// An action row shares its label with the chain heading, and both are
+// collapse toggles now — only the chain header owns the panel.
+function getChainHeader(name: RegExp): HTMLElement {
+  const header = screen
+    .getAllByRole("button", { name })
+    .find((button) => button.hasAttribute("aria-controls"));
+  if (!header) throw new Error(`No chain header matching ${name}`);
+  return header;
+}
+
 describe("ToolChain", () => {
   afterEach(() => {
     cleanup();
@@ -267,9 +277,7 @@ describe("ToolChain", () => {
       />,
     );
 
-    const header = screen.getByRole("button", {
-      name: /review send email/i,
-    });
+    const header = getChainHeader(/review send email/i);
     expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
 
     expect(screen.getAllByText("Review Send Email").length).toBeGreaterThan(1);
@@ -304,9 +312,7 @@ describe("ToolChain", () => {
       />,
     );
 
-    const header = screen.getByRole("button", {
-      name: /approve the new expert/i,
-    });
+    const header = getChainHeader(/approve the new expert/i);
     expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
 
     expect(screen.getByText("Otto")).toBeDefined();
@@ -316,6 +322,33 @@ describe("ToolChain", () => {
       screen.getByText("Stops at: You never send a reply yourself."),
     ).toBeDefined();
     expect(screen.getByText("Weekly budget: 2000 credits")).toBeDefined();
+  });
+
+  it("lets the user collapse an expert approval card", async () => {
+    const user = userEvent.setup();
+    render(
+      <ToolChain
+        parts={[
+          toolPart("hire_expert", "output-available", {
+            output: {
+              type: "expert_change_proposed",
+              applied: false,
+              confirmation_id: "conf-1",
+              preview: { kind: "hire", name: "Otto", role: "Inbox triage" },
+            },
+          }),
+        ]}
+        isStreaming={false}
+      />,
+    );
+
+    const header = getChainHeader(/approve the new expert/i);
+    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
+
+    await user.click(header);
+    await user.click(header);
+
+    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("drafts answered questions into the chat input and dismisses on send", async () => {
