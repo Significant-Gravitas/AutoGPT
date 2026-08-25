@@ -538,9 +538,11 @@ describe("CredentialsInput – device auth", () => {
 function StatefulCredentialsInput({
   initial,
   onSelectionChange,
+  variant,
 }: {
   initial?: CredentialsMetaInput;
   onSelectionChange?: (credential?: CredentialsMetaInput) => void;
+  variant?: "default" | "node";
 }) {
   const [selected, setSelected] = React.useState<
     CredentialsMetaInput | undefined
@@ -557,6 +559,7 @@ function StatefulCredentialsInput({
       selectedCredentials={selected}
       onSelectCredentials={handleSelectionChange}
       showTitle={false}
+      variant={variant}
     />
   );
 }
@@ -820,7 +823,9 @@ describe("CredentialsInput – a removed connection", () => {
     // the thing it was warning about.
     // The provider list starts empty and gains the connection when the
     // callback resolves, which is what really happens: `oAuthCallback` mints
-    // the credential and refreshes the list.
+    // the credential and refreshes the list. The builder node wires the
+    // button straight to that flow (the default variant opens the connect
+    // dialog instead).
     const reconnected = {
       id: "new-cred",
       provider: "codex",
@@ -847,7 +852,7 @@ describe("CredentialsInput – a removed connection", () => {
       cleanup: { abort: vi.fn() },
     });
 
-    render(<StatefulCredentialsInput initial={deleted} />);
+    render(<StatefulCredentialsInput initial={deleted} variant="node" />);
 
     expect(
       await screen.findByText(

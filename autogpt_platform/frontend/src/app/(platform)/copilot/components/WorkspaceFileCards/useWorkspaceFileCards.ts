@@ -8,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import {
   downloadFilesAsZip,
@@ -24,13 +25,9 @@ export function useWorkspaceFileCards(sessionId: string | null) {
   // An open artifact owns the right side, so the card steps aside for it
   // instead of floating on top of the artifact panel. The artifacts side
   // panel likewise takes over: while its tab is active the trigger swaps the
-  // card for a popover (see ContextPanelToggle).
-  const isOpen = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeArtifact == null &&
-      s.artifactPanel.activeTab !== "artifacts",
-  );
+  // card for a popover (see ContextPanelToggle). The chat column slides on
+  // the same hook, so the two can't drift apart.
+  const isOpen = useAreWorkspaceFileCardsOpen();
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
