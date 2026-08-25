@@ -106,6 +106,7 @@ ToolName = Literal[
     "hire_expert",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_team",
     "list_folders",
     "list_presets",
     "list_schedules",

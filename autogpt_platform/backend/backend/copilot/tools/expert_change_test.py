@@ -135,9 +135,11 @@ def _env(
     )
     db.get_expert = AsyncMock(return_value=_hired_otto())
     db.update_soul_if_current = AsyncMock(return_value=_created("Otto", "exp-2"))
+    db.list_experts = AsyncMock(return_value=[])
     shared_redis = AsyncMock(return_value=redis or _FakeRedis())
     with (
         patch(f"{_HIRE_MODULE}.experts_db", MagicMock(return_value=db)),
+        patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
@@ -267,6 +269,34 @@ class TestPreviewNeverWrites:
         assert "color" in resp.message
         assert len(redis.store) == 0
         db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_refuses_a_duplicate_active_name(self):
+        """Re-raising an existing teammate is the observed stale-context
+        loop — the model must be pointed at the live expert, not allowed to
+        propose a twin."""
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(
+                    id="exp-7", name="otto", role="Inbox triage", is_archived=False
+                )
+            ]
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        assert "already exists" in resp.message
+        assert "exp-7" in resp.message
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_allows_reusing_an_archived_name(self):
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(
+                    id="exp-7", name="Otto", role="Inbox triage", is_archived=True
+                )
+            ]
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ExpertChangeProposedResponse)
 
 
 class TestPreviewTimeLimits:

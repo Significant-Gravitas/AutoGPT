@@ -75,13 +75,18 @@ def roster(monkeypatch):
     async def fake_get_expert(user_id, expert_id, *, include_workflows=True, **_):
         return experts.get(expert_id)
 
+    async def fake_list_experts(user_id, *, with_metrics=True, **_):
+        return list(experts.values())
+
     db = MagicMock()
     db.get_expert = fake_get_expert
-    monkeypatch.setattr(
-        "backend.copilot.tools.handoff_to_expert.experts_db",
-        lambda: db,
-        raising=True,
-    )
+    db.list_experts = fake_list_experts
+    for module in ("handoff_to_expert", "expert_delegation"):
+        monkeypatch.setattr(
+            f"backend.copilot.tools.{module}.experts_db",
+            lambda: db,
+            raising=True,
+        )
     return experts
 
 
@@ -190,6 +195,46 @@ class TestGuards:
         )
         assert isinstance(r, ErrorResponse)
         mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_name_reference_resolves_unique_teammate(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="bea",
+            prompt="hi",
+        )
+        assert not isinstance(r, ErrorResponse)
+        assert mock_sessions[0].expert_id == "expert-b"
+
+    @pytest.mark.asyncio
+    async def test_name_resolving_to_caller_rejected(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="Ari",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_target_error_carries_the_roster(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-zzz",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Bea (expert_id: expert-b)" in r.message
+        assert "Ari" not in r.message
 
     @pytest.mark.asyncio
     async def test_archived_target_rejected(self, roster, mock_turn, mock_sessions):
