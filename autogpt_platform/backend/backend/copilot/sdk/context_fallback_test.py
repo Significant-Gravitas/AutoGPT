@@ -501,11 +501,10 @@ class TestCompressMessages:
         exceeds the model's context window cannot be rescued by re-trying
         with the same history).
 
-        It must ALSO return no stats.  Stats promote the compaction row from
-        a transient prediction into a durable "earlier messages were
-        summarized" claim replayed on every reload, plus a
-        ``compaction_count``.  Nothing was summarized here — the history was
-        thrown away — so there is nothing honest to persist.
+        It must ALSO say what happened.  Nothing was summarized — the history
+        was thrown away — so the stats carry ``dropped`` and no token counts:
+        enough for the caller to close the row as a reset the user can read,
+        without claiming a summary or counting a completed compaction.
         """
         msgs = [
             ChatMessage(role="user", content="q"),
@@ -522,16 +521,16 @@ class TestCompressMessages:
         # occurred (current message goes alone, smallest possible payload).
         assert result == []
         assert compacted is True
-        assert stats is None
+        assert stats == CompactionStats(dropped=True, messages_before=2)
 
     @pytest.mark.asyncio
-    async def test_drop_path_persists_no_compaction_row(self):
+    async def test_drop_path_reports_dropped_not_condensed(self):
         """A dropped history must not surface as a completed compaction.
 
         ``_build_query_message`` falls through to the bare message when the
-        drop leaves nothing to inject; if it reported stats there, the caller
-        would close and persist a row claiming a summarization that never
-        happened.
+        drop leaves nothing to inject.  The stats it hands back say
+        ``dropped`` with no token counts, so the caller closes the row as a
+        reset rather than persisting a claim that the history was summarized.
         """
         session = _make_session(
             _msgs(("user", "q1"), ("assistant", "a1"), ("user", "q2"))
@@ -550,7 +549,9 @@ class TestCompressMessages:
             )
 
         assert result == "q2"
-        assert stats is None
+        assert stats == CompactionStats(dropped=True, messages_before=2)
+        assert stats.tokens_before is None
+        assert stats.tokens_after is None
 
     @pytest.mark.asyncio
     async def test_compaction_messages_filtered_before_compression(self):

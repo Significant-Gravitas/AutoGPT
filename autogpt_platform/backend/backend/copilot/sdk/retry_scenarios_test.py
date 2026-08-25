@@ -1947,7 +1947,20 @@ class TestStreamChatCompletionRetryIntegration:
         reduced context rather than summarize a second time and persist a
         second "Condensed" row for the same compaction.
         """
-        session = self._make_session()
+        # Prior history is what makes the turn restore a transcript at all —
+        # a one-message session never calls ``download_transcript``.
+        session = ChatSession(
+            session_id="test-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            messages=[
+                ChatMessage(role="user", content="prior question"),
+                ChatMessage(role="assistant", content="prior answer"),
+                ChatMessage(role="user", content="hello"),
+            ],
+        )
         result_msg = self._make_result_message()
         call_count = [0]
 
@@ -1972,6 +1985,17 @@ class TestStreamChatCompletionRetryIntegration:
             original_transcript=original_transcript,
             compacted_transcript=compacted_transcript,
             client_side_effect=_client_factory,
+        )
+
+        # The shared patches mock ``os.makedirs`` but not the session-file
+        # write, so ``process_cli_restore`` fails and the turn falls back to
+        # the DB path with no transcript to summarize.  Hand it a valid
+        # restore so attempt 2 runs the real summarize branch.
+        patches.append(
+            (
+                f"{_SVC}.process_cli_restore",
+                dict(return_value=(original_transcript, True)),
+            )
         )
 
         events = []
