@@ -48,13 +48,17 @@ function expertSessions() {
   });
 }
 
-function subSession(messages: Record<string, unknown>[]) {
+function subSession(
+  messages: Record<string, unknown>[],
+  extra: Record<string, unknown> = {},
+) {
   return getGetV2GetSessionMockHandler200({
     id: "sub-1",
     created_at: "2026-08-21T00:00:00Z",
     updated_at: "2026-08-21T00:00:00Z",
     user_id: "u-1",
     messages,
+    ...extra,
   });
 }
 
@@ -182,6 +186,51 @@ describe("SubSessionLive", () => {
     expect(
       screen.queryByText("Here is the full brief the teammate wrote."),
     ).toBeNull();
+  });
+
+  /** The delegate/handoff tools name themselves, but a result poll is the
+   *  same tool for the model's own scratch sub and for a teammate's thread —
+   *  the `expert` on the output is the only thing telling them apart. */
+  it("keeps a delegated result poll minimal and still flips its pill when the teammate lands", async () => {
+    server.use(
+      subSession(
+        [
+          {
+            role: "assistant",
+            content: "Looking for the right agent now.",
+            tool_calls: null,
+          },
+        ],
+        { chat_status: "idle", active_stream: null },
+      ),
+    );
+
+    render(
+      <ToolResult
+        row={{
+          key: "poll",
+          category: "agent",
+          text: "Checking on the teammate",
+          state: "done",
+          tool: "get_sub_session_result",
+          input: {},
+          output: {
+            status: "running",
+            response: "Half of the brief so far.",
+            sub_session_id: "sub-1",
+            sub_autopilot_session_link: "/copilot?sessionId=sub-1",
+            expert: { name: "Vera", role: "Research" },
+          },
+        }}
+      />,
+    );
+
+    // The pill can only flip off the frozen "running" once the poll this hook
+    // owns has answered — so this also proves the card polls with no live
+    // view mounted to do it for them.
+    expect(await screen.findByText("completed")).toBeDefined();
+    expect(screen.queryByText("Looking for the right agent now.")).toBeNull();
+    expect(screen.queryByText("Half of the brief so far.")).toBeNull();
   });
 
   it("finds the delegate's running session behind a wall of pinned ones", async () => {

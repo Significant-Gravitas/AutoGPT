@@ -171,10 +171,14 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   );
 }
 
+interface SubSessionCardProps extends OutputCardProps {
+  minimal?: boolean;
+}
+
 export function SubSessionCard({
   output,
   minimal = false,
-}: OutputCardProps & { minimal?: boolean }) {
+}: SubSessionCardProps) {
   const frozenStatus = str(output, "status");
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
