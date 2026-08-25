@@ -21,6 +21,19 @@ logger = logging.getLogger(__name__)
 MAX_AGENT_JSON_SIZE = 1_000_000  # 1 MB
 
 
+def _graph_block_ids(graph: dict[str, Any]) -> set[str]:
+    block_ids: set[str] = set()
+    pending = [graph]
+    while pending:
+        current = pending.pop()
+        pending.extend(current.get("sub_graphs", []))
+        for node in current.get("nodes", []):
+            block_id = node.get("block_id")
+            if isinstance(block_id, str):
+                block_ids.add(block_id)
+    return block_ids
+
+
 async def fetch_library_agents(
     user_id: str | None,
     library_agent_ids: list[str],
@@ -55,6 +68,7 @@ async def fix_validate_and_save(
     library_agents: list[dict[str, Any]] | None = None,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    allowed_block_ids: set[str] | None = None,
 ) -> ToolResponseBase:
     """Shared pipeline: auto-fix → validate → preview or save.
 
@@ -68,6 +82,7 @@ async def fix_validate_and_save(
         preview_message: Custom preview message (optional).
         save_message: Custom save success message (optional).
         library_agents: Library agents for AgentExecutorBlock validation/fixing.
+        allowed_block_ids: Final graph block ceiling applied after auto-fixing.
 
     Returns:
         An appropriate ToolResponseBase subclass.
@@ -95,6 +110,18 @@ async def fix_validate_and_save(
             logger.info(f"Applied {len(fixes)} auto-fixes to agent JSON")
     except Exception as e:
         logger.warning(f"Auto-fix failed: {e}")
+
+    if allowed_block_ids is not None:
+        denied_blocks = sorted(_graph_block_ids(agent_json) - allowed_block_ids)
+        if denied_blocks:
+            return ErrorResponse(
+                message=(
+                    "This agent uses blocks outside the Forwarding Digital "
+                    f"allowlist: {', '.join(denied_blocks)}"
+                ),
+                error="partner_block_capability_required",
+                session_id=session_id,
+            )
 
     # Validate
     try:

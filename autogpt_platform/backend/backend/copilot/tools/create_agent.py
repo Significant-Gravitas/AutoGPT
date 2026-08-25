@@ -5,6 +5,12 @@ import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.partner_context import (
+    AGENTS_CREATE_CAPABILITY,
+    partner_allowed_graph_block_ids,
+    partner_disallowed_graph_block_ids,
+    partner_session_has_capability,
+)
 from backend.copilot.tracking import track_library_check_outcome
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
@@ -93,6 +99,12 @@ class CreateAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+        if not partner_session_has_capability(session, AGENTS_CREATE_CAPABILITY):
+            return ErrorResponse(
+                message="Forwarding Digital did not grant agent creation for this session.",
+                error="partner_capability_required",
+                session_id=session_id,
+            )
 
         guide_gate = require_guide_read(session, "create_agent")
         if guide_gate is not None:
@@ -126,6 +138,16 @@ class CreateAgentTool(BaseTool):
             return resolve_error
         assert agent_json is not None  # narrowed: resolve_error covers the None case
 
+        denied_blocks = partner_disallowed_graph_block_ids(session, agent_json)
+        if denied_blocks:
+            return ErrorResponse(
+                message=(
+                    "This agent uses blocks outside the Forwarding Digital "
+                    f"allowlist: {', '.join(denied_blocks)}"
+                ),
+                error="partner_block_capability_required",
+                session_id=session_id,
+            )
         if library_agent_ids is None:
             library_agent_ids = []
 
@@ -160,4 +182,5 @@ class CreateAgentTool(BaseTool):
             library_agents=library_agents,
             folder_id=folder_id,
             is_hidden=is_hidden,
+            allowed_block_ids=partner_allowed_graph_block_ids(session),
         )

@@ -1617,3 +1617,33 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio
+async def test_partner_run_and_schedule_capabilities_are_independent():
+    tool = RunAgentTool()
+    session = make_session("partner-run-user")
+    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.external_account_id = "fd-account-77"
+    session.metadata.external_capabilities = ["agents.schedule"]
+
+    immediate = await tool._execute(
+        user_id="partner-run-user",
+        session=session,
+        library_agent_id="library-agent-1",
+    )
+
+    assert isinstance(immediate, ErrorResponse)
+    assert immediate.error == "partner_capability_required"
+
+    session.metadata.external_capabilities = ["agents.run"]
+    scheduled = await tool._execute(
+        user_id="partner-run-user",
+        session=session,
+        library_agent_id="library-agent-1",
+        schedule_name="Weekly report",
+        cron="0 9 * * 1",
+    )
+
+    assert isinstance(scheduled, ErrorResponse)
+    assert scheduled.error == "partner_capability_required"

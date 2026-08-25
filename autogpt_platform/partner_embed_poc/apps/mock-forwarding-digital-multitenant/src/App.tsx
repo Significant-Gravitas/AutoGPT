@@ -191,7 +191,7 @@ export default function App() {
           />
           <Summary label="Role" value={session.activeOrganization.role} />
           <Summary
-            label="MCP tools allowed"
+            label="Assistant capabilities"
             value={String(session.activeOrganization.tools.length)}
           />
         </section>

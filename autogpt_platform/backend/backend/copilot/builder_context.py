@@ -7,7 +7,6 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession, ChatSessionInfo
-from backend.copilot.partner_context import FORWARDING_DIGITAL_PARTNER_ID
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
@@ -36,6 +35,30 @@ _PARTNER_CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
     "reports.read": ("query_forwarding_digital",),
     "documents.read": ("list_workspace_files", "read_workspace_file"),
     "documents.write": ("write_workspace_file",),
+    "agents.create": (
+        "create_agent",
+        "edit_agent",
+        "enter_agent_building_mode",
+        "find_agent",
+        "find_block",
+        "find_library_agent",
+        "fix_agent_graph",
+        "get_agent_building_guide",
+        "validate_agent_graph",
+    ),
+    "agents.run": (
+        "find_agent",
+        "find_library_agent",
+        "run_agent",
+        "view_agent_output",
+    ),
+    "agents.schedule": (
+        "delete_schedule",
+        "find_agent",
+        "find_library_agent",
+        "list_schedules",
+        "run_agent",
+    ),
 }
 _PARTNER_BLOCK_PREFIX = "autogpt:block:"
 _PARTNER_TOOL_PREFIX = "autogpt:tool:"
@@ -57,7 +80,7 @@ def resolve_session_permissions(
     """
     if session is None:
         return None
-    if session.metadata.source_platform == FORWARDING_DIGITAL_PARTNER_ID:
+    if session.metadata.external_account_id:
         capabilities = set(session.metadata.external_capabilities)
         tools = {
             tool

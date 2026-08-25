@@ -321,3 +321,69 @@ async def test_local_mode_no_auth_returns_error(tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert "logged in" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_partner_create_requires_capability_and_allowed_blocks(tool):
+    session = make_session(_TEST_USER_ID)
+    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.external_account_id = "fd-account-77"
+
+    denied = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_json={"nodes": [{"block_id": "allowed-block"}], "links": []},
+    )
+
+    assert isinstance(denied, ErrorResponse)
+    assert denied.error == "partner_capability_required"
+
+    session.metadata.external_capabilities = [
+        "agents.create",
+        "autogpt:block:allowed-block",
+    ]
+    denied_block = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_json={"nodes": [{"block_id": "denied-block"}], "links": []},
+    )
+
+    assert isinstance(denied_block, ErrorResponse)
+    assert denied_block.error == "partner_block_capability_required"
+
+
+@pytest.mark.asyncio
+async def test_partner_create_rechecks_blocks_after_autofix(tool):
+    session = make_session(_TEST_USER_ID)
+    session.metadata.source_platform = "forwarding-digital"
+    session.metadata.external_account_id = "fd-account-77"
+    session.metadata.external_capabilities = [
+        "agents.create",
+        "autogpt:block:allowed-block",
+    ]
+    fixed_json = {
+        "name": "Fixed Agent",
+        "nodes": [{"block_id": "denied-after-fix"}],
+        "links": [],
+    }
+    fixer = MagicMock()
+    fixer.apply_all_fixes.return_value = fixed_json
+    fixer.get_fixes_applied.return_value = []
+
+    with (
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=fixer),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_json={
+                "name": "Allowed Agent",
+                "nodes": [{"block_id": "allowed-block"}],
+                "links": [],
+            },
+            save=False,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "partner_block_capability_required"

@@ -7,6 +7,10 @@ from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
 from backend.copilot.model import ChatSession
+from backend.copilot.partner_context import (
+    AGENTS_SCHEDULE_CAPABILITY,
+    partner_session_has_capability,
+)
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -133,6 +137,12 @@ class ListSchedulesTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+        if not partner_session_has_capability(session, AGENTS_SCHEDULE_CAPABILITY):
+            return ErrorResponse(
+                message="Forwarding Digital did not grant schedule management for this session.",
+                error="partner_capability_required",
+                session_id=session_id,
+            )
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",
@@ -220,6 +230,12 @@ class DeleteScheduleTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+        if not partner_session_has_capability(session, AGENTS_SCHEDULE_CAPABILITY):
+            return ErrorResponse(
+                message="Forwarding Digital did not grant schedule management for this session.",
+                error="partner_capability_required",
+                session_id=session_id,
+            )
         if not user_id:
             return ErrorResponse(
                 message="Authentication required.",

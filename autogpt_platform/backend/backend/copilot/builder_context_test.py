@@ -106,6 +106,58 @@ def test_partner_without_block_capability_cannot_run_blocks():
     assert permissions.blocks == []
 
 
+def test_partner_agent_lifecycle_capabilities_map_to_native_tools():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="forwarding-digital",
+        external_account_id="fd-account-77",
+        external_capabilities=[
+            "agents.create",
+            "agents.run",
+            "agents.schedule",
+        ],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert set(permissions.tools) == {
+        "create_agent",
+        "delete_schedule",
+        "edit_agent",
+        "enter_agent_building_mode",
+        "find_agent",
+        "find_block",
+        "find_library_agent",
+        "fix_agent_graph",
+        "get_agent_building_guide",
+        "list_schedules",
+        "run_agent",
+        "validate_agent_graph",
+        "view_agent_output",
+    }
+    assert permissions.blocks == []
+
+
+def test_unknown_embedded_partner_defaults_to_capability_whitelist():
+    session = ChatSession.new(
+        "test-user",
+        dry_run=False,
+        source_platform="future-partner",
+        external_account_id="future-account",
+        external_capabilities=[],
+    )
+
+    permissions = resolve_session_permissions(session)
+
+    assert permissions is not None
+    assert permissions.tools_exclude is False
+    assert permissions.tools == []
+    assert permissions.blocks_exclude is False
+    assert permissions.blocks == []
+
+
 # ---------------------------------------------------------------------------
 # build_builder_system_prompt_suffix
 # ---------------------------------------------------------------------------

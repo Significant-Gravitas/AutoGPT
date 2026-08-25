@@ -9,6 +9,12 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.partner_context import (
+    AGENTS_RUN_CAPABILITY,
+    AGENTS_SCHEDULE_CAPABILITY,
+    partner_disallowed_graph_block_ids,
+    partner_session_has_capability,
+)
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -252,6 +258,17 @@ class RunAgentTool(BaseTool):
         if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
+        is_schedule = bool(params.schedule_name or params.cron)
+        required_capability = (
+            AGENTS_SCHEDULE_CAPABILITY if is_schedule else AGENTS_RUN_CAPABILITY
+        )
+        if not partner_session_has_capability(session, required_capability):
+            action = "scheduling" if is_schedule else "agent runs"
+            return ErrorResponse(
+                message=f"Forwarding Digital did not grant {action} for this session.",
+                error="partner_capability_required",
+                session_id=session_id,
+            )
 
         # Running a saved preset is a distinct path (uses the preset's stored
         # graph + inputs + credentials). Handle it before agent-identifier
@@ -289,9 +306,6 @@ class RunAgentTool(BaseTool):
                 message="Authentication required. Please sign in to use this tool.",
                 session_id=session_id,
             )
-
-        # Determine if this is a schedule request
-        is_schedule = bool(params.schedule_name or params.cron)
 
         # Session-level dry-run blocks scheduling — schedules create real
         # side effects that cannot be simulated.
@@ -343,6 +357,16 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
 
+            denied_blocks = partner_disallowed_graph_block_ids(session, graph)
+            if denied_blocks:
+                return ErrorResponse(
+                    message=(
+                        "This agent uses blocks outside the Forwarding Digital "
+                        f"allowlist: {', '.join(denied_blocks)}"
+                    ),
+                    error="partner_block_capability_required",
+                    session_id=session_id,
+                )
             # Builder-bound sessions can only run their bound agent.  We
             # resolve the graph first so the user sees a precise error that
             # references the agent they actually asked to run, rather than
@@ -782,6 +806,16 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        denied_blocks = partner_disallowed_graph_block_ids(session, graph)
+        if denied_blocks:
+            return ErrorResponse(
+                message=(
+                    "This agent uses blocks outside the Forwarding Digital "
+                    f"allowlist: {', '.join(denied_blocks)}"
+                ),
+                error="partner_block_capability_required",
+                session_id=session_id,
+            )
         # Builder-bound sessions can only run their bound agent — enforce the
         # same guard as the regular run path so a preset for a different graph
         # can't execute in a builder-bound chat.

@@ -33,6 +33,11 @@ const demoUser: PartnerUser = {
     "reports.read",
     "documents.read",
     "documents.write",
+    "agents.create",
+    "agents.run",
+    "agents.schedule",
+    "autogpt:block:c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+    "autogpt:block:363ae599-353e-4804-937e-b2ee3cef3da4",
     "autogpt:block:b1ab9b19-67a6-406d-abf5-2dba76d00c79",
   ],
 };

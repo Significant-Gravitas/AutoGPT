@@ -88,10 +88,14 @@ Forwarding Digital assigns capabilities from its own user membership. They are s
 - `reports.read` enables the operations summary MCP report.
 - `documents.read` enables workspace reads and the session artifact list/download APIs.
 - `documents.write` enables workspace file creation.
+- `agents.create` enables the native guided create/edit agent flow.
+- `agents.run` enables immediate runs of allowed agent graphs.
+- `agents.schedule` enables recurring agent runs plus schedule listing/deletion.
 - `autogpt:block:<block-id-or-name>` enables only that AutoGPT block plus the find/run/continue block tools.
 - `autogpt:tool:<tool-name>` explicitly enables one additional AutoPilot tool.
 
 Capabilities are part of session identity, not mutable UI preferences. A token with a different partner, organization, account, team, user, or capability set cannot resume the session. Each partner registry entry defines AutoGPT's maximum allowed capabilities, and the exchange rejects signed claims outside that ceiling. The MCP service independently verifies the tenant and capability set in its 60-second service token, filters `tools/list`, and rejects an unauthorized `tools/call` even if a model attempts it.
+Agent creation, edits, immediate runs, preset runs, and schedules re-check every node in the flattened graph against the session's `autogpt:block:*` allowlist. The seeded Northstar manager receives all three lifecycle grants plus the generic input, output, and calculator blocks; operator memberships do not.
 
 The restricted BFF/API surface used by the component is:
 
@@ -230,7 +234,7 @@ No package is published by this PoC.
 3. Replace in-memory partner sessions and the ephemeral demo signing key with Forwarding Digital's real session store and managed signing keys.
 4. Add customer and user lifecycle hooks for suspension, account moves, offboarding, role changes, and audit export. JIT provisioning must not grant permissions beyond the partner assertion.
 5. Add per-partner/account/user rate limits, concurrency limits, budget enforcement, and metering in customer language such as completed runs or document pages.
-6. Add the scheduling façade only after its separate scopes, approval model, idempotency, run history, cancellation, and budget caps are defined. The PoC deliberately does not mint a schedule permission.
+6. Promote scheduling into a dedicated partner façade and run-history UI only after its approval model, idempotency, cancellation, and budget caps are defined. The PoC currently schedules allowed native agent graphs through capability-gated chat tools.
 7. Replace the three-tool mock MCP with Forwarding Digital's 72-tool production server and a managed token-exchange trust relationship. Preserve the same rule: AutoGPT derives tenancy from the authenticated session, while Forwarding Digital remains authoritative for role and tool permissions on every call.
 8. Add production TLS, CSP and allowed-origin configuration, structured audit events, secret rotation, availability targets, data retention controls, and incident revocation.
 
@@ -239,6 +243,6 @@ No package is published by this PoC.
 - Three mock hosts represent one partner. The multi-tenant React and Angular apps seed two customer accounts and two users but are not a full production forwarding system.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - Assertion `jti` values are not yet consumed atomically, so the same 60-second assertion can be exchanged more than once. Embed-token lifetime is capped by the remaining assertion lifetime and exchange responses are non-cacheable.
-- Interactive chat, session history, and artifacts only. Scheduling and the real 72-tool Forwarding Digital MCP remain architectural follow-ons; the PoC MCP implements summary, arrivals, and exceptions.
+- Interactive chat, session history, artifacts, and manager-only create/run/schedule flows are implemented. Scheduled graphs are deliberately limited to the three seeded safe blocks; scheduled Forwarding Digital MCP automations and the real 72-tool server remain architectural follow-ons.
 - Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Partner sessions replace Claude Code's built-in identity-bearing prompt preset so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.
