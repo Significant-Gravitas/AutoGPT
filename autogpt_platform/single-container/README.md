@@ -42,14 +42,13 @@ and generated application secrets survive container replacement.
 
 ## Stopping
 
-`docker stop` completes in well under Docker's stock 10-second timeout, so the
-appliance shuts down cleanly on a default host and needs no change to Docker's
-host-wide stop timeout. The bundled PostgreSQL, RabbitMQ, Valkey and FalkorDB
-are drained last and in full; everything stateless is stopped first, and is
-terminated rather than waited on once it has released what it holds.
+`docker stop` completes inside Docker's stock 10-second timeout and needs no
+host-wide timeout change. Runtime processes are signaled first; state services
+then get up to five seconds before Supervisor forces them down, so larger or
+slower state may require normal crash recovery on the next boot.
 
-Agent runs that are still executing do not survive the stop. They are not
-resumed on the next boot, so re-run them.
+Agent runs that are still executing are abandoned and may remain displayed as
+`RUNNING`. They are not resumed on the next boot, so start a new run.
 
 Supervisor's process names are group-qualified inside the container -- use
 `supervisorctl status` to see them (`runtime:rest`, `state:postgres`, and so
@@ -81,6 +80,7 @@ memory rather than the container's writable layer.
 
 ## More information
 
+- [Canonical single-container operations guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/docs/platform/single-container.md)
 - [AutoGPT repository](https://github.com/Significant-Gravitas/AutoGPT)
 - [Security policy](https://github.com/Significant-Gravitas/AutoGPT/security/policy)
 - [License](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/LICENSE.md)
