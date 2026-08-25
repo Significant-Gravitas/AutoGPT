@@ -17,7 +17,8 @@ export function asymptoticProgress(elapsedMs: number): number {
 }
 
 export function finishProgress(from: number, sinceDoneMs: number): number {
-  const next = 1 - (1 - from) * Math.exp(-Math.max(0, sinceDoneMs) / FINISH_TAU_MS);
+  const next =
+    1 - (1 - from) * Math.exp(-Math.max(0, sinceDoneMs) / FINISH_TAU_MS);
   return next >= FINISH_SNAP ? 1 : next;
 }
 
@@ -37,7 +38,10 @@ export function useCompactionProgress(done: boolean): number {
       let next: number;
       if (done) {
         finishRef.current ??= { at: now, from: progressRef.current };
-        next = finishProgress(finishRef.current.from, now - finishRef.current.at);
+        next = finishProgress(
+          finishRef.current.from,
+          now - finishRef.current.at,
+        );
       } else {
         startRef.current ??= now;
         next = asymptoticProgress(now - startRef.current);

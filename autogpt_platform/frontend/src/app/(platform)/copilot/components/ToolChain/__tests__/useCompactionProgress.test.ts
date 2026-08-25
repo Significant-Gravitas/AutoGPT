@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  asymptoticProgress,
-  finishProgress,
-} from "../useCompactionProgress";
+import { asymptoticProgress, finishProgress } from "../useCompactionProgress";
 
 describe("asymptoticProgress", () => {
   it("starts at zero and rises quickly at first", () => {
