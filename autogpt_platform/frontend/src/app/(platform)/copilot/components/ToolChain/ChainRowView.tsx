@@ -77,6 +77,11 @@ export function ChainRowView({ row, isLast }: Props) {
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
+  // What the row needs from the user is only known once the output lands, so
+  // a live row mounts closed and flips here — the user can still collapse it.
+  useEffect(() => {
+    if (row.requiresAction) setOpen(true);
+  }, [row.requiresAction]);
   // Browser steps carry the page screenshots the artifact panel shows —
   // auto-expand them while the panel is open so the steps are visible
   // from the start.

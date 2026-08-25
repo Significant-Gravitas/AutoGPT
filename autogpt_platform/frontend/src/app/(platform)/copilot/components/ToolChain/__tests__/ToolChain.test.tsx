@@ -69,6 +69,16 @@ function getChainHeader(name: RegExp): HTMLElement {
   return header;
 }
 
+// The row's own toggle is the one without a panel — its `aria-expanded` says
+// whether the row's card is showing.
+function getRowToggle(name: RegExp): HTMLElement {
+  const toggle = screen
+    .getAllByRole("button", { name })
+    .find((button) => !button.hasAttribute("aria-controls"));
+  if (!toggle) throw new Error(`No row toggle matching ${name}`);
+  return toggle;
+}
+
 describe("ToolChain", () => {
   afterEach(() => {
     cleanup();
@@ -349,6 +359,41 @@ describe("ToolChain", () => {
     await user.click(header);
 
     expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  // A live row mounts before its output exists, so "needs you" is only known
+  // on a later render — the reveal has to react to it, not read it once.
+  it("reveals an action row when its output arrives mid-stream", () => {
+    const pending = toolPart("run_block", "input-available");
+    const { rerender } = render(
+      <ToolChain parts={[pending]} isStreaming={true} />,
+    );
+
+    rerender(
+      <ToolChain
+        parts={[
+          toolPart("run_block", "output-available", {
+            output: { type: "review_required", block_name: "Send Email" },
+          }),
+        ]}
+        isStreaming={true}
+      />,
+    );
+
+    expect(
+      getRowToggle(/review send email/i).getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("holds a card's shape while an expert is still being written", () => {
+    const { container } = render(
+      <ToolChain
+        parts={[toolPart("hire_expert", "input-available")]}
+        isStreaming={true}
+      />,
+    );
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBe(5);
   });
 
   it("drafts answered questions into the chat input and dismisses on send", async () => {

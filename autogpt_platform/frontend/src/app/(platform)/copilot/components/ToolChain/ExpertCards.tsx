@@ -7,7 +7,7 @@ import {
   PencilIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -47,6 +47,7 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
  *  offers the two things the user does next: adjust them or talk to them. */
 export function ExpertChangeCard({ output }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const detailsID = useId();
   const { contentRef, height } = useCardResize(expanded);
   const applied = output.applied === true;
   const expert = asObject(output.expert) ?? asObject(output.preview);
@@ -93,6 +94,7 @@ export function ExpertChangeCard({ output }: Props) {
             type="button"
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
+            aria-controls={detailsID}
             aria-label={expanded ? "Show less" : "Show more"}
             className="group/expand -mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-zinc-100"
           >
@@ -107,7 +109,11 @@ export function ExpertChangeCard({ output }: Props) {
           </button>
         )}
       </div>
-      <div className="t-resize overflow-hidden" style={{ height }}>
+      <div
+        id={detailsID}
+        className="t-resize overflow-hidden"
+        style={{ height }}
+      >
         <div ref={contentRef} className="flex flex-col gap-1 pt-1.5">
           {about && (
             <p className={cn("pl-9 text-sm text-zinc-500", clamp)}>{about}</p>

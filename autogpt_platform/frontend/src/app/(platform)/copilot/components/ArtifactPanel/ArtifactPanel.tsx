@@ -38,11 +38,10 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
     setArtifactPanelWidth,
   } = useArtifactPanel();
 
-  // Hold the last live artifact so the mobile drawer can keep rendering its
-  // contents while vaul plays the slide-out animation — by then
-  // `activeArtifact` is already null, and unmounting the whole drawer would
-  // snap it shut without animating. Desktop returns null immediately (no exit
-  // animation expected there).
+  // Hold the last live artifact so both the mobile drawer and the desktop
+  // panel can keep rendering its contents while the close animation plays —
+  // by then `activeArtifact` is already null, and unmounting outright would
+  // snap the panel shut without animating.
   const lastShownRef = useRef<{
     artifact: NonNullable<typeof activeArtifact>;
     classification: NonNullable<typeof classification>;

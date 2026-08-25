@@ -62,5 +62,9 @@ export function TailSpacer({ messageID, bottomInset }: Props) {
     return () => observer.disconnect();
   }, [messageID, bottomInset, scrollRef]);
 
-  return <div ref={spacerRef} aria-hidden style={{ height }} />;
+  // `-mt-6` cancels the parent's `gap-6` so zero height really is zero —
+  // without it every thread keeps an extra gap above the composer.
+  return (
+    <div ref={spacerRef} aria-hidden className="-mt-6" style={{ height }} />
+  );
 }
