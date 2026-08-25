@@ -8,12 +8,8 @@ services:
   copilot_executor:
     environment:
       CHAT_TEST_MODE: "false"
-      CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "true"
       FORWARDING_DIGITAL_MCP_URL: http://mock-forwarding-digital-mcp:8790/mcp
       FORWARDING_DIGITAL_MCP_SHARED_SECRET: local-forwarding-digital-mcp-poc-secret
-
-    volumes:
-      - ${PARTNER_CLAUDE_CONFIG_DIR:?Set PARTNER_CLAUDE_CONFIG_DIR to a private copy of ~/.claude}:/root/.claude
   frontend:
     environment:
       PARTNER_EMBED_CONFIGS: >-

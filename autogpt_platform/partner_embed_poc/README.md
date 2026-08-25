@@ -15,26 +15,31 @@ docker compose \
   -f docker-compose.yml \
   -f partner_embed_poc/docker-compose.poc.yml \
   -f partner_embed_poc/docker-compose.isolation.yml \
+  -f partner_embed_poc/docker-compose.claude-subscription.yml \
   up -d --build
 ```
 
-The copy lets Claude refresh OAuth without modifying the desktop credential file. It must never be committed. A production deployment would use managed organization credentials, budgets, metering, and rotation instead of a personal subscription.
+The subscription profile and private writable copy are only for local development. The copy lets Claude refresh OAuth without modifying the desktop credential file and must never be committed. Shared demos use the separate direct-Anthropic profile instead.
 
 For an explicitly shared demo, set a high-entropy access code and include the fail-closed public profile. It refuses to start without the code or secure cookies, binds both shareable hosts to loopback, rate-limits unlock attempts, and exchanges the code for an eight-hour HTTP-only cookie with a server-verified expiry:
 
 ```bash
 export PARTNER_DEMO_ACCESS_CODE="replace-with-at-least-16-random-characters"
+export PARTNER_ANTHROPIC_API_KEY="replace-with-a-managed-anthropic-key"
 
 docker compose \
   -f docker-compose.yml \
   -f partner_embed_poc/docker-compose.poc.yml \
   -f partner_embed_poc/docker-compose.isolation.yml \
+  -f partner_embed_poc/docker-compose.anthropic-demo.yml \
   -f partner_embed_poc/docker-compose.public-demo.yml \
   up -d --build
 
 sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8788
 sudo tailscale funnel --bg --https=10000 http://127.0.0.1:8789
 ```
+
+The direct-Anthropic profile refuses to resolve without a key, disables subscription and OpenRouter routing in both backend processes, and applies explicit platform caps of $1 per user per day and $5 per user per week. Override those caps with `PARTNER_DEMO_DAILY_COST_LIMIT_MICRODOLLARS` and `PARTNER_DEMO_WEEKLY_COST_LIMIT_MICRODOLLARS`, and also set an account-level provider spend cap.
 
 Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant.
 
@@ -278,5 +283,5 @@ No package is published by this PoC.
 - Partner signing keys remain ephemeral. The minimal app uses in-memory sessions; the multi-tenant app persists sessions and sync mappings in SQLite.
 - Assertion `jti` values are not yet consumed atomically, so the same 60-second assertion can be exchanged more than once. Embed-token lifetime is capped by the remaining assertion lifetime and exchange responses are non-cacheable.
 - Interactive chat, session history, artifacts, and manager-only create/run/schedule flows are implemented. Scheduled graphs are deliberately limited to the three seeded safe blocks; scheduled Forwarding Digital MCP automations and the real 72-tool server remain architectural follow-ons.
-- Real local Autopilot calls use the private Claude subscription config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Partner sessions replace Claude Code's built-in identity-bearing prompt preset so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
+- Local development may use the explicit Claude subscription profile and a private config copy supplied through `PARTNER_CLAUDE_CONFIG_DIR`. Shared demos use the direct-Anthropic profile and a managed API key. Partner sessions replace Claude Code's built-in identity-bearing prompt preset in subscription mode so the subscription account profile does not enter model context. Production must still use managed organization credentials, budgets, metering, and rotation.
 - Both component packages are built and packable but are not published to npm.
