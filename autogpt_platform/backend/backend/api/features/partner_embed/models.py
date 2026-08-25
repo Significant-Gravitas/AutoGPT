@@ -53,6 +53,14 @@ class EmbedSessionDetailResponse(BaseModel):
     capabilities: list[str]
 
 
+class UpdateEmbedSessionTitleRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=64_000)
+
+
+class UpdateEmbedSessionTitleResponse(BaseModel):
+    title: str
+
+
 class EmbedArtifact(BaseModel):
     id: str
     name: str

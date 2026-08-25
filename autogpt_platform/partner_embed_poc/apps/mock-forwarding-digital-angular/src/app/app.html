@@ -261,7 +261,8 @@
           </button>
         </div>
         <div class="document-list">
-          @for (document of documents; track document.name) {
+          @for (document of documentsFor(current.activeOrganization.id); track
+          document.name) {
           <article>
             <span class="document-icon" aria-hidden="true">DOC</span>
             <div>

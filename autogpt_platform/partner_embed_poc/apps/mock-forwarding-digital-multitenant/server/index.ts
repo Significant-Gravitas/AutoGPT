@@ -187,6 +187,19 @@ app.get<{ Params: { sessionID: string } }>(
   },
 );
 
+app.patch<{ Params: { sessionID: string } }>(
+  "/api/embed/v1/sessions/:sessionID/title",
+  async (request, reply) => {
+    return proxyPlatformRequest(
+      request,
+      reply,
+      "/api/embed/v1/sessions/" +
+        encodeURIComponent(request.params.sessionID) +
+        "/title",
+    );
+  },
+);
+
 app.get<{ Params: { sessionID: string } }>(
   "/api/embed/v1/sessions/:sessionID/artifacts",
   async (request, reply) => {

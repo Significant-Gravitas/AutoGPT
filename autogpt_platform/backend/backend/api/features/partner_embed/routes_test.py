@@ -218,3 +218,64 @@ def test_stream_forwards_locked_identity_to_autopilot(mocker):
     context = stream.await_args.kwargs["ctx"]
     assert context.org_id == PRINCIPAL.organization_id
     assert context.team_id == PRINCIPAL.team_id
+
+
+def test_title_fallback_is_scoped_and_derived_from_first_message(mocker):
+    mocker.patch(
+        "backend.api.features.partner_embed.routes.get_chat_session_metadata",
+        return_value=SimpleNamespace(
+            title=None,
+            organization_id=PRINCIPAL.organization_id,
+            team_id=PRINCIPAL.team_id,
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id=PRINCIPAL.external_account_id,
+                external_capabilities=PRINCIPAL.capabilities,
+            ),
+        ),
+    )
+    update = mocker.patch(
+        "backend.api.features.partner_embed.routes.update_session_title",
+        return_value=True,
+    )
+
+    response = client.patch(
+        "/api/embed/v1/sessions/session-1/title",
+        json={"message": "Compare the active shipment lanes and flag the highest risk"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Compare the active shipment lanes and..."}
+    update.assert_awaited_once_with(
+        "session-1",
+        PRINCIPAL.user_id,
+        "Compare the active shipment lanes and...",
+        only_if_empty=True,
+    )
+
+
+def test_title_fallback_rejects_a_session_from_another_tenant(mocker):
+    mocker.patch(
+        "backend.api.features.partner_embed.routes.get_chat_session_metadata",
+        return_value=SimpleNamespace(
+            title=None,
+            organization_id="another-org",
+            team_id=PRINCIPAL.team_id,
+            metadata=SimpleNamespace(
+                source_platform=PRINCIPAL.partner_id,
+                external_account_id=PRINCIPAL.external_account_id,
+                external_capabilities=PRINCIPAL.capabilities,
+            ),
+        ),
+    )
+    update = mocker.patch(
+        "backend.api.features.partner_embed.routes.update_session_title"
+    )
+
+    response = client.patch(
+        "/api/embed/v1/sessions/session-1/title",
+        json={"message": "Summarize today's shipments"},
+    )
+
+    assert response.status_code == 404
+    update.assert_not_awaited()

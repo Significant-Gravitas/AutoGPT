@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +18,7 @@ import {
   getEmbedSession,
   listEmbedArtifacts,
   listEmbedSessions,
+  updateEmbedSessionTitle,
   type EmbedArtifact,
   type EmbedSessionDetail,
   type EmbedSessionSummary,
@@ -186,6 +188,23 @@ export function AutoGPTEmbeddedChat({
     }
   }
 
+  async function applyFallbackTitle(sessionID: string, message: string) {
+    const nextTitle = await updateEmbedSessionTitle(
+      apiBaseURL,
+      sessionID,
+      message,
+      () => tokenProviderRef.current(),
+    );
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionID ? { ...session, title: nextTitle } : session,
+      ),
+    );
+    setDetail((current) =>
+      current?.id === sessionID ? { ...current, title: nextTitle } : current,
+    );
+  }
+
   const blockCapabilities =
     detail?.capabilities.filter((capability) =>
       capability.startsWith("autogpt:block:"),
@@ -279,6 +298,7 @@ export function AutoGPTEmbeddedChat({
               suggestedPrompts={suggestedPrompts}
               onNavigate={onNavigate}
               onFinish={() => void refreshAfterTurn()}
+              onTitleFallback={applyFallbackTitle}
             />
           ) : (
             <LoadingState />
@@ -297,6 +317,7 @@ interface SessionChatProps {
   suggestedPrompts: string[];
   onNavigate?: (href: string) => void;
   onFinish: () => void;
+  onTitleFallback: (sessionID: string, message: string) => Promise<void>;
 }
 
 function SessionChat({
@@ -307,9 +328,13 @@ function SessionChat({
   suggestedPrompts,
   onNavigate,
   onFinish,
+  onTitleFallback,
 }: SessionChatProps) {
   const composerID = useId();
   const messagesRef = useRef<HTMLDivElement>(null);
+  const titleFallbackStartedRef = useRef(false);
+  const onTitleFallbackRef = useRef(onTitleFallback);
+  onTitleFallbackRef.current = onTitleFallback;
   const [draft, setDraft] = useState("");
   const { messages, sendMessage, stop, status, error } = useSessionChat({
     apiBaseURL,
@@ -320,6 +345,17 @@ function SessionChat({
   });
   const isBusy = status === "submitted" || status === "streaming";
   const messageSegments = visibleMessageSegments(messages);
+  const fallbackMessage = error ? firstUserMessageText(messages) : "";
+
+  useEffect(() => {
+    if (detail.title || !fallbackMessage || titleFallbackStartedRef.current) {
+      return;
+    }
+    titleFallbackStartedRef.current = true;
+    void onTitleFallbackRef
+      .current(detail.id, fallbackMessage)
+      .catch(() => (titleFallbackStartedRef.current = false));
+  }, [detail.id, detail.title, fallbackMessage]);
 
   useEffect(() => {
     const messageList = messagesRef.current;
@@ -457,6 +493,15 @@ function NativeMessage({
   );
 }
 
+function firstUserMessageText(messages: UIMessage[]) {
+  const firstUserMessage = messages.find((message) => message.role === "user");
+  if (!firstUserMessage) return "";
+  return firstUserMessage.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("\n")
+    .trim();
+}
+
 function visibleMessageSegments(messages: UIMessage[]) {
   const segments: {
     message: UIMessage;
@@ -512,7 +557,7 @@ function MessagePart({ part, onNavigate }: MessagePartProps) {
                     onNavigate(href);
                   }}
                 >
-                  {children}
+                  {linkLabel(href, children)}
                 </a>
               );
             },
@@ -565,6 +610,17 @@ function MessagePart({ part, onNavigate }: MessagePartProps) {
     );
   }
   return null;
+}
+
+function linkLabel(href: string, children: ReactNode) {
+  if (
+    /^\/library\/agents\/[^/]+$/.test(href) &&
+    typeof children === "string" &&
+    children.trim() === href
+  ) {
+    return "Open saved agent";
+  }
+  return children;
 }
 
 interface SessionNavigationProps {

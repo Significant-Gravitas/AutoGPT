@@ -76,6 +76,22 @@ export async function getEmbedSession(
   };
 }
 
+export async function updateEmbedSessionTitle(
+  apiBaseURL: string,
+  sessionID: string,
+  message: string,
+  getAccessToken: AccessTokenProvider,
+): Promise<string> {
+  const response = await authorizedFetch(
+    apiBaseURL,
+    `/api/embed/v1/sessions/${encodeURIComponent(sessionID)}/title`,
+    getAccessToken,
+    { method: "PATCH", body: { message } },
+  );
+  const body = (await response.json()) as Record<string, unknown>;
+  return stringValue(body.title, "New conversation");
+}
+
 export async function listEmbedArtifacts(
   apiBaseURL: string,
   sessionID: string,
@@ -125,11 +141,18 @@ async function authorizedFetch(
   apiBaseURL: string,
   path: string,
   getAccessToken: AccessTokenProvider,
+  options?: { method: "PATCH"; body: Record<string, unknown> },
 ): Promise<Response> {
   const baseURL = normalizeSameOriginApiBaseURL(apiBaseURL);
   const token = await getAccessToken();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+  if (options) headers["content-type"] = "application/json";
   const response = await fetch(baseURL + path, {
-    headers: { Authorization: `Bearer ${token}` },
+    method: options?.method,
+    headers,
+    body: options ? JSON.stringify(options.body) : undefined,
   });
   if (!response.ok) {
     throw new Error(`Embedded API request failed (${response.status})`);

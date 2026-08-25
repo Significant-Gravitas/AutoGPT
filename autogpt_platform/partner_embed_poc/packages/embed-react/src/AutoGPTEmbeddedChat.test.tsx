@@ -1,9 +1,21 @@
 import type { UIMessage } from "ai";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AutoGPTEmbeddedChat } from "./AutoGPTEmbeddedChat";
-const sessionChatMock = vi.hoisted(() => ({ messages: [] as UIMessage[] }));
+import { getEmbedSession, updateEmbedSessionTitle } from "./session-api";
+
+const sessionChatMock = vi.hoisted(() => ({
+  messages: [] as UIMessage[],
+  error: null as Error | null,
+  sendMessage: vi.fn(),
+}));
 
 vi.mock("./api", () => ({
   createEmbedSession: vi.fn().mockResolvedValue({
@@ -47,22 +59,27 @@ vi.mock("./session-api", () => ({
     },
   ]),
   downloadEmbedArtifact: vi.fn(),
+  updateEmbedSessionTitle: vi
+    .fn()
+    .mockResolvedValue("Compare the active shipment lanes and..."),
 }));
 
 vi.mock("./useSessionChat", () => ({
   useSessionChat: () => ({
     messages: sessionChatMock.messages,
-    sendMessage: vi.fn(),
+    sendMessage: sessionChatMock.sendMessage,
     stop: vi.fn(),
     status: "ready",
-    error: null,
+    error: sessionChatMock.error,
   }),
 }));
 
 describe("AutoGPTEmbeddedChat", () => {
   beforeEach(() => {
     cleanup();
+    vi.clearAllMocks();
     sessionChatMock.messages = [];
+    sessionChatMock.error = null;
   });
 
   it("restores native chat surfaces without asking for AutoGPT credentials", async () => {
@@ -136,6 +153,34 @@ describe("AutoGPTEmbeddedChat", () => {
     expect(onNavigate).toHaveBeenCalledWith("/library/agents/agent-1");
   });
 
+  it("relabels a raw internal agent path without changing its destination", async () => {
+    const onNavigate = vi.fn();
+    sessionChatMock.messages = [
+      {
+        id: "assistant-raw-link",
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: "[/library/agents/agent-1](/library/agents/agent-1)",
+          },
+        ],
+      },
+    ];
+
+    render(
+      <AutoGPTEmbeddedChat
+        apiBaseURL="http://localhost:8006"
+        getAccessToken={vi.fn().mockResolvedValue("embed-token")}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await screen.findByLabelText("Message Assistant");
+    fireEvent.click(screen.getByRole("link", { name: "Open saved agent" }));
+    expect(onNavigate).toHaveBeenCalledWith("/library/agents/agent-1");
+  });
+
   it("groups adjacent assistant segments and docks artifacts in the header", async () => {
     sessionChatMock.messages = [
       {
@@ -181,5 +226,54 @@ describe("AutoGPTEmbeddedChat", () => {
     });
     expect(artifactButton.closest("header")).not.toBeNull();
     expect(document.querySelector("img")).toBeNull();
+  });
+
+  it("titles a quota-rejected session from its first user message", async () => {
+    vi.mocked(getEmbedSession).mockResolvedValueOnce({
+      id: "session-1",
+      title: null,
+      createdAt: "2026-08-24T10:00:00Z",
+      updatedAt: "2026-08-24T11:00:00Z",
+      chatStatus: "idle",
+      messages: [],
+      hasMoreMessages: false,
+      oldestSequence: null,
+      capabilities: ["documents.read"],
+    });
+    sessionChatMock.messages = [
+      {
+        id: "failed-user-message",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "Compare the active shipment lanes and flag the highest risk",
+          },
+        ],
+      },
+    ];
+    sessionChatMock.error = new Error("usage limit");
+
+    render(
+      <AutoGPTEmbeddedChat
+        apiBaseURL="http://localhost:8006"
+        getAccessToken={vi.fn().mockResolvedValue("embed-token")}
+        title="Operations Copilot"
+      />,
+    );
+
+    await screen.findByLabelText("Message Operations Copilot");
+    await waitFor(() =>
+      expect(updateEmbedSessionTitle).toHaveBeenCalledWith(
+        "http://localhost:8006",
+        "session-1",
+        "Compare the active shipment lanes and flag the highest risk",
+        expect.any(Function),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open chat sessions" }));
+    expect(
+      screen.getByText("Compare the active shipment lanes and..."),
+    ).toBeDefined();
   });
 });

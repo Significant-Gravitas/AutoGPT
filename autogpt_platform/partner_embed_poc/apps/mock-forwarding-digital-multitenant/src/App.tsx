@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { SignIn } from "./components/SignIn";
 import { Summary } from "./components/Summary";
 import { SyncPanel } from "./components/SyncPanel";
-import { initials } from "./helpers";
+import { assistantNoticeFor, documentsForJobs, initials } from "./helpers";
 import type { DirectoryUser, Session, TokenResponse } from "./types";
 
 type PageID = "overview" | "shipments" | "documents" | "automations";
@@ -224,8 +224,12 @@ export default function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ organizationID }),
     });
-    if (response.ok) setSession((await response.json()) as Session);
-    else setError("You do not have access to that organization.");
+    if (response.ok) {
+      setSession((await response.json()) as Session);
+      setAssistantNotice(null);
+    } else {
+      setError("You do not have access to that organization.");
+    }
     setSwitching(false);
   }
 
@@ -262,13 +266,8 @@ export default function App() {
   }
 
   function handleAssistantNavigation(href: string) {
-    const resourceID = href.split("/").filter(Boolean).at(-1);
     navigate("automations");
-    setAssistantNotice(
-      resourceID
-        ? `Saved resource ${resourceID} is ready in this tenant's automation library.`
-        : "The saved resource is ready in this tenant's automation library.",
-    );
+    setAssistantNotice(assistantNoticeFor(href));
     setAssistantOpen(false);
   }
 
@@ -477,7 +476,7 @@ function WorkspacePage({
     return <ShipmentsPage jobs={jobs} onOpenAssistant={onOpenAssistant} />;
   }
   if (activePage === "documents") {
-    return <DocumentsPage onOpenAssistant={onOpenAssistant} />;
+    return <DocumentsPage jobs={jobs} onOpenAssistant={onOpenAssistant} />;
   }
   if (activePage === "automations") {
     return (
@@ -639,27 +638,12 @@ function ShipmentsPage({ jobs, onOpenAssistant }: ShipmentsPageProps) {
 }
 
 interface DocumentsPageProps {
+  jobs: Job[];
   onOpenAssistant: () => void;
 }
 
-function DocumentsPage({ onOpenAssistant }: DocumentsPageProps) {
-  const documents = [
-    {
-      name: "Arrival notice · NSF-24091",
-      type: "Customer document",
-      state: "Needs review",
-    },
-    {
-      name: "Bill of lading · NSF-24102",
-      type: "Carrier document",
-      state: "Verified",
-    },
-    {
-      name: "Customs pack · NSF-24118",
-      type: "Compliance bundle",
-      state: "Missing item",
-    },
-  ];
+function DocumentsPage({ jobs, onOpenAssistant }: DocumentsPageProps) {
+  const documents = documentsForJobs(jobs);
 
   return (
     <section className="documents-layout">

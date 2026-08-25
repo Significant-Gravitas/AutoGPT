@@ -19,6 +19,34 @@ interface FreightJob {
   status: string;
 }
 
+interface DocumentSource {
+  reference: string;
+  status: string;
+}
+
+const documentKinds = [
+  { label: "Arrival notice", type: "Customer document" },
+  { label: "Bill of lading", type: "Carrier document" },
+  { label: "Customs pack", type: "Compliance bundle" },
+];
+
+export function documentsForJobs(jobs: DocumentSource[]) {
+  return jobs.map((job, index) => ({
+    name: `${documentKinds[index % documentKinds.length].label} · ${job.reference}`,
+    type: documentKinds[index % documentKinds.length].type,
+    state: /hold|pending|exception|missing|due/i.test(job.status)
+      ? "Needs review"
+      : "Verified",
+  }));
+}
+
+export function assistantNoticeFor(href: string) {
+  if (/^\/library\/agents\/[^/]+$/.test(href)) {
+    return "Saved agent is ready in the automation library.";
+  }
+  return "Saved resource is ready in the automation library.";
+}
+
 @Component({
   selector: "fd-root",
   templateUrl: "./app.html",
@@ -44,23 +72,6 @@ export class App implements OnInit {
     { id: "shipments", label: "Shipments" },
     { id: "documents", label: "Documents" },
     { id: "automations", label: "Automations" },
-  ];
-  protected readonly documents = [
-    {
-      name: "Arrival notice · NSF-1042",
-      type: "Customer document",
-      state: "Needs review",
-    },
-    {
-      name: "Customs entry · NSF-1078",
-      type: "Compliance document",
-      state: "Verified",
-    },
-    {
-      name: "Rail release · HBR-2208",
-      type: "Carrier document",
-      state: "Awaiting data",
-    },
   ];
 
   async ngOnInit() {
@@ -88,12 +99,7 @@ export class App implements OnInit {
 
   protected handleAssistantNavigation(event: Event) {
     const href = (event as CustomEvent<{ href?: string }>).detail?.href ?? "";
-    const resourceID = href.split("/").filter(Boolean).at(-1);
-    this.assistantNotice.set(
-      resourceID
-        ? `Saved resource ${resourceID} is ready in the automation library.`
-        : "The saved resource is ready in the automation library.",
-    );
+    this.assistantNotice.set(assistantNoticeFor(href));
     this.assistantOpen.set(false);
     window.location.hash = "automations";
     this.activePage.set("automations");
@@ -157,6 +163,7 @@ export class App implements OnInit {
       });
       if (!response.ok) throw new Error("Organization is not permitted");
       this.session.set((await response.json()) as Session);
+      this.assistantNotice.set(null);
     } catch {
       this.error.set("You do not have access to that organization.");
     } finally {
@@ -225,6 +232,10 @@ export class App implements OnInit {
         status: "On schedule",
       },
     ];
+  }
+
+  protected documentsFor(organizationID: string) {
+    return documentsForJobs(this.jobsFor(organizationID));
   }
 
   protected formatETA(value: string) {

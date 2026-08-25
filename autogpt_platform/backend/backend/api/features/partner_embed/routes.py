@@ -19,6 +19,8 @@ from backend.api.features.partner_embed.models import (
     ListEmbedSessionsResponse,
     ProvisionPartnerIdentityRequest,
     ProvisionPartnerIdentityResponse,
+    UpdateEmbedSessionTitleRequest,
+    UpdateEmbedSessionTitleResponse,
 )
 from backend.api.features.partner_embed.provisioning import provision_partner_identity
 from backend.api.features.workspace.routes import create_file_download_response
@@ -28,8 +30,12 @@ from backend.copilot.model import (
     create_chat_session,
     get_chat_session_metadata,
     get_user_sessions,
+    update_session_title,
 )
-from backend.copilot.service import strip_injected_context_for_display
+from backend.copilot.service import (
+    _fallback_title_from_message,
+    strip_injected_context_for_display,
+)
 from backend.data.workspace import get_or_create_workspace
 from backend.util.workspace import WorkspaceManager
 
@@ -149,6 +155,32 @@ async def get_embed_session(
         oldest_sequence=page.oldest_sequence,
         capabilities=session.metadata.external_capabilities,
     )
+
+
+@router.patch(
+    "/sessions/{session_id}/title",
+    summary="Set a fallback title for an embedded chat session",
+)
+async def update_embed_session_title(
+    session_id: str,
+    request: UpdateEmbedSessionTitleRequest,
+    principal: EmbedChatPrincipal,
+) -> UpdateEmbedSessionTitleResponse:
+    session = await _require_embed_session(session_id, principal)
+    if session.title:
+        return UpdateEmbedSessionTitleResponse(title=session.title)
+    title = _fallback_title_from_message(request.message)
+    if await update_session_title(
+        session_id,
+        principal.user_id,
+        title,
+        only_if_empty=True,
+    ):
+        return UpdateEmbedSessionTitleResponse(title=title)
+    latest = await _require_embed_session(session_id, principal)
+    if latest.title:
+        return UpdateEmbedSessionTitleResponse(title=latest.title)
+    raise HTTPException(status_code=503, detail="Unable to title session")
 
 
 @router.get(
