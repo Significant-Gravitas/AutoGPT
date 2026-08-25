@@ -5287,6 +5287,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         attempt = 0
         _last_reset_attempt = -1
+        # Attempt 0 runs on the context built above; every later attempt
+        # reduces context exactly once.  Transient retries and building-mode
+        # restarts `continue` back to the loop head without advancing
+        # `attempt`, and re-running the reduction there would summarize the
+        # history a second time and persist a second compaction row for the
+        # same logical compaction (mirrors the `_last_reset_attempt` guard).
+        _last_reduced_attempt = 0
         while attempt < _MAX_STREAM_ATTEMPTS:
             # Reset transient retry counter per context-level attempt so
             # each attempt (original, compacted, no-transcript) gets the
@@ -5310,7 +5317,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
-            if attempt > 0:
+            if attempt != _last_reduced_attempt:
+                _last_reduced_attempt = attempt
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
                     log_prefix,

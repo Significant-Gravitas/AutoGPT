@@ -37,6 +37,7 @@ from backend.copilot.response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamToolInputAvailable,
+    StreamToolInputStart,
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk.compaction import CompactionStats
@@ -1934,6 +1935,78 @@ class TestStreamChatCompletionRetryIntegration:
             for e in status_events
         ), f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_transient_retry_inside_reduced_attempt_reduces_once(self):
+        """A transient error inside a reduced-context attempt must not reduce again.
+
+        Attempt 1 dies with prompt-too-long, so attempt 2 opens a compaction
+        row, summarizes the transcript and persists the row.  The SDK call on
+        that attempt then dies with ECONNRESET.  The transient retry re-enters
+        the loop head without advancing ``attempt`` — it must reuse the
+        reduced context rather than summarize a second time and persist a
+        second "Condensed" row for the same compaction.
+        """
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        call_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_client_mock(raises_on_enter=True)
+            if call_count[0] == 2:
+                return self._make_client_mock_mid_stream_error(
+                    error=Exception("ECONNRESET: connection reset by peer"),
+                )
+            return self._make_client_mock(result_message=result_msg)
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        mocks: dict[str, MagicMock] = {}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch(f"{_SVC}.asyncio.sleep", new_callable=AsyncMock))
+            for target, kwargs in patches:
+                mocks[target] = stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert call_count[0] == 3, f"Expected 3 SDK calls, got {call_count[0]}"
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
+        assert mocks[f"{_SVC}.compact_transcript"].await_count == 1
+        opened = [
+            e
+            for e in events
+            if isinstance(e, StreamToolInputStart)
+            and e.toolName == COMPACTION_TOOL_NAME
+        ]
+        assert len(opened) == 1, f"Expected one compaction row, got {len(opened)}"
+        persisted = [
+            tc
+            for m in session.messages
+            for tc in (m.tool_calls or [])
+            if tc.get("function", {}).get("name") == COMPACTION_TOOL_NAME
+        ]
+        assert len(persisted) == 1, f"Expected one persisted row, got {persisted}"
 
     @pytest.mark.asyncio
     async def test_resume_skipped_when_cli_session_missing(self):
