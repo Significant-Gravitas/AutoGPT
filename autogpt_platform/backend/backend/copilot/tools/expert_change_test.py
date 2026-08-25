@@ -288,6 +288,17 @@ class TestPreviewNeverWrites:
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_refuses_when_the_roster_cannot_be_read(self):
+        """Nothing downstream enforces name uniqueness, so a roster read that
+        failed must not pass for "no duplicate"."""
+        with _env() as db:
+            db.list_experts.side_effect = RuntimeError("connection reset")
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        assert "Try again" in resp.message
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_raise_allows_reusing_an_archived_name(self):
         with _env() as db:
             db.list_experts.return_value = [

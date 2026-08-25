@@ -206,7 +206,17 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        if duplicate := await _active_expert_named(user_id, params.name):
+        try:
+            duplicate = await _active_expert_named(user_id, params.name)
+        except Exception as e:
+            # Nothing downstream enforces name uniqueness, so a roster read we
+            # could not perform must not pass for "no duplicate".
+            logger.warning(f"raise_expert duplicate-name check failed: {e}")
+            return ErrorResponse(
+                message="Could not check the team roster right now. Try again.",
+                session_id=session_id,
+            )
+        if duplicate:
             return ErrorResponse(
                 message=(
                     f"An active expert named {duplicate.name} already exists "
@@ -259,19 +269,19 @@ class RaiseExpertTool(BaseTool):
 async def _active_expert_named(user_id: str, name: str) -> Expert | None:
     """The active expert already carrying *name*, or None.
 
-    Best-effort: a roster read failure must not block a legitimate raise —
-    ``confirm_expert_change`` still runs its own capacity checks.
+    Raises on a roster-read failure so the caller can tell "nobody has this
+    name" apart from "I could not look".
     """
     wanted = name.strip().casefold()
-    try:
-        experts = await experts_db().list_experts(user_id, with_metrics=False)
-    except Exception as e:
-        logger.warning(f"raise_expert duplicate-name check failed: {e}")
-        return None
-    for expert in experts:
-        if not expert.is_archived and expert.name.strip().casefold() == wanted:
-            return expert
-    return None
+    experts = await experts_db().list_experts(user_id, with_metrics=False)
+    return next(
+        (
+            expert
+            for expert in experts
+            if not expert.is_archived and expert.name.strip().casefold() == wanted
+        ),
+        None,
+    )
 
 
 def _validation_detail(error: ValidationError) -> str:
