@@ -543,6 +543,61 @@ class TestStoreToken:
         mock_cm.create.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_stored_manual_token_is_reused_by_discovery(self, client):
+        """A manual token must survive the real auto-lookup path on retry."""
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            store_response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "Basic encoded-value",
+                },
+            )
+
+        assert store_response.status_code == 200
+        create_call = mock_cm.create.await_args
+        assert create_call is not None
+        stored_credential = create_call.args[1]
+        assert isinstance(stored_credential, OAuth2Credentials)
+        assert stored_credential.access_token_expires_at is None
+
+        with (
+            patch(
+                "backend.blocks.mcp.helpers.IntegrationCredentialsManager"
+            ) as manager_cls,
+            patch("backend.api.features.mcp.routes.MCPClient") as client_cls,
+        ):
+            manager = manager_cls.return_value
+            manager.store.get_creds_by_provider = AsyncMock(
+                return_value=[stored_credential]
+            )
+            manager.refresh_if_needed = AsyncMock(
+                side_effect=AssertionError("manual credentials must not refresh")
+            )
+            mcp_client = client_cls.return_value
+            mcp_client.initialize = AsyncMock(
+                return_value={
+                    "protocolVersion": "2025-03-26",
+                    "serverInfo": {"name": "test-server"},
+                }
+            )
+            mcp_client.list_tools = AsyncMock(return_value=[])
+
+            discover_response = await client.post(
+                "/discover-tools",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert discover_response.status_code == 200
+        client_cls.assert_called_once_with(
+            "https://mcp.example.com/mcp", auth_token="Basic encoded-value"
+        )
+        manager.refresh_if_needed.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_blank_rejected(self, client):
         """Blank token string (after stripping) should return 422."""
         response = await client.post(

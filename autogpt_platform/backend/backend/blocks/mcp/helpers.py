@@ -116,7 +116,7 @@ async def auto_lookup_mcp_credential(
     so the comparison with ``mcp_server_url`` in credential metadata matches.
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
-    if needed, or ``None`` when no match is found.
+    if it can expire and needs it, or ``None`` when no match is found.
     """
     try:
         mgr = IntegrationCredentialsManager()
@@ -140,8 +140,13 @@ async def auto_lookup_mcp_credential(
                     >= (best.access_token_expires_at or 0)
                 ):
                     best = cred
-        if best:
+        # Manually entered MCP credentials are represented as OAuth2Credentials
+        # for compatibility with the existing credential plumbing, but they have
+        # no expiry or OAuth token endpoint. Trying to refresh one would attempt
+        # to construct an MCP OAuth handler and reject the otherwise valid token.
+        if best and best.access_token_expires_at is not None:
             best = await mgr.refresh_if_needed(user_id, best)
+        if best:
             logger.info("Auto-resolved MCP credential %s for %s", best.id, server_url)
         return best
     except Exception:
