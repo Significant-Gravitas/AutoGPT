@@ -126,16 +126,16 @@ class EnvironmentPolicyTest(unittest.TestCase):
         )
 
     def test_defaults_to_local_behavior(self) -> None:
-        result = self._configure(AUTH_REQUIRE_EMAIL_VERIFICATION="false")
+        result = self._configure()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(result.stdout.endswith("local\n"))
+        self.assertEqual(result.stdout.splitlines()[-1], "local")
 
     def test_preserves_cloud_behavior_override(self) -> None:
         result = self._configure(BEHAVE_AS="cloud")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(result.stdout.endswith("cloud\n"))
+        self.assertEqual(result.stdout.splitlines()[-1], "cloud")
 
     def _configure(self, **overrides: str) -> subprocess.CompletedProcess[str]:
         environment = {
@@ -164,7 +164,7 @@ class EnvironmentPolicyTest(unittest.TestCase):
                 "pipefail",
                 "-c",
                 'source "$1"; write_nginx_public_url_config() { :; }; '
-                'configure_environment; printf "%s\n" "$BEHAVE_AS"',
+                'configure_environment; printf "%s\\n" "$BEHAVE_AS"',
                 "bash",
                 str(ENTRYPOINT_PATH),
             ],

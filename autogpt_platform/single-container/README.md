@@ -15,6 +15,9 @@ docker run -d \
   --restart unless-stopped \
   --shm-size 2g \
   --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
   -p 127.0.0.1:3000:3000 \
   -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
   -v autogpt-data:/data \
@@ -42,10 +45,10 @@ and generated application secrets survive container replacement.
 
 ## Stopping
 
-`docker stop` completes inside Docker's stock 10-second timeout and needs no
-host-wide timeout change. Runtime processes are signaled first; state services
-then get up to five seconds before Supervisor forces them down, so larger or
-slower state may require normal crash recovery on the next boot.
+The image is designed and tested to stop inside Docker's stock 10-second
+timeout. Its measured margin is narrow, and a longer Docker timeout does not
+extend Supervisor's internal five-second state-service cap. Larger or slower
+state may therefore require normal crash recovery on the next boot.
 
 Agent runs that are still executing are abandoned and may remain displayed as
 `RUNNING`. They are not resumed on the next boot, so start a new run.
@@ -79,12 +82,11 @@ memory rather than the container's writable layer.
 - `vX.Y.Z` — immutable AutoGPT Platform release.
 - `sha-<git-sha>` — immutable build for an exact source revision.
 
-Older `canary-sha-*` tags are legacy pre-release validation artifacts, not a
-currently published or supported tag family.
+`canary-sha-*` tags are unsupported pre-release validation artifacts.
 
 ## More information
 
-- [Canonical single-container operations guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/docs/platform/single-container.md)
+- [Canonical single-container operations guide](https://docs.agpt.co/platform/self-hosting/single-container)
 - [AutoGPT repository](https://github.com/Significant-Gravitas/AutoGPT)
 - [Security policy](https://github.com/Significant-Gravitas/AutoGPT/security/policy)
 - [License](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/LICENSE.md)

@@ -11,39 +11,70 @@ BOOTSTRAP_PATH = ASSET_DIR / "bootstrap.sh"
 
 
 class InterruptedMigrationPolicyTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.bootstrap = BOOTSTRAP_PATH.read_text(encoding="utf-8")
-
     def test_checks_for_interrupted_migration_before_deploy(self) -> None:
-        migrate_body = self.bootstrap.split("migrate_database() {", 1)[1].split(
-            "\n}\n\nquery_scalar()", 1
-        )[0]
+        result = self._run("declare -f migrate_database")
 
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertLess(
-            migrate_body.index("report_interrupted_migration"),
-            migrate_body.index("prisma migrate deploy"),
+            result.stdout.index("report_interrupted_migration"),
+            result.stdout.index("prisma migrate deploy"),
         )
 
     def test_query_selects_only_unfinished_migrations(self) -> None:
-        report_body = self.bootstrap.split("report_interrupted_migration() {", 1)[
-            1
-        ].split("\n}\n\nconfigure_frontend_database_role()", 1)[0]
+        result = self._run("declare -f report_interrupted_migration")
 
-        self.assertIn("finished_at IS NULL AND rolled_back_at IS NULL", report_body)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("finished_at IS NULL AND rolled_back_at IS NULL", result.stdout)
+
+    def test_missing_migrations_table_is_a_clean_boot(self) -> None:
+        result = self._run(
+            'query_scalar() { printf "f\\n"; }; '
+            'report_interrupted_migration; printf "completed\\n"'
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "completed\n")
+        self.assertEqual(result.stderr, "")
+
+    def test_no_unfinished_migrations_is_a_clean_boot(self) -> None:
+        result = self._run(
+            "query_scalar() { "
+            'if [[ "$1" == *to_regclass* ]]; then printf "t\\n"; '
+            'else printf "\\n"; fi; }; '
+            'report_interrupted_migration; printf "completed\\n"'
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "completed\n")
+        self.assertEqual(result.stderr, "")
 
     def test_unfinished_migration_fails_closed(self) -> None:
-        result = subprocess.run(
+        result = self._run(
+            "query_scalar() { "
+            'if [[ "$1" == *to_regclass* ]]; then printf "t\\n"; '
+            'else printf "20260825_interrupted\\n"; fi; }; '
+            "report_interrupted_migration"
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("20260825_interrupted", result.stdout)
+        self.assertIn(
+            "prisma migrate resolve --rolled-back 20260825_interrupted",
+            result.stdout,
+        )
+        self.assertIn("prisma migrate resolve --applied", result.stdout)
+        self.assertIn(
+            "refusing to migrate over an interrupted migration", result.stderr
+        )
+
+    def _run(self, command: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
             [
                 "bash",
                 "-Eeuo",
                 "pipefail",
                 "-c",
-                "source <(sed '$d' \"$1\"); "
-                "query_scalar() { "
-                'if [[ "$1" == *to_regclass* ]]; then printf "t\\n"; '
-                'else printf "20260825_interrupted\\n"; fi; }; '
-                "report_interrupted_migration",
+                f'source "$1"; {command}',
                 "bash",
                 str(BOOTSTRAP_PATH),
             ],
@@ -54,20 +85,6 @@ class InterruptedMigrationPolicyTest(unittest.TestCase):
                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                 "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
             },
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("20260825_interrupted", result.stdout)
-        self.assertIn(
-            "prisma migrate resolve --rolled-back 20260825_interrupted",
-            result.stdout,
-        )
-        self.assertIn(
-            "prisma migrate resolve --applied     20260825_interrupted",
-            result.stdout,
-        )
-        self.assertIn(
-            "refusing to migrate over an interrupted migration", result.stderr
         )
 
 

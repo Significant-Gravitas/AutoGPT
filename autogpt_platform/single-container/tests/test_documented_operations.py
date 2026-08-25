@@ -15,6 +15,7 @@ from pathlib import Path
 
 ASSET_DIR = Path(__file__).resolve().parents[1]
 DOC_PATH = ASSET_DIR.parents[1] / "docs" / "platform" / "single-container.md"
+COMMON_PATH = ASSET_DIR / "common.sh"
 ENTRYPOINT_PATH = ASSET_DIR / "entrypoint.sh"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 
@@ -41,293 +42,31 @@ RESTORED_LAUNCH_BLOCK = extract_bash_block(
     ': "${ENV_FILE:?Set ENV_FILE to the recorded host environment-file path}"'
 )
 
-REQUIRED_RESTORE_PATHS = (
-    ("config/runtime.env", "file"),
-    ("config/backend.json", "file"),
-    ("postgres/PG_VERSION", "file"),
-    ("rabbitmq/mnesia", "directory"),
-    ("valkey/17000", "directory"),
-    ("valkey/17001", "directory"),
-    ("valkey/17002", "directory"),
-    ("falkordb", "directory"),
-    ("workspaces", "directory"),
-    ("home", "directory"),
-    ("frontend-home", "directory"),
-)
 
-FAKE_DOCKER = r"""#!/usr/bin/env python3
-from __future__ import annotations
-
-import hashlib
-import json
-import os
-import re
-import shutil
-import signal
-import sys
-import tarfile
-import time
-from pathlib import Path, PurePosixPath
-
-
-ROOT = Path(os.environ["FAKE_DOCKER_ROOT"])
-STATE_DIR = ROOT / "state"
-VOLUME_DIR = ROOT / "volumes"
-LOG_PATH = ROOT / "commands.jsonl"
-ARGS = sys.argv[1:]
-
-
-def finish(status: int, output: str = "", error: str = "") -> None:
-    if output:
-        print(output)
-    if error:
-        print(error, file=sys.stderr)
-    raise SystemExit(status)
-
-
-def record() -> None:
-    with LOG_PATH.open("a", encoding="utf-8") as log_file:
-        log_file.write(json.dumps(ARGS) + "\n")
-
-
-def should_fail(operation: str) -> bool:
-    failures = os.environ.get("FAKE_DOCKER_FAIL", "").split(",")
-    return operation in failures
-
-
-def require_network_none() -> None:
-    if "--network" not in ARGS:
-        finish(2, error="documented helper did not disable networking")
-    if ARGS[ARGS.index("--network") + 1] != "none":
-        finish(2, error="documented helper used an unexpected network mode")
-
-
-def running() -> bool:
-    return (STATE_DIR / "running").read_text(encoding="utf-8").strip() == "true"
-
-
-def set_running(value: bool) -> None:
-    (STATE_DIR / "running").write_text(
-        "true" if value else "false", encoding="utf-8"
+def extract_restore_requirements(block: str) -> tuple[tuple[str, str], ...]:
+    requirements = re.findall(
+        r"^\s*test (-[sd]) /data/([^\s]+)\s*$", block, flags=re.MULTILINE
     )
-
-
-def mounted_paths() -> dict[str, Path]:
-    mounts: dict[str, Path] = {}
-    for index, argument in enumerate(ARGS[:-1]):
-        if argument != "--volume":
-            continue
-        parts = ARGS[index + 1].split(":")
-        source, destination = parts[:2]
-        mounts[destination] = (
-            Path(source) if source.startswith("/") else VOLUME_DIR / source
-        )
-    return mounts
-
-
-def host_path(container_path: str, mounts: dict[str, Path]) -> Path:
-    requested = PurePosixPath(container_path)
-    for destination, source in sorted(
-        mounts.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        mount_path = PurePosixPath(destination)
-        try:
-            relative = requested.relative_to(mount_path)
-        except ValueError:
-            continue
-        return source.joinpath(*relative.parts)
-    finish(2, error=f"No fake mount covers {container_path}")
-
-
-def archive_volume(mounts: dict[str, Path]) -> None:
-    require_network_none()
-    archive_argument = ARGS[ARGS.index("-czf") + 1]
-    archive_path = host_path(archive_argument, mounts)
-    data_path = mounts["/data"]
-    if os.environ["FAKE_DOCKER_IMAGE_ID"] not in ARGS:
-        finish(2, error="backup tar did not use the inspected local image ID")
-    if should_fail("signal-term"):
-        os.kill(os.getppid(), signal.SIGTERM)
-        time.sleep(0.1)
-        finish(143, error="injected TERM during tar")
-    if should_fail("tar"):
-        finish(1, error="injected tar failure")
-    time.sleep(float(os.environ.get("FAKE_DOCKER_DELAY_TAR", "0")))
-    exclude_cache = "--exclude=./cache" in ARGS
-    with tarfile.open(archive_path, "w:gz") as archive:
-        for child in sorted(data_path.iterdir()):
-            if child.name == "cache" and exclude_cache:
-                continue
-            archive.add(child, arcname=child.name)
-
-
-def extract_archive(mounts: dict[str, Path]) -> None:
-    require_network_none()
-    if os.environ["RESTORE_IMAGE"] not in ARGS:
-        finish(2, error="restore tar did not use RESTORE_IMAGE")
-    archive_argument = ARGS[ARGS.index("-xzf") + 1]
-    archive_path = host_path(archive_argument, mounts)
-    data_path = mounts["/data"]
-    if should_fail("extract"):
-        finish(1, error="injected restore extraction failure")
-    with tarfile.open(archive_path, "r:gz") as archive:
-        for member in archive.getmembers():
-            member_path = PurePosixPath(member.name)
-            if member_path.is_absolute() or ".." in member_path.parts:
-                finish(2, error="unsafe test archive member")
-            destination = data_path.joinpath(*member_path.parts)
-            if member.isdir():
-                destination.mkdir(parents=True, exist_ok=True)
-                continue
-            if not member.isfile():
-                finish(2, error="unsupported test archive member")
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            source = archive.extractfile(member)
-            if source is None:
-                finish(2, error="unreadable test archive member")
-            with source, destination.open("wb") as destination_file:
-                shutil.copyfileobj(source, destination_file)
-
-
-def checksum(mounts: dict[str, Path]) -> None:
-    require_network_none()
-    if should_fail("checksum"):
-        finish(1, error="injected checksum failure")
-    if should_fail("malformed-checksum"):
-        finish(0, output="not-a-sha256  requested-file")
-    requested_path = ARGS[-1]
-    expected_image = (
-        os.environ["FAKE_DOCKER_IMAGE_ID"]
-        if requested_path.endswith(".partial")
-        else os.environ["RESTORE_IMAGE"]
-    )
-    if expected_image not in ARGS:
-        finish(2, error="checksum did not use the expected image")
-    file_path = host_path(requested_path, mounts)
-    digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
-    finish(0, output=f"{digest}  {requested_path}")
-
-
-def validate_layout(mounts: dict[str, Path]) -> None:
-    require_network_none()
-    if os.environ["RESTORE_IMAGE"] not in ARGS:
-        finish(2, error="validation did not use RESTORE_IMAGE")
-    script = ARGS[-1]
-    requirements = re.findall(r"test (-[sd]) (/data/[^\s]+)", script)
     if not requirements:
-        finish(2, error="documented validation supplied no requirements")
-    for predicate, container_path in requirements:
-        path = host_path(container_path, mounts)
-        valid = path.is_dir() if predicate == "-d" else path.is_file() and path.stat().st_size > 0
-        if not valid:
-            finish(1, error=f"missing required restore path: {container_path}")
+        raise AssertionError("Documented structural validation has no requirements")
+    return tuple(
+        (relative_path, "directory" if predicate == "-d" else "file")
+        for predicate, relative_path in requirements
+    )
 
 
-record()
-if not ARGS:
-    finish(2, error="missing fake docker command")
+REQUIRED_RESTORE_PATHS = extract_restore_requirements(STRUCTURAL_VALIDATION_BLOCK)
 
-if ARGS[0] == "inspect":
-    template = ARGS[ARGS.index("--format") + 1]
-    if ".Config.Image" in template:
-        finish(0, output=os.environ["FAKE_DOCKER_IMAGE_REF"])
-    if ".Image" in template:
-        finish(0, output=os.environ["FAKE_DOCKER_IMAGE_ID"])
-    if ".Mounts" in template:
-        finish(0, output=os.environ["FAKE_DOCKER_VOLUME"])
-    if ".State.Running" in template:
-        finish(0, output="true" if running() else "false")
-    if ".State.Status" in template:
-        finish(0, output="running" if running() else "exited")
-    finish(2, error=f"unsupported inspect template: {template}")
-
-if ARGS[:2] == ["image", "inspect"]:
-    if ARGS[-1] != os.environ["FAKE_DOCKER_IMAGE_ID"]:
-        finish(2, error="image metadata lookup did not use the local image ID")
-    finish(0, output=os.environ["FAKE_DOCKER_IMAGE_DIGEST"])
-
-if ARGS[0] == "create":
-    name = ARGS[ARGS.index("--name") + 1]
-    if name != "autogpt-backup-lock":
-        finish(2, error=f"unsupported fake lock container: {name}")
-    lock_path = STATE_DIR / "backup-lock"
-    if lock_path.exists():
-        finish(1, error="lock container already exists")
-    if os.environ["FAKE_DOCKER_IMAGE_ID"] not in ARGS:
-        finish(2, error="lock container did not use the inspected image ID")
-    lock_path.write_text("locked", encoding="utf-8")
-    finish(0, output="fake-lock-container-id")
-
-if ARGS[0] == "rm" and ARGS[-1] == "autogpt-backup-lock":
-    if "--volumes" not in ARGS:
-        finish(2, error="lock cleanup did not remove anonymous volumes")
-    lock_path = STATE_DIR / "backup-lock"
-    if not lock_path.exists():
-        finish(1, error="lock container does not exist")
-    lock_path.unlink()
-    finish(0, output="autogpt-backup-lock")
-
-if ARGS[:2] == ["container", "inspect"]:
-    exists = os.environ.get("FAKE_DOCKER_EXISTING_CONTAINER") == "true"
-    finish(0 if exists else 1)
-
-if ARGS[:2] == ["volume", "inspect"]:
-    if "--format" in ARGS:
-        finish(0, output=os.environ.get("FAKE_DOCKER_LABELS", "{}"))
-    volume_name = ARGS[-1]
-    finish(0 if (VOLUME_DIR / volume_name).is_dir() else 1)
-
-if ARGS[:2] == ["volume", "create"]:
-    volume_name = ARGS[-1]
-    (VOLUME_DIR / volume_name).mkdir(parents=True)
-    finish(0, output=volume_name)
-
-if ARGS[:2] == ["volume", "rm"]:
-    volume_name = ARGS[-1]
-    volume_path = VOLUME_DIR / volume_name
-    if not volume_path.is_dir():
-        finish(1, error="volume does not exist")
-    shutil.rmtree(volume_path)
-    finish(0, output=volume_name)
-
-if ARGS[0] == "stop":
-    if should_fail("stop"):
-        finish(1, error="injected stop failure")
-    set_running(False)
-    finish(0, output="autogpt")
-
-if ARGS[0] == "start":
-    if should_fail("start"):
-        finish(1, error="injected start failure")
-    set_running(True)
-    finish(0, output="autogpt")
-
-if ARGS[0] == "run":
-    mounts = mounted_paths()
-    entrypoint = ARGS[ARGS.index("--entrypoint") + 1] if "--entrypoint" in ARGS else ""
-    if entrypoint == "tar" and "-czf" in ARGS:
-        archive_volume(mounts)
-        finish(0)
-    if entrypoint == "tar" and "-xzf" in ARGS:
-        extract_archive(mounts)
-        finish(0)
-    if entrypoint == "sha256sum":
-        checksum(mounts)
-    if entrypoint == "/bin/sh":
-        validate_layout(mounts)
-        finish(0)
-    if "--detach" in ARGS and "--name" in ARGS:
-        if os.environ["RESTORE_IMAGE"] not in ARGS:
-            finish(1, error="restored launch did not use RESTORE_IMAGE")
-        environment_file = Path(ARGS[ARGS.index("--env-file") + 1])
-        if not environment_file.is_file():
-            finish(1, error="launch environment file does not exist")
-        if not mounts["/data"].is_dir():
-            finish(1, error="launch restore volume does not exist")
-        finish(0, output="fake-container-id")
-
-finish(2, error=f"unsupported fake docker invocation: {ARGS}")
-"""
+FAKE_DOCKER_PATH = Path(__file__).with_name("fake_docker.py")
+POSTGRESQL_CONF = "listen_addresses = '127.0.0.1'\n"
+PG_HBA_CONF = (
+    "local all all peer\n"
+    "host all all 127.0.0.1/32 scram-sha-256\n"
+    "host all all ::1/128 scram-sha-256\n"
+    "local replication all peer\n"
+    "host replication all 127.0.0.1/32 scram-sha-256\n"
+    "host replication all ::1/128 scram-sha-256\n"
+)
 
 
 class DocumentedOperationsTest(unittest.TestCase):
@@ -346,7 +85,7 @@ class DocumentedOperationsTest(unittest.TestCase):
         self._set_running(True)
         self._seed_source_volume()
         fake_docker = self.bin_dir / "docker"
-        fake_docker.write_text(FAKE_DOCKER, encoding="utf-8")
+        shutil.copyfile(FAKE_DOCKER_PATH, fake_docker)
         fake_docker.chmod(0o755)
         fake_date = self.bin_dir / "date"
         fake_date.write_text(
@@ -359,9 +98,14 @@ class DocumentedOperationsTest(unittest.TestCase):
             encoding="utf-8",
         )
         fake_date.chmod(0o755)
+        host_environment = {
+            name: os.environ[name]
+            for name in ("LANG", "LC_ALL", "TMPDIR", "TZ")
+            if name in os.environ
+        }
         self.environment = {
-            **os.environ,
-            "PATH": f"{self.bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+            **host_environment,
+            "PATH": f"{self.bin_dir}:{os.environ.get('PATH', os.defpath)}",
             "FAKE_DOCKER_ROOT": str(self.fake_root),
             "FAKE_DOCKER_VOLUME": "autogpt-data",
             "FAKE_DOCKER_LABELS": "{}",
@@ -373,6 +117,20 @@ class DocumentedOperationsTest(unittest.TestCase):
                 "0123456789abcdef0123456789abcdef"
             ),
         }
+        resolved_docker = shutil.which("docker", path=self.environment["PATH"])
+        self.assertIsNotNone(resolved_docker)
+        self.assertEqual(Path(resolved_docker or "").resolve(), fake_docker.resolve())
+        execution_probe = subprocess.run(
+            [str(fake_docker)],
+            cwd=self.work_dir,
+            env=self.environment,
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=10,
+        )
+        self.assertEqual(execution_probe.returncode, 2, execution_probe.stderr)
+        self.assertIn("missing fake docker command", execution_probe.stderr)
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -487,8 +245,66 @@ class DocumentedOperationsTest(unittest.TestCase):
                     RESTORE_VOLUME=incomplete_volume,
                     RESTORE_IMAGE=self.environment["FAKE_DOCKER_IMAGE_DIGEST"],
                 )
-                self.assertNotEqual(invalid.returncode, 0)
+                self.assertNotEqual(
+                    invalid.returncode,
+                    0,
+                    f"missing {relative_path} unexpectedly passed",
+                )
                 self.assertIn(f"/data/{relative_path}", invalid.stderr)
+
+        invalid_postgres_settings = (
+            (
+                "later-listen-override",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "listen_addresses = '*'\n",
+            ),
+            (
+                "auto-conf-listen-override",
+                "postgres/postgresql.auto.conf",
+                "listen_addresses = '*'\n",
+            ),
+            (
+                "postgres-config-include",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "include = 'unsafe.conf'\n",
+            ),
+            (
+                "earlier-broad-trust-rule",
+                "postgres/pg_hba.conf",
+                "host all all 0.0.0.0/0 trust\n" + PG_HBA_CONF,
+            ),
+            (
+                "replication-trust-rule",
+                "postgres/pg_hba.conf",
+                PG_HBA_CONF.replace(
+                    "host replication all 127.0.0.1/32 scram-sha-256",
+                    "host replication all 127.0.0.1/32 trust",
+                ),
+            ),
+            (
+                "hba-include",
+                "postgres/pg_hba.conf",
+                "include 'unsafe.conf'\n" + PG_HBA_CONF,
+            ),
+        )
+        for index, (case, relative_path, content) in enumerate(
+            invalid_postgres_settings
+        ):
+            with self.subTest(invalid_postgres_setting=case):
+                invalid_volume = f"invalid-postgres-settings-{index}"
+                invalid_data = self.volume_root / invalid_volume
+                shutil.copytree(restored_data, invalid_data)
+                (invalid_data / relative_path).write_text(content, encoding="utf-8")
+                invalid = self._run(
+                    STRUCTURAL_VALIDATION_BLOCK,
+                    RESTORE_VOLUME=invalid_volume,
+                    RESTORE_IMAGE=self.environment["FAKE_DOCKER_IMAGE_DIGEST"],
+                )
+                self.assertNotEqual(
+                    invalid.returncode,
+                    0,
+                    f"{case} unexpectedly passed:\n{invalid.stdout}\n{invalid.stderr}",
+                )
 
     def test_backup_can_leave_the_container_stopped_for_upgrade(self) -> None:
         result = self._run(COLD_BACKUP_BLOCK, RESTART_AFTER_BACKUP="false")
@@ -590,19 +406,66 @@ class DocumentedOperationsTest(unittest.TestCase):
 
     def test_documented_restore_layout_matches_service_owners(self) -> None:
         entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
-        for relative_path, path_type in REQUIRED_RESTORE_PATHS:
-            if path_type == "directory" and relative_path != "rabbitmq/mnesia":
-                self.assertIn(f"/data/{relative_path}", entrypoint)
         supervisor = SUPERVISOR_PATH.read_text(encoding="utf-8")
+        common = COMMON_PATH.read_text(encoding="utf-8")
+        installed_paths = {
+            match.removeprefix("/data/")
+            for match in re.findall(
+                r"^\s*install -d [^\n]* (/data/[^\s]+)$",
+                entrypoint,
+                flags=re.MULTILINE,
+            )
+            if not match.startswith("/data/cache")
+        }
+        documented_paths = {
+            relative_path for relative_path, _ in REQUIRED_RESTORE_PATHS
+        }
+        self.assertEqual(
+            {path.split("/", maxsplit=1)[0] for path in installed_paths},
+            {path.split("/", maxsplit=1)[0] for path in documented_paths},
+        )
+        implementation_leaf_directories = {
+            path
+            for path in installed_paths
+            if path not in {"config", "postgres", "rabbitmq", "valkey"}
+        }
+        # RabbitMQ creates mnesia itself, so supervisor owns this durable path.
+        implementation_leaf_directories.add("rabbitmq/mnesia")
+        documented_directories = {
+            relative_path
+            for relative_path, path_type in REQUIRED_RESTORE_PATHS
+            if path_type == "directory"
+        }
+        self.assertEqual(implementation_leaf_directories, documented_directories)
         self.assertIn(
             "RABBITMQ_MNESIA_BASE=/data/rabbitmq/mnesia",
             supervisor,
         )
+        self.assertIn(
+            'AUTOGPT_RUNTIME_ENV="${AUTOGPT_RUNTIME_ENV:-/data/config/runtime.env}"',
+            common,
+        )
+        self.assertIn("local path=/data/config/backend.json", entrypoint)
+        self.assertIn("${PGDATA}/PG_VERSION", entrypoint)
+        self.assertIn("listen_addresses = '127.0.0.1'", entrypoint)
+        self.assertIn("--auth-local=peer", entrypoint)
+        self.assertIn("--auth-host=scram-sha-256", entrypoint)
 
-    def test_restored_launch_supports_stock_macos_bash(self) -> None:
+    def test_restored_launch_supports_bash_3_when_available(self) -> None:
         stock_bash = Path("/bin/bash")
         if not stock_bash.is_file():
-            self.skipTest("stock /bin/bash is unavailable")
+            self.skipTest("/bin/bash is unavailable")
+        version = subprocess.run(
+            [str(stock_bash), "--version"],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=10,
+        )
+        if version.returncode != 0 or not re.search(
+            r"version 3[.]", version.stdout.splitlines()[0]
+        ):
+            self.skipTest("/bin/bash is not Bash 3.x")
         environment_file = self.work_dir / "stock-bash.env"
         environment_file.write_text(
             "AUTOGPT_PUBLIC_URL=http://localhost:3000\n", encoding="utf-8"
@@ -780,6 +643,8 @@ class DocumentedOperationsTest(unittest.TestCase):
             "config/runtime.env": "POSTGRES_PASSWORD=test\n",
             "config/backend.json": '{"config": true}\n',
             "postgres/PG_VERSION": "16\n",
+            "postgres/postgresql.conf": POSTGRESQL_CONF,
+            "postgres/pg_hba.conf": PG_HBA_CONF,
             "workspaces/example.txt": "durable workspace\n",
             "cache/regenerable.txt": "do not archive\n",
         }
