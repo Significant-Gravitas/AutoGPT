@@ -677,6 +677,46 @@ describe("ChainActionCard", () => {
       ).toBe("-1");
     });
 
+    it("does not steal focus when the first question opens in free text", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Antarctica" },
+          }),
+        ],
+      });
+
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it("focuses the free-text box when the user asks to type", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText("Type your answer"),
+      );
+    });
+
     it("focuses the active option when the pager reaches a question", () => {
       renderCard({
         questions: [

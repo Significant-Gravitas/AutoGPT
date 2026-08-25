@@ -30,7 +30,10 @@ export function QuestionAnswerField({
   const options = question.options ?? [];
   const isCustom = value.trim().length > 0 && !options.includes(value.trim());
   const [typing, setTyping] = useState(() => options.length > 0 && isCustom);
-  const [cameBackToOptions, setCameBackToOptions] = useState(false);
+  // Focus follows an explicit toggle. A pre-filled custom answer opens the
+  // textarea too, but must not steal focus when the card first renders —
+  // that is what the pager's autoFocus is for.
+  const [toggled, setToggled] = useState(false);
 
   if (options.length === 0 || typing) {
     return (
@@ -39,7 +42,7 @@ export function QuestionAnswerField({
           required
           rows={3}
           aria-labelledby={labelId}
-          autoFocus={autoFocus || typing}
+          autoFocus={autoFocus || toggled}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           // Enter still advances the pager; Shift+Enter is the newline.
@@ -64,7 +67,7 @@ export function QuestionAnswerField({
               // Drop the free text, or the pager would happily submit a value
               // the option list gives no sign of having selected.
               if (isCustom) onChange("");
-              setCameBackToOptions(true);
+              setToggled(true);
               setTyping(false);
             }}
             className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
@@ -82,14 +85,14 @@ export function QuestionAnswerField({
         options={options}
         value={value}
         labelId={labelId}
-        autoFocus={autoFocus || cameBackToOptions}
+        autoFocus={autoFocus || toggled}
         onChange={onChange}
       />
       <button
         type="button"
         onClick={() => {
           if (options.includes(value.trim())) onChange("");
-          setCameBackToOptions(false);
+          setToggled(true);
           setTyping(true);
         }}
         className="flex items-center gap-2 rounded-2xl border border-dashed border-zinc-200 px-3 py-2 text-left text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
