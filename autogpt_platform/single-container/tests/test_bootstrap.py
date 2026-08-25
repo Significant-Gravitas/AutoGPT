@@ -59,6 +59,14 @@ class InterruptedMigrationPolicyTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("20260825_interrupted", result.stdout)
         self.assertIn(
+            "prisma migrate resolve --rolled-back 20260825_interrupted",
+            result.stdout,
+        )
+        self.assertIn(
+            "prisma migrate resolve --applied     20260825_interrupted",
+            result.stdout,
+        )
+        self.assertIn(
             "refusing to migrate over an interrupted migration", result.stderr
         )
 

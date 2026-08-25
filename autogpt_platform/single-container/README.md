@@ -61,8 +61,9 @@ example, publishing host port `8080` requires
 `AUTOGPT_PUBLIC_URL=http://localhost:8080` and `-p 127.0.0.1:8080:3000`.
 
 Configure model providers and optional integrations with environment variables.
-Core memory is enabled and stored in the bundled FalkorDB; memory extraction
-also needs a configured chat model and embedding provider.
+The FalkorDB service always runs, while Graphiti memory is enabled by the
+image's default feature configuration; memory extraction also needs a
+configured chat model and embedding provider.
 
 The image supports `linux/amd64` and `linux/arm64`. Test installations used
 about 5–6 GiB of memory during startup and steady-state health checks, though
