@@ -404,6 +404,12 @@ export function ChatInput({
                 onToggle={handleToggleDryRun}
               />
             )}
+            {/* The tray below is brain-dump-only, so the badge needs a home in
+                this layout too — otherwise a devtool meant for local debugging
+                is invisible whenever that flag is off (its default). */}
+            {!isBrainDumpEnabled && showTokenDevtool && sessionId && (
+              <TokenDevtoolBadge sessionId={sessionId} />
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">

@@ -92,6 +92,12 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => mockFlagValue,
 }));
 
+// Off by default so the rest of the suite sees the production-build behaviour.
+let mockTokenDevtoolEnabled = false;
+vi.mock("../../../tokenDevtool/gate", () => ({
+  isTokenDevtoolEnabled: () => mockTokenDevtoolEnabled,
+}));
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
@@ -255,7 +261,41 @@ afterEach(() => {
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
+  mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+});
+
+describe("ChatInput token devtool badge", () => {
+  it("renders the badge while the brain-dump tray is disabled", () => {
+    // The tray is brain-dump-only; the badge must not depend on that flag.
+    mockFlagValue = false;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: "Token devtool" })).toBeDefined();
+  });
+
+  it("renders the badge inside the tray when brain dump is enabled", () => {
+    mockFlagValue = true;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: "Token devtool" })).toBeDefined();
+  });
+
+  it("stays hidden when the devtool gate is off", () => {
+    mockTokenDevtoolEnabled = false;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("button", { name: "Token devtool" })).toBeNull();
+  });
+
+  it("stays hidden before a session exists", () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId={null} />);
+
+    expect(screen.queryByRole("button", { name: "Token devtool" })).toBeNull();
+  });
 });
 
 describe("ChatInput mode toggle", () => {
