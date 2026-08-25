@@ -45,9 +45,16 @@ export function WorkspaceFilesPopover({
   // and closes, unmounting the dialog mid-confirm.
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
+  // The trigger can still close the popover mid-confirm; the content (and its
+  // pending delete) unmounts with it, so the guard must not outlive them.
+  function handleOpenChange(open: boolean) {
+    setIsPopoverOpen(open);
+    if (!open) setIsConfirmingDelete(false);
+  }
+
   return (
     <div className={cn("flex shrink-0 items-start p-2", wrapperClassName)}>
-      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+      <Popover open={isPopoverOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             type="button"
