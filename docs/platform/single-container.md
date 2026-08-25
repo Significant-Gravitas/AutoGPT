@@ -605,21 +605,35 @@ volumes until the restore is accepted.
 Never selectively mix service directories from different backups.
 
 After accepting the restore, make sure no other container uses the `autogpt`
-name or host port, then launch the restored installation with the recorded
-image and the restored volume:
+name or host port. Set `ENV_FILE` to the recorded environment file's absolute
+host path, then launch the restored installation with the recorded image and
+the restored volume:
 
 ```bash
-docker run --detach --name autogpt \
-  --restart unless-stopped \
-  --shm-size 2g \
-  --ulimit nofile=65536:65536 \
-  --log-driver json-file \
-  --log-opt max-size=50m \
-  --log-opt max-file=5 \
-  --env-file autogpt.env \
-  --publish 127.0.0.1:3000:3000 \
-  --volume "${RESTORE_VOLUME}:/data" \
-  "${RESTORE_IMAGE}"
+(
+  set -euo pipefail
+  : "${ENV_FILE:?Set ENV_FILE to the recorded host environment-file path}"
+  : "${RESTORE_VOLUME:?Set RESTORE_VOLUME to the restored volume name}"
+  : "${RESTORE_IMAGE:?Set RESTORE_IMAGE to the recorded immutable image}"
+
+  [[ "${ENV_FILE}" = /* && -f "${ENV_FILE}" ]] || {
+    printf 'ENV_FILE must be an existing absolute host path: %s\n' \
+      "${ENV_FILE}" >&2
+    exit 1
+  }
+
+  docker run --detach --name autogpt \
+    --restart unless-stopped \
+    --shm-size 2g \
+    --ulimit nofile=65536:65536 \
+    --log-driver json-file \
+    --log-opt max-size=50m \
+    --log-opt max-file=5 \
+    --env-file "${ENV_FILE}" \
+    --publish 127.0.0.1:3000:3000 \
+    --volume "${RESTORE_VOLUME}:/data" \
+    "${RESTORE_IMAGE}"
+)
 ```
 
 ## Upgrade and rollback
