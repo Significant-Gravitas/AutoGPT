@@ -4,7 +4,6 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
@@ -95,9 +94,6 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
-  // The hydrated-tail trim below ships with the new tool UI; the old UI
-  // keeps its original in-progress-only trim.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
@@ -379,27 +375,22 @@ export function useCopilotStream({
       // messages (``-seq-N`` ids) are dropped — a streamed tail belongs
       // to a finished turn this mount ran (continuation reconnect) and
       // the resume will NOT replay it.
-      if (isNewToolUI) {
-        // The trim starts at the running turn's first hydrated message, not
-        // at the last user message: a turn the backend started on its own
-        // (engine-switch continuation) has no user row in front of it, so a
-        // user-anchored cut would also delete the completed answer above it
-        // — content the resume never replays. Never cut past the last user
-        // message either, so the prompt itself always survives.
-        const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
-        const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
-        const activeTurnIndex = activeTurnStartMessageId
-          ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
-          : -1;
-        const cutIndex =
-          activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
-        const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
-        if (
-          tail.length > 0 &&
-          tail.every((m) => extractDbSequence(m) !== null)
-        ) {
-          return prev.slice(0, cutIndex);
-        }
+      // The trim starts at the running turn's first hydrated message, not
+      // at the last user message: a turn the backend started on its own
+      // (engine-switch continuation) has no user row in front of it, so a
+      // user-anchored cut would also delete the completed answer above it
+      // — content the resume never replays. Never cut past the last user
+      // message either, so the prompt itself always survives.
+      const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
+      const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
+      const activeTurnIndex = activeTurnStartMessageId
+        ? prev.findIndex((m) => m.id === activeTurnStartMessageId)
+        : -1;
+      const cutIndex =
+        activeTurnIndex === -1 ? userCut : Math.max(activeTurnIndex, userCut);
+      const tail = cutIndex === -1 ? [] : prev.slice(cutIndex);
+      if (tail.length > 0 && tail.every((m) => extractDbSequence(m) !== null)) {
+        return prev.slice(0, cutIndex);
       }
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;

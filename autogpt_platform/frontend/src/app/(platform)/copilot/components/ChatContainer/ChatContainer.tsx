@@ -127,20 +127,14 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // Old tool UI keeps its interactive in-transcript question card; the dock
-  // is the new-UI answering surface, so gate it to avoid double forms.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   // Mirrors the files card's visibility (useWorkspaceFileCards.isOpen): the
   // composer only slides aside while the floating card is actually shown.
-  // New tool UI only — the old UI docks a side panel instead, which narrows
-  // the column by itself.
-  const areFilesOpen =
-    useCopilotUIStore(
-      (s) =>
-        s.artifactPanel.isOpen &&
-        s.artifactPanel.activeArtifact == null &&
-        s.artifactPanel.activeTab !== "artifacts",
-    ) && isNewToolUI;
+  const areFilesOpen = useCopilotUIStore(
+    (s) =>
+      s.artifactPanel.isOpen &&
+      s.artifactPanel.activeArtifact == null &&
+      s.artifactPanel.activeTab !== "artifacts",
+  );
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -238,9 +232,7 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider
-        value={isNewToolUI ? getPendingQuestions(messages) : null}
-      >
+      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
@@ -248,7 +240,7 @@ export const ChatContainer = ({
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isNewToolUI && isArtifactsEnabled && (
+                {isArtifactsEnabled && (
                   <>
                     <div className="absolute right-0 top-0 z-30">
                       <ContextPanelToggle sessionId={sessionId} />

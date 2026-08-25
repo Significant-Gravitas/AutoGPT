@@ -5,18 +5,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
 
-const flagState = vi.hoisted(() => ({ newToolUI: false }));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.NEW_TOOL_UI ? flagState.newToolUI : false,
-  };
+  return { ...actual, useGetFlag: () => false };
 });
 
 const SESSION = "session-1";
@@ -57,7 +51,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  flagState.newToolUI = false;
   setPanel({
     isOpen: false,
     activeArtifact: null,
@@ -67,34 +60,7 @@ afterEach(() => {
   });
 });
 
-describe("ContextPanelToggle - legacy (flag off)", () => {
-  test("renders an open-panel button when closed with no artifact", () => {
-    render(<ContextPanelToggle sessionId={SESSION} />);
-
-    const button = screen.getByLabelText("Open workspace panel");
-    fireEvent.click(button);
-
-    expect(panelState().isOpen).toBe(true);
-  });
-
-  test("renders nothing while the panel is open", () => {
-    setPanel({ isOpen: true });
-    const { container } = render(<ContextPanelToggle sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-
-  test("renders nothing while an artifact is previewing", () => {
-    setPanel({ activeArtifact: ARTIFACT });
-    const { container } = render(<ContextPanelToggle sessionId={SESSION} />);
-    expect(container.textContent).toBe("");
-  });
-});
-
-describe("ContextPanelToggle - new tool UI (flag on)", () => {
-  beforeEach(() => {
-    flagState.newToolUI = true;
-  });
-
+describe("ContextPanelToggle", () => {
   test("shows a files toggle button when the right sidebar is closed", () => {
     render(<ContextPanelToggle sessionId={SESSION} />);
 

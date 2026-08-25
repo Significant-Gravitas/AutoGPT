@@ -82,48 +82,30 @@ function TextWithArtifactCards({
   readOnly?: boolean;
 }) {
   const isArtifactsFlagEnabled = useGetFlag(Flag.ARTIFACTS);
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const isArtifactsEnabled = forceArtifacts || isArtifactsFlagEnabled;
   const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
   const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
-  const artifactCards = isArtifactsEnabled && artifacts.length > 0 && (
-    <div
-      className={
-        isNewToolUI
-          ? "mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2"
-          : "mb-2 flex flex-col gap-1"
-      }
-    >
-      {artifacts.map((artifact) => (
-        <ArtifactCard
-          key={artifact.id}
-          artifact={artifact}
-          readOnly={readOnly}
-        />
-      ))}
-    </div>
-  );
-  const response = (
-    <MessageResponse
-      components={STREAMDOWN_COMPONENTS}
-      className={isNewToolUI ? "[&_li]:py-0" : undefined}
-    >
-      {resolved}
-    </MessageResponse>
-  );
-
-  // New tool UI reads text-first with artifacts trailing; the legacy layout
-  // leads with the artifact cards.
-  return isNewToolUI ? (
+  // Text reads first, with the artifact cards trailing.
+  return (
     <>
-      {response}
-      {artifactCards}
-    </>
-  ) : (
-    <>
-      {artifactCards}
-      {response}
+      <MessageResponse
+        components={STREAMDOWN_COMPONENTS}
+        className="[&_li]:py-0"
+      >
+        {resolved}
+      </MessageResponse>
+      {isArtifactsEnabled && artifacts.length > 0 && (
+        <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+          {artifacts.map((artifact) => (
+            <ArtifactCard
+              key={artifact.id}
+              artifact={artifact}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

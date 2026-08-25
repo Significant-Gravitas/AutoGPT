@@ -3,40 +3,21 @@ import type { ContextPanelTab } from "../../../store";
 
 interface Props {
   activeTab: ContextPanelTab;
-  filesCount: number;
   onChange: (tab: ContextPanelTab) => void;
-  showProgressTab?: boolean;
-  showFilesTab?: boolean;
-  showArtifactsTab?: boolean;
 }
 
-export function TabSwitcher({
-  activeTab,
-  filesCount,
-  onChange,
-  showProgressTab = true,
-  showFilesTab = true,
-  showArtifactsTab = false,
-}: Props) {
-  const tabs: { id: ContextPanelTab; label: string }[] = [
-    ...(showProgressTab
-      ? [{ id: "progress" as const, label: "Progress" }]
-      : []),
-    ...(showFilesTab
-      ? [{ id: "files" as const, label: `Files (${filesCount})` }]
-      : []),
-    ...(showArtifactsTab
-      ? [{ id: "artifacts" as const, label: "Artifacts" }]
-      : []),
-  ];
+const TABS: { id: ContextPanelTab; label: string }[] = [
+  { id: "artifacts", label: "Artifacts" },
+];
 
+export function TabSwitcher({ activeTab, onChange }: Props) {
   return (
     <div
       role="tablist"
       aria-label="Context panel sections"
       className="flex items-center rounded-md border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium"
     >
-      {tabs.map((tab) => (
+      {TABS.map((tab) => (
         <button
           key={tab.id}
           role="tab"

@@ -13,7 +13,6 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
-import { ContextPanelToggle } from "./components/ContextPanel/ContextPanelToggle";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
@@ -130,7 +129,6 @@ function MainArea({
   setDroppedFiles,
 }: MainAreaProps) {
   const hasSession = !!sessionId;
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
       <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#fafafa]">
@@ -167,9 +165,9 @@ function MainArea({
             onDroppedFilesConsumed={() => setDroppedFiles([])}
           />
           {/* Mounted on mobile too: it owns the session-entry reset that
-              forgets the previous chat's artifact, and the new tool UI's
-              artifacts button lives in the chat column on every viewport.
-              Only the auto-opening is desktop-only. */}
+              forgets the previous chat's artifact, and the chat column's
+              artifacts button is mounted on every viewport. Only the
+              auto-opening is desktop-only. */}
           {isArtifactsEnabled && (
             <ContextPanelAutoOpen
               key={`context-auto-open-${sessionId ?? "new"}`}
@@ -184,11 +182,6 @@ function MainArea({
       )}
       {!isMobile && isArtifactsEnabled && sessionId && (
         <ArtifactPanel hasExternalClose />
-      )}
-      {/* Under the new tool UI the trigger lives inside the chat column,
-          beside the workspace-files card it opens. */}
-      {!isMobile && isArtifactsEnabled && sessionId && !isNewToolUI && (
-        <ContextPanelToggle />
       )}
     </div>
   );

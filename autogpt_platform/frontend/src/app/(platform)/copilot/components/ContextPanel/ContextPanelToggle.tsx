@@ -2,14 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
 import { WorkspaceFilesPopover } from "../WorkspaceFileCards/components/WorkspaceFilesPopover";
-import {
-  CheckListIcon,
-  Folder01Icon,
-  SidebarRightIcon,
-} from "@hugeicons/core-free-icons";
+import { CheckListIcon, SidebarRightIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -22,36 +17,12 @@ export function ContextPanelToggle({ sessionId }: Props) {
     (s) => s.artifactPanel.activeArtifact != null,
   );
   const activeTab = useCopilotUIStore((s) => s.artifactPanel.activeTab);
-  const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const lastArtifact = useCopilotUIStore((s) => s.artifactPanel.lastArtifact);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  // The side panel carries its own close button, so the trigger hides while
-  // it's open. The new-UI card grid sits inline in the chat column instead, so
-  // the icon has to stay put and behave as a real toggle.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
-
-  if (!isNewToolUI) {
-    if (isOpen || hasArtifact) return null;
-    return (
-      <div className="flex shrink-0 items-start p-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={toggleContextPanel}
-          aria-label="Open workspace panel"
-          aria-pressed={false}
-        >
-          <Icon icon={Folder01Icon} className="!size-5" />
-        </Button>
-      </div>
-    );
-  }
-
   // Sized and stroked like the sidebar's nav icons so the chat's top-right
   // controls read as the same family.
   const buttonClass =

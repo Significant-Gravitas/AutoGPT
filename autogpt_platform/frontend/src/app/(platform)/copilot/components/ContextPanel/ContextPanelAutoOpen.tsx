@@ -10,7 +10,7 @@ interface Props {
   /** Auto-opening is desktop-only — on mobile the panel is a full-screen
    *  sheet, so opening it on session entry would bury the chat. The
    *  session-entry collapse below must still run on mobile: it is what
-   *  forgets the previous chat's artifact, and the new tool UI mounts its
+   *  forgets the previous chat's artifact, and the chat column mounts its
    *  artifacts button on every viewport. */
   canAutoOpen?: boolean;
 }
