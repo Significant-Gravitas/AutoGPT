@@ -202,12 +202,12 @@ the `autogpt-data` volume.
 10-second timeout, so no host-wide timeout change is needed; a longer host
 timeout does not extend the internal Supervisor caps. The shipped one-second
 runtime, five-second state, and one-second event-listener phases measured about
-8.4 seconds in the shutdown test setup, so do not shorten Docker's timeout.
-Runtime processes are signaled
-first. PostgreSQL, RabbitMQ, Valkey, and FalkorDB are signaled afterward and
-each gets at most five seconds to exit before Supervisor forces it down. The
-event listener stops last. Larger or slower state may require normal crash
-recovery on the next boot.
+8.4 seconds in the shutdown test setup. That is a narrow measured margin, not a
+graceful-shutdown guarantee for slower storage, so do not shorten Docker's
+timeout. Runtime processes are signaled first. PostgreSQL, RabbitMQ, Valkey,
+and FalkorDB are signaled afterward and each gets at most five seconds to exit
+before Supervisor forces it down. The event listener stops last. Larger or
+slower state may require normal crash recovery on the next boot.
 
 Agent runs still executing when the container stops are abandoned. Their queue
 messages can be dropped and their execution rows can remain `RUNNING`, but they
@@ -306,6 +306,25 @@ Set `POSTMARK_SENDER_EMAIL` to a sender verified by your Postmark account. This
 does not add account-verification support. Without these Postmark settings,
 there is no self-service password-reset email or appliance CLI for resetting a
 password. Store the administrator password securely before closing signup.
+
+### Add or recover an administrator
+
+To add an account after signup is closed, temporarily bind the appliance to
+loopback, set `AUTH_ALLOW_NEW_ACCOUNTS=true`, and set
+`AUTH_SIGNUP_ALLOWLIST` to that account's exact email address. Replace the
+container with the same named volume and original launch options, create the
+account, and promote it:
+
+```bash
+docker exec autogpt autogpt-admin promote new-owner@example.com
+```
+
+Then set `AUTH_ALLOW_NEW_ACCOUNTS=false` and replace the container again. If an
+administrator password is lost and Postmark password reset was not configured,
+this procedure creates a replacement administrator; it does not reset the
+existing account's password. Keep the port loopback-only throughout recovery,
+or enforce equivalent HTTPS and network access controls before reopening
+signup.
 
 The server accepts the `AUTH_*` social-provider credentials in `.env.example`,
 but the bundled local-mode frontend does not render social-login buttons, so
@@ -418,9 +437,10 @@ the internet. See the
 for model and context-window guidance.
 
 Additional provider keys consumed by backend blocks may be placed in the same
-environment file. Most remain backend-only. The Next.js server process can
-receive `OPENAI_API_KEY`, `TRANSCRIPTION_API_KEY`, and the legacy
-`SUPABASE_JWT_SECRET` when configured; those values remain server-side process
+environment file. Most remain backend-only. The Next.js server process always
+receives the required `BETTER_AUTH_SECRET` and can receive configured `AUTH_*`
+provider client secrets, `OPENAI_API_KEY`, `TRANSCRIPTION_API_KEY`, and the
+legacy `SUPABASE_JWT_SECRET`. These values remain server-side process
 environment and are not baked into the browser bundle.
 
 ### Database connection tuning
@@ -864,6 +884,8 @@ same `RESTORE_IMAGE`:
       test -s /data/config/runtime.env
       test -s /data/config/backend.json
       test -s /data/postgres/PG_VERSION
+      test -s /data/postgres/postgresql.conf
+      test -s /data/postgres/pg_hba.conf
       test -d /data/rabbitmq/mnesia
       test -d /data/valkey/17000
       test -d /data/valkey/17001
@@ -872,11 +894,45 @@ same `RESTORE_IMAGE`:
       test -d /data/workspaces
       test -d /data/home
       test -d /data/frontend-home
+      quote="$(printf "\047")"
+      setting="^[[:space:]]*listen_addresses[[:space:]]*="
+      include="^[[:space:]]*include(_if_exists|_dir)?([[:space:]]+|[[:space:]]*=)"
+      end="[[:space:]]*(#.*)?$"
+      set -- /data/postgres/postgresql.conf
+      if test -f /data/postgres/postgresql.auto.conf; then
+        set -- "$@" /data/postgres/postgresql.auto.conf
+      fi
+      active_listen="$(grep -hE "${setting}" "$@" || true)"
+      test "$(printf "%s\n" "${active_listen}" | grep -c .)" -eq 1
+      printf "%s\n" "${active_listen}" | grep -Eq "${setting}[[:space:]]*${quote}127[.]0[.]0[.]1${quote}${end}"
+      if grep -Eq "${include}" "$@"; then
+        exit 1
+      fi
+
+      active_hba="$(grep -Ev "^[[:space:]]*(#|$)" /data/postgres/pg_hba.conf || true)"
+      test "$(printf "%s\n" "${active_hba}" | grep -c .)" -eq 6
+      hba_rule="^[[:space:]]*(local[[:space:]]+(all|replication)[[:space:]]+all[[:space:]]+peer|host[[:space:]]+(all|replication)[[:space:]]+all[[:space:]]+(127[.]0[.]0[.]1/32|::1/128)[[:space:]]+scram-sha-256)${end}"
+      if printf "%s\n" "${active_hba}" | grep -Ev "${hba_rule}"; then
+        exit 1
+      fi
+      for required_hba_rule in \
+        "^[[:space:]]*local[[:space:]]+all[[:space:]]+all[[:space:]]+peer${end}" \
+        "^[[:space:]]*host[[:space:]]+all[[:space:]]+all[[:space:]]+127[.]0[.]0[.]1/32[[:space:]]+scram-sha-256${end}" \
+        "^[[:space:]]*host[[:space:]]+all[[:space:]]+all[[:space:]]+::1/128[[:space:]]+scram-sha-256${end}" \
+        "^[[:space:]]*local[[:space:]]+replication[[:space:]]+all[[:space:]]+peer${end}" \
+        "^[[:space:]]*host[[:space:]]+replication[[:space:]]+all[[:space:]]+127[.]0[.]0[.]1/32[[:space:]]+scram-sha-256${end}" \
+        "^[[:space:]]*host[[:space:]]+replication[[:space:]]+all[[:space:]]+::1/128[[:space:]]+scram-sha-256${end}"
+      do
+        printf "%s\n" "${active_hba}" | grep -Eq "${required_hba_rule}"
+      done
     '
 )
 ```
 
-This structural check does not prove that each database can start. A full
+The check also rejects PostgreSQL configuration that enables non-loopback
+listening, loads external configuration fragments, or weakens the generated
+local `peer` and loopback `scram-sha-256` access rules. It does not prove that
+each database can start. A full
 recovery rehearsal boots live schedules, stored credentials, and executors,
 and some services fetch runtime data during startup. Perform it only on a
 dedicated egress-filtered host or network after revoking or replacing
@@ -976,7 +1032,7 @@ Docker health checks every bundled dependency and application role:
 ```bash
 docker inspect --format '{{.State.Health.Status}}' autogpt
 docker exec autogpt autogpt-healthcheck
-docker logs --tail 500 autogpt
+docker logs --follow --tail 100 autogpt
 ```
 
 `GET /healthz` checks nginx only; it is not proof that the whole appliance is
@@ -995,7 +1051,7 @@ startup attempt.
 | Startup rejects `DB_CONNECTION_LIMIT`, `DB_CONNECT_TIMEOUT`, or `DB_POOL_TIMEOUT` | Use an integer in the supported range: `1`–`5`, `1`–`600`, and `1`–`3600`, respectively. |
 | Startup rejects legacy JWT secrets | Remove `JWT_VERIFY_KEY` and `SUPABASE_JWT_SECRET` for a fresh Better Auth installation. Set `AUTOGPT_ENABLE_LEGACY_AUTH=true` only for an intentional legacy-auth migration, and set both legacy variables to the same shared secret of at least 32 characters. |
 | A run stays `RUNNING` without progress after a restart | The container stopped while the run was in flight. Its message was dropped and the row was not reconciled; start a new run. |
-| Requests stall for minutes under concurrent runs | Inspect backend and PostgreSQL logs for connection-pool exhaustion. Review `DB_CONNECTION_LIMIT`, `DB_CONNECT_TIMEOUT`, and `DB_POOL_TIMEOUT`; all backend roles share the bundled database. |
+| Requests stall for minutes under concurrent runs | Inspect backend and PostgreSQL logs for connection-pool exhaustion. `DB_CONNECTION_LIMIT` cannot be raised above its default maximum of `5`; lowering `DB_POOL_TIMEOUT` makes pool exhaustion fail sooner but does not add capacity. Reduce concurrency or move to a distributed deployment when the fixed pools are insufficient. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install the configured embedding model and confirm its `/v1/embeddings` endpoint works. If the server does not provide the default Qwen and `nomic-embed-text` slugs, set and install `GRAPHITI_LLM_MODEL`, `GRAPHITI_RERANKER_MODEL`, and `GRAPHITI_EMBEDDER_MODEL` explicitly. |
 | Ollama cannot be reached | Keep the host-gateway option, ensure Ollama listens on an address Docker can reach, and test `/api/tags` from inside the container. |
