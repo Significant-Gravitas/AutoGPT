@@ -256,6 +256,12 @@ def estimate_token_count_str(
 DEFAULT_TOKEN_THRESHOLD = 120_000
 DEFAULT_KEEP_RECENT = 15
 
+# Response headroom subtracted from the compression target.  Named (rather than
+# inlined in ``compress_context``'s signature) because the copilot's pre-query
+# predictor mirrors the early-return condition below and must read the same
+# value — a silent desync there opens compaction rows for work that never runs.
+DEFAULT_COMPRESSION_RESERVE = 2_048
+
 # Reserve tokens for system prompt, tool definitions, and per-turn overhead.
 # The actual model context limit minus this reserve = compression target.
 _CONTEXT_OVERHEAD_RESERVE = 60_000
@@ -740,7 +746,7 @@ async def compress_context(
     model: str = "gpt-4o",
     client: AsyncOpenAI | None = None,
     keep_recent: int = DEFAULT_KEEP_RECENT,
-    reserve: int = 2_048,
+    reserve: int = DEFAULT_COMPRESSION_RESERVE,
     start_cap: int = 8_192,
     floor_cap: int = 128,
 ) -> CompressResult:
