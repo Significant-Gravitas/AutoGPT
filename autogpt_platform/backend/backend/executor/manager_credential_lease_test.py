@@ -156,6 +156,260 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert "credential_leases" not in captured
 
 
+@pytest.mark.asyncio
+async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease():
+    credentials = _codex_credentials("owner-cred")
+    lease = MagicMock(credentials=credentials)
+    lease.release = AsyncMock()
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock(return_value=lease)
+    captured: dict[str, object] = {}
+    block = _block_with_credentials({"credentials": CodexCredentialsInput}, captured)
+    owner_metadata = _credential_metadata("owner-cred")
+    node = _node(block, input_default={"credentials": owner_metadata})
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+
+    with (
+        patch("backend.executor.manager.get_db_async_client", return_value=db_client),
+        patch("backend.executor.manager.enforce_codex_access", new=AsyncMock()),
+    ):
+        outputs = [
+            item
+            async for item in execute_node(
+                node,
+                _entry(
+                    {"credentials": _credential_metadata("consumer-injected")},
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    db_client.validate_execution_credentials_owner.assert_awaited_once_with(
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        owner_user_id="owner-1",
+        grant_id="grant-1",
+    )
+    manager.acquire_lease.assert_awaited_once_with("owner-1", "owner-cred")
+    assert captured["credential_leases"] == {"credentials": lease}
+    lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_revoked_owner_grant_fails_before_credential_access():
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock()
+    block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
+    owner_metadata = _credential_metadata("owner-cred")
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=False)
+
+    with (
+        patch("backend.executor.manager.get_db_async_client", return_value=db_client),
+        pytest.raises(ValueError, match="authorization changed"),
+    ):
+        await anext(
+            execute_node(
+                _node(block, input_default={"credentials": owner_metadata}),
+                _entry({"credentials": owner_metadata}, execution_context=context),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_incomplete_owner_authorization_context_fails_closed():
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock()
+    block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
+    context = ExecutionContext(credentials_owner_id="owner-1")
+
+    with pytest.raises(ValueError, match="Incomplete OWNER"):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry(
+                    {"credentials": _credential_metadata("owner-cred")},
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_owner_reference_only_credential_rejected_before_lookup():
+    manager = MagicMock()
+    manager.get = AsyncMock()
+    manager.acquire_lease = AsyncMock()
+    block = _block_with_credentials(
+        {"codex_credentials": CodexCredentialsInput},
+        {},
+        reference_only_fields={"codex_credentials"},
+    )
+    owner_metadata = _credential_metadata("owner-cred")
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+
+    with (
+        patch("backend.executor.manager.get_db_async_client", return_value=db_client),
+        pytest.raises(ValueError, match="runtime-managed"),
+    ):
+        await anext(
+            execute_node(
+                _node(
+                    block,
+                    input_default={"codex_credentials": owner_metadata},
+                ),
+                _entry(
+                    {"codex_credentials": owner_metadata},
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_inactive_owner_reference_only_credential_stays_inactive_at_runtime():
+    manager = MagicMock()
+    manager.get = AsyncMock()
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, object] = {}
+    block = _block_with_credentials(
+        {"codex_credentials": CodexCredentialsInput},
+        captured,
+        reference_only_fields={"codex_credentials"},
+        credential_discriminators={
+            "codex_credentials": ("transport", {"codex": ProviderName.CODEX})
+        },
+    )
+    owner_metadata = _credential_metadata("stale-owner-cred")
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+
+    with patch("backend.executor.manager.get_db_async_client", return_value=db_client):
+        outputs = [
+            item
+            async for item in execute_node(
+                _node(
+                    block,
+                    input_default={
+                        "transport": "platform",
+                        "codex_credentials": owner_metadata,
+                    },
+                ),
+                _entry(
+                    {
+                        "transport": "platform",
+                        "codex_credentials": owner_metadata,
+                    },
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+    assert captured["input_data"]["codex_credentials"] is None
+
+
+@pytest.mark.asyncio
+async def test_consumer_activating_owner_reference_only_credential_fails_closed():
+    manager = MagicMock()
+    manager.get = AsyncMock()
+    block = _block_with_credentials(
+        {"codex_credentials": CodexCredentialsInput},
+        {},
+        reference_only_fields={"codex_credentials"},
+        credential_discriminators={
+            "codex_credentials": ("transport", {"codex": ProviderName.CODEX})
+        },
+    )
+    owner_metadata = _credential_metadata("stale-owner-cred")
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+
+    with (
+        patch("backend.executor.manager.get_db_async_client", return_value=db_client),
+        pytest.raises(ValueError, match="runtime-managed"),
+    ):
+        await anext(
+            execute_node(
+                _node(
+                    block,
+                    input_default={
+                        "transport": "platform",
+                        "codex_credentials": owner_metadata,
+                    },
+                ),
+                _entry(
+                    {
+                        "transport": "codex",
+                        "codex_credentials": owner_metadata,
+                    },
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.get.assert_not_awaited()
+
+
+def test_owner_credential_log_redaction_removes_ids_and_titles():
+    from backend.executor.manager import _redact_owner_credentials_from_log
+
+    redacted = _redact_owner_credentials_from_log(
+        {
+            "credentials": {"id": "secret-id", "title": "Owner account"},
+            "file": {
+                "id": "resource-id",
+                "_credentials_id": "secret-picker-id",
+                "name": "Quarterly plan",
+            },
+        },
+        {"credentials": "secret-id", "file": "secret-picker-id"},
+    )
+
+    assert redacted["credentials"] == "<owner credential redacted>"
+    assert "_credentials_id" not in redacted["file"]
+    assert redacted["file"]["id"] == "resource-id"
+
+
 def _discriminated_reference_block(
     captured: dict[str, object],
     *,
@@ -344,22 +598,29 @@ def _block_with_credentials(
     captured: dict[str, object],
     *,
     reference_only_fields: set[str] | None = None,
+    credential_discriminators: (
+        dict[str, tuple[str, dict[str, ProviderName]]] | None
+    ) = None,
 ) -> MagicMock:
     reference_only_fields = reference_only_fields or set()
+    credential_discriminators = credential_discriminators or {}
     input_schema = MagicMock()
     input_schema.get_credentials_fields.return_value = credential_fields
     # A real `CredentialsFieldInfo`, not a stand-in carrying only the one
     # attribute the test happens to need: `execute_node` reads whatever the
     # field declares, so a partial fake fails with an AttributeError the moment
     # the executor consults another one.
-    input_schema.get_credentials_fields_info.return_value = {
-        field_name: CredentialsFieldInfo(
+    field_infos = {}
+    for field_name in credential_fields:
+        discriminator = credential_discriminators.get(field_name)
+        field_infos[field_name] = CredentialsFieldInfo(
             credentials_provider=frozenset({ProviderName.CODEX}),
             credentials_types=frozenset({"oauth2"}),
             credential_reference_only=field_name in reference_only_fields,
+            discriminator=discriminator[0] if discriminator else None,
+            discriminator_mapping=discriminator[1] if discriminator else None,
         )
-        for field_name in credential_fields
-    }
+    input_schema.get_credentials_fields_info.return_value = field_infos
     input_schema.get_auto_credentials_fields.return_value = {}
     block = MagicMock()
     block.id = "block-1"
@@ -377,14 +638,18 @@ def _block_with_credentials(
     return block
 
 
-def _node(block: MagicMock) -> MagicMock:
+def _node(block: MagicMock, *, input_default=None) -> MagicMock:
     node = MagicMock()
     node.block = block
-    node.input_default = {}
+    node.input_default = input_default or {}
     return node
 
 
-def _entry(inputs: dict[str, object]) -> NodeExecutionEntry:
+def _entry(
+    inputs: dict[str, object],
+    *,
+    execution_context: ExecutionContext | None = None,
+) -> NodeExecutionEntry:
     return NodeExecutionEntry(
         user_id="user-1",
         graph_exec_id="graph-exec-1",
@@ -394,7 +659,7 @@ def _entry(inputs: dict[str, object]) -> NodeExecutionEntry:
         node_id="node-1",
         block_id="block-1",
         inputs=inputs,
-        execution_context=ExecutionContext(),
+        execution_context=execution_context or ExecutionContext(),
     )
 
 

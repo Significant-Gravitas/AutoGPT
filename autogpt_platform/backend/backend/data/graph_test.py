@@ -65,7 +65,7 @@ def _mock_grants_prisma():
     """No-grant baseline for graph access checks.
 
     ``get_graph``'s team-grant fallback and ``validate_graph_execution_permissions``
-    both call ``resolve_graph_grant``, which queries ``backend.data.grants.prisma``.
+    both call ``resolve_graph_grants``, which queries ``backend.data.grants.prisma``.
     The get_graph/validate tests mock the AgentGraph/StoreListingVersion/LibraryAgent
     clients but not this one, so without a patch the grant lookup hits the real,
     unconnected client. Return no grant rows so the no-grant path is explicit;
@@ -1211,6 +1211,53 @@ async def test_get_graph_library_fallback_not_used_for_anonymous() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_graph_tries_every_covering_grant_until_one_resolves() -> None:
+    requester_id = "team-user"
+    graph_id = "graph-id"
+    active_v3 = _make_mock_db_graph("owner-user")
+    active_v3.version = 3
+    pinned_v2 = _make_mock_db_graph("owner-user")
+    pinned_v2.version = 2
+    expected = MagicMock(name="PinnedGraphModel")
+    follow_latest = MagicMock(
+        organizationId="org-1",
+        followLatest=True,
+        agentGraphVersion=1,
+    )
+    pinned = MagicMock(
+        organizationId="org-1",
+        followLatest=False,
+        agentGraphVersion=2,
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.resolve_graph_grants",
+            new_callable=AsyncMock,
+            return_value=[follow_latest, pinned],
+        ),
+        patch("backend.data.graph.GraphModel.from_db", return_value=expected),
+    ):
+        mock_ag_prisma.return_value.find_first = AsyncMock(
+            side_effect=[None, active_v3, pinned_v2]
+        )
+        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        result = await get_graph(
+            graph_id=graph_id,
+            version=2,
+            user_id=requester_id,
+        )
+
+    assert result is expected
+    assert mock_ag_prisma.return_value.find_first.await_count == 3
+
+
+@pytest.mark.asyncio
 async def test_get_graph_library_not_queried_when_owned() -> None:
     """If the user owns the graph, the library fallback should NOT be
     triggered — ownership is sufficient."""
@@ -1497,6 +1544,53 @@ async def test_validate_graph_execution_permissions_library_member_same_version_
     mock_is_published.assert_not_awaited()
     lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+@pytest.mark.asyncio
+async def test_validate_execution_permissions_accepts_later_matching_grant() -> None:
+    requester_id = "team-user"
+    graph_id = "graph-id"
+    graph_version = 2
+    mock_graph = MagicMock(
+        userId="owner-user",
+        organizationId="matching-org",
+        isActive=True,
+    )
+    wrong_org = MagicMock(
+        organizationId="wrong-org",
+        followLatest=False,
+        agentGraphVersion=graph_version,
+    )
+    matching = MagicMock(
+        organizationId="matching-org",
+        followLatest=False,
+        agentGraphVersion=graph_version,
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.resolve_graph_grants",
+            new_callable=AsyncMock,
+            return_value=[wrong_org, matching],
+        ),
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_is_published,
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        await validate_graph_execution_permissions(
+            user_id=requester_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+        )
+
+    mock_is_published.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -135,6 +135,7 @@ class ExecutionContext(BaseModel):
     # consumer never sees the secret. ``None`` for all normal runs (owner
     # running own graph, CONSUMER-mode grants, marketplace/library, sub-graphs).
     credentials_owner_id: Optional[str] = None
+    credentials_grant_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -219,6 +220,7 @@ class GraphExecutionMeta(BaseDbModel):
     # paths where the caller doesn't re-supply them.
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+    parent_execution_id: Optional[str] = None
 
     # Expert attribution, surfaced from the DB row for the same
     # resume/requeue recovery reason as org/team above.
@@ -374,6 +376,7 @@ class GraphExecutionMeta(BaseDbModel):
             is_dry_run=stats.is_dry_run if stats else False,
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
+            parent_execution_id=_graph_exec.parentGraphExecutionId,
             expert_id=_graph_exec.expertId,
         )
 

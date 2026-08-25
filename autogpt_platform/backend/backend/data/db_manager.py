@@ -114,7 +114,10 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.grants import resolve_execution_credentials_owner
+from backend.data.grants import (
+    resolve_execution_credentials_owner,
+    validate_execution_credentials_owner,
+)
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -374,6 +377,7 @@ class DatabaseManager(AppService):
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
     resolve_execution_credentials_owner = _(resolve_execution_credentials_owner)
+    validate_execution_credentials_owner = _(validate_execution_credentials_owner)
     setup_triggered_preset = _(setup_triggered_preset)
     update_triggered_preset = _(update_triggered_preset)
     delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
@@ -646,6 +650,7 @@ class DatabaseManagerClient(AppServiceClient):
     add_store_agent_to_library = _(d.add_store_agent_to_library)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
     resolve_execution_credentials_owner = _(d.resolve_execution_credentials_owner)
+    validate_execution_credentials_owner = _(d.validate_execution_credentials_owner)
 
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
@@ -779,6 +784,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
     resolve_execution_credentials_owner = d.resolve_execution_credentials_owner
+    validate_execution_credentials_owner = d.validate_execution_credentials_owner
     setup_triggered_preset = d.setup_triggered_preset
     update_triggered_preset = d.update_triggered_preset
     delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup

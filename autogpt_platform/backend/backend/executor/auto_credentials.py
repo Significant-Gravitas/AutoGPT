@@ -5,12 +5,14 @@ CoPilot direct-block-execution path (``backend/copilot/tools/helpers.py``)
 so both handle ``_credentials_id`` payloads identically.
 """
 
+import copy
 import logging
-from typing import Any
+from typing import Any, Mapping
 
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks._base import BlockSchema
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ async def acquire_auto_credentials(
     creds_manager: IntegrationCredentialsManager,
     user_id: str,
     credentials_owner_id: str | None = None,
-    owner_credential_ids: set[str] | None = None,
+    owner_field_values: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
 
@@ -40,16 +42,11 @@ async def acquire_auto_credentials(
         and credential locks to release after execution completes.
 
     Args:
-        credentials_owner_id: When set (OWNER-mode grant run), an auto-credential
-            id that the graph itself references (i.e. present in
-            ``owner_credential_ids``) is resolved against this graph owner's
-            store instead of ``user_id``. Any other id — e.g. a file the
-            consumer picked from their own Drive — still resolves against
-            ``user_id``, so a consumer can never redirect the lookup into the
-            owner's store.
-        owner_credential_ids: Allowlist of credential ids the graph references
-            (from the owner's baked ``input_default``). Only consulted when
-            ``credentials_owner_id`` is set.
+        credentials_owner_id: Graph owner for an OWNER-mode grant run.
+        owner_field_values: Field-bound picker values from the graph's baked
+            ``input_default``. OWNER mode replaces the entire matching picker
+            value with this trusted copy, so a consumer cannot pair an owner's
+            credential id with another field or arbitrary resource id.
 
     Raises:
         MissingAutoCredentialsError: when a field is missing or lacks a
@@ -59,13 +56,23 @@ async def acquire_auto_credentials(
     """
     extra_exec_kwargs: dict[str, Any] = {}
     locks: list[AsyncRedisLock] = []
-    owner_credential_ids = owner_credential_ids or set()
+    owner_field_values = owner_field_values or {}
 
     try:
         for kwarg_name, info in input_model.get_auto_credentials_fields().items():
             field_name = info["field_name"]
             provider = info.get("config", {}).get("provider", "external service")
-            field_data = input_data.get(field_name)
+            owner_field_data = owner_field_values.get(field_name)
+            uses_owner = (
+                credentials_owner_id is not None and owner_field_data is not None
+            )
+            field_data = (
+                copy.deepcopy(owner_field_data)
+                if uses_owner
+                else input_data.get(field_name)
+            )
+            if uses_owner:
+                input_data[field_name] = field_data
 
             if field_data and isinstance(field_data, dict):
                 if "_credentials_id" in field_data:
@@ -83,20 +90,15 @@ async def acquire_auto_credentials(
                             f"builder and re-select the file."
                         )
                     file_name = field_data.get("name", "selected file")
-                    # OWNER-mode: resolve the graph's own referenced file
-                    # credential against the owner's store; everything else
-                    # against the executing consumer.
                     resolve_user_id = (
                         credentials_owner_id
-                        if credentials_owner_id and cred_id in owner_credential_ids
+                        if uses_owner and credentials_owner_id is not None
                         else user_id
                     )
                     try:
                         credentials, lock = await creds_manager.acquire(
                             resolve_user_id, cred_id
                         )
-                        locks.append(lock)
-                        extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
                         if resolve_user_id != user_id:
                             # OWNER mode: the graph owner's referenced file
@@ -120,6 +122,21 @@ async def acquire_auto_credentials(
                             f"re-select the file to authenticate with your "
                             f"own account."
                         )
+                    locks.append(lock)
+                    if provider != "external service" and not provider_matches(
+                        credentials.provider, provider
+                    ):
+                        raise ValueError(
+                            f"Credentials for field '{field_name}' use provider "
+                            f"'{credentials.provider}', expected '{provider}'"
+                        )
+                    expected_type = info.get("config", {}).get("type")
+                    if expected_type and credentials.type != expected_type:
+                        raise ValueError(
+                            f"Credentials for field '{field_name}' use type "
+                            f"'{credentials.type}', expected '{expected_type}'"
+                        )
+                    extra_exec_kwargs[kwarg_name] = credentials
                 else:
                     file_name = field_data.get("name", "selected file")
                     raise MissingAutoCredentialsError(

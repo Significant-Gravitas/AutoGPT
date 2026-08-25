@@ -3,7 +3,7 @@
 Covers the two enqueue-time pieces that decide WHOSE credential store the
 graph's stored references resolve against:
 
-- ``owner_referenced_credential_ids``: the per-node allowlist of ids the graph
+- ``owner_referenced_credentials``: the per-node field-bound map the graph
   itself references (regular + auto), so OWNER mode can never look up an
   arbitrary id in the owner's store.
 - ``_validate_node_input_credentials``: mirrors execution-time resolution —
@@ -11,17 +11,24 @@ graph's stored references resolve against:
   in CONSUMER mode against the executing user (regression).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
 from backend.executor.utils import (
     _validate_node_input_credentials,
-    owner_referenced_credential_ids,
+    owner_referenced_credentials,
 )
 
 
-def _input_schema(*, cred_fields=None, auto_fields=None, required=None):
+def _input_schema(
+    *,
+    cred_fields=None,
+    auto_fields=None,
+    required=None,
+    reference_only=None,
+    discriminators=None,
+):
     def _validate(value):
         meta = MagicMock()
         meta.id = value["id"]
@@ -36,6 +43,22 @@ def _input_schema(*, cred_fields=None, auto_fields=None, required=None):
         cred_type.model_validate.side_effect = _validate
         fields[name] = cred_type
     schema.get_credentials_fields.return_value = fields
+    field_infos = {}
+    for name in fields:
+        field_info = MagicMock()
+        field_info.credential_reference_only = name in set(reference_only or [])
+        discriminator = (discriminators or {}).get(name)
+        if discriminator:
+            discriminator_name, credential_values = discriminator
+            field_info.discriminator = discriminator_name
+            field_info.requires_credentials.side_effect = (
+                lambda value, values=set(credential_values): value in values
+            )
+        else:
+            field_info.discriminator = None
+            field_info.requires_credentials.return_value = True
+        field_infos[name] = field_info
+    schema.get_credentials_fields_info.return_value = field_infos
     schema.get_auto_credentials_fields.return_value = auto_fields or {}
     schema.get_required_fields.return_value = set(required or [])
     return schema
@@ -52,7 +75,7 @@ def _node(*, node_id="n1", input_default=None, schema=None, optional=False):
     return node
 
 
-class TestOwnerReferencedCredentialIds:
+class TestOwnerReferencedCredentials:
     def test_collects_regular_and_auto_ids(self):
         schema = _input_schema(
             cred_fields=["credentials"],
@@ -66,16 +89,19 @@ class TestOwnerReferencedCredentialIds:
             "unrelated": {"id": "not-a-cred"},
         }
 
-        assert owner_referenced_credential_ids(input_default, schema) == {
-            "regular-1",
-            "auto-1",
+        assert owner_referenced_credentials(input_default, schema) == {
+            "credentials": "regular-1",
+            "spreadsheet": "auto-1",
         }
 
     def test_ignores_missing_or_malformed_references(self):
         schema = _input_schema(cred_fields=["credentials"])
         # No credential value baked in -> nothing to allow.
-        assert owner_referenced_credential_ids({}, schema) == set()
-        assert owner_referenced_credential_ids({"credentials": {}}, schema) == set()
+        assert owner_referenced_credentials({}, schema) == {}
+        assert owner_referenced_credentials({"credentials": {}}, schema) == {}
+        assert (
+            owner_referenced_credentials({"credentials": {"id": "   "}}, schema) == {}
+        )
 
 
 class TestValidateNodeInputCredentialsOwnerMode:
@@ -174,3 +200,164 @@ class TestValidateNodeInputCredentialsOwnerMode:
         assert "n1" in errors
         assert "credentials" in errors["n1"]
         store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+
+    @pytest.mark.asyncio
+    async def test_optional_configured_owner_credential_is_validated(self, mock_store):
+        schema = _input_schema(cred_fields=["credentials"], required=[])
+        node = _node(
+            input_default={
+                "credentials": {
+                    "id": "owner-cred-1",
+                    "provider": "prov",
+                    "type": "api_key",
+                }
+            },
+            schema=schema,
+        )
+        graph = MagicMock(nodes=[node])
+
+        errors, _ = await _validate_node_input_credentials(
+            graph, "consumer-1", None, "owner-1"
+        )
+
+        assert errors == {}
+        mock_store.get_creds_by_id.assert_awaited_once_with("owner-1", "owner-cred-1")
+
+    @pytest.mark.asyncio
+    async def test_reference_only_owner_credential_fails_closed(self, mock_store):
+        schema = _input_schema(
+            cred_fields=["credentials"],
+            required=["credentials"],
+            reference_only=["credentials"],
+        )
+        node = _node(
+            input_default={
+                "credentials": {
+                    "id": "owner-cred-1",
+                    "provider": "prov",
+                    "type": "api_key",
+                }
+            },
+            schema=schema,
+        )
+        graph = MagicMock(nodes=[node])
+
+        errors, _ = await _validate_node_input_credentials(
+            graph, "consumer-1", None, "owner-1"
+        )
+
+        assert "runtime-managed credential references" in errors["n1"]["credentials"]
+        mock_store.get_creds_by_id.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_inactive_discriminated_owner_credential_stays_inactive(
+        self, mock_store
+    ):
+        schema = _input_schema(
+            cred_fields=["credentials"],
+            required=[],
+            reference_only=["credentials"],
+            discriminators={"credentials": ("transport", {"codex"})},
+        )
+        node = _node(
+            input_default={
+                "transport": "platform",
+                "credentials": {
+                    "id": "stale-owner-cred",
+                    "provider": "codex",
+                    "type": "oauth2",
+                },
+            },
+            schema=schema,
+        )
+
+        errors, _ = await _validate_node_input_credentials(
+            MagicMock(nodes=[node]), "consumer-1", None, "owner-1"
+        )
+
+        assert errors == {}
+        mock_store.get_creds_by_id.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_consumer_activating_discriminated_owner_reference_fails_closed(
+        self, mock_store
+    ):
+        schema = _input_schema(
+            cred_fields=["credentials"],
+            required=[],
+            reference_only=["credentials"],
+            discriminators={"credentials": ("transport", {"codex"})},
+        )
+        node = _node(
+            input_default={
+                "transport": "platform",
+                "credentials": {
+                    "id": "stale-owner-cred",
+                    "provider": "codex",
+                    "type": "oauth2",
+                },
+            },
+            schema=schema,
+        )
+
+        errors, _ = await _validate_node_input_credentials(
+            MagicMock(nodes=[node]),
+            "consumer-1",
+            {"n1": {"transport": "codex"}},
+            "owner-1",
+        )
+
+        assert "runtime-managed credential references" in errors["n1"]["credentials"]
+        mock_store.get_creds_by_id.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_auto_credentials_are_bound_to_their_picker_field(self, mocker):
+        schema = _input_schema(
+            auto_fields={
+                "first_creds": {
+                    "field_name": "first_file",
+                    "config": {"provider": "google"},
+                },
+                "second_creds": {
+                    "field_name": "second_file",
+                    "config": {"provider": "google"},
+                },
+            },
+            required=["first_file", "second_file"],
+        )
+        node = _node(
+            input_default={
+                "first_file": {
+                    "id": "owner-resource",
+                    "_credentials_id": "shared-id",
+                }
+            },
+            schema=schema,
+        )
+        graph = MagicMock(nodes=[node])
+        owner_creds = MagicMock(provider="google")
+        consumer_creds = MagicMock(provider="google")
+        store = MagicMock()
+        store.get_creds_by_id = AsyncMock(side_effect=[owner_creds, consumer_creds])
+        mocker.patch(
+            "backend.executor.utils.get_integration_credentials_store",
+            return_value=store,
+        )
+        masks = {
+            "n1": {
+                "second_file": {
+                    "id": "consumer-chosen-resource",
+                    "_credentials_id": "shared-id",
+                }
+            }
+        }
+
+        errors, _ = await _validate_node_input_credentials(
+            graph, "consumer-1", masks, "owner-1"
+        )
+
+        assert errors == {}
+        assert store.get_creds_by_id.await_args_list == [
+            call("owner-1", "shared-id"),
+            call("consumer-1", "shared-id"),
+        ]
