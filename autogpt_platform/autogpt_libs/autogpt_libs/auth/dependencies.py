@@ -158,7 +158,7 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     # describes the admin, and provisioning from it would create the account
     # under the admin's email.
     if user_id != jwt_payload.get("sub"):
-        logger.debug(f"Not provisioning {user_id} from an impersonator's claims")
+        logger.debug("Not provisioning %s from an impersonator's claims", user_id)
         return
     if not jwt_payload.get("email"):
         # Nothing to provision with, so this account stays broken. Say so —
