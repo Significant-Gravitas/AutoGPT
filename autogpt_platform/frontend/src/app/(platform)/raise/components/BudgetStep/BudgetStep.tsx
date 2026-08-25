@@ -4,7 +4,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Forward02Icon } from "@hugeicons/core-free-icons";
-import { creditsToUsdLabel, kitBudgetLabel } from "../../helpers";
+import { creditsToUsdLabel } from "@/lib/credits";
+import { kitBudgetLabel } from "../../helpers";
 import { KitBudget } from "../KitStep/KitBudget";
 import { DEFAULT_BUDGET_CREDITS } from "../KitStep/helpers";
 import { bubbleClassFor } from "../ColorStep/helpers";
@@ -33,15 +34,14 @@ export function BudgetStep({
     <div className="flex w-full flex-col items-end gap-4">
       <KitBudget
         weeklyBudget={budget.weeklyBudget}
-        customCredits={budget.customCredits}
+        customAmount={budget.customAmount}
         color={color}
         onSelect={budget.selectPreset}
-        onCustomChange={budget.changeCustomCredits}
+        onCustomChange={budget.changeCustomAmount}
       />
       <p className="max-w-[42rem] text-right text-xs text-muted-foreground">
-        Skip to use the default {DEFAULT_BUDGET_CREDITS} credits (
-        {creditsToUsdLabel(DEFAULT_BUDGET_CREDITS)}/week). 0 disables the weekly
-        limit.
+        Skip to use the default {creditsToUsdLabel(DEFAULT_BUDGET_CREDITS)} a
+        week. $0 disables the weekly limit.
       </p>
       <div className="flex items-center gap-2">
         {budget.canSubmitCustom ? (
