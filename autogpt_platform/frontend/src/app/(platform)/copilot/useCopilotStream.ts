@@ -96,6 +96,11 @@ export function useCopilotStream({
   const queryClient = useQueryClient();
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  // A linked subscription that stopped accepting turns, as opposed to our own
+  // credits running out. Held separately because the answer is different.
+  const [providerLimit, setProviderLimit] = useState<ProviderFailure | null>(
+    null,
+  );
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
@@ -224,7 +229,7 @@ export function useCopilotStream({
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
-        onRateLimit: (message) => {
+        onRateLimit: (message, limitFailure) => {
           // Backend raises 429 BEFORE persisting the user message, so the
           // optimistic user bubble added by useChat is a lie. Restore the text
           // into the composer (via the same store slot URL pre-fills use) and
@@ -270,7 +275,13 @@ export function useCopilotStream({
               return next;
             });
           }
-          setRateLimitMessage(message);
+          // A provider's own limit is not answered by upgrading with us, so
+          // it opens the continue path instead of the plan dialog.
+          if (limitFailure && limitFailure.authProvider !== "platform") {
+            setProviderLimit(limitFailure);
+          } else {
+            setRateLimitMessage(message);
+          }
         },
         onReconnect: () => handleReconnectRef.current(),
         isUserStoppingRef,
@@ -761,6 +772,8 @@ export function useCopilotStream({
     isUserStoppingRef,
     isUserStopping,
     rateLimitMessage,
+    providerLimit,
+    dismissProviderLimit: () => setProviderLimit(null),
     dismissRateLimit,
   };
 }

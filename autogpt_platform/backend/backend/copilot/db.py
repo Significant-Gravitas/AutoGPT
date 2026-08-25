@@ -501,6 +501,41 @@ async def update_chat_session_pinned(
     return result > 0
 
 
+async def update_chat_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: str,
+    llm_credential_id: str | None,
+) -> bool:
+    """Point an existing session at a different connection, from now on.
+
+    Reads the stored metadata and writes back only the two route keys, rather
+    than replacing the blob: everything else in there -- the builder binding,
+    the session kind, the dry-run flag -- belongs to other features and must
+    survive a connection change.
+
+    Always filters by (session_id, user_id) so callers cannot re-route another
+    user's chat even knowing the id. Past turns keep the stamps they were
+    written with; this only decides where the next one runs.
+
+    Returns True if a row was updated, False otherwise (not found, wrong user).
+    """
+    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
+    existing = await PrismaChatSession.prisma().find_first(where=where)
+    if existing is None:
+        return False
+
+    metadata = dict(existing.metadata or {})
+    metadata["llm_auth_provider"] = llm_auth_provider
+    metadata["llm_credential_id"] = llm_credential_id
+
+    result = await PrismaChatSession.prisma().update_many(
+        where=where,
+        data={"metadata": SafeJson(metadata)},
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,

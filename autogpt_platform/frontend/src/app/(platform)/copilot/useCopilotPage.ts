@@ -172,6 +172,8 @@ export function useCopilotPage() {
     isUserStopping,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
   } = useCopilotStream({
     userId: user?.id ?? null,
     sessionId,
@@ -412,6 +414,8 @@ export function useCopilotPage() {
     turnStats,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
     // sessionDryRun is the CURRENT session's immutable dry_run flag from API,
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.

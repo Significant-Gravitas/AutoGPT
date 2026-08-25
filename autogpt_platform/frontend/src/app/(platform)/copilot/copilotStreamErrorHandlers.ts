@@ -99,7 +99,7 @@ function extractErrorDetail(error: Error): string {
 
 interface HandleStreamErrorArgs {
   error: Error;
-  onRateLimit: (message: string) => void;
+  onRateLimit: (message: string, providerFailure?: ProviderFailure) => void;
   onReconnect: () => void;
   isUserStoppingRef: React.MutableRefObject<boolean>;
   /**
@@ -141,7 +141,14 @@ export function handleStreamError({
       // Still routed through the rate-limit path: it restores the composer
       // text for a message the backend refused before persisting, which a
       // toast alone would lose.
-      onRateLimit(`${copy.title}. ${copy.description}`);
+      //
+      // The failure travels with it so the caller can tell the two limits
+      // apart. They are not the same event: our own credits running out is
+      // answered by upgrading a plan with us, and a linked subscription
+      // running out is answered by continuing on a different connection.
+      // Offering the first for the second asks someone to pay us because
+      // OpenAI said no.
+      onRateLimit(`${copy.title}. ${copy.description}`, providerFailure);
       return;
     }
     toast({
