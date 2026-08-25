@@ -232,14 +232,6 @@ describe("context panel open/close guards", () => {
     useCopilotUIStore.getState().openContextPanelForFiles();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
-
-  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
-    useCopilotUIStore.getState().openContextPanelForProgress();
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
-    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
 });
 
 describe("useCopilotUIStore", () => {

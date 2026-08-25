@@ -23,11 +23,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { revealKickoffMessages } from "../../expertKickoff";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import {
-  getTurnMessages,
-  parseSpecialMarkers,
-  shouldShowTaskListNotice,
-} from "./helpers";
+import { getTurnMessages, parseSpecialMarkers } from "./helpers";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
@@ -39,11 +35,9 @@ import { CopyButton } from "./components/CopyButton";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
-import { TaskListNotice } from "./components/TaskListNotice";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
-import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -295,24 +289,11 @@ export function ChatMessagesContainer({
     () => revealKickoffMessages(allMessages),
     [allMessages],
   );
-  // The in-chat "progress in the sidebar" notice only applies to the old
-  // sidebar surface — hide it entirely when the task bar is on.
-  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   // The workspace-files card floats over the column's right side, so the
   // centred content slides left to make room for it.
   const areFilesOpen = useAreWorkspaceFileCardsOpen();
-  const isChatStreaming = status === "streaming" || status === "submitted";
-  const hasActiveTaskList =
-    !isTaskBarEnabled &&
-    shouldShowTaskListNotice({
-      isContextPanelEnabled,
-      isChatStreaming,
-      latestTaskList: getLatestTaskList(messages),
-    });
-
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -699,11 +680,6 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
-          {!readOnly && hasActiveTaskList && (
-            <div className="px-1">
-              <TaskListNotice />
-            </div>
-          )}
           {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"

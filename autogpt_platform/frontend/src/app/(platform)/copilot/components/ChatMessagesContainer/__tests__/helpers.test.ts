@@ -7,11 +7,9 @@ import {
   getMostRecentArtifact,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
-  shouldShowTaskListNotice,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import type { TodoItem } from "../../TaskProgressBar/helpers";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
@@ -334,65 +332,5 @@ describe("getMostRecentArtifact", () => {
     expect(getMostRecentArtifact(messages, { origin: "user-upload" })?.id).toBe(
       FILE_A,
     );
-  });
-});
-
-describe("shouldShowTaskListNotice", () => {
-  const activeTodos: TodoItem[] = [
-    { content: "Step 1", status: "in_progress" },
-    { content: "Step 2", status: "pending" },
-  ] as TodoItem[];
-  const completedTodos: TodoItem[] = [
-    { content: "Step 1", status: "completed" },
-  ] as TodoItem[];
-
-  it("returns true when the flag, streaming and an in-progress task list all line up", () => {
-    expect(
-      shouldShowTaskListNotice({
-        isContextPanelEnabled: true,
-        isChatStreaming: true,
-        latestTaskList: activeTodos,
-      }),
-    ).toBe(true);
-  });
-
-  it("returns false when the context panel is disabled", () => {
-    expect(
-      shouldShowTaskListNotice({
-        isContextPanelEnabled: false,
-        isChatStreaming: true,
-        latestTaskList: activeTodos,
-      }),
-    ).toBe(false);
-  });
-
-  it("returns false when the chat is not streaming", () => {
-    expect(
-      shouldShowTaskListNotice({
-        isContextPanelEnabled: true,
-        isChatStreaming: false,
-        latestTaskList: activeTodos,
-      }),
-    ).toBe(false);
-  });
-
-  it("returns false when there is no task list yet", () => {
-    expect(
-      shouldShowTaskListNotice({
-        isContextPanelEnabled: true,
-        isChatStreaming: true,
-        latestTaskList: null,
-      }),
-    ).toBe(false);
-  });
-
-  it("returns false when every todo is already completed", () => {
-    expect(
-      shouldShowTaskListNotice({
-        isContextPanelEnabled: true,
-        isChatStreaming: true,
-        latestTaskList: completedTodos,
-      }),
-    ).toBe(false);
   });
 });

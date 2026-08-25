@@ -244,10 +244,8 @@ export function MessagePartRenderer({
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
     case "tool-TodoWrite":
-      // Hidden inline — the chat shows a single persistent
-      // "Progress shown in the sidebar" pill at the bottom of the message
-      // list while any task is active. See `TaskListNotice` rendering in
-      // `ChatMessagesContainer`.
+      // Hidden inline — the task list surfaces through TaskProgressBar above
+      // the composer, not as a message part.
       return null;
     default:
       // Render a generic tool indicator for SDK built-in

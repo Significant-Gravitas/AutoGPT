@@ -93,6 +93,6 @@ describe("ContextPanel", () => {
   test("mobile: opens the sheet on the artifacts tab", async () => {
     render(<ContextPanel sessionId="session-1" mobile />);
     expect(await screen.findByRole("dialog")).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Artifacts" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Artifacts" })).toBeDefined();
   });
 });

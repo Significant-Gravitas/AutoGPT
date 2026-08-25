@@ -66,8 +66,9 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "platform"; credentialId: null }
   | { authProvider: "codex"; credentialId: string };
 
-/** Context panel tab. */
-export type ContextPanelTab = "progress" | "files" | "artifacts";
+/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
+ *  the docked artifacts library. */
+export type ContextPanelTab = "files" | "artifacts";
 
 const isClient = typeof window !== "undefined";
 
@@ -79,7 +80,9 @@ function getPersistedOpen(): boolean {
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
-  return saved === "progress" || saved === "artifacts" ? saved : "files";
+  // Anything else (including a "progress" tab persisted by the retired
+  // sidebar) falls back to the files card.
+  return saved === "artifacts" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -195,7 +198,6 @@ interface CopilotUIState {
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
-  openContextPanelForProgress: () => void;
   autoOpenArtifact: (ref: ArtifactRef) => void;
   showFilesTab: () => void;
 
@@ -477,22 +479,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         ...state.artifactPanel,
         isOpen: true,
         activeTab: "files",
-        activeArtifact: null,
-        history: [],
-      },
-    }));
-  },
-  openContextPanelForProgress: () => {
-    if (_autoOpenUserClosed) return;
-    if (isClient) {
-      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
-    }
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeTab: "progress",
         activeArtifact: null,
         history: [],
       },

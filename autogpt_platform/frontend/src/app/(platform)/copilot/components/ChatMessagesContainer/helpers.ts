@@ -2,22 +2,6 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import type { ArtifactRef } from "../../store";
-import type { TodoItem } from "../TaskProgressBar/helpers";
-
-export function shouldShowTaskListNotice({
-  isContextPanelEnabled,
-  isChatStreaming,
-  latestTaskList,
-}: {
-  isContextPanelEnabled: boolean;
-  isChatStreaming: boolean;
-  latestTaskList: TodoItem[] | null;
-}): boolean {
-  if (!isContextPanelEnabled || !isChatStreaming || !latestTaskList) {
-    return false;
-  }
-  return latestTaskList.some((t) => t.status !== "completed");
-}
 
 export type MessagePart = UIMessage<
   unknown,
@@ -25,9 +9,9 @@ export type MessagePart = UIMessage<
   UITools
 >["parts"][number];
 
-// Every assistant tool belongs to the new ToolChain. ToolResult supplies a
+// Every assistant tool renders inside the ToolChain. ToolResult supplies a
 // compact result view for known backend tools and a structured fallback for
-// SDK or future tools, so no tool can fall back to the legacy top-level UI.
+// SDK or future tools, so no tool ever renders as a bare top-level part.
 export function isChainableToolPart(part: MessagePart): boolean {
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }

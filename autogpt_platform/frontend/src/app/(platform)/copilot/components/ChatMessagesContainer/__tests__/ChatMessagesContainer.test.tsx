@@ -121,7 +121,6 @@ vi.mock("../helpers", () => ({
     }
     return { markerType: null };
   },
-  shouldShowTaskListNotice: () => false,
 }));
 
 vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
@@ -162,7 +161,7 @@ const baseProps = {
   onRetry: vi.fn(),
 };
 
-describe("ChatMessagesContainer — tool UI dispatch", () => {
+describe("ChatMessagesContainer — assistant rendering", () => {
   const messages = [
     {
       id: "assistant-tools",

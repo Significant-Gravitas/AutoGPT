@@ -64,7 +64,7 @@ describe("ContextPanelToggle", () => {
   test("shows a files toggle button when the right sidebar is closed", () => {
     render(<ContextPanelToggle sessionId={SESSION} />);
 
-    const filesButton = screen.getByLabelText("Open workspace panel");
+    const filesButton = screen.getByLabelText("Open workspace files");
     fireEvent.click(filesButton);
     expect(panelState().isOpen).toBe(true);
     expect(panelState().activeTab).toBe("files");
@@ -82,7 +82,7 @@ describe("ContextPanelToggle", () => {
     setPanel({ isOpen: true, activeTab: "artifacts" });
     render(<ContextPanelToggle sessionId={SESSION} />);
 
-    expect(screen.queryByLabelText("Open workspace panel")).toBeNull();
+    expect(screen.queryByLabelText("Open workspace files")).toBeNull();
     expect(screen.queryByLabelText("Hide workspace files")).toBeNull();
     expect(await screen.findByLabelText("Workspace files")).toBeDefined();
   });
@@ -98,7 +98,7 @@ describe("ContextPanelToggle", () => {
     setPanel({ activeArtifact: ARTIFACT });
     render(<ContextPanelToggle sessionId={null} />);
 
-    expect(screen.getByLabelText("Open workspace panel")).toBeDefined();
+    expect(screen.getByLabelText("Open workspace files")).toBeDefined();
   });
 
   test("sidebar toggle closes the artifact preview via closeArtifactPanel", () => {

@@ -134,7 +134,6 @@ vi.mock("../components/ChatMessagesContainer/helpers", () => ({
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
   parseSpecialMarkers: () => ({ markerType: null }),
-  shouldShowTaskListNotice: () => false,
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,

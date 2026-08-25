@@ -69,7 +69,7 @@ export function ContextPanelToggle({ sessionId }: Props) {
           size="icon"
           onClick={() => toggleContextPanelTab("files")}
           aria-label={
-            isFilesCardOpen ? "Hide workspace files" : "Open workspace panel"
+            isFilesCardOpen ? "Hide workspace files" : "Open workspace files"
           }
           aria-pressed={isFilesCardOpen}
           className={cn(buttonClass, isFilesCardOpen && "bg-zinc-200/70")}
