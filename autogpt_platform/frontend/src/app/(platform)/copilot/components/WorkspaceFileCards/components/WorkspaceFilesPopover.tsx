@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { cn } from "@/lib/utils";
-import { CheckListIcon } from "@hugeicons/core-free-icons";
+import { File02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Fragment, useState } from "react";
 import type { SessionFile } from "../../ContextPanel/components/FilesTab/useSessionFiles";
@@ -40,6 +40,71 @@ export function WorkspaceFilesPopover({
   iconClassName,
 }: Props) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  // The delete confirm renders as a modal dialog outside the popover tree —
+  // without the guards below the popover reads that interaction as "outside"
+  // and closes, unmounting the dialog mid-confirm.
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  return (
+    <div className={cn("flex shrink-0 items-start p-2", wrapperClassName)}>
+      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Workspace files"
+            // p-0: the atom's size="icon" is p-3, which on a size-8 trigger
+            // leaves an 8px content box and squeezes the glyph. shrink-0: the
+            // atom has no [&_svg]:shrink-0, so the icon would flex-shrink to
+            // fit regardless of its own size class.
+            className={cn(
+              "p-0",
+              triggerClassName ?? "size-9 rounded-xl",
+              isPopoverOpen && "bg-zinc-200/70 text-zinc-900",
+            )}
+          >
+            <Icon
+              icon={File02Icon}
+              className={cn("shrink-0", iconClassName ?? "!size-[1.15rem]")}
+            />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="w-80 rounded-3xl border-none bg-white/90 px-4 py-3 shadow-none backdrop-blur smooth-shadow-ring-sm"
+          onInteractOutside={(e) => {
+            if (isConfirmingDelete) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isConfirmingDelete) e.preventDefault();
+          }}
+        >
+          {/* Mounted only while the popover is open, so the file-list request
+              and the transcript scans wait for the click — as the floating
+              card's body does. */}
+          <WorkspaceFilesPopoverContent
+            sessionId={sessionId}
+            onFileOpened={() => setIsPopoverOpen(false)}
+            onConfirmingDeleteChange={setIsConfirmingDelete}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+interface ContentProps {
+  sessionId: string;
+  onFileOpened: () => void;
+  onConfirmingDeleteChange: (isConfirming: boolean) => void;
+}
+
+function WorkspaceFilesPopoverContent({
+  sessionId,
+  onFileOpened,
+  onConfirmingDeleteChange,
+}: ContentProps) {
   const {
     files,
     isLoading,
@@ -57,7 +122,22 @@ export function WorkspaceFilesPopover({
 
   function handleOpenFile(file: SessionFile) {
     handleOpen(file);
-    setIsPopoverOpen(false);
+    onFileOpened();
+  }
+
+  function handleRequestDelete(file: SessionFile) {
+    setPendingDelete(file);
+    onConfirmingDeleteChange(true);
+  }
+
+  function handleCancelDelete() {
+    setPendingDelete(null);
+    onConfirmingDeleteChange(false);
+  }
+
+  async function handleConfirm() {
+    await handleConfirmDelete();
+    onConfirmingDeleteChange(false);
   }
 
   // Mirrors the floating stack: each section only earns its space once it has
@@ -77,9 +157,9 @@ export function WorkspaceFilesPopover({
           pendingDelete={pendingDelete}
           onOpen={handleOpenFile}
           onDownload={handleDownload}
-          onRequestDelete={setPendingDelete}
-          onConfirmDelete={handleConfirmDelete}
-          onCancelDelete={() => setPendingDelete(null)}
+          onRequestDelete={handleRequestDelete}
+          onConfirmDelete={handleConfirm}
+          onCancelDelete={handleCancelDelete}
           onDownloadAll={handleDownloadAll}
         />
       ),
@@ -104,60 +184,20 @@ export function WorkspaceFilesPopover({
     },
   ].filter((section) => section.node);
 
-  return (
-    <div className={cn("flex shrink-0 items-start p-2", wrapperClassName)}>
-      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Workspace files"
-            // p-0: the atom's size="icon" is p-3, which on a size-8 trigger
-            // leaves an 8px content box and squeezes the glyph. shrink-0: the
-            // atom has no [&_svg]:shrink-0, so the icon would flex-shrink to
-            // fit regardless of its own size class.
-            className={cn(
-              "p-0",
-              triggerClassName ?? "size-9 rounded-xl",
-              isPopoverOpen && "bg-zinc-200/70 text-zinc-900",
-            )}
-          >
-            <Icon
-              icon={CheckListIcon}
-              className={cn("shrink-0", iconClassName ?? "!size-[1.15rem]")}
-            />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          className="w-80 rounded-3xl border-none bg-white/90 px-4 py-3 shadow-none backdrop-blur smooth-shadow-ring-sm"
-          // The delete confirm renders as a modal dialog outside the popover
-          // tree — without these guards the popover reads that interaction as
-          // "outside" and closes, unmounting the dialog mid-confirm.
-          onInteractOutside={(e) => {
-            if (pendingDelete) e.preventDefault();
-          }}
-          onEscapeKeyDown={(e) => {
-            if (pendingDelete) e.preventDefault();
-          }}
-        >
-          {sections.length === 0 ? (
-            <p className="py-2 text-center text-sm text-zinc-400">
-              Nothing here yet.
-            </p>
-          ) : (
-            // One popover can't float three cards, so the stack's card breaks
-            // become hairlines here.
-            sections.map((section, index) => (
-              <Fragment key={section.key}>
-                {index > 0 && <div className="my-3 border-t border-zinc-100" />}
-                {section.node}
-              </Fragment>
-            ))
-          )}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
+  if (sections.length === 0) {
+    return (
+      <p className="py-2 text-center text-sm text-zinc-400">
+        Nothing here yet.
+      </p>
+    );
+  }
+
+  // One popover can't float three cards, so the stack's card breaks become
+  // hairlines here.
+  return sections.map((section, index) => (
+    <Fragment key={section.key}>
+      {index > 0 && <div className="my-3 border-t border-zinc-100" />}
+      {section.node}
+    </Fragment>
+  ));
 }
