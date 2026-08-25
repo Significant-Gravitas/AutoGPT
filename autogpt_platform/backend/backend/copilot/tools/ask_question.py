@@ -152,16 +152,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         else f"question-{idx}"
     )
 
-    raw_options = item.get("options")
-    options = (
-        [
-            stripped
-            for o in raw_options
-            if o is not None and (stripped := str(o).strip())
-        ]
-        if isinstance(raw_options, list)
-        else []
-    )
+    options = _parse_options(item.get("options"))
 
     return ClarifyingQuestion(
         question=text.strip(),
@@ -169,3 +160,14 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         example=", ".join(options) if options else None,
         options=options,
     )
+
+
+def _parse_options(raw: Any) -> list[str]:
+    """Strip the option strings and drop repeats, keeping the model's order.
+
+    Repeats would otherwise reach `example` as "Yes, Yes".
+    """
+    if not isinstance(raw, list):
+        return []
+    stripped = [s for o in raw if o is not None and (s := str(o).strip())]
+    return list(dict.fromkeys(stripped))
