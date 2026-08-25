@@ -71,6 +71,13 @@ describe("normalizeClarifyingQuestions", () => {
     expect(result[1].options).toBeUndefined();
     expect(result[2].options).toBeUndefined();
   });
+
+  it("trims padded options and drops duplicates", () => {
+    const result = normalizeClarifyingQuestions([
+      { question: "Q1", keyword: "k1", options: [" Email ", "Slack", "Email"] },
+    ]);
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
 });
 
 describe("extractClarifyingQuestions", () => {
@@ -112,6 +119,33 @@ describe("extractClarifyingQuestions", () => {
     });
     expect(result[0].options).toEqual(["Email", "Slack"]);
     expect(result[0].example).toBe("Email, Slack");
+  });
+
+  it("keeps same-worded questions apart when recovering from the input", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "source",
+            options: ["Email", "Slack"],
+          },
+          {
+            question: "Which channel?",
+            keyword: "destination",
+            options: ["Notion", "Drive"],
+          },
+        ],
+      },
+      output: {
+        questions: [
+          { question: "Which channel?", keyword: "source" },
+          { question: "Which channel?", keyword: "destination" },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toEqual(["Notion", "Drive"]);
   });
 
   it("leaves options unset when neither side carries them", () => {

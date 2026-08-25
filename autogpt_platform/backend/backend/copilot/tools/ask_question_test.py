@@ -61,6 +61,26 @@ async def test_single_question_with_options(
 
 
 @pytest.mark.asyncio
+async def test_options_are_stripped(tool: AskQuestionTool, session: ChatSession):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {
+                "question": "Which channel?",
+                "options": ["  Email  ", "Slack", "   "],
+                "keyword": "channel",
+            }
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    q = result.questions[0]
+    assert q.options == ["Email", "Slack"]
+    assert q.example == "Email, Slack"
+
+
+@pytest.mark.asyncio
 async def test_multiple_questions(tool: AskQuestionTool, session: ChatSession):
     result = await tool._execute(
         user_id=None,

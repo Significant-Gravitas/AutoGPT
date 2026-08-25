@@ -154,7 +154,11 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
 
     raw_options = item.get("options")
     options = (
-        [str(o) for o in raw_options if o is not None and str(o).strip()]
+        [
+            stripped
+            for o in raw_options
+            if o is not None and (stripped := str(o).strip())
+        ]
         if isinstance(raw_options, list)
         else []
     )

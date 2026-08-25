@@ -1,13 +1,15 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import { QuestionOptionList } from "./QuestionOptionList";
 
 interface Props {
   question: ClarifyingQuestion;
   value: string;
+  labelId: string;
   autoFocus: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -20,15 +22,15 @@ interface Props {
 export function QuestionAnswerField({
   question,
   value,
+  labelId,
   autoFocus,
   onChange,
   onSubmit,
 }: Props) {
   const options = question.options ?? [];
-  const [typing, setTyping] = useState(
-    () =>
-      options.length > 0 && value.trim().length > 0 && !options.includes(value),
-  );
+  const isCustom = value.trim().length > 0 && !options.includes(value.trim());
+  const [typing, setTyping] = useState(() => options.length > 0 && isCustom);
+  const [cameBackToOptions, setCameBackToOptions] = useState(false);
 
   if (options.length === 0 || typing) {
     return (
@@ -36,6 +38,7 @@ export function QuestionAnswerField({
         <textarea
           required
           rows={3}
+          aria-labelledby={labelId}
           autoFocus={autoFocus || typing}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -45,15 +48,25 @@ export function QuestionAnswerField({
             e.preventDefault();
             onSubmit();
           }}
+          // The example is the options joined, so replaying it to someone who
+          // just declined those options would only be noise.
           placeholder={
-            question.example ? `e.g. ${question.example}` : "Type your answer"
+            options.length === 0 && question.example
+              ? `e.g. ${question.example}`
+              : "Type your answer"
           }
           className="resize-none rounded-2xl bg-zinc-50 px-3 py-2 text-sm leading-relaxed text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
         />
         {options.length > 0 && (
           <button
             type="button"
-            onClick={() => setTyping(false)}
+            onClick={() => {
+              // Drop the free text, or the pager would happily submit a value
+              // the option list gives no sign of having selected.
+              if (isCustom) onChange("");
+              setCameBackToOptions(true);
+              setTyping(false);
+            }}
             className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
           >
             Choose from options instead
@@ -64,34 +77,19 @@ export function QuestionAnswerField({
   }
 
   return (
-    <div className="flex flex-col gap-1.5" role="radiogroup">
-      {options.map((option) => {
-        const selected = value === option;
-        return (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option)}
-            className={
-              "flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-left text-sm leading-relaxed transition-all " +
-              (selected
-                ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
-                : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100")
-            }
-          >
-            <span>{option}</span>
-            {selected && (
-              <Icon icon={Tick02Icon} size={14} className="shrink-0" />
-            )}
-          </button>
-        );
-      })}
+    <div className="flex flex-col gap-1.5">
+      <QuestionOptionList
+        options={options}
+        value={value}
+        labelId={labelId}
+        autoFocus={cameBackToOptions}
+        onChange={onChange}
+      />
       <button
         type="button"
         onClick={() => {
-          if (options.includes(value)) onChange("");
+          if (options.includes(value.trim())) onChange("");
+          setCameBackToOptions(false);
           setTyping(true);
         }}
         className="flex items-center gap-2 rounded-2xl border border-dashed border-zinc-200 px-3 py-2 text-left text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"

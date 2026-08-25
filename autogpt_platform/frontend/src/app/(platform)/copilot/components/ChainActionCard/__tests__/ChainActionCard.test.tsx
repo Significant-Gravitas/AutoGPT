@@ -576,6 +576,107 @@ describe("ChainActionCard", () => {
       expect(screen.getByRole("radio", { name: "Europe" })).toBeDefined();
     });
 
+    it("opens in free text when the answer matches no option", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Antarctica" },
+          }),
+        ],
+      });
+
+      expect(screen.getByDisplayValue("Antarctica")).toBeDefined();
+    });
+
+    it("clears a custom answer when going back to the options", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Antarctica" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.click(screen.getByText("Choose from options instead"));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "");
+    });
+
+    it("names the option group after the question", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(
+        screen.getByRole("radiogroup", { name: "Which region?" }),
+      ).toBeDefined();
+    });
+
+    it("moves and selects between options with the arrow keys", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowDown",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+    });
+
+    it("keeps only the active option in the tab order", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Americas" },
+          }),
+        ],
+      });
+
+      expect(
+        screen
+          .getByRole("radio", { name: "Americas" })
+          .getAttribute("tabindex"),
+      ).toBe("0");
+      expect(
+        screen.getByRole("radio", { name: "Europe" }).getAttribute("tabindex"),
+      ).toBe("-1");
+    });
+
     it("keeps the questions card sendable when an unready sibling exists", () => {
       // An unconnected MCP row must not freeze the questions footer.
       const { onProceed } = renderCard({

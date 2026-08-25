@@ -8,7 +8,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { m } from "framer-motion";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 
@@ -23,6 +23,7 @@ interface Props {
  *  step, drafts every answer into the chat input. */
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
+  const sectionId = useId();
   const questions = requests.flatMap((request) =>
     request.questions.map((question) => ({ request, question })),
   );
@@ -30,6 +31,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
 
   const current = Math.min(step, questions.length - 1);
   const { request, question } = questions[current];
+  const labelId = `${sectionId}-${question.keyword}`;
   const answered = (request.answers[question.keyword] ?? "").trim().length > 0;
   const isLast = current === questions.length - 1;
   const actionEnabled = isLast ? isReady : answered;
@@ -67,10 +69,13 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
         className="flex flex-col gap-1.5 px-4 py-3"
       >
-        <span className="text-sm text-zinc-700">{question.question}</span>
+        <span id={labelId} className="text-sm text-zinc-700">
+          {question.question}
+        </span>
         <QuestionAnswerField
           question={question}
           value={request.answers[question.keyword] ?? ""}
+          labelId={labelId}
           autoFocus={current > 0}
           onChange={(value) => request.onAnswer(question.keyword, value)}
           onSubmit={handleAction}
