@@ -22,11 +22,12 @@ import {
   Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
+import { creditsToUsdLabel } from "@/lib/credits";
 import Image from "next/image";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
-import { CreditsMeter } from "./components/CreditsMeter";
+import { SpendMeter } from "./components/SpendMeter";
 import {
   getNeedsSetupCount,
   getScheduleCountLabel,
@@ -141,7 +142,7 @@ export function ExpertTeamCard({
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
               <Text variant="small" className="text-zinc-500">
-                Credits this week
+                Spend this week
               </Text>
               <Text
                 variant="small"
@@ -149,11 +150,11 @@ export function ExpertTeamCard({
                 className="tabular-nums text-zinc-500"
               >
                 {weeklySpend
-                  ? `${weeklySpend.spent} / ${weeklySpend.budget}`
+                  ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
                   : "No budget"}
               </Text>
             </div>
-            <CreditsMeter
+            <SpendMeter
               spent={weeklySpend?.spent ?? 0}
               budget={weeklySpend?.budget ?? 1}
               muted={!weeklySpend}
