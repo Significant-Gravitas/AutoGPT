@@ -12,6 +12,12 @@ from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolRespons
 
 logger = logging.getLogger(__name__)
 
+# The model can be steered by untrusted page content (agent_browser, MCP tools),
+# and every option is replayed into context on each subsequent turn.
+MAX_QUESTIONS = 10
+MAX_OPTIONS = 25
+MAX_OPTION_LENGTH = 200
+
 
 class AskQuestionTool(BaseTool):
     """Ask the user one or more clarifying questions and wait for answers.
@@ -52,9 +58,11 @@ class AskQuestionTool(BaseTool):
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Options for this question, rendered as "
-                                    "tappable choices; the user can always "
-                                    "type a custom answer instead."
+                                    "Options for this question, offered to the "
+                                    "user as choices; they can always type a "
+                                    "custom answer instead. Exactly one option "
+                                    "is chosen, so split a question that needs "
+                                    "several answers into separate questions."
                                 ),
                             },
                             "keyword": {
@@ -127,7 +135,9 @@ async def _mark_pending(session: ChatSession, text: str) -> None:
 def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
     """Parse and validate raw question dicts into ClarifyingQuestion objects."""
     return [
-        q for idx, item in enumerate(raw) if (q := _parse_one(item, idx)) is not None
+        q
+        for idx, item in enumerate(raw[:MAX_QUESTIONS])
+        if (q := _parse_one(item, idx)) is not None
     ]
 
 
@@ -165,9 +175,13 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
 def _parse_options(raw: Any) -> list[str]:
     """Strip the option strings and drop repeats, keeping the model's order.
 
-    Repeats would otherwise reach `example` as "Yes, Yes".
+    Repeats would otherwise reach `example` as "Yes, Yes". Non-strings are
+    dropped rather than coerced: the schema declares strings, and `str()` would
+    surface a Python repr like "['a']" as a tappable choice. Capped because the
+    options are LLM-controlled and get replayed into context every turn.
     """
     if not isinstance(raw, list):
         return []
-    stripped = [s for o in raw if o is not None and (s := str(o).strip())]
-    return list(dict.fromkeys(stripped))
+    stripped = [o.strip()[:MAX_OPTION_LENGTH] for o in raw if isinstance(o, str)]
+    unique = dict.fromkeys(s for s in stripped if s)
+    return list(unique)[:MAX_OPTIONS]

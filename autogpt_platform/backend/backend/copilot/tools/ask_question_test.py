@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession, clear_pending_question
-from backend.copilot.tools.ask_question import AskQuestionTool
+from backend.copilot.tools.ask_question import (
+    MAX_OPTION_LENGTH,
+    MAX_OPTIONS,
+    MAX_QUESTIONS,
+    AskQuestionTool,
+)
 from backend.copilot.tools.models import ClarificationNeededResponse
 
 
@@ -193,6 +198,53 @@ async def test_options_filters_none_and_empty(
 
     assert isinstance(result, ClarificationNeededResponse)
     assert result.questions[0].example == "Email, Slack"
+
+
+@pytest.mark.asyncio
+async def test_options_drops_non_strings_instead_of_coercing(
+    tool: AskQuestionTool, session: ChatSession
+):
+    # str() would surface a Python repr like "['a']" as a tappable choice, and
+    # the frontend's recovery path only keeps strings anyway.
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": "Pick", "options": [None, 42, "Slack", ["a"]]}],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.questions[0].options == ["Slack"]
+
+
+@pytest.mark.asyncio
+async def test_options_are_capped_in_count_and_length(
+    tool: AskQuestionTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {"question": "Pick", "options": [f"opt-{i}" for i in range(60)]},
+            {"question": "Pick", "options": ["x" * 500]},
+        ],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert len(result.questions[0].options) == MAX_OPTIONS
+    assert result.questions[0].options[0] == "opt-0"
+    assert result.questions[1].options == ["x" * MAX_OPTION_LENGTH]
+
+
+@pytest.mark.asyncio
+async def test_questions_are_capped(tool: AskQuestionTool, session: ChatSession):
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": f"Q{i}"} for i in range(40)],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert len(result.questions) == MAX_QUESTIONS
 
 
 @pytest.mark.asyncio

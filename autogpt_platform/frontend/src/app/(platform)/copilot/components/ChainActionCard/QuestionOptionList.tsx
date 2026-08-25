@@ -5,11 +5,14 @@ import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef } from "react";
 
 interface Props {
+  /** Expected trimmed and deduped — `toOptions` establishes that invariant,
+   *  and the option strings double as React keys and selection identities. */
   options: string[];
   value: string;
   labelId: string;
-  autoFocus: boolean;
+  focusActiveOption: boolean;
   onChange: (value: string) => void;
+  onSubmit: () => void;
 }
 
 /** The options for one question as a real radiogroup: a single stop in the tab
@@ -19,16 +22,17 @@ export function QuestionOptionList({
   options,
   value,
   labelId,
-  autoFocus,
+  focusActiveOption,
   onChange,
+  onSubmit,
 }: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const selected = options.indexOf(value.trim());
   const active = selected === -1 ? 0 : selected;
 
   useEffect(() => {
-    if (autoFocus) refs.current[active]?.focus();
-  }, [autoFocus, active]);
+    if (focusActiveOption) refs.current[active]?.focus();
+  }, [focusActiveOption, active]);
 
   function moveTo(index: number) {
     onChange(options[index]);
@@ -36,6 +40,16 @@ export function QuestionOptionList({
   }
 
   function handleKeyDown(event: React.KeyboardEvent, index: number) {
+    // Enter would otherwise re-click the focused option and leave the user
+    // tabbing past the pager to reach send. Selecting first means tabbing in
+    // and hitting Enter can't submit an option nobody chose — and arrowing or
+    // clicking already selects, so those reach the pager on the first Enter.
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (options[index] === value.trim()) onSubmit();
+      else onChange(options[index]);
+      return;
+    }
     const step =
       event.key === "ArrowDown" || event.key === "ArrowRight"
         ? 1
@@ -51,6 +65,7 @@ export function QuestionOptionList({
     <div
       role="radiogroup"
       aria-labelledby={labelId}
+      aria-required="true"
       className="flex flex-col gap-1.5"
     >
       {options.map((option, index) => {

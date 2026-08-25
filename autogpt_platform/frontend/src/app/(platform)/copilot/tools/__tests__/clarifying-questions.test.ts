@@ -148,6 +148,44 @@ describe("extractClarifyingQuestions", () => {
     expect(result[1].options).toEqual(["Notion", "Drive"]);
   });
 
+  it("keeps a keyword/question pair that a space separator would collide", () => {
+    // "a" + "b c" and "a b" + "c" join to the same string under a space, so
+    // the recovery key has to use a separator neither half can contain.
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          { question: "b c", keyword: "a", options: ["Email", "Slack"] },
+          { question: "c", keyword: "a b", options: ["Notion", "Drive"] },
+        ],
+      },
+      output: {
+        questions: [
+          { question: "b c", keyword: "a" },
+          { question: "c", keyword: "a b" },
+        ],
+      },
+    });
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+    expect(result[1].options).toEqual(["Notion", "Drive"]);
+  });
+
+  it("falls back to the input while the call is still in flight", () => {
+    const result = extractClarifyingQuestions({
+      input: {
+        questions: [
+          {
+            question: "Which channel?",
+            keyword: "channel",
+            options: ["Email", "Slack"],
+          },
+        ],
+      },
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].question).toBe("Which channel?");
+    expect(result[0].options).toEqual(["Email", "Slack"]);
+  });
+
   it("leaves options unset when neither side carries them", () => {
     const result = extractClarifyingQuestions({
       output: {

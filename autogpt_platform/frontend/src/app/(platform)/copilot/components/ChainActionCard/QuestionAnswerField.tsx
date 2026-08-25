@@ -17,8 +17,9 @@ interface Props {
 
 /** The answer input for one question: options render as tappable rows with a
  *  trailing "Type something…" escape hatch into free text; questions without
- *  options go straight to the textarea. Mounted per-question (parent keys on
- *  the keyword), so the typing toggle resets naturally between questions. */
+ *  options go straight to the textarea. Mounted per-question — the parent keys
+ *  this component on the question's pager id, so the typing toggle resets
+ *  between questions instead of leaking across them. */
 export function QuestionAnswerField({
   question,
   value,
@@ -45,7 +46,7 @@ export function QuestionAnswerField({
           autoFocus={autoFocus || toggled}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          // Enter still advances the pager; Shift+Enter is the newline.
+          // Enter advances the pager; Shift+Enter is the newline.
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.shiftKey) return;
             e.preventDefault();
@@ -70,7 +71,7 @@ export function QuestionAnswerField({
               setToggled(true);
               setTyping(false);
             }}
-            className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+            className="self-start rounded-full px-2 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
           >
             Choose from options instead
           </button>
@@ -85,8 +86,9 @@ export function QuestionAnswerField({
         options={options}
         value={value}
         labelId={labelId}
-        autoFocus={autoFocus || toggled}
+        focusActiveOption={autoFocus || toggled}
         onChange={onChange}
+        onSubmit={onSubmit}
       />
       <button
         type="button"

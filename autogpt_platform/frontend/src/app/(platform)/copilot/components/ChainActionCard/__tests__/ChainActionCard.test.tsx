@@ -775,6 +775,251 @@ describe("ChainActionCard", () => {
       expect(screen.getByRole("radio", { name: "Notion" })).toBeDefined();
     });
 
+    it("moves focus onto the option the arrow keys select", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "Europe" },
+          }),
+        ],
+      });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowDown",
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: "Americas" }),
+      );
+    });
+
+    it("selects backwards with ArrowUp and ArrowLeft", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Asia" },
+      });
+      renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowUp",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Americas");
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowLeft",
+      });
+      expect(request.onAnswer).toHaveBeenLastCalledWith("region", "Americas");
+    });
+
+    it("wraps around at both ends of the option list", () => {
+      // Without the modulo, ArrowUp on the first option reads options[-1] and
+      // answers the question with undefined.
+      const first = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      renderCard({ questions: [first] });
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "ArrowUp",
+      });
+      expect(first.onAnswer).toHaveBeenCalledWith("region", "Asia");
+
+      cleanup();
+
+      const last = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas", "Asia"],
+          },
+        ],
+        answers: { region: "Asia" },
+      });
+      renderCard({ questions: [last] });
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Asia" }), {
+        key: "ArrowDown",
+      });
+      expect(last.onAnswer).toHaveBeenCalledWith("region", "Europe");
+    });
+
+    it("submits from the option list on Enter once an option is selected", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+        answers: { region: "Europe" },
+      });
+      const { onProceed } = renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "Enter",
+      });
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("selects rather than submits on Enter when nothing is chosen yet", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed } = renderCard({ questions: [request] });
+
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Europe" }), {
+        key: "Enter",
+      });
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+      expect(onProceed).not.toHaveBeenCalled();
+    });
+
+    it("matches the selected option against the trimmed answer", () => {
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                options: ["Europe", "Americas"],
+              },
+            ],
+            answers: { region: "  Europe  " },
+          }),
+        ],
+      });
+
+      expect(
+        screen
+          .getByRole("radio", { name: "Europe" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+
+    it("does not replay the declined options as the free-text placeholder", () => {
+      // The backend sets example to the joined options, so echoing it back to
+      // someone who just left the option list would be pure noise.
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which region?",
+                keyword: "region",
+                example: "Europe, Americas",
+                options: ["Europe", "Americas"],
+              },
+            ],
+          }),
+        ],
+      });
+
+      fireEvent.click(screen.getByText("Type something…"));
+      expect(screen.getByPlaceholderText("Type your answer")).toBeDefined();
+      expect(screen.queryByPlaceholderText("e.g. Europe, Americas")).toBeNull();
+    });
+
+    it("gates the send button on an option actually being picked", () => {
+      const request = questionRequest({
+        questions: [
+          {
+            question: "Which region?",
+            keyword: "region",
+            options: ["Europe", "Americas"],
+          },
+        ],
+      });
+      const { onProceed, rerender } = renderCard({ questions: [request] });
+
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Add answers to message",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+
+      fireEvent.click(screen.getByRole("radio", { name: "Europe" }));
+      expect(request.onAnswer).toHaveBeenCalledWith("region", "Europe");
+
+      rerender(
+        <ChainActionCard
+          connectors={[]}
+          mcp={[]}
+          inputs={[]}
+          questions={[{ ...request, answers: { region: "Europe" } }]}
+          isReady
+          onProceed={onProceed}
+        />,
+      );
+
+      const send = screen.getByRole("button", {
+        name: "Add answers to message",
+      }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+      fireEvent.click(send);
+      expect(onProceed).toHaveBeenCalledOnce();
+    });
+
+    it("keeps two same-keyword questions on their own cards", () => {
+      // Keywords are unique only within a request, so the pager keys on
+      // position — sharing an id would stop the field remounting, leaving the
+      // second question's options blank while the first one's answer submits.
+      renderCard({
+        questions: [
+          questionRequest({
+            questions: [
+              {
+                question: "Which source channel?",
+                keyword: "channel",
+                options: ["Email", "Slack"],
+              },
+              {
+                question: "Which destination channel?",
+                keyword: "channel",
+                options: ["Notion", "Drive"],
+              },
+            ],
+            answers: { channel: "Email" },
+          }),
+        ],
+      });
+
+      expect(screen.getByRole("radio", { name: "Email" })).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+
+      // Remounted: "Email" matches neither option here, so the field opens in
+      // free text with the stray value visible instead of silently hiding it.
+      expect(screen.getByDisplayValue("Email")).toBeDefined();
+      expect(screen.queryByRole("radio", { name: "Notion" })).toBeNull();
+    });
+
     it("keeps the questions card sendable when an unready sibling exists", () => {
       // An unconnected MCP row must not freeze the questions footer.
       const { onProceed } = renderCard({

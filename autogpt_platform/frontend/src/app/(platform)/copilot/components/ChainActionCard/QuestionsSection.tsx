@@ -24,15 +24,14 @@ interface Props {
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
   const sectionId = useId();
-  // Keywords are only unique within a request, so anything identifying a
-  // question across the whole pager has to carry the request id too.
-  const questions = requests.flatMap((request) =>
-    request.questions.map((question) => ({
-      request,
-      question,
-      id: `${request.id}-${question.keyword}`,
-    })),
-  );
+  // Keyed by position, not keyword: keywords are unique only within a request,
+  // and a duplicate would collapse two questions onto one id — the field would
+  // never remount and the second question would show the first one's answer.
+  const questions = requests
+    .flatMap((request) =>
+      request.questions.map((question) => ({ request, question })),
+    )
+    .map((entry, index) => ({ ...entry, id: `${entry.request.id}-${index}` }));
   if (questions.length === 0) return null;
 
   const current = Math.min(step, questions.length - 1);
@@ -79,6 +78,10 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           {question.question}
         </span>
         <QuestionAnswerField
+          // The field's typing toggle must reset per question; keying it here
+          // rather than only on the wrapper keeps that contract local to the
+          // component that owns the state.
+          key={id}
           question={question}
           value={request.answers[question.keyword] ?? ""}
           labelId={labelId}
