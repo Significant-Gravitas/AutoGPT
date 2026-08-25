@@ -2,6 +2,11 @@
   "name": "@autogpt/embedded-chat",
   "version": "0.1.0",
   "description": "White-label AutoGPT chat component for partner applications",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Significant-Gravitas/autogpt-embedded-chat.git",
+    "directory": "packages/embed-react"
+  },
   "type": "module",
   "files": [
     "dist/AutoGPTEmbeddedChat.d.ts",
@@ -34,12 +39,12 @@
     "@testing-library/user-event": "14.6.1",
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",
-    "@vitejs/plugin-react": "5.1.2",
+    "@vitejs/plugin-react": "6.1.0",
     "happy-dom": "20.8.9",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "typescript": "5.9.3",
-    "vite": "7.2.2",
+    "vite": "8.2.2",
     "vitest": "4.1.0"
   }
 }

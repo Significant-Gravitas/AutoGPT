@@ -11,5 +11,11 @@
   "packageManager": "pnpm@10.20.0",
   "devDependencies": {
     "prettier": "3.6.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.1",
+      "shell-quote": "1.9.0"
+    }
   }
 }
