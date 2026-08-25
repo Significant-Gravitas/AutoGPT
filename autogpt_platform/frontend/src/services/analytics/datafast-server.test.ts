@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { after } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetConfigErrorReportingForTests,
   scheduleAccountCreatedGoal,
   wasAccountCreated,
 } from "./datafast-server";
@@ -16,6 +17,9 @@ const VISITOR_ID = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd";
 describe("DataFast server-side account creation tracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Misconfiguration is reported once per server instance; give each test a
+    // clean instance so the assertions stay independent of test order.
+    resetConfigErrorReportingForTests();
     vi.stubEnv("DATAFAST_API_KEY", "df_test");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
     vi.mocked(cookies).mockResolvedValue({
@@ -54,9 +58,11 @@ describe("DataFast server-side account creation tracking", () => {
           Authorization: "Bearer df_test",
           "Content-Type": "application/json",
         },
+        // The goal name has to match the "Create Account" step of the DataFast
+        // "Site to Paid" funnel; any other name drops out of the funnel.
         body: JSON.stringify({
           datafast_visitor_id: VISITOR_ID,
-          name: "signup",
+          name: "signup_completed",
           metadata: { method: "email" },
         }),
       }),
@@ -95,10 +101,12 @@ describe("DataFast server-side account creation tracking", () => {
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("reports a missing website API key in cloud", async () => {
+  it("reports a missing website API key in cloud once per server instance", async () => {
     vi.stubEnv("DATAFAST_API_KEY", "");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
 
+    await scheduleAccountCreatedGoal("email");
+    await scheduleAccountCreatedGoal("google");
     await scheduleAccountCreatedGoal("email");
 
     expect(after).not.toHaveBeenCalled();
