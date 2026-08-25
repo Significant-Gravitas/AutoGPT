@@ -18,6 +18,11 @@ import {
   type SessionView,
   type SyncMapping,
 } from "./database.js";
+import {
+  createDemoAccessGate,
+  createDemoAccessRateLimiter,
+  DEMO_ACCESS_TTL_SECONDS,
+} from "./demo-access.js";
 
 const port = Number(process.env.PORT ?? "8788");
 const host = process.env.HOST ?? "127.0.0.1";
@@ -30,14 +35,76 @@ const databasePath =
   process.env.DATABASE_PATH ?? resolve(process.cwd(), "data/partner.sqlite");
 const assertionAudience = "autogpt-partner-exchange";
 const sessionCookie = "fd_multi_session";
+const demoAccessCookie = "partner_demo_access";
+const publicDemoMode = process.env.DEMO_PUBLIC_MODE === "true";
+const demoAccessGate = createDemoAccessGate(process.env.DEMO_ACCESS_CODE, {
+  required: publicDemoMode,
+});
+const demoAccessRateLimiter = createDemoAccessRateLimiter();
+const secureDemoAccessCookie = process.env.DEMO_ACCESS_COOKIE_SECURE === "true";
+if (publicDemoMode && !secureDemoAccessCookie) {
+  throw new Error("DEMO_ACCESS_COOKIE_SECURE must be true in public demo mode");
+}
 
 const store = new PartnerDatabase(databasePath);
 const assertionIssuer = await createPartnerAssertionIssuer(
   publicOrigin,
   assertionAudience,
 );
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, trustProxy: publicDemoMode ? 1 : false });
 await app.register(cookie);
+app.addHook("preHandler", async (request, reply) => {
+  const requestPath = request.url.split("?", 1)[0];
+  if (
+    !demoAccessGate.enabled ||
+    !requestPath.startsWith("/api/") ||
+    requestPath === "/api/demo-access"
+  ) {
+    return;
+  }
+  if (demoAccessGate.acceptsCookie(request.cookies[demoAccessCookie])) return;
+  return reply.code(401).send({ error: "Demo access required" });
+});
+
+app.get("/api/demo-access", async (request, reply) => {
+  reply.header("cache-control", "no-store");
+  return {
+    required: demoAccessGate.enabled,
+    authorized:
+      !demoAccessGate.enabled ||
+      demoAccessGate.acceptsCookie(request.cookies[demoAccessCookie]),
+  };
+});
+
+app.post<{ Body: { code?: string } }>(
+  "/api/demo-access",
+  async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (!demoAccessGate.enabled) return reply.code(204).send();
+    const attempt = demoAccessRateLimiter.consume(request.ip);
+    if (!attempt.allowed) {
+      reply.header("retry-after", String(attempt.retryAfterSeconds));
+      return reply
+        .code(429)
+        .send({ error: "Too many demo access attempts. Try again later." });
+    }
+    if (
+      typeof request.body?.code !== "string" ||
+      !demoAccessGate.acceptsCode(request.body.code)
+    ) {
+      return reply.code(401).send({ error: "Invalid demo access code" });
+    }
+    demoAccessRateLimiter.reset(request.ip);
+    reply.setCookie(demoAccessCookie, demoAccessGate.cookieValue(), {
+      httpOnly: true,
+      maxAge: DEMO_ACCESS_TTL_SECONDS,
+      path: "/",
+      sameSite: "strict",
+      secure: secureDemoAccessCookie,
+    });
+    return reply.code(204).send();
+  },
+);
 
 app.get("/.well-known/jwks.json", async () => assertionIssuer.jwks);
 app.get("/api/directory", async () => ({ users: store.directory() }));
@@ -53,8 +120,8 @@ app.post<{ Body: { userID?: string } }>(
     reply.setCookie(sessionCookie, sessionID, {
       httpOnly: true,
       path: "/",
-      sameSite: "lax",
-      secure: false,
+      sameSite: "strict",
+      secure: secureDemoAccessCookie,
     });
     return store.session(sessionID);
   },

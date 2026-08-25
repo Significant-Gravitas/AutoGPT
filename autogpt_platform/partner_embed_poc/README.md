@@ -20,6 +20,22 @@ docker compose \
 
 The copy lets Claude refresh OAuth without modifying the desktop credential file. It must never be committed. A production deployment would use managed organization credentials, budgets, metering, and rotation instead of a personal subscription.
 
+For an explicitly shared demo, set a high-entropy access code and include the fail-closed public profile. It refuses to start without the code or secure cookies, binds both shareable hosts to loopback, rate-limits unlock attempts, and exchanges the code for an eight-hour HTTP-only cookie with a server-verified expiry:
+
+```bash
+export PARTNER_DEMO_ACCESS_CODE="replace-with-at-least-16-random-characters"
+
+docker compose \
+  -f docker-compose.yml \
+  -f partner_embed_poc/docker-compose.poc.yml \
+  -f partner_embed_poc/docker-compose.isolation.yml \
+  -f partner_embed_poc/docker-compose.public-demo.yml \
+  up -d --build
+
+sudo tailscale funnel --bg --https=8443 http://127.0.0.1:8788
+sudo tailscale funnel --bg --https=10000 http://127.0.0.1:8789
+```
+
 Open <http://127.0.0.1:8787> for the minimal React host, sign in as the mock Forwarding Digital user, and send a message to the Forwarding Assistant.
 
 Open <http://127.0.0.1:8788> for the full multi-tenant partner application. It has partner-owned users, organizations, memberships, active-tenant switching, a persistent SQLite sync ledger, and a view of the JIT-provisioned AutoGPT IDs.
@@ -28,7 +44,7 @@ Open <http://127.0.0.1:8789> for the separate Angular 22 host. It uses the publi
 
 The first build compiles the full AutoGPT platform and can take several minutes. Only these loopback ports are published; the mock MCP service is Docker-internal:
 
-The mock user picker is not authentication. Do not publish these hosts to a LAN or the internet. An explicit temporary LAN override for phone testing assumes every client on that network is trusted and must be removed after testing; production requires the partner's real authentication, TLS, secure cookies, rate limits, and budget controls.
+The mock user picker is not authentication. Only the full React host on 8788 and Angular host on 8789 support the shared-demo gate; never publish the minimal 8787 host. The gate only reduces exposure for a temporary synthetic-data demo. Production still requires the partner's real authentication, budget controls, monitoring, and per-customer limits. Set a hard provider spend cap before attaching a billable API key.
 
 | URL                     | Purpose                                     |
 | ----------------------- | ------------------------------------------- |
@@ -46,6 +62,13 @@ docker compose \
   -f partner_embed_poc/docker-compose.poc.yml \
   -f partner_embed_poc/docker-compose.isolation.yml \
   down
+```
+
+Disable the two public routes separately so a later process reusing either port cannot become public accidentally:
+
+```bash
+sudo tailscale funnel --yes --https=8443 off
+sudo tailscale funnel --yes --https=10000 off
 ```
 
 The overlay uses dedicated Docker networks and does not reuse or restart unrelated AutoGPT or RabbitMQ containers.

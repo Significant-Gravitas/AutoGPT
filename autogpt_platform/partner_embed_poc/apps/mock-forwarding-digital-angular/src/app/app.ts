@@ -30,6 +30,8 @@ export class App implements OnInit {
   protected readonly session = signal<Session | null>(null);
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
+  protected readonly accessRequired = signal(false);
+  protected readonly accessCode = signal("");
   protected readonly error = signal<string | null>(null);
   protected readonly activePage = signal<PageID>(
     this.pageFromHash(window.location.hash),
@@ -110,6 +112,29 @@ export class App implements OnInit {
       this.session.set((await response.json()) as Session);
     } catch {
       this.error.set("Portside Cloud could not start this workspace session.");
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  protected async unlockDemo(code: string) {
+    this.busy.set(true);
+    this.error.set(null);
+    try {
+      const response = await fetch("/api/demo-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!response.ok) {
+        this.error.set("That team access code was not accepted.");
+        return;
+      }
+      this.accessRequired.set(false);
+      await this.loadWorkspace();
+      window.requestAnimationFrame(() => window.scrollTo(0, 0));
+    } catch {
+      this.error.set("Portside Cloud could not verify demo access.");
     } finally {
       this.busy.set(false);
     }
@@ -274,23 +299,37 @@ export class App implements OnInit {
 
   private async initialize() {
     try {
-      const [directoryResponse, sessionResponse] = await Promise.all([
-        fetch("/api/directory"),
-        fetch("/api/session"),
-      ]);
-      if (directoryResponse.ok) {
-        const body = (await directoryResponse.json()) as {
-          users: DirectoryUser[];
-        };
-        this.directory.set(body.users);
+      const accessResponse = await fetch("/api/demo-access");
+      if (!accessResponse.ok) throw new Error("Demo access check failed");
+      const access = (await accessResponse.json()) as {
+        required: boolean;
+        authorized: boolean;
+      };
+      if (access.required && !access.authorized) {
+        this.accessRequired.set(true);
+        return;
       }
-      if (sessionResponse.ok) {
-        this.session.set((await sessionResponse.json()) as Session);
-      }
+      await this.loadWorkspace();
     } catch {
       this.error.set("Unable to load the Portside Cloud demo.");
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  private async loadWorkspace() {
+    const [directoryResponse, sessionResponse] = await Promise.all([
+      fetch("/api/directory"),
+      fetch("/api/session"),
+    ]);
+    if (directoryResponse.ok) {
+      const body = (await directoryResponse.json()) as {
+        users: DirectoryUser[];
+      };
+      this.directory.set(body.users);
+    }
+    if (sessionResponse.ok) {
+      this.session.set((await sessionResponse.json()) as Session);
     }
   }
 

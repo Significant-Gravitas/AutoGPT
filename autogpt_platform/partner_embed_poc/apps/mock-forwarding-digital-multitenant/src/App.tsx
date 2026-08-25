@@ -118,6 +118,8 @@ export default function App() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantNotice, setAssistantNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessRequired, setAccessRequired] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +138,26 @@ export default function App() {
   }, []);
 
   async function initialize() {
+    try {
+      const accessResponse = await fetch("/api/demo-access");
+      if (!accessResponse.ok) throw new Error("Demo access check failed");
+      const access = (await accessResponse.json()) as {
+        required: boolean;
+        authorized: boolean;
+      };
+      if (access.required && !access.authorized) {
+        setAccessRequired(true);
+        return;
+      }
+      await loadWorkspace();
+    } catch {
+      setError("Relay Freight OS could not load the team demo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadWorkspace() {
     const [directoryResponse, sessionResponse] = await Promise.all([
       fetch("/api/directory"),
       fetch("/api/session"),
@@ -149,7 +171,29 @@ export default function App() {
     if (sessionResponse.ok) {
       setSession((await sessionResponse.json()) as Session);
     }
-    setLoading(false);
+  }
+
+  async function unlockDemo(code: string) {
+    setAccessBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/demo-access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!response.ok) {
+        setError("That team access code was not accepted.");
+        return;
+      }
+      setAccessRequired(false);
+      await loadWorkspace();
+      window.requestAnimationFrame(() => window.scrollTo(0, 0));
+    } catch {
+      setError("Relay Freight OS could not verify demo access.");
+    } finally {
+      setAccessBusy(false);
+    }
   }
 
   async function signIn(userID: string) {
@@ -236,7 +280,16 @@ export default function App() {
     );
   }
   if (!session) {
-    return <SignIn users={directory} error={error} onSignIn={signIn} />;
+    return (
+      <SignIn
+        users={directory}
+        accessRequired={accessRequired}
+        busy={accessBusy}
+        error={error}
+        onUnlock={unlockDemo}
+        onSignIn={signIn}
+      />
+    );
   }
 
   const jobs = jobsByOrganization[session.activeOrganization.id] ?? [];

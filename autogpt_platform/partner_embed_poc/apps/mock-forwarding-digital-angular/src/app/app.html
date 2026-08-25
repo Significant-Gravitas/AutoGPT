@@ -11,14 +11,38 @@
       </div>
     </div>
     <p class="eyebrow">Native Angular Host</p>
-    <h1 id="signin-heading">Choose Your Demo Workspace</h1>
+    <h1 id="signin-heading">
+      {{ accessRequired() ? "Open the Team Demo" : "Choose Your Demo Workspace"
+      }}
+    </h1>
     <p>
-      Continue with an existing host identity. The embedded assistant never asks
-      users to create a second account.
+      {{ accessRequired() ? "Enter the shared team access code before choosing a
+      synthetic freight workspace." : "Continue with an existing host identity.
+      The embedded assistant never asks users to create a second account." }}
     </p>
     @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>
-    }
+    } @if (accessRequired()) {
+    <form
+      class="access-form"
+      aria-label="Team demo access"
+      (submit)="$event.preventDefault(); unlockDemo(accessCode())"
+    >
+      <label for="portside-demo-access">Team access code</label>
+      <input
+        id="portside-demo-access"
+        name="demo-access-code"
+        type="password"
+        autocomplete="current-password"
+        [value]="accessCode()"
+        (input)="accessCode.set($any($event.target).value)"
+        [attr.aria-invalid]="error() ? 'true' : null"
+      />
+      <button type="submit" [disabled]="busy() || !accessCode()">
+        {{ busy() ? "Checking access…" : "Continue to workspaces" }}
+      </button>
+    </form>
+    } @else {
     <div class="user-list">
       @for (user of directory(); track user.id) {
       <button type="button" [disabled]="busy()" (click)="signIn(user.id)">
@@ -31,6 +55,7 @@
       </button>
       }
     </div>
+    }
   </section>
 </main>
 } @else { @let current = session()!;

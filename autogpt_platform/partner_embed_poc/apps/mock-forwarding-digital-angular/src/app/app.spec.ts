@@ -10,6 +10,11 @@ describe("Angular Portside Cloud host", () => {
       vi
         .fn()
         .mockResolvedValueOnce(
+          new Response(JSON.stringify({ required: false, authorized: true }), {
+            status: 200,
+          }),
+        )
+        .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
               users: [

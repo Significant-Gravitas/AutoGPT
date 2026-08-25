@@ -130,6 +130,43 @@ button {
   display: grid;
   gap: 10px;
 }
+.access-form {
+  display: grid;
+  gap: 12px;
+}
+
+.access-form label {
+  color: #51465c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.access-form input {
+  background: #faf7f4;
+  border: 1px solid #ddcfc6;
+  border-radius: 13px;
+  color: #282038;
+  font: inherit;
+  min-height: 48px;
+  padding: 11px 13px;
+}
+
+.access-form button {
+  background: #dd5b2e;
+  border: 0;
+  border-radius: 13px;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  min-height: 48px;
+  padding: 12px 16px;
+}
+
+.access-form button:disabled,
+.user-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 
 .user-list button {
   align-items: center;
