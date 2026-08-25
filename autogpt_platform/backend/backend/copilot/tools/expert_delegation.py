@@ -53,16 +53,13 @@ async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
     teammates by name alone. An id miss therefore retries as a
     case-insensitive name lookup; an ambiguous name stays unresolved so the
     model is told the roster instead of the tool guessing between twins.
+
+    ``Expert.id`` is a plain string column, so a bare name simply misses here
+    rather than raising — which leaves any exception meaning a real database
+    failure. Those propagate to the caller, whose handler says "try again"
+    instead of the flat lie that the teammate does not exist.
     """
-    try:
-        expert = await experts_db().get_expert(
-            user_id, reference, include_workflows=False
-        )
-    except Exception as e:
-        # A non-id reference (e.g. a bare name) can make the id lookup blow
-        # up rather than miss; the name fallback below still gets its chance.
-        logger.warning(f"Expert id lookup failed for {reference!r}: {e}")
-        expert = None
+    expert = await experts_db().get_expert(user_id, reference, include_workflows=False)
     if expert is not None:
         return expert
     wanted = reference.strip().casefold()
@@ -83,6 +80,10 @@ async def unknown_target_message(
 
     Sessions older than the team never saw a ``<team_context>`` block, so a
     bare "no such expert" leaves the model with nothing to retry with.
+
+    Only teammates who can actually take work are offered: a paused expert is
+    refused by both delegation tools, so naming one here would just buy
+    another failed call.
     """
     fallback = (
         f"No active expert matching {reference!r} on this team. Pick a "
@@ -93,7 +94,13 @@ async def unknown_target_message(
     except Exception as e:
         logger.warning(f"Roster lookup for delegation error failed: {e}")
         return fallback
-    teammates = [e for e in experts if not e.is_archived and e.id != exclude_expert_id]
+    teammates = [
+        e
+        for e in experts
+        if not e.is_archived
+        and e.id != exclude_expert_id
+        and e.schedules_paused_at is None
+    ]
     if not teammates:
         return fallback
     roster = "; ".join(f"{e.name} (expert_id: {e.id})" for e in teammates)
