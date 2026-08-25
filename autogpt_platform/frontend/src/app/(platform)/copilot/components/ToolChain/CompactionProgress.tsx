@@ -9,7 +9,8 @@ interface Props {
 
 /** Progress bar for a running context-compaction row. Rows that mount
  *  already done (history replay) never show it; a live row fills to 100%
- *  on completion and fades out shortly after. */
+ *  on completion and fades out shortly after. Deliberately indeterminate to
+ *  assistive tech — the width is a time-based guess, not a real fraction. */
 export function CompactionProgress({ done }: Props) {
   const progress = useCompactionProgress(done);
   const [hidden, setHidden] = useState(done);
@@ -26,9 +27,7 @@ export function CompactionProgress({ done }: Props) {
     <div
       role="progressbar"
       aria-label="Summarizing earlier messages"
-      aria-valuenow={Math.round(progress * 100)}
-      aria-valuemin={0}
-      aria-valuemax={100}
+      aria-hidden={progress >= 1}
       className={
         "mt-1.5 h-1 w-44 overflow-hidden rounded-full bg-zinc-100 transition-opacity duration-500 " +
         (progress >= 1 ? "opacity-0" : "opacity-100")

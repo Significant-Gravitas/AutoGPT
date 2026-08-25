@@ -7,6 +7,10 @@ import { useEffect, useRef, useState } from "react";
 const CAP = 0.92;
 const TAU_MS = 15_000;
 
+/** Once the curve is within a sub-pixel of the cap it is visually frozen, so
+ *  stop burning frames — the effect restarts the loop when `done` flips. */
+const SETTLED = CAP - 0.003;
+
 /** When the real completion lands, sprint the remaining distance with the
  *  same exponential shape, just much faster. */
 const FINISH_TAU_MS = 120;
@@ -48,7 +52,7 @@ export function useCompactionProgress(done: boolean): number {
       }
       progressRef.current = next;
       setProgress(next);
-      if (next < 1) raf = requestAnimationFrame(tick);
+      if (done ? next < 1 : next < SETTLED) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
