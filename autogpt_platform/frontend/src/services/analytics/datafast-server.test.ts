@@ -58,11 +58,11 @@ describe("DataFast server-side account creation tracking", () => {
           Authorization: "Bearer df_test",
           "Content-Type": "application/json",
         },
-        // The goal name has to match the "Create Account" step of the DataFast
+        // The goal name has to match the "✍️ Signup" step of the DataFast
         // "Site to Paid" funnel; any other name drops out of the funnel.
         body: JSON.stringify({
           datafast_visitor_id: VISITOR_ID,
-          name: "signup_completed",
+          name: "signup",
           metadata: { method: "email" },
         }),
       }),

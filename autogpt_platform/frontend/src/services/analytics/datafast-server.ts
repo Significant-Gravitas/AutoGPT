@@ -8,8 +8,8 @@ import {
 import { environment } from "@/services/environment";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
-// Must match the "Create Account" step of the DataFast "Site to Paid" funnel.
-const ACCOUNT_CREATED_GOAL = "signup_completed";
+// Must match the "✍️ Signup" step of the DataFast "Site to Paid" funnel.
+const ACCOUNT_CREATED_GOAL = "signup";
 const DATAFAST_VISITOR_COOKIE = "datafast_visitor_id";
 const USER_CREATED_HEADER = "X-AutoGPT-User-Created";
 const VISITOR_ID_PATTERN =
