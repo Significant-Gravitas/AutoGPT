@@ -26,6 +26,8 @@ tag or manifest digest. Docker image tags map to source releases as follows:
 - `sha-<git-sha>` is the immutable image for an exact `dev` or release source
   revision.
 
+Published images support `linux/amd64` and `linux/arm64`.
+
 To build from source instead, run Docker Buildx Bake from the repository root:
 
 ```bash
@@ -47,9 +49,10 @@ docker run --rm "${IMAGE}"
 ```
 
 This runs in the foreground. First boot may take several minutes and use
-roughly 5–6 GiB of memory; press Ctrl-C to stop it. The command does not publish
-the web port and uses an anonymous `/data` volume. Use the full setup below for
-a usable installation.
+roughly 5–6 GiB of memory; press Ctrl-C to stop it. That interruption is safe
+for this check because `--rm` discards its anonymous `/data` volume. Do not
+generalize it to an installation that uses a named volume. The command does not
+publish the web port. Use the full setup below for a usable installation.
 
 ## Quick start
 
@@ -62,8 +65,9 @@ chmod 600 autogpt.env
 ```
 
 When working from a source checkout, you can copy
-`autogpt_platform/single-container/.env.example` instead to see every optional
-setting.
+`autogpt_platform/single-container/.env.example` instead to see common optional
+settings. The backend-only `BEHAVE_AS` control and its limits are documented in
+[Security boundary](#security-boundary).
 
 Edit the file and set at least the public URL and exact address for the first
 account:
@@ -100,6 +104,9 @@ docker run --detach --name autogpt \
   "${IMAGE}"
 ```
 
+The `--shm-size 2g` allocation keeps temporary ChatGPT/Codex authentication
+homes in memory instead of the container's writable layer.
+
 Wait for the complete appliance to become healthy:
 
 ```bash
@@ -116,7 +123,9 @@ after determining whether that migration's changes reached the database.
 
 Test installations used about 5–6 GiB of memory during startup and steady-state
 health checks. This is measured guidance, not a guaranteed minimum; allow
-headroom for enabled services, agents, local models, and workload growth.
+headroom for enabled services, agents, local models, and workload growth. On
+Docker Desktop, make sure the VM's memory allocation in **Settings → Resources**
+exceeds that observed use and leaves the same headroom.
 
 Open `http://localhost:3000`, create the intended account, and promote it:
 
@@ -147,14 +156,18 @@ the `autogpt-data` volume.
 ## Stopping
 
 `docker stop autogpt` completes inside Docker's stock 10-second timeout, so no
-host-wide timeout change is needed. Runtime processes are signaled first.
-PostgreSQL, RabbitMQ, Valkey, and FalkorDB are signaled afterward and each gets
-at most five seconds to exit before Supervisor forces it down. The tested
-appliance exits within the stock timeout, but larger or slower state may require
-normal crash recovery on the next boot.
+host-wide timeout change is needed; a longer host timeout does not extend the
+internal Supervisor caps. The shipped one-second runtime, five-second state,
+and one-second event-listener phases measured about 8.4 seconds in the shutdown
+test setup, so do not shorten Docker's timeout. Runtime processes are signaled
+first. PostgreSQL, RabbitMQ, Valkey, and FalkorDB are signaled afterward and
+each gets at most five seconds to exit before Supervisor forces it down. The
+event listener stops last. Larger or slower state may require normal crash
+recovery on the next boot.
 
-Agent runs still executing when the container stops do not survive or resume.
-Re-run them after restart.
+Agent runs still executing when the container stops are abandoned. Their queue
+messages can be dropped and their execution rows can remain `RUNNING`, but they
+do not resume. Start a new run after restart.
 
 Supervisor process names are group-qualified. Use `supervisorctl status` to see
 names such as `runtime:rest` and `state:postgres`.
@@ -317,10 +330,11 @@ and `GRAPHITI_RERANKER_MODEL` to a model that the endpoint serves. Set
 
 On Docker Engine, add `--add-host host.docker.internal:host-gateway` to the run
 command for this local-model profile. Docker Desktop provides that hostname
-without the extra option. Small quantized models reduce memory requirements,
-but latency and answer quality remain hardware-, model-, and
-workload-dependent; select another compatible model when the default does not
-meet your needs.
+without the extra option. To apply the flag to an existing container, stop and
+remove the container, then repeat the Quick start command with the same named
+volume and the added flag. Small quantized models reduce memory requirements,
+but latency and answer quality remain hardware-, model-, and workload-dependent;
+select another compatible model when the default does not meet your needs.
 
 Check connectivity from the running appliance:
 
@@ -340,15 +354,27 @@ Additional provider keys consumed by backend blocks may be placed in the same
 environment file. They are passed to backend roles, not indiscriminately to the
 public frontend process.
 
+### Database connection tuning
+
+`DB_CONNECTION_LIMIT` controls each backend role's Prisma connection pool and
+accepts `1` through `5` (default `5`). `DB_CONNECT_TIMEOUT` controls connection
+setup (default `60` seconds), while `DB_POOL_TIMEOUT` controls how long a request
+can wait for a pooled connection (default `300` seconds). All roles share the
+bundled PostgreSQL instance, so do not raise per-role limits beyond the enforced
+range. If requests stall under concurrent runs, inspect service and PostgreSQL
+logs for pool exhaustion before changing these values.
+
 ## Security boundary
 
 `BEHAVE_AS` defaults to `local`, which bypasses subscription entitlement gating
-for every user. This is appropriate for single-tenant self-hosting. Any
-multi-user evaluation must set `BEHAVE_AS=cloud` for backend entitlement
-enforcement, but that setting is not a complete hosted-mode switch: the bundled
-frontend is compiled in local mode. Do not treat this image as a turnkey
-multi-tenant hosted distribution. Use the supported cloud deployment and build,
-and review its full security boundary.
+for policies that opt into a local exemption, which currently includes every
+defined entitlement. This is appropriate for single-tenant self-hosting. Any
+multi-tenant or hosted deployment must set `BEHAVE_AS=cloud` for backend
+entitlement enforcement, but that setting is not a complete hosted-mode switch:
+the bundled frontend is compiled in local mode. Cloud mode also expects the
+hosted model catalog, subscription tiers, and payment controls. Do not treat
+this image as a turnkey multi-tenant hosted distribution. Use the supported
+cloud deployment and build, and review its full security boundary.
 
 The browser-facing nginx and Next.js processes run under Unix identities that
 are separate from backend services. The frontend receives an explicit runtime
@@ -424,7 +450,8 @@ exceeds its five-second shutdown cap, the snapshot reflects a crash stop rather
 than a fully graceful shutdown. Rehearse restoration and verify service
 recovery before relying on it.
 The appliance remains unavailable for the duration of the archive, which grows
-with `/data`:
+with `/data`. Before stopping it, ensure the host filesystem that contains
+`BACKUP_DIR` has room for a complete compressed archive:
 
 ```bash
 (
@@ -443,11 +470,16 @@ with `/data`:
   # shellcheck disable=SC2329
   finish_backup() {
     local exit_status="$1"
+    local container_running
     trap - EXIT
-    if [[ "${exit_status}" -ne 0 || "${RESTART_AFTER_BACKUP}" == true ]] && \
-       ! docker start autogpt >/dev/null; then
-      echo "Backup finished but the autogpt container could not restart" >&2
-      exit_status=1
+    container_running="$(docker inspect --format '{{.State.Running}}' \
+      autogpt 2>/dev/null || true)"
+    if [[ "${exit_status}" -ne 0 || "${RESTART_AFTER_BACKUP}" == true ]]; then
+      if [[ "${container_running}" != true ]] && \
+         ! docker start autogpt >/dev/null; then
+        echo "Backup finished but the autogpt container could not restart" >&2
+        exit_status=1
+      fi
     fi
     exit "${exit_status}"
   }
@@ -492,6 +524,10 @@ with `/data`:
     "${BACKUP_IMAGE}" \
     -czf "/backup/${PARTIAL_FILE}" -C /data .
 
+  if [[ "${RESTART_AFTER_BACKUP}" == true ]]; then
+    docker start autogpt >/dev/null
+  fi
+
   BACKUP_SHA256="$(docker run --rm \
     --entrypoint sha256sum \
     --volume "${BACKUP_DIR}:/backup:ro" \
@@ -507,11 +543,12 @@ with `/data`:
 )
 ```
 
-By default, the exit trap restarts the unchanged installation after the archive
-succeeds. It always attempts a restart if a backup command fails. For an
-upgrade, set `RESTART_AFTER_BACKUP=false` before running the block; a successful
-backup then leaves the appliance stopped at the cutover snapshot. With the
-default setting, verify that it is running again:
+By default, the block restarts the unchanged installation as soon as the
+archive completes, before calculating its checksum. The exit trap also attempts
+a restart if a backup command fails. For an upgrade, set
+`RESTART_AFTER_BACKUP=false` before running the block; a successful backup then
+leaves the appliance stopped at the cutover snapshot. With the default setting,
+verify that it is running again:
 
 ```bash
 docker inspect --format '{{.State.Status}}' autogpt
@@ -703,7 +740,10 @@ ready.
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
 | Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
+| The container is OOM-killed or repeatedly restarts during startup | The appliance uses about 5–6 GiB before workload headroom. On Docker Desktop, increase the VM memory allocation under **Settings → Resources**. |
 | Startup refuses to continue after an interrupted migration | Read the log for the migration name and recovery choices. For an empty first boot, remove the unused `/data` volume and retry. For an existing installation, restore the pre-upgrade backup. Do not mark the migration applied or rolled back until you verify which database changes completed. |
+| A run stays `RUNNING` without progress after a restart | The container stopped while the run was in flight. Its message was dropped and the row was not reconciled; start a new run. |
+| Requests stall for minutes under concurrent runs | Inspect backend and PostgreSQL logs for connection-pool exhaustion. Review `DB_CONNECTION_LIMIT`, `DB_CONNECT_TIMEOUT`, and `DB_POOL_TIMEOUT`; all backend roles share the bundled database. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install `nomic-embed-text` on the configured local server and confirm its `/v1/embeddings` endpoint works. |
 | Ollama cannot be reached | Keep the host-gateway option, ensure Ollama listens on an address Docker can reach, and test `/api/tags` from inside the container. |
@@ -713,6 +753,8 @@ ready.
 ## Known limitations
 
 - One container is one failure, maintenance, scaling, and security boundary.
+- The bundled frontend is compiled in local mode. Setting backend
+  `BEHAVE_AS=cloud` does not create a supported multi-tenant hosted deployment.
 - PostgreSQL, Valkey, RabbitMQ, FalkorDB, browser tooling, and the
   application compete for the same host resources.
 - All durable services share one volume and one backup schedule.
