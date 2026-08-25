@@ -439,10 +439,10 @@ with `/data`:
   }
 
   : "${BACKUP_VOLUME:?Container has no named volume mounted at /data}"
-  BACKUP_VOLUME_ANONYMOUS="$(docker volume inspect --format \
-    '{{if .Labels}}{{index .Labels "com.docker.volume.anonymous"}}{{end}}' \
+  BACKUP_VOLUME_LABELS="$(docker volume inspect --format '{{json .Labels}}' \
     "${BACKUP_VOLUME}")"
-  if [[ "${BACKUP_VOLUME_ANONYMOUS}" == true ]]; then
+  if [[ "${BACKUP_VOLUME_LABELS}" == *'"com.docker.volume.anonymous"'* || \
+        "${BACKUP_VOLUME}" =~ ^[0-9a-f]{64}$ ]]; then
     echo "Refusing backup because /data uses an anonymous volume" >&2
     exit 1
   fi
