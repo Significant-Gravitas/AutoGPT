@@ -89,7 +89,6 @@ Start the appliance:
 ```bash
 docker run --detach --name autogpt \
   --restart unless-stopped \
-  --stop-timeout 360 \
   --shm-size 2g \
   --ulimit nofile=65536:65536 \
   --log-driver json-file \
@@ -107,6 +106,13 @@ Wait for the complete appliance to become healthy:
 docker inspect --format '{{.State.Health.Status}}' autogpt
 docker logs --follow autogpt
 ```
+
+Do not stop the container while the first boot is applying database migrations.
+If a migration is interrupted, later boots refuse to continue and the logs
+identify the migration and recovery choices. For a brand-new empty installation,
+remove that installation's unused `/data` volume and start again. For an existing
+installation, restore the pre-upgrade backup. Use `prisma migrate resolve` only
+after determining whether that migration's changes reached the database.
 
 Test installations used about 5–6 GiB of memory during startup and steady-state
 health checks. This is measured guidance, not a guaranteed minimum; allow
@@ -131,12 +137,24 @@ AUTH_ALLOW_NEW_ACCOUNTS=false
 Apply the change by replacing only the container. Keep the same named volume:
 
 ```bash
-docker stop --time 360 autogpt
+docker stop autogpt
 docker rm autogpt
 ```
 
 Repeat the `docker run` command above. Removing the container does not remove
 the `autogpt-data` volume.
+
+## Stopping
+
+`docker stop autogpt` completes inside Docker's stock 10-second timeout, so no
+host-wide timeout change is needed. Runtime processes stop first; PostgreSQL,
+RabbitMQ, Valkey, and FalkorDB drain last.
+
+Agent runs still executing when the container stops do not survive or resume.
+Re-run them after restart.
+
+Supervisor process names are group-qualified. Use `supervisorctl status` to see
+names such as `runtime:rest` and `state:postgres`.
 
 ## Port and public URL
 
@@ -319,6 +337,10 @@ public frontend process.
 
 ## Security boundary
 
+`BEHAVE_AS` defaults to `local`, which bypasses subscription entitlement gating
+for every user. This is appropriate for single-tenant self-hosting. Any
+multi-tenant or hosted deployment must set `BEHAVE_AS=cloud`.
+
 The browser-facing nginx and Next.js processes run under Unix identities that
 are separate from backend services. The frontend receives an explicit runtime
 environment allowlist and connects to PostgreSQL through a passwordless local
@@ -417,6 +439,13 @@ with `/data`:
   }
 
   : "${BACKUP_VOLUME:?Container has no named volume mounted at /data}"
+  BACKUP_VOLUME_ANONYMOUS="$(docker volume inspect --format \
+    '{{if .Labels}}{{index .Labels "com.docker.volume.anonymous"}}{{end}}' \
+    "${BACKUP_VOLUME}")"
+  if [[ "${BACKUP_VOLUME_ANONYMOUS}" == true ]]; then
+    echo "Refusing backup because /data uses an anonymous volume" >&2
+    exit 1
+  fi
   if [[ "$(docker inspect --format '{{.State.Running}}' autogpt)" != true ]]; then
     echo "Refusing backup because the autogpt container is not running" >&2
     exit 1
@@ -432,7 +461,7 @@ with `/data`:
   fi
 
   trap 'restart_autogpt "$?"' EXIT
-  docker stop --time 360 autogpt
+  docker stop autogpt
   umask 077
   touch "${BACKUP_DIR}/${PARTIAL_FILE}"
   chmod 600 "${BACKUP_DIR}/${PARTIAL_FILE}"
@@ -575,17 +604,38 @@ volumes until the restore is accepted.
 
 Never selectively mix service directories from different backups.
 
+After accepting the restore, make sure no other container uses the `autogpt`
+name or host port, then launch the restored installation with the recorded
+image and the restored volume:
+
+```bash
+docker run --detach --name autogpt \
+  --restart unless-stopped \
+  --shm-size 2g \
+  --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  --env-file autogpt.env \
+  --publish 127.0.0.1:3000:3000 \
+  --volume "${RESTORE_VOLUME}:/data" \
+  "${RESTORE_IMAGE}"
+```
+
 ## Upgrade and rollback
 
 Before an upgrade:
 
 1. Record the running image reference and image ID.
-2. Stop the container and take a cold backup.
+2. Run the Cold backup block while the container is running. It stops the
+   appliance for the archive and restarts it afterward.
 3. Pull or build the new image.
-4. Remove only the stopped container.
-5. Repeat the Quick start run command with the same environment file and named
+4. Stop the container again immediately before replacement with
+   `docker stop autogpt`.
+5. Remove only the stopped container with `docker rm autogpt`.
+6. Repeat the Quick start run command with the same environment file and named
    volume but the new image reference.
-6. Wait for full health, then test login, memory, one agent execution, streaming,
+7. Wait for full health, then test login, memory, one agent execution, streaming,
    WebSockets, and persistence across one restart.
 
 Useful image evidence is available with:
@@ -618,6 +668,7 @@ ready.
 | Port `3300` opens but auth actions fail | Use `--publish 127.0.0.1:3300:3000` and set `AUTOGPT_PUBLIC_URL=http://localhost:3300`, then replace the container. |
 | Signup says registration is closed | Set `AUTH_ALLOW_NEW_ACCOUNTS=true` with an exact-address `AUTH_SIGNUP_ALLOWLIST=owner@example.com`, replace the container, create the intended accounts, and close signup again. |
 | The container remains `starting` or becomes `unhealthy` | First boot can take several minutes. Run `autogpt-healthcheck` and inspect container logs for the first failed service. |
+| Startup refuses to continue after an interrupted migration | Read the log for the migration name and recovery choices. For an empty first boot, remove the unused `/data` volume and retry. For an existing installation, restore the pre-upgrade backup. Do not mark the migration applied or rolled back until you verify which database changes completed. |
 | AutoPilot returns a provider `401` | Configure the key for the selected transport. The default remote route needs `OPEN_ROUTER_API_KEY`; complete remote memory also needs `OPENAI_API_KEY`. |
 | Local chat works but memory ingestion fails | Install `nomic-embed-text` on the configured local server and confirm its `/v1/embeddings` endpoint works. |
 | Ollama cannot be reached | Keep the host-gateway option, ensure Ollama listens on an address Docker can reach, and test `/api/tags` from inside the container. |
