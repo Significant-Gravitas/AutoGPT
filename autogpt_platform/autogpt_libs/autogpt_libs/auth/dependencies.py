@@ -169,7 +169,7 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
         # The uncached entry point: `get_or_create_user` memoizes for 5min
         # across the whole process, so a row deleted (or healed) out from
         # under a live cache entry would be masked for the rest of its TTL.
-        await get_or_create_user_with_status(jwt_payload)
+        result = await get_or_create_user_with_status(jwt_payload)
     except Exception:
         # A first page load fans out ~20 requests that all miss the probe
         # above, so all but one lose the create race and surface it as a
@@ -177,18 +177,27 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
         # unprovisioned — otherwise one successful heal buries its own signal
         # under ~19 tracebacks claiming it failed.
         if await prisma.user.find_unique(where={"id": user_id}) is not None:
-            logger.debug(f"User {user_id} was provisioned concurrently")
+            logger.debug(
+                f"User {user_id} has a platform row despite the error — "
+                "not a provisioning failure"
+            )
             return
         logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
         return
 
+    if not result.was_created:
+        # Returning without raising is not proof we created anything: a
+        # concurrent request can land its row between our probe and the
+        # get-or-create's own lookup, which then simply reads it back. That
+        # request reports the breach; this one would only double-count it.
+        return
+
     # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
-    # token with no platform user is an invariant breach worth seeing. Logged
-    # after the create so it fires once for the account that was missing
-    # rather than once per request in the fan-out above.
+    # token with no platform user is an invariant breach worth seeing. Gated
+    # on `was_created` so it fires exactly once for the account that was
+    # missing rather than once per request in the fan-out above.
     logger.error(
-        f"Provisioned a missing platform User row for {user_id} on first "
-        "touch — sign-up never completed it"
+        f"Provisioned a missing platform User row for {user_id} on first touch"
     )
 
 

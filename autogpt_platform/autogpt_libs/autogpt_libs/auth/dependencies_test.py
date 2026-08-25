@@ -808,9 +808,33 @@ class TestEnsurePlatformUserRaceLogging:
         """The invariant breach is worth one Sentry event per account."""
         logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
         TestEnsurePlatformUser._stub_backend(
-            mocker, existing_user=None, provisioner=AsyncMock()
+            mocker,
+            existing_user=None,
+            provisioner=AsyncMock(return_value=Mock(was_created=True)),
         )
 
         await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
 
         logger.error.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_row_found_rather_than_created_is_not_reported(
+        self, mocker: MockerFixture
+    ):
+        """Returning without raising is not proof we created anything.
+
+        A concurrent request can land its row between our probe and the
+        get-or-create's own lookup, which then reads it back with
+        was_created=False. Reporting that too would put several ERRORs behind
+        one heal, each claiming to have provisioned a row it only found.
+        """
+        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        TestEnsurePlatformUser._stub_backend(
+            mocker,
+            existing_user=None,
+            provisioner=AsyncMock(return_value=Mock(was_created=False)),
+        )
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        logger.error.assert_not_called()
