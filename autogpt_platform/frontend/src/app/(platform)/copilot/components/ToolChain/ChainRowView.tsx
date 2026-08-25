@@ -6,6 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
+import { CompactionProgress } from "./CompactionProgress";
 import { EXPERT_CHANGE_TOOLS } from "./ExpertCards";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
@@ -195,10 +196,13 @@ export function ChainRowView({ row, isLast }: Props) {
             {row.detail}
           </p>
         )}
+        {row.category === "compaction" && row.state !== "error" && (
+          <CompactionProgress done={row.state === "done"} />
+        )}
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={!showContent ? ("" as unknown as boolean) : undefined}
+            inert={!showContent}
             className="min-h-0 overflow-hidden"
           >
             <div

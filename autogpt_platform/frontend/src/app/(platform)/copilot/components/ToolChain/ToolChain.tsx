@@ -220,7 +220,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={!panelOpen ? ("" as unknown as boolean) : undefined}
+                inert={!panelOpen}
                 className="min-h-0 overflow-hidden"
               >
                 <div
