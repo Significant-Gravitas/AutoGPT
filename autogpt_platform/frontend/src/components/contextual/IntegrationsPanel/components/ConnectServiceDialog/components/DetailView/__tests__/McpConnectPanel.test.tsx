@@ -19,6 +19,16 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
 }));
 
+let mockSavedCredentials: Array<{
+  provider: string;
+  host?: string | null;
+  mcp_auth_scheme?: "basic" | "bearer" | null;
+}> = [];
+vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
+  getGetV1ListCredentialsQueryKey: () => ["credentials"],
+  useGetV1ListCredentials: () => ({ data: mockSavedCredentials }),
+}));
+
 function makeApiError(status: number, detail = "boom"): Error {
   const err = new Error(detail) as Error & {
     status: number;
@@ -33,6 +43,7 @@ function makeApiError(status: number, detail = "boom"): Error {
 describe("McpConnectPanel", () => {
   afterEach(() => {
     vi.resetAllMocks();
+    mockSavedCredentials = [];
     cleanup();
   });
 
@@ -160,7 +171,7 @@ describe("McpConnectPanel", () => {
     });
     expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
       server_url: "https://mcp.example.com",
-      token: "secret-bearer-token",
+      token: "Bearer secret-bearer-token",
     });
   });
 
@@ -203,6 +214,54 @@ describe("McpConnectPanel", () => {
       expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
         server_url: "https://mcp.example.com",
         token: "Basic cGstbGYtYWJjZA==",
+      });
+    });
+  });
+
+  it("restores the saved Basic scheme for the same server", async () => {
+    mockSavedCredentials = [
+      {
+        provider: "mcp",
+        host: "https://mcp.example.com",
+        mcp_auth_scheme: "basic",
+      },
+    ];
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: { ok: true },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+    expect(
+      (screen.getByLabelText("Authentication type") as HTMLSelectElement).value,
+    ).toBe("basic");
+
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "new-encoded-value" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    await waitFor(() => {
+      expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+        server_url: "https://mcp.example.com/",
+        token: "Basic new-encoded-value",
       });
     });
   });

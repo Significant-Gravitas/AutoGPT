@@ -216,6 +216,21 @@ class RunMCPToolTool(BaseTool):
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
         auth_token = creds.access_token.get_secret_value() if creds else None
+        client: MCPClient | None = None
+        if creds is not None:
+            try:
+                client = MCPClient(server_url, auth_token=auth_token)
+            except ValueError:
+                # Legacy rows can contain values that the stricter explicit
+                # input validator now rejects. Drop only that unusable stored
+                # row and surface the reconnect flow; never expose the secret.
+                logger.warning(
+                    "Invalid stored MCP credential %s for %s; invalidating it",
+                    creds.id,
+                    server_host(server_url),
+                )
+                await invalidate_mcp_credential(user_id, creds.id)
+                return self._build_setup_requirements(server_url, session_id)
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's
@@ -237,7 +252,10 @@ class RunMCPToolTool(BaseTool):
         if surface_connect_card:
             connected = creds is not None
             if creds is not None:
-                probe_client = MCPClient(server_url, auth_token=auth_token)
+                # Credentialed clients are constructed above so malformed
+                # legacy rows take the reconnect path instead of escaping.
+                assert client is not None
+                probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
@@ -278,7 +296,8 @@ class RunMCPToolTool(BaseTool):
                 server_url, session_id, connected=connected
             )
 
-        client = MCPClient(server_url, auth_token=auth_token)
+        if client is None:
+            client = MCPClient(server_url)
 
         try:
             await client.initialize()

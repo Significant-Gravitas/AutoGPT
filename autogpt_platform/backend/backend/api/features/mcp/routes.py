@@ -13,7 +13,10 @@ from autogpt_libs.auth import get_user_id
 from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr
 
-from backend.api.features.integrations.router import CredentialsMetaResponse
+from backend.api.features.integrations.router import (
+    CredentialsMetaResponse,
+    to_meta_response,
+)
 from backend.blocks.mcp.client import (
     MCPClient,
     MCPClientError,
@@ -21,6 +24,7 @@ from backend.blocks.mcp.client import (
 )
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    invalidate_mcp_credential,
     normalize_mcp_url,
     server_host,
 )
@@ -93,18 +97,25 @@ async def discover_tools(
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
     auth_token = request.auth_token
+    stored_credential: OAuth2Credentials | None = None
 
     # Auto-use stored MCP credential when no explicit token is provided.
     if not auth_token:
-        best_cred = await auto_lookup_mcp_credential(
+        stored_credential = await auto_lookup_mcp_credential(
             user_id, normalize_mcp_url(request.server_url)
         )
-        if best_cred:
-            auth_token = best_cred.access_token.get_secret_value()
+        if stored_credential:
+            auth_token = stored_credential.access_token.get_secret_value()
 
     try:
         client = MCPClient(request.server_url, auth_token=auth_token)
     except ValueError as e:
+        if stored_credential is not None:
+            await invalidate_mcp_credential(user_id, stored_credential.id)
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail="The stored MCP credential is invalid. Please reconnect.",
+            ) from e
         raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
 
     try:
@@ -393,15 +404,7 @@ async def mcp_oauth_callback(
 
     await creds_manager.create(user_id, credentials)
 
-    return CredentialsMetaResponse(
-        id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=credentials.scopes,
-        username=credentials.username,
-        host=credentials.metadata.get("mcp_server_url"),
-    )
+    return to_meta_response(credentials)
 
 
 # ======================== Manual Authentication ======================== #
@@ -419,6 +422,35 @@ class MCPStoreTokenRequest(BaseModel):
             "Bare Bearer token, Basic/Bearer value, or complete Authorization header"
         ),
     )
+
+
+async def _validate_manual_mcp_credential(server_url: str, authorization: str) -> None:
+    """Verify a manual credential before replacing anything in storage."""
+    client = MCPClient(server_url, auth_token=authorization)
+    try:
+        await client.initialize()
+    except HTTPClientError as e:
+        if e.status_code in (401, 403):
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail="The MCP server rejected this credential.",
+            ) from e
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Could not validate the MCP credential: {e}",
+        ) from e
+    except MCPClientError as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"Could not validate the MCP credential: {e}",
+        ) from e
+    except Exception as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail="Could not validate the MCP credential with the server.",
+        ) from e
+    finally:
+        await client.close()
 
 
 @router.post(
@@ -453,58 +485,70 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
-    # Collect IDs of old credentials to clean up after successful create.
-    old_cred_ids: list[str] = []
+    # An invalid replacement must never overwrite a working credential.
+    await _validate_manual_mcp_credential(server_url, authorization)
+
+    # Reuse existing user-owned IDs so saved graphs keep resolving their
+    # credential references after a manual token rotation.
+    matching_credentials: list[OAuth2Credentials] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        old_cred_ids = [
-            old.id
+        matching_credentials = [
+            old
             for old in old_creds
             if isinstance(old, OAuth2Credentials)
+            and not old.is_managed
             and normalize_mcp_url((old.metadata or {}).get("mcp_server_url", ""))
             == server_url
         ]
-    except Exception:
-        logger.debug("Could not query old MCP token credentials", exc_info=True)
+    except Exception as e:
+        logger.exception("Could not query existing MCP credentials")
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Could not safely update the MCP credential. Please try again.",
+        ) from e
 
     auth_scheme = authorization.split(" ", 1)[0].lower()
-    credentials = OAuth2Credentials(
-        provider=ProviderName.MCP.value,
-        title=f"MCP: {hostname}",
-        access_token=SecretStr(authorization),
-        scopes=[],
-        metadata={
-            "mcp_server_url": server_url,
-            "mcp_auth_scheme": auth_scheme,
-        },
-    )
-    await creds_manager.create(user_id, credentials)
+    if matching_credentials:
+        updated_credentials: list[OAuth2Credentials] = []
+        for old in matching_credentials:
+            updated = old.model_copy(
+                update={
+                    "title": f"MCP: {hostname}",
+                    "username": None,
+                    "access_token": SecretStr(authorization),
+                    "access_token_expires_at": None,
+                    "refresh_token": None,
+                    "refresh_token_expires_at": None,
+                    "provider_state": None,
+                    "provider_state_version": None,
+                    "metadata": {
+                        "mcp_server_url": server_url,
+                        "mcp_auth_scheme": auth_scheme,
+                    },
+                }
+            )
+            await creds_manager.update(user_id, updated)
+            updated_credentials.append(updated)
+        # Return the newest matching ID, consistent with auto-lookup's
+        # last-row tiebreaker, while every existing ID remains valid.
+        credentials = updated_credentials[-1]
+    else:
+        credentials = OAuth2Credentials(
+            provider=ProviderName.MCP.value,
+            title=f"MCP: {hostname}",
+            access_token=SecretStr(authorization),
+            scopes=[],
+            metadata={
+                "mcp_server_url": server_url,
+                "mcp_auth_scheme": auth_scheme,
+            },
+        )
+        await creds_manager.create(user_id, credentials)
 
-    # Only delete old credentials after the new one is safely stored.
-    for old_id in old_cred_ids:
-        try:
-            await creds_manager.store.delete_creds_by_id(user_id, old_id)
-        except Exception:
-            logger.debug("Could not clean up old MCP token credential", exc_info=True)
-
-    return CredentialsMetaResponse(
-        id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=credentials.scopes,
-        username=credentials.username,
-        # Use the full ``mcp_server_url`` for parity with the OAuth callback
-        # response and with ``to_meta_response``'s ``get_host`` (which reads
-        # the same metadata key for MCP creds).  The list endpoint already
-        # normalizes both flows to full URL via ``get_host``, so the matching
-        # logic in ``MCPSetupCard.liveHasCred`` works either way — but
-        # returning the same shape from POST keeps the contract consistent
-        # for any consumer that uses the immediate POST response.
-        host=credentials.metadata.get("mcp_server_url"),
-    )
+    return to_meta_response(credentials)
 
 
 # ======================== Helpers ======================== #

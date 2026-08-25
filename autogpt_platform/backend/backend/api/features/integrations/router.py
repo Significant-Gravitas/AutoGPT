@@ -233,6 +233,10 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    mcp_auth_scheme: Literal["basic", "bearer"] | None = Field(
+        default=None,
+        description="Manual authorization scheme for MCP credentials",
+    )
     is_managed: bool = False
 
     @model_validator(mode="before")
@@ -264,6 +268,16 @@ class CredentialsMetaResponse(BaseModel):
 
 
 def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    mcp_auth_scheme = None
+    if isinstance(cred, OAuth2Credentials) and cred.provider in (
+        ProviderName.MCP,
+        ProviderName.MCP.value,
+        "ProviderName.MCP",
+    ):
+        stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
+        if stored_scheme in ("basic", "bearer"):
+            mcp_auth_scheme = stored_scheme
+
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -272,6 +286,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
     )
 

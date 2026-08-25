@@ -622,6 +622,7 @@ export type CredentialsMetaResponse = {
   scopes?: Array<string>;
   username?: string;
   host?: string;
+  mcp_auth_scheme?: "basic" | "bearer" | null;
   is_system?: boolean;
   is_managed?: boolean;
 };

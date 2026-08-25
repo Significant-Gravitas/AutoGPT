@@ -95,6 +95,7 @@ function mcpRequest(
     loading: false,
     error: null,
     showManualToken: false,
+    authScheme: "bearer",
     onConnect: vi.fn(),
     onUseToken: vi.fn(),
     ...overrides,
@@ -307,7 +308,7 @@ describe("ChainActionCard", () => {
       expect(useToken?.disabled).toBe(false);
 
       fireEvent.click(useToken!);
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
     });
 
     it("submits the manual token on Enter", () => {
@@ -318,7 +319,7 @@ describe("ChainActionCard", () => {
       fireEvent.change(input, { target: { value: "secret-token" } });
       fireEvent.keyDown(input, { key: "Enter" });
 
-      expect(request.onUseToken).toHaveBeenCalledWith("secret-token");
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer secret-token");
     });
 
     it("prefixes a Basic credential selected in the chain row", () => {
@@ -336,6 +337,22 @@ describe("ChainActionCard", () => {
       fireEvent.click(screen.getByText("Use Token"));
 
       expect(request.onUseToken).toHaveBeenCalledWith("Basic cGstbGYtYWJjZA==");
+    });
+
+    it("uses the selector when it differs from a pasted prefix", () => {
+      const request = mcpRequest({ showManualToken: true });
+      renderCard({ mcp: [request] });
+
+      fireEvent.change(screen.getByLabelText("API token for Notion"), {
+        target: { value: "Basic encoded-value" },
+      });
+      fireEvent.change(
+        screen.getByLabelText("Authentication type for Notion"),
+        { target: { value: "bearer" } },
+      );
+      fireEvent.click(screen.getByText("Use Token"));
+
+      expect(request.onUseToken).toHaveBeenCalledWith("Bearer encoded-value");
     });
   });
 

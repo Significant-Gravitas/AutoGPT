@@ -8,7 +8,10 @@ import {
   postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import {
+  getGetV1ListCredentialsQueryKey,
+  useGetV1ListCredentials,
+} from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOAuthLoginResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
@@ -28,9 +31,15 @@ type Phase = "form" | "manual-token";
 
 export function McpConnectPanel({ onSuccess }: Props) {
   const queryClient = useQueryClient();
+  const { data: savedCredentials } = useGetV1ListCredentials({
+    query: {
+      select: (response) => (response.status === 200 ? response.data : []),
+    },
+  });
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
   const [authScheme, setAuthScheme] = useState<MCPAuthScheme>("bearer");
+  const [authSchemeTouched, setAuthSchemeTouched] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +52,20 @@ export function McpConnectPanel({ onSuccess }: Props) {
   const isUrlValid = isValidHttpUrl(trimmedUrl);
   const canConnect = isUrlValid && !isSubmitting;
   const canSubmitToken = isUrlValid && trimmedToken.length > 0 && !isSubmitting;
+  const savedCredential = Array.isArray(savedCredentials)
+    ? savedCredentials.find(
+        (credential) =>
+          credential.provider === "mcp" &&
+          typeof credential.host === "string" &&
+          normalizeMcpUrl(credential.host) === normalizeMcpUrl(trimmedUrl),
+      )
+    : null;
+  const savedAuthScheme: MCPAuthScheme =
+    savedCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
+
+  useEffect(() => {
+    if (!authSchemeTouched && !trimmedToken) setAuthScheme(savedAuthScheme);
+  }, [authSchemeTouched, savedAuthScheme, trimmedToken]);
 
   async function invalidateCredentials() {
     await queryClient.invalidateQueries({
@@ -145,6 +168,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     setPhase("form");
     setToken("");
     setAuthScheme("bearer");
+    setAuthSchemeTouched(false);
     setError(null);
   }
 
@@ -156,6 +180,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
     setToken("");
     setAuthScheme("bearer");
+    setAuthSchemeTouched(false);
     setPhase("form");
     setError(null);
   }
@@ -186,7 +211,10 @@ export function McpConnectPanel({ onSuccess }: Props) {
             <select
               aria-label="Authentication type"
               value={authScheme}
-              onChange={(e) => setAuthScheme(e.target.value as MCPAuthScheme)}
+              onChange={(e) => {
+                setAuthScheme(e.target.value as MCPAuthScheme);
+                setAuthSchemeTouched(true);
+              }}
               disabled={isSubmitting}
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-normal text-zinc-900"
             >
@@ -208,7 +236,10 @@ export function McpConnectPanel({ onSuccess }: Props) {
               const nextToken = e.target.value;
               setToken(nextToken);
               const detected = detectMCPAuthScheme(nextToken);
-              if (detected) setAuthScheme(detected);
+              if (detected) {
+                setAuthScheme(detected);
+                setAuthSchemeTouched(true);
+              }
             }}
             disabled={isSubmitting}
             hint={
@@ -303,4 +334,8 @@ function isValidHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function normalizeMcpUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
 }

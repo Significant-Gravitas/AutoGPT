@@ -14,9 +14,15 @@ describe("MCP manual authentication helpers", () => {
     );
   });
 
-  it("keeps bare Bearer tokens backward-compatible", () => {
+  it("prefixes a bare Bearer credential", () => {
     expect(prepareMCPAuthCredential(" secret-token ", "bearer")).toBe(
-      "secret-token",
+      "Bearer secret-token",
+    );
+  });
+
+  it("prefixes a bare Bearer credential containing spaces", () => {
+    expect(prepareMCPAuthCredential(" orgid api-key ", "bearer")).toBe(
+      "Bearer orgid api-key",
     );
   });
 
@@ -26,7 +32,7 @@ describe("MCP manual authentication helpers", () => {
     );
   });
 
-  it("preserves provider-supplied prefixes and complete headers", () => {
+  it("canonicalizes provider-supplied prefixes and complete headers", () => {
     expect(
       prepareMCPAuthCredential(
         "Authorization: Basic cGstbGYtYWJjZA==",
@@ -36,5 +42,18 @@ describe("MCP manual authentication helpers", () => {
     expect(prepareMCPAuthCredential("Bearer secret-token", "bearer")).toBe(
       "Bearer secret-token",
     );
+  });
+
+  it("makes the selected scheme authoritative over a pasted prefix", () => {
+    expect(prepareMCPAuthCredential("Basic abc", "bearer")).toBe("Bearer abc");
+    expect(prepareMCPAuthCredential("Authorization: Bearer abc", "basic")).toBe(
+      "Authorization: Basic abc",
+    );
+  });
+
+  it("preserves unsupported complete Authorization headers for validation", () => {
+    expect(
+      prepareMCPAuthCredential("Authorization: Digest abc", "bearer"),
+    ).toBe("Authorization: Digest abc");
   });
 });

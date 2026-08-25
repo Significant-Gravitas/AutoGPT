@@ -17885,6 +17885,14 @@
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           },
+          "mcp_auth_scheme": {
+            "anyOf": [
+              { "type": "string", "enum": ["basic", "bearer"] },
+              { "type": "null" }
+            ],
+            "title": "Mcp Auth Scheme",
+            "description": "Manual authorization scheme for MCP credentials"
+          },
           "is_managed": {
             "type": "boolean",
             "title": "Is Managed",

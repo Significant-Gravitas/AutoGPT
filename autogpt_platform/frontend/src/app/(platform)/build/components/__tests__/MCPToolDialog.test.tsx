@@ -106,12 +106,12 @@ describe("MCPToolDialog credential binding", () => {
       2,
       {
         server_url: PRIVATE_SERVER_URL,
-        auth_token: "private-secret",
+        auth_token: "Bearer private-secret",
       },
     );
     expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
       server_url: PRIVATE_SERVER_URL,
-      token: "private-secret",
+      token: "Bearer private-secret",
     });
   });
 

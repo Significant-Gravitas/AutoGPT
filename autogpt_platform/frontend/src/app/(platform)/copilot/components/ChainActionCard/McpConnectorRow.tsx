@@ -9,7 +9,7 @@ import {
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
 
 function hostOf(serverUrl: string): string | null {
@@ -25,7 +25,10 @@ function hostOf(serverUrl: string): string | null {
  *  MCPSetupCard drives via the request callbacks. */
 export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
   const [token, setToken] = useState("");
-  const [authScheme, setAuthScheme] = useState<MCPAuthScheme>("bearer");
+  const [authScheme, setAuthScheme] = useState<MCPAuthScheme>(
+    request.authScheme,
+  );
+  const [authSchemeTouched, setAuthSchemeTouched] = useState(false);
   const host = hostOf(request.serverUrl);
   // "mcp.notion.com" → "notion" so existing /integrations/*.png icons
   // resolve; unknown services fall back to the avatar's initial.
@@ -33,6 +36,12 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
     .replace(/^mcp\./, "")
     .split(".")[0]
     .toLowerCase();
+
+  useEffect(() => {
+    if (!authSchemeTouched && !token.trim()) {
+      setAuthScheme(request.authScheme);
+    }
+  }, [authSchemeTouched, request.authScheme, token]);
 
   function submitCredential() {
     const credential = prepareMCPAuthCredential(token, authScheme);
@@ -86,7 +95,10 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             <select
               aria-label={`Authentication type for ${request.service}`}
               value={authScheme}
-              onChange={(e) => setAuthScheme(e.target.value as MCPAuthScheme)}
+              onChange={(e) => {
+                setAuthScheme(e.target.value as MCPAuthScheme);
+                setAuthSchemeTouched(true);
+              }}
               disabled={request.loading}
               className="rounded-xl bg-zinc-50 px-3 py-2 text-sm font-normal text-zinc-800 ring-1 ring-zinc-100"
             >
@@ -113,7 +125,10 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 const nextToken = e.target.value;
                 setToken(nextToken);
                 const detected = detectMCPAuthScheme(nextToken);
-                if (detected) setAuthScheme(detected);
+                if (detected) {
+                  setAuthScheme(detected);
+                  setAuthSchemeTouched(true);
+                }
               }}
               onKeyDown={(e) =>
                 e.key === "Enter" &&

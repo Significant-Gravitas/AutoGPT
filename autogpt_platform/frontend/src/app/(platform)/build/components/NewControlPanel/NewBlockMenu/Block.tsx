@@ -91,7 +91,6 @@ export const Block: BlockComponent = ({
         updateNodeData(customNode.id, {
           metadata: {
             ...customNode.data.metadata,
-            credentials_optional: true,
             ...(title && { customized_name: title }),
           },
         });

@@ -1,7 +1,7 @@
 """Focused tests for MCP manual authentication schemes."""
 
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import httpx
@@ -10,7 +10,9 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import router
+from backend.blocks.mcp.block import MCPToolBlock, TEST_CREDENTIALS_INPUT
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
+from backend.executor.utils import _validate_node_input_credentials
 
 
 @pytest.mark.parametrize(
@@ -56,9 +58,8 @@ def test_normalize_mcp_authorization_rejects_invalid_values(value: str) -> None:
         normalize_mcp_authorization(value)
 
 
-def test_normalize_mcp_authorization_rejects_unprefixed_unsupported_scheme() -> None:
-    with pytest.raises(ValueError, match="Basic or Bearer"):
-        normalize_mcp_authorization("Digest abc")
+def test_normalize_mcp_authorization_preserves_bare_credential_with_spaces() -> None:
+    assert normalize_mcp_authorization("orgid api-key") == "Bearer orgid api-key"
 
 
 @pytest.mark.parametrize(
@@ -87,6 +88,33 @@ def test_mcp_client_keeps_bare_tokens_as_bearer() -> None:
 def test_mcp_client_omits_auth_when_not_provided() -> None:
     client = MCPClient("https://mcp.example.com/mcp")
     assert "Authorization" not in client._build_headers()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input_default",
+    [{}, {"credentials": TEST_CREDENTIALS_INPUT}],
+    ids=["anonymous", "bound-credential"],
+)
+async def test_schema_optional_mcp_credentials_do_not_skip_execution(
+    input_default: dict,
+) -> None:
+    """MCP's schema-level optional credential must not skip the whole node."""
+    node = MagicMock()
+    node.id = "mcp-node"
+    node.block = MCPToolBlock()
+    node.credentials_optional = False
+    node.input_default = input_default
+    graph = MagicMock(nodes=[node])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    assert errors == {}
+    assert nodes_to_skip == set()
 
 
 @pytest.mark.parametrize("auth_token", ["", " ", "   "])
@@ -128,10 +156,30 @@ async def test_discover_rejects_empty_explicit_auth_token(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_store_basic_credential(client: httpx.AsyncClient) -> None:
+@pytest.mark.parametrize(
+    ("token", "expected", "scheme"),
+    [
+        (
+            "Authorization: Basic cGstbGYtYWJjZA==",
+            "Basic cGstbGYtYWJjZA==",
+            "basic",
+        ),
+        ("orgid api-key", "Bearer orgid api-key", "bearer"),
+    ],
+)
+async def test_store_manual_credential(
+    client: httpx.AsyncClient,
+    token: str,
+    expected: str,
+    scheme: str,
+) -> None:
     with (
         patch(
             "backend.api.features.mcp.routes.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.api.features.mcp.routes._validate_manual_mcp_credential",
             new_callable=AsyncMock,
         ),
         patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
@@ -144,7 +192,7 @@ async def test_store_basic_credential(client: httpx.AsyncClient) -> None:
             "/token",
             json={
                 "server_url": "https://mcp.example.com/mcp",
-                "token": "Authorization: Basic cGstbGYtYWJjZA==",
+                "token": token,
             },
         )
 
@@ -153,8 +201,9 @@ async def test_store_basic_credential(client: httpx.AsyncClient) -> None:
     create_call = create_credential.await_args
     assert create_call is not None
     created = create_call.args[1]
-    assert created.access_token.get_secret_value() == "Basic cGstbGYtYWJjZA=="
-    assert created.metadata["mcp_auth_scheme"] == "basic"
+    assert created.access_token.get_secret_value() == expected
+    assert created.metadata["mcp_auth_scheme"] == scheme
+    assert response.json()["mcp_auth_scheme"] == scheme
 
 
 @pytest.mark.asyncio(loop_scope="session")
