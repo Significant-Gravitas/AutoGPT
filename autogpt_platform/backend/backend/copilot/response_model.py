@@ -62,6 +62,10 @@ class ResponseType(str, Enum):
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
     MODE_CHANGED = "data-mode-changed"
+    # Live context-compaction progress — phase transitions plus token/message
+    # deltas.  Transient (never persisted); the durable record is the
+    # ``context_compaction`` tool row's JSON output.
+    COMPACTION = "data-compaction"
 
 
 class StreamBaseResponse(BaseModel):
@@ -382,6 +386,54 @@ class StreamStatus(StreamBaseResponse):
             "data": {"message": self.message},
         }
         return f"data: {json.dumps(data)}\n\n"
+
+
+CompactionPhase = Literal["summarizing", "rebuilding"]
+
+_COMPACTION_STAT_FIELDS = {
+    "phase",
+    "tokensBefore",
+    "tokensAfter",
+    "messagesBefore",
+    "messagesAfter",
+}
+
+
+class StreamCompactionProgress(StreamBaseResponse):
+    """Live progress for a context-compaction cycle.
+
+    Emitted twice per cycle: ``summarizing`` before the compression work
+    starts, and ``rebuilding`` once it finishes — the latter covers the
+    transcript upload, CLI restart and uncached prefill, which is the long
+    silence the progress bar exists to narrate.  Stats ride along whenever
+    they are known; ``summarizing`` carries only an estimate of
+    ``tokensBefore`` (used to pace the curve), while ``rebuilding`` carries
+    the measured before/after counts.
+
+    Transient — never persisted.  The durable record is the
+    ``context_compaction`` tool row's JSON output.  Note that transient
+    does not mean local: these events cross the executor → Redis →
+    rest_server relay, so the type must stay registered in
+    ``stream_registry._reconstruct_chunk`` or every phase is dropped.
+    """
+
+    type: ResponseType = ResponseType.COMPACTION
+    phase: CompactionPhase = Field(
+        ..., description="Compaction stage this event reports"
+    )
+    tokensBefore: int | None = None
+    tokensAfter: int | None = None
+    messagesBefore: int | None = None
+    messagesAfter: int | None = None
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part so the client surfaces it as
+        `type="data-compaction"` on `message.parts`."""
+        data = self.model_dump(
+            include=_COMPACTION_STAT_FIELDS,
+            exclude_none=True,
+        )
+        return f"data: {json.dumps({'type': self.type.value, 'data': data})}\n\n"
 
 
 class StreamPendingDrained(StreamBaseResponse):
