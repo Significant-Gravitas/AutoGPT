@@ -4,7 +4,7 @@ Tests the full authentication flow from HTTP requests to user validation.
 """
 
 import os
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request, Security
@@ -14,6 +14,7 @@ from pytest_mock import MockerFixture
 from autogpt_libs.auth import config
 from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.dependencies import (
+    _ensure_platform_user,
     get_user_id,
     requires_admin_user,
     requires_user,
@@ -564,3 +565,95 @@ class TestAdminImpersonation:
         # Should strip whitespace and impersonate successfully
         assert user_id == "target-user-123"
         mock_logger.info.assert_called_once()
+
+
+class TestEnsurePlatformUser:
+    """A valid token whose platform User row is missing must self-heal.
+
+    Better Auth issues a session as soon as the auth identity exists, so a
+    request can arrive before (or without) the client-driven provisioning
+    call. Before this, the org bootstrap could not create an org for a user
+    it could not find and the account 400'd on every org-scoped endpoint
+    forever — see BUILDER-50B.
+    """
+
+    @staticmethod
+    def _stub_backend(mocker: MockerFixture, *, existing_user, provisioner):
+        """Point the deferred `backend.*` imports at test doubles."""
+        import sys
+        import types
+
+        db_mod = types.ModuleType("backend.data.db")
+        db_mod.prisma = Mock()
+        db_mod.prisma.user.find_unique = AsyncMock(return_value=existing_user)
+
+        user_mod = types.ModuleType("backend.data.user")
+        user_mod.get_or_create_user_with_status = provisioner
+
+        mocker.patch.dict(
+            sys.modules,
+            {
+                "backend": types.ModuleType("backend"),
+                "backend.data": types.ModuleType("backend.data"),
+                "backend.data.db": db_mod,
+                "backend.data.user": user_mod,
+            },
+        )
+        return db_mod
+
+    @pytest.mark.asyncio
+    async def test_provisions_when_user_row_missing(self, mocker: MockerFixture):
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+        payload = {"sub": "user-1", "email": "new@example.com"}
+
+        await _ensure_platform_user("user-1", payload)
+
+        provision.assert_awaited_once_with(payload)
+
+    @pytest.mark.asyncio
+    async def test_noop_when_user_row_exists(self, mocker: MockerFixture):
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=Mock(), provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_never_provisions_from_an_impersonators_claims(
+        self, mocker: MockerFixture
+    ):
+        """Under impersonation the JWT describes the admin, not the target.
+
+        Provisioning from it would create the target's account under the
+        admin's email, so the self-heal must decline entirely.
+        """
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user(
+            "target-user", {"sub": "admin-456", "email": "admin@example.com"}
+        )
+
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_token_carries_no_email(self, mocker: MockerFixture):
+        provision = AsyncMock()
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1"})
+
+        provision.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_provisioning_failure_is_swallowed(self, mocker: MockerFixture):
+        """Best-effort: the caller still runs the org bootstrap and surfaces
+        the same 400 as before, so a failure here can only be neutral."""
+        provision = AsyncMock(side_effect=RuntimeError("db down"))
+        self._stub_backend(mocker, existing_user=None, provisioner=provision)
+
+        await _ensure_platform_user("user-1", {"sub": "user-1", "email": "a@b.c"})
+
+        provision.assert_awaited_once()

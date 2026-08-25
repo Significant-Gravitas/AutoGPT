@@ -131,6 +131,53 @@ ORG_HEADER_NAME = "X-Org-Id"
 TEAM_HEADER_NAME = "X-Team-Id"
 
 
+async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
+    """Provision the platform ``User`` row for a valid token that has none.
+
+    The auth provider and the platform keep separate user tables, bridged only
+    by the client calling ``POST /api/v1/auth/user`` after sign-in. Better Auth
+    issues a session the moment the auth identity is created, so a request can
+    legitimately arrive before that call has run — or when it never ran,
+    because the OAuth flow lost the redirect that would have made it.
+
+    The org bootstrap below cannot create an org for a user it cannot find, and
+    nothing the client does later re-provisions, so such an account 400s on
+    every org-scoped endpoint forever rather than transiently. Provisioning
+    here from our own verified claims makes that self-healing.
+
+    Best-effort: on failure the caller still attempts the org bootstrap and
+    surfaces the same 400 as before, so this can only improve the outcome.
+    """
+    from backend.data.db import prisma  # deferred -- only needed at runtime
+
+    # Only ever provision from claims that describe the user being resolved.
+    # Under admin impersonation ``user_id`` is the target while the JWT
+    # describes the admin, and provisioning from it would create the account
+    # under the admin's email.
+    if user_id != jwt_payload.get("sub") or not jwt_payload.get("email"):
+        return
+
+    if await prisma.user.find_unique(where={"id": user_id}) is not None:
+        return
+
+    # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
+    # token with no platform user is an invariant breach worth seeing.
+    logger.error(
+        f"No platform User row for authenticated user {user_id} — "
+        "provisioning on first touch"
+    )
+
+    from backend.data.user import get_or_create_user_with_status  # deferred
+
+    try:
+        # The uncached entry point on purpose: the cached `get_or_create_user`
+        # can serve a hit recorded before the row went missing, which would
+        # skip the very creation this call exists to perform.
+        await get_or_create_user_with_status(jwt_payload)
+    except Exception:
+        logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
+
+
 async def get_request_context(
     request: fastapi.Request,
     jwt_payload: dict = fastapi.Security(get_jwt_payload),
@@ -191,13 +238,17 @@ async def get_request_context(
             # backfill cover normal accounts, but users created outside
             # get_or_create_user (e.g. seeded test accounts, direct DB
             # inserts) would otherwise 400 on every request forever.
-            from backend.api.features.orgs.db import (  # deferred
-                get_user_default_team,
-            )
+            from backend.api.features.orgs.db import get_user_default_team  # deferred
+
+            # Two things can be missing here, and only one of them used to be
+            # recoverable: the personal org, or the platform User row the org
+            # would hang off. Provision the user first so the bootstrap below
+            # has something to work with.
+            await _ensure_platform_user(user_id, jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)
             if org_id is None:
-                logger.warning(
+                logger.error(
                     f"User {user_id} has no personal org and bootstrap "
                     "failed — account in inconsistent state"
                 )
