@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
+from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType, SubscriptionTier
 from prisma.errors import UniqueViolationError
@@ -22,7 +23,6 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
-from autogpt_libs.auth.models import DEFAULT_USER_ID
 from backend.data.db import prisma
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
