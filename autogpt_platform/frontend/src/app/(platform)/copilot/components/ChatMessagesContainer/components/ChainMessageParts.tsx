@@ -50,6 +50,7 @@ export function ChainMessageParts({
           isStreaming={
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
+          readOnly={readOnly}
         />
       );
     }
