@@ -27,6 +27,9 @@ import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { updateHistoryBreakdown } from "../../tokenDevtool/store";
+import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getKickoffAttemptToken,
@@ -196,6 +199,18 @@ export const ChatContainer = ({
     return () => ro.disconnect();
   }, [isLimitReached]);
 
+  // Token devtool: estimate the context from loaded history so the badge
+  // shows a value before the first live turn. Guarded by breakdownCacheKey so
+  // it does not run per stream delta — serializing every part is not free.
+  const devtoolBreakdownKeyRef = useRef("");
+  useEffect(() => {
+    if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
+    const key = breakdownCacheKey(sessionId, messages, isStreaming);
+    if (key === devtoolBreakdownKeyRef.current) return;
+    devtoolBreakdownKeyRef.current = key;
+    updateHistoryBreakdown(sessionId, messages);
+  }, [sessionId, messages, isStreaming]);
+
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -325,6 +340,7 @@ export const ChatContainer = ({
                             droppedFiles={droppedFiles}
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
+                            sessionId={sessionId}
                           />
                         </div>
                       </TooltipTrigger>
