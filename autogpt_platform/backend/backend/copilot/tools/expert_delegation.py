@@ -12,8 +12,13 @@ turn, so a bound that lives in only one of them is no bound at all — the model
 just passes the task on with the other tool.
 """
 
+import logging
+
 from backend.api.features.experts.models import Expert
 from backend.copilot.model import ChatSession, get_chat_session
+from backend.data.db_accessors import experts_db
+
+logger = logging.getLogger(__name__)
 
 # Long enough for a real name, short enough that a crafted one cannot bury the
 # preamble's own instructions under padding.
@@ -38,6 +43,71 @@ def safe_caller_name(caller: str) -> str:
     """
     one_line = " ".join(caller.split()).translate(_FRAMING_DELIMITERS)
     return one_line[:CALLER_NAME_LIMIT].strip() or "a teammate"
+
+
+async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
+    """Resolve a teammate by id, falling back to a unique name match.
+
+    The roster block that carries expert ids is injected only into the first
+    user message, so a session opened before the team was hired knows its
+    teammates by name alone. An id miss therefore retries as a
+    case-insensitive name lookup; an ambiguous name stays unresolved so the
+    model is told the roster instead of the tool guessing between twins.
+
+    ``Expert.id`` is a plain string column, so a bare name simply misses here
+    rather than raising — which leaves any exception meaning a real database
+    failure. Those propagate to the caller, whose handler says "try again"
+    instead of the flat lie that the teammate does not exist.
+    """
+    expert = await experts_db().get_expert(user_id, reference, include_workflows=False)
+    if expert is not None:
+        return expert
+    wanted = reference.strip().casefold()
+    if not wanted:
+        return None
+    matches = [
+        e
+        for e in await experts_db().list_experts(user_id, with_metrics=False)
+        if not e.is_archived and e.name.strip().casefold() == wanted
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+async def unknown_target_message(
+    user_id: str, reference: str, exclude_expert_id: str | None
+) -> str:
+    """A lookup-failure message that carries the roster the model is missing.
+
+    Sessions older than the team never saw a ``<team_context>`` block, so a
+    bare "no such expert" leaves the model with nothing to retry with.
+
+    Only teammates who can actually take work are offered: a paused expert is
+    refused by both delegation tools, so naming one here would just buy
+    another failed call.
+    """
+    fallback = (
+        f"No active expert matching {reference!r} on this team. Pick a "
+        "teammate from your team context."
+    )
+    try:
+        experts = await experts_db().list_experts(user_id, with_metrics=False)
+    except Exception as e:
+        logger.warning(f"Roster lookup for delegation error failed: {e}")
+        return fallback
+    teammates = [
+        e
+        for e in experts
+        if not e.is_archived
+        and e.id != exclude_expert_id
+        and e.schedules_paused_at is None
+    ]
+    if not teammates:
+        return fallback
+    roster = "; ".join(f"{e.name} (expert_id: {e.id})" for e in teammates)
+    return (
+        f"No active expert matching {reference!r} on this team. "
+        f"Use one of these expert_ids: {roster}."
+    )
 
 
 async def chain_refusal(

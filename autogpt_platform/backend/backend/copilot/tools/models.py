@@ -127,6 +127,7 @@ class ResponseType(str, Enum):
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    TEAM_ROSTER = "team_roster"
 
 
 # Base response model
@@ -574,6 +575,24 @@ class ExpertSummary(BaseModel):
     role: str
     avatar_url: str | None = None
     color: str = ""
+
+
+class TeamExpertInfo(BaseModel):
+    """One roster row returned by ``list_team``."""
+
+    id: str
+    name: str
+    role: str
+    color: str = ""
+    avatar_url: str | None = None
+    is_paused: bool = False
+
+
+class TeamRosterResponse(ToolResponseBase):
+    """The user's current expert roster, straight from the DB."""
+
+    type: ResponseType = ResponseType.TEAM_ROSTER
+    experts: list[TeamExpertInfo] = Field(default_factory=list)
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):
