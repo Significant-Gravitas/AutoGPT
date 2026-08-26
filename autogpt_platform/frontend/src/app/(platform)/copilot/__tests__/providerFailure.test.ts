@@ -129,8 +129,12 @@ describe("latestProviderFailure", () => {
     // stream meant a refresh silently removed the switch-connection control
     // and left the chat latched to the connection that had just refused it.
     const failure = latestProviderFailure([
-      { role: "user", metadata: null },
-      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: envelope } },
+      { role: "user", content: "hi", metadata: null },
+      {
+        role: "assistant",
+        content: "[__COPILOT_ERROR_f7a1__] out of turns",
+        metadata: { [PROVIDER_FAILURE_KEY]: envelope },
+      },
     ]);
     expect(failure?.kind).toBe("usage_limit");
     expect(failure?.credentialId).toBe("cred-1");
@@ -140,17 +144,46 @@ describe("latestProviderFailure", () => {
     const older = { ...envelope, credentialId: "old" };
     const newer = { ...envelope, credentialId: "new" };
     const failure = latestProviderFailure([
-      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: older } },
-      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: newer } },
+      {
+        role: "assistant",
+        content: "[__COPILOT_ERROR_f7a1__] old",
+        metadata: { [PROVIDER_FAILURE_KEY]: older },
+      },
+      {
+        role: "assistant",
+        content: "[__COPILOT_ERROR_f7a1__] new",
+        metadata: { [PROVIDER_FAILURE_KEY]: newer },
+      },
     ]);
     expect(failure?.credentialId).toBe("new");
+  });
+
+  it("does not resurrect a failure the chat has since recovered from", () => {
+    // A successful turn after the failure means the chat moved on. Walking
+    // past it would re-offer "continue on ..." for a limit that no longer
+    // applies -- on a reload, indistinguishable from failing again.
+    expect(
+      latestProviderFailure([
+        {
+          role: "assistant",
+          content: "[__COPILOT_ERROR_f7a1__] out of turns",
+          metadata: { [PROVIDER_FAILURE_KEY]: envelope },
+        },
+        { role: "user", content: "try again please", metadata: null },
+        { role: "assistant", content: "Done.", metadata: null },
+      ]),
+    ).toBeNull();
   });
 
   it("is null for a chat that never failed", () => {
     expect(
       latestProviderFailure([
-        { role: "user", metadata: null },
-        { role: "assistant", metadata: { kind: "expert_run" } },
+        { role: "user", content: "hi", metadata: null },
+        {
+          role: "assistant",
+          content: "sure",
+          metadata: { kind: "expert_run" },
+        },
       ]),
     ).toBeNull();
   });
