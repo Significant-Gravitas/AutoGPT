@@ -6,6 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import { cn } from "@/lib/utils";
 import { DashboardSpeed02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useTokenDevtoolStore } from "../../tokenDevtool/store";
@@ -23,6 +24,9 @@ import { TurnRow } from "./components/TurnRow";
 
 interface Props {
   sessionId: string;
+  /** Alignment is the tray's concern — the badge renders into two
+   *  structurally different parents. */
+  className?: string;
 }
 
 /** Dev-only context readout in the composer tray. The bar tracks the
@@ -31,7 +35,7 @@ interface Props {
  *  to summarize. The popover splits the estimate by source and lists
  *  per-turn usage; ⟲ marks a turn where the stream carried a
  *  `context_compaction` tool call. */
-export function TokenDevtoolBadge({ sessionId }: Props) {
+export function TokenDevtoolBadge({ sessionId, className }: Props) {
   const turns = useTokenDevtoolStore((s) => s.turnsBySession[sessionId]);
   const breakdown = useTokenDevtoolStore(
     (s) => s.breakdownBySession[sessionId],
@@ -55,8 +59,13 @@ export function TokenDevtoolBadge({ sessionId }: Props) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Token devtool"
-          className="ml-auto flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-xs text-zinc-500 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700"
+          aria-label={`Token devtool, context ${
+            context === null ? "unknown" : formatTokenCount(context)
+          }`}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-xs text-zinc-500 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700",
+            className,
+          )}
         >
           <Icon icon={DashboardSpeed02Icon} size={14} />
           {context === null ? "ctx —" : `ctx ~${formatTokenCount(context)}`}
@@ -80,7 +89,11 @@ export function TokenDevtoolBadge({ sessionId }: Props) {
           </span>
         </div>
         <ContextBar context={context ?? 0} />
-        <p className="pb-2.5 pt-1 text-right font-mono text-xs text-amber-500">
+        <p className="pt-1 font-mono text-[10px] text-zinc-400">
+          assumes a {formatTokenCount(MODEL_CONTEXT_WINDOW)} window; the backend
+          threshold is configurable
+        </p>
+        <p className="pb-2.5 pt-0.5 text-right font-mono text-xs text-amber-500">
           summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
         </p>
 

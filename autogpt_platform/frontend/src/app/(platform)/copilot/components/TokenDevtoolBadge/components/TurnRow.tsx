@@ -14,11 +14,9 @@ export function TurnRow({ index, turn }: Props) {
     <div className="flex items-baseline gap-2 font-mono text-xs">
       <span className="w-6 shrink-0 text-zinc-500">#{index + 1}</span>
       {turn.compacted && (
-        <span
-          title="Transcript summarized this turn"
-          className="text-amber-500"
-        >
-          ⟲
+        <span className="text-amber-500">
+          <span aria-hidden>⟲</span>
+          <span className="sr-only">transcript summarized this turn</span>
         </span>
       )}
       <span className="text-zinc-800">

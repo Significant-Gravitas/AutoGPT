@@ -272,11 +272,12 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
-  const showTokenDevtool = isTokenDevtoolEnabled() && Boolean(sessionId);
+  // Narrows to string, so neither render site needs to re-test sessionId.
+  const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const hasTrayItems =
     (showModeToggle && !isStreaming) ||
     (showDryRunToggle && !hasSession) ||
-    showTokenDevtool;
+    Boolean(devtoolSessionId);
 
   const canSend =
     !disabled &&
@@ -404,11 +405,13 @@ export function ChatInput({
                 onToggle={handleToggleDryRun}
               />
             )}
-            {/* The tray below is brain-dump-only, so the badge needs a home in
-                this layout too — otherwise a devtool meant for local debugging
-                is invisible whenever that flag is off (its default). */}
-            {!isBrainDumpEnabled && showTokenDevtool && sessionId && (
-              <TokenDevtoolBadge sessionId={sessionId} />
+            {/* ComposerTray renders only under the brain-dump flag, so the
+                badge is duplicated here to stay reachable in both layouts. */}
+            {!isBrainDumpEnabled && devtoolSessionId && (
+              <TokenDevtoolBadge
+                sessionId={devtoolSessionId}
+                className="ml-auto"
+              />
             )}
           </PromptInputTools>
 
@@ -491,8 +494,11 @@ export function ChatInput({
               onToggle={handleToggleDryRun}
             />
           )}
-          {showTokenDevtool && sessionId && (
-            <TokenDevtoolBadge sessionId={sessionId} />
+          {devtoolSessionId && (
+            <TokenDevtoolBadge
+              sessionId={devtoolSessionId}
+              className="ml-auto"
+            />
           )}
         </ComposerTray>
       )}

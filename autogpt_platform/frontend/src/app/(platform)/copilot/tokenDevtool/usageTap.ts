@@ -4,10 +4,11 @@ import type { TokenTurn } from "./tokenMath";
 const USAGE_COMMENT = /^:\s*usage\s+(\{.*\})$/;
 const COMPACTION_TOOL = "context_compaction";
 const COLON = 58;
+const MAX_BUFFERED_LINE = 1_000_000;
 
 export function parseUsageComment(
   line: string,
-): Omit<TokenTurn, "compacted"> | null {
+): Omit<TokenTurn, "compacted" | "at"> | null {
   const match = USAGE_COMMENT.exec(line.trim());
   if (!match) return null;
   try {
@@ -17,7 +18,6 @@ export function parseUsageComment(
       completionTokens: toCount(raw.completionTokens),
       cacheReadTokens: toCount(raw.cacheReadTokens),
       cacheCreationTokens: toCount(raw.cacheCreationTokens),
-      at: Date.now(),
     };
   } catch {
     return null;
@@ -90,6 +90,9 @@ async function scanForUsage(
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      // SSE always delimits with newlines, so this only trips on a malformed
+      // upstream. Dropping the partial line is fine — this is an estimate.
+      if (buffer.length > MAX_BUFFERED_LINE) buffer = "";
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
@@ -99,9 +102,11 @@ async function scanForUsage(
         if (line.charCodeAt(0) === COLON) {
           const usage = parseUsageComment(line);
           if (!usage) continue;
-          useTokenDevtoolStore
-            .getState()
-            .record(sessionId, { ...usage, compacted: sawCompaction });
+          useTokenDevtoolStore.getState().record(sessionId, {
+            ...usage,
+            compacted: sawCompaction,
+            at: Date.now(),
+          });
           sawCompaction = false;
         } else if (isCompactionLine(line)) {
           sawCompaction = true;

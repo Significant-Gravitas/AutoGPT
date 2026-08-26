@@ -1,9 +1,8 @@
 import {
   AUTOCOMPACT_TOKENS,
   MODEL_CONTEXT_WINDOW,
-  formatTokenCount,
 } from "../../../tokenDevtool/tokenMath";
-import { pct } from "../helpers";
+import { isOverAutocompact, windowPercent } from "../helpers";
 
 interface Props {
   context: number;
@@ -16,14 +15,14 @@ export function ContextBar({ context }: Props) {
       <div
         className={
           "absolute inset-y-0 left-0 rounded-full transition-all " +
-          (context >= AUTOCOMPACT_TOKENS ? "bg-amber-400" : "bg-zinc-800")
+          (isOverAutocompact(context) ? "bg-amber-400" : "bg-zinc-800")
         }
-        style={{ width: `${pct(context)}%` }}
+        style={{ width: `${windowPercent(context)}%` }}
       />
       <div
+        aria-hidden
         className="absolute inset-y-0 w-px bg-amber-400"
         style={{ left: `${threshold}%` }}
-        title={`Backend triggers summarization around ${formatTokenCount(AUTOCOMPACT_TOKENS)} tokens`}
       />
     </div>
   );

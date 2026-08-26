@@ -6,6 +6,8 @@ import type {
   ContextBreakdown,
   TokenTurn,
 } from "../../../tokenDevtool/tokenMath";
+import { MODEL_CONTEXT_WINDOW } from "../../../tokenDevtool/tokenMath";
+import { windowPercent } from "../helpers";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge";
 
 const SESSION = "session-1";
@@ -57,7 +59,7 @@ function reset() {
 }
 
 function getTrigger() {
-  return screen.getByRole("button", { name: "Token devtool" });
+  return screen.getByRole("button", { name: /Token devtool/ });
 }
 
 async function openPopover() {
@@ -136,8 +138,9 @@ describe("TokenDevtoolBadge popover", () => {
 
     expect(screen.getByText(/~75k \/ 200k/)).toBeDefined();
     expect(screen.getByText("summarizes ~100k")).toBeDefined();
+    // The threshold caveat is visible text, not a title on a 1px div.
     expect(
-      screen.getByTitle("Backend triggers summarization around 100k tokens"),
+      screen.getByText(/assumes a 200k window; the backend threshold/),
     ).toBeDefined();
   });
 
@@ -232,9 +235,41 @@ describe("TokenDevtoolBadge popover", () => {
     render(<TokenDevtoolBadge sessionId={SESSION} />);
     await openPopover();
 
-    const markers = screen.getAllByTitle("Transcript summarized this turn");
+    const markers = screen.getAllByText("transcript summarized this turn");
     expect(markers).toHaveLength(1);
-    expect(markers[0].textContent).toBe("⟲");
+    expect(markers[0].parentElement?.textContent).toContain("⟲");
     expect(screen.getByText("#2")).toBeDefined();
+  });
+});
+
+describe("TokenDevtoolBadge autocompact threshold", () => {
+  // The amber fill is the tool's primary "you are about to be summarized"
+  // signal, so both sides of the threshold are pinned.
+  async function fillClassesAtContext(userTokens: number) {
+    seed({ breakdown: { userTokens, assistantTokens: 0, toolTokens: 0 } });
+    const { container } = render(<TokenDevtoolBadge sessionId={SESSION} />);
+    await openPopover();
+    return Array.from(container.ownerDocument.querySelectorAll("div, span"))
+      .map((node) => node.className)
+      .filter((name) => typeof name === "string");
+  }
+
+  it("turns the bar amber at or above the autocompact trigger", async () => {
+    // 65k base + 40k = 105k, over the 100k trigger.
+    const classes = await fillClassesAtContext(40_000);
+    expect(classes.some((name) => name.includes("bg-amber-400"))).toBe(true);
+  });
+
+  it("keeps the bar neutral below the autocompact trigger", async () => {
+    // 65k base + 5k = 70k, under the trigger.
+    const classes = await fillClassesAtContext(5_000);
+    expect(classes.some((name) => name.includes("bg-zinc-800"))).toBe(true);
+  });
+});
+
+describe("windowPercent", () => {
+  it("clamps a context beyond the model window to 100", () => {
+    expect(windowPercent(MODEL_CONTEXT_WINDOW * 2)).toBe(100);
+    expect(windowPercent(MODEL_CONTEXT_WINDOW / 2)).toBe(50);
   });
 });

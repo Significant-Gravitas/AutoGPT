@@ -11,6 +11,28 @@ import {
  *  depends on. */
 const KEPT_TURNS = 50;
 
+/** Turns are capped per session; without this the session keys themselves
+ *  would grow without bound as a long-lived tab visits more threads. */
+const KEPT_SESSIONS = 20;
+
+function withSession<T>(
+  entries: Record<string, T>,
+  sessionId: string,
+  value: T,
+): Record<string, T> {
+  const next = { ...entries, [sessionId]: value };
+  const keys = Object.keys(next);
+  if (keys.length <= KEPT_SESSIONS) return next;
+  const dropped = new Set(
+    keys
+      .filter((key) => key !== sessionId)
+      .slice(0, keys.length - KEPT_SESSIONS),
+  );
+  return Object.fromEntries(
+    Object.entries(next).filter(([key]) => !dropped.has(key)),
+  );
+}
+
 interface TokenDevtoolState {
   turnsBySession: Record<string, TokenTurn[]>;
   breakdownBySession: Record<string, ContextBreakdown>;
@@ -31,34 +53,35 @@ export const useTokenDevtoolStore = create<TokenDevtoolState>((set) => ({
   compactedBySession: {},
   record(sessionId, turn) {
     set((state) => ({
-      turnsBySession: {
-        ...state.turnsBySession,
-        [sessionId]: [...(state.turnsBySession[sessionId] ?? []), turn].slice(
-          -KEPT_TURNS,
-        ),
-      },
+      turnsBySession: withSession(
+        state.turnsBySession,
+        sessionId,
+        [...(state.turnsBySession[sessionId] ?? []), turn].slice(-KEPT_TURNS),
+      ),
       // A compaction turn restarts the sum: the compacted context is
       // re-written to cache in that same turn.
-      liveContextBySession: {
-        ...state.liveContextBySession,
-        [sessionId]: turn.compacted
+      liveContextBySession: withSession(
+        state.liveContextBySession,
+        sessionId,
+        turn.compacted
           ? turn.cacheCreationTokens
           : (state.liveContextBySession[sessionId] ?? 0) +
-            turn.cacheCreationTokens,
-      },
-      compactedBySession: {
-        ...state.compactedBySession,
-        [sessionId]:
-          turn.compacted || (state.compactedBySession[sessionId] ?? false),
-      },
+              turn.cacheCreationTokens,
+      ),
+      compactedBySession: withSession(
+        state.compactedBySession,
+        sessionId,
+        turn.compacted || (state.compactedBySession[sessionId] ?? false),
+      ),
     }));
   },
   setBreakdown(sessionId, breakdown) {
     set((state) => ({
-      breakdownBySession: {
-        ...state.breakdownBySession,
-        [sessionId]: breakdown,
-      },
+      breakdownBySession: withSession(
+        state.breakdownBySession,
+        sessionId,
+        breakdown,
+      ),
     }));
   },
 }));

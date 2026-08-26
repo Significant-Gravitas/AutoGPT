@@ -1,5 +1,4 @@
-import { AUTOCOMPACT_TOKENS } from "../../../tokenDevtool/tokenMath";
-import { pct } from "../helpers";
+import { isOverAutocompact, windowPercent } from "../helpers";
 
 interface Props {
   context: number;
@@ -11,9 +10,9 @@ export function MiniBar({ context }: Props) {
       <span
         className={
           "absolute inset-y-0 left-0 rounded-full " +
-          (context >= AUTOCOMPACT_TOKENS ? "bg-amber-400" : "bg-zinc-500")
+          (isOverAutocompact(context) ? "bg-amber-400" : "bg-zinc-500")
         }
-        style={{ width: `${pct(context)}%` }}
+        style={{ width: `${windowPercent(context)}%` }}
       />
     </span>
   );

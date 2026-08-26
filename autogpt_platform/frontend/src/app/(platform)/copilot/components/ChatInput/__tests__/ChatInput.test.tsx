@@ -272,7 +272,7 @@ describe("ChatInput token devtool badge", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: "Token devtool" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
   });
 
   it("renders the badge inside the tray when brain dump is enabled", () => {
@@ -280,21 +280,21 @@ describe("ChatInput token devtool badge", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: "Token devtool" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
   });
 
   it("stays hidden when the devtool gate is off", () => {
     mockTokenDevtoolEnabled = false;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.queryByRole("button", { name: "Token devtool" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
   });
 
   it("stays hidden before a session exists", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
-    expect(screen.queryByRole("button", { name: "Token devtool" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
   });
 });
 

@@ -57,7 +57,7 @@ describe("parseUsageComment", () => {
     expect(usage!.completionTokens).toBe(300);
     expect(usage!.cacheReadTokens).toBe(40000);
     expect(usage!.cacheCreationTokens).toBe(2000);
-    expect(turnInputTokens({ ...usage!, compacted: false })).toBe(43200);
+    expect(turnInputTokens({ ...usage!, compacted: false, at: 1 })).toBe(43200);
   });
 
   it("ignores data lines and other comments", () => {
@@ -136,6 +136,18 @@ describe("store.record", () => {
     expect(compacted).toBe(true);
   });
 
+  // Turns are capped per session; the session keys need a ceiling too, or a
+  // long-lived tab that browses many threads grows monotonically.
+  it("evicts the oldest sessions past the retention cap", () => {
+    for (let i = 0; i < 25; i++) {
+      record(`s${i}`, [turn({ cacheCreationTokens: 1 })]);
+    }
+    const tracked = Object.keys(useTokenDevtoolStore.getState().turnsBySession);
+    expect(tracked).toHaveLength(20);
+    expect(tracked).toContain("s24");
+    expect(tracked).not.toContain("s0");
+  });
+
   it("tracks sessions independently", () => {
     record("a", [turn({ cacheCreationTokens: 10 })]);
     record("b", [turn({ cacheCreationTokens: 20, compacted: true })]);
@@ -206,6 +218,17 @@ describe("computeBreakdown", () => {
     expect(breakdownTotal(breakdown)).toBe(
       BASE_CONTEXT_ESTIMATE + 100 + 50 + breakdown.toolTokens,
     );
+  });
+
+  it("skips a circular tool part instead of throwing", () => {
+    const part: Record<string, unknown> = { type: "tool-x" };
+    part.self = part;
+    expect(() =>
+      computeBreakdown([{ role: "assistant", parts: [part] }]),
+    ).not.toThrow();
+    expect(
+      computeBreakdown([{ role: "assistant", parts: [part] }]).toolTokens,
+    ).toBe(0);
   });
 
   it("counts assistant reasoning as assistant text", () => {

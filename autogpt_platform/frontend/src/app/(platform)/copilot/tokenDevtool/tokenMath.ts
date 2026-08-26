@@ -4,7 +4,7 @@
  *
  *  The backend accumulates usage across EVERY API step of the turn (each
  *  tool round-trip re-reads the context), so prompt/cache sums overcount
- *  the live context — use estimateContext() for that instead. */
+ *  the live context — the store's running cache-write sum tracks that. */
 export interface TokenTurn {
   promptTokens: number;
   completionTokens: number;
@@ -80,9 +80,15 @@ export function displayContext(
   return Math.max(liveContext ?? 0, historyEstimate ?? 0);
 }
 
+/** Chars per token for the char-based history estimate. */
+const CHARS_PER_TOKEN = 4;
+
 export interface MessageLike {
   role?: string;
-  parts?: Array<{ type?: string; text?: string }>;
+  /** `text` is widened to unknown because parts arrive from the AI SDK: tool
+   *  parts carry arbitrary payloads and are not guaranteed to hold a string
+   *  here, which is what partChars() runtime-checks. */
+  parts?: Array<{ type?: string; text?: unknown }>;
 }
 
 /** Guards the breakdown recompute, which walks the whole loaded history and
@@ -115,9 +121,9 @@ export function computeBreakdown(
     }
   }
   return {
-    userTokens: Math.ceil(user / 4),
-    assistantTokens: Math.ceil(assistant / 4),
-    toolTokens: Math.ceil(tools / 4),
+    userTokens: Math.ceil(user / CHARS_PER_TOKEN),
+    assistantTokens: Math.ceil(assistant / CHARS_PER_TOKEN),
+    toolTokens: Math.ceil(tools / CHARS_PER_TOKEN),
   };
 }
 
@@ -127,9 +133,8 @@ export function computeBreakdown(
  *  caching per object collapses that to O(new parts). */
 const partCharCache = new WeakMap<object, number>();
 
-function partChars(part: unknown): number {
-  const text = (part as { text?: unknown })?.text;
-  if (typeof text === "string") return text.length;
+function partChars(part: { type?: string; text?: unknown }): number {
+  if (typeof part?.text === "string") return part.text.length;
   if (part === null || typeof part !== "object") return 0;
   const cached = partCharCache.get(part);
   if (cached !== undefined) return cached;
