@@ -122,7 +122,7 @@ describe("ConnectionPicker", () => {
     expect(screen.getByText("opus-5")).toBeDefined();
   });
 
-  it("puts the chosen tier in the store, which is what the turn is sent with", async () => {
+  it("puts the chosen tier in the store", async () => {
     // The picker is the only place a tier is chosen, and the store is the only
     // thing the send path reads. A regression once gated the value -- but not
     // this control -- on CHAT_MODE_OPTION, so the segment moved to Advanced
@@ -140,6 +140,38 @@ describe("ConnectionPicker", () => {
 
     await waitFor(() =>
       expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced"),
+    );
+  });
+
+  it("shows the server default without claiming it as a choice", async () => {
+    // The store is what the create call treats as an override, and it has no
+    // way back to null. Writing the default into it on render made every
+    // later chat inherit whatever this one displayed, and made a default
+    // changed in Settings unable to take over. Displaying is not choosing.
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", { name: /AutoGPT Platform/ }),
+    ).toBeDefined();
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+  });
+
+  it("records the connection once the user actually picks one", async () => {
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectionPicker />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("radio", { name: /ChatGPT/ }),
+    );
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toMatchObject({
+        authProvider: "codex",
+      }),
     );
   });
 
