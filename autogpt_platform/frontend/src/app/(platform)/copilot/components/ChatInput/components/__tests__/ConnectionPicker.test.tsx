@@ -122,6 +122,27 @@ describe("ConnectionPicker", () => {
     expect(screen.getByText("opus-5")).toBeDefined();
   });
 
+  it("puts the chosen tier in the store, which is what the turn is sent with", async () => {
+    // The picker is the only place a tier is chosen, and the store is the only
+    // thing the send path reads. A regression once gated the value -- but not
+    // this control -- on CHAT_MODE_OPTION, so the segment moved to Advanced
+    // and the turn still ran Balanced. Landing the choice here is the contract
+    // the send path depends on.
+    mockOffers([offer()]);
+    render(<ConnectionPicker connectionLocked />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Model tier/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("radio", { name: "Advanced · opus-5" }),
+    );
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced"),
+    );
+  });
+
   it("offers no tier choice when both tiers are the same model", async () => {
     // A single-model self-host resolves both tiers identically; choosing
     // between two identical options is a decision with no consequence.

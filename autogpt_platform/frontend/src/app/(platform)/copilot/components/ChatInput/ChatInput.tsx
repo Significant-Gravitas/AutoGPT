@@ -222,9 +222,10 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
-  const hasTrayItems =
-    (showAdvancedComposerControls && !isStreaming) ||
-    (showAdvancedComposerControls && !hasSession);
+  // Matches what the tray actually holds. The connection picker is not behind
+  // CHAT_MODE_OPTION, so gating the tray on that flag hid the picker outright
+  // in brain-dump mode; the dry-run toggle's own flag check still applies.
+  const hasTrayItems = !hasSession || !isStreaming;
 
   const canSend =
     !disabled &&
