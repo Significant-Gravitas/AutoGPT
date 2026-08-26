@@ -320,15 +320,30 @@ class IntegrationCredentialsStore:
     async def _get_persisted_user_creds_unlocked(
         self, user_id: str
     ) -> list[Credentials]:
-        """Return only the persisted (user-stored) credentials — no side effects.
+        """Return only the caller's OWN persisted (USER-scoped) credentials.
 
         Reads the IntegrationCredential table (source of truth since the
         blob→table migration; the UserIntegrations blob is retained only
-        as a rollback artifact).
+        as a rollback artifact). Deliberately USER-only: the write helpers
+        (``add_creds``/``update_creds``/``delete_creds_by_id``) read-modify-
+        write this exact set back through ``set_user_credentials``, so it
+        must never include team/org rows — those are resolved read-only via
+        ``_get_accessible_creds_unlocked``.
 
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
         return list(await self.db_manager.get_user_credentials(user_id=user_id))
+
+    async def _get_accessible_creds_unlocked(self, user_id: str) -> list[Credentials]:
+        """Return every persisted credential the user may USE — their own
+        USER creds plus TEAM/ORG creds resolved from live membership (see
+        ``backend.data.user.get_accessible_credentials``).
+
+        Read-only: this feeds credential LISTING and execution FETCH only.
+        Team/org rows resolved here are never written back — the write
+        helpers use ``_get_persisted_user_creds_unlocked`` (USER-only).
+        """
+        return list(await self.db_manager.get_accessible_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
@@ -352,11 +367,18 @@ class IntegrationCredentialsStore:
             return await self._get_all_creds_unlocked(user_id)
 
     async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
-        """Return all credentials for *user_id*.
+        """Return all credentials the user may USE, plus system credentials.
+
+        Read-only surface (LISTING + execution FETCH): resolves the user's
+        own USER creds together with TEAM/ORG creds they can access, then
+        appends the platform's system-managed credentials. Since a
+        credential id only appears here if the user has access, id-based
+        lookups (``get_creds_by_id``) inherit that access check for free —
+        this is what gates the executor's fetch-by-id for team/org creds.
 
         **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
+        all_credentials = await self._get_accessible_creds_unlocked(user_id)
 
         # These will always be added
         all_credentials.append(ollama_credentials)
