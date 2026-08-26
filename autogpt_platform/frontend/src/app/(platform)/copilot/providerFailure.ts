@@ -77,23 +77,54 @@ export function parseProviderFailurePart(dataPart: {
 /** The key the backend stores the envelope under on a marker row. */
 export const PROVIDER_FAILURE_KEY = "provider_failure";
 
+// Server-written prefixes that mark a row as a failure card rather than a
+// reply. Kept in step with COPILOT_ERROR_PREFIX in the backend's constants.
+const ERROR_MARKER_PREFIXES = [
+  "[__COPILOT_ERROR_f7a1__]",
+  "[__COPILOT_RETRYABLE_ERROR_f7a1__]",
+];
+
+function isErrorMarker(row: { role?: unknown; content?: unknown }): boolean {
+  const content = row.content;
+  if (row.role !== "assistant" || typeof content !== "string") return false;
+  return ERROR_MARKER_PREFIXES.some((prefix) => content.startsWith(prefix));
+}
+
 /**
- * The failure a reopened chat is still sitting on, if any.
+ * The failure this chat is *currently* sitting on, if any.
  *
- * Scans newest-first and stops at the first marker carrying an envelope: an
- * older failure the chat has since recovered from is history, not a state to
- * restore. Anything the user can act on counts -- a spent quota is not the
- * only failure worth offering a way out of.
+ * Scans newest-first and stops at the first thing that answers the question.
+ * A marker carrying an envelope is the answer. So is a newer turn: if the user
+ * has spoken again, or the assistant has replied for real, since the failure,
+ * then the chat moved on and the old failure is history. Without that second
+ * stop the scan walks straight past a recovered turn and resurrects a "continue
+ * on ..." offer for a failure that no longer applies -- which on a reload is
+ * indistinguishable, to the user, from failing again.
  */
 export function latestProviderFailure(
-  messages: { role?: string; metadata?: unknown }[],
+  messages: readonly unknown[],
 ): ProviderFailure | null {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const meta = messages[i]?.metadata;
-    if (!meta || typeof meta !== "object") continue;
-    const raw = (meta as Record<string, unknown>)[PROVIDER_FAILURE_KEY];
-    if (raw === undefined) continue;
-    return parseProviderFailure(raw);
+    const row = messages[i];
+    if (!row || typeof row !== "object") continue;
+    const typed = row as {
+      role?: unknown;
+      content?: unknown;
+      metadata?: unknown;
+    };
+
+    if (isErrorMarker(typed)) {
+      const meta = typed.metadata;
+      if (!meta || typeof meta !== "object") return null;
+      const raw = (meta as Record<string, unknown>)[PROVIDER_FAILURE_KEY];
+      return raw === undefined ? null : parseProviderFailure(raw);
+    }
+
+    // A real turn after the failure means the chat recovered.
+    if (typed.role === "user") return null;
+    if (typed.role === "assistant" && typeof typed.content === "string") {
+      return null;
+    }
   }
   return null;
 }
