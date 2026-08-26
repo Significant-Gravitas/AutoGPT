@@ -84,7 +84,7 @@ CHAT_API_KEY=ollama
 # The chat model. Bare model names ONLY — provider/model slugs (e.g.
 # `anthropic/claude-...`) are passed through verbatim and Ollama can't
 # resolve them. See "Picking a model" below.
-CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+CHAT_FAST_STANDARD_MODEL=hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 
 # Optional — override for the advanced tier. If you leave it out, the
 # local transport derives title_model, simulation_model, AND
@@ -104,14 +104,14 @@ model that handles all three.
 
 | Tier | Recommended Ollama tag | Why | Footprint |
 | --- | --- | --- | --- |
-| **Default** | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` | Unsloth-recommended; solid OpenAI-shim tool-calling at 4B; 256 k native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~3.4 GB resident; runs on a 16 GB laptop, GPU-accelerated |
+| **Default** | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` | Official Ornith GGUF; agentic 9B model with OpenAI-compatible tool calling; 256 k native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~5.8 GB model file; allow additional RAM for context and the KV cache |
 | **Tight RAM** | `qwen3:4b` | Smaller; native tools; set `think: false` to avoid the unclosed-`<think>` tool-call render bug | ~3-4 GB resident |
 | **GPU / advanced** | `qwen3:14b-q4_K_M` | Best tool-selection accuracy in this size class | ~12 GB VRAM |
 
 Pull whichever you choose:
 
 ```bash
-ollama pull hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+ollama pull hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M
 ```
 
 ## Context window — set it once, on the backend
@@ -385,11 +385,11 @@ rewrites the cloud OpenAI defaults to local Ollama equivalents:
 
 | Setting | Cloud default | Local default |
 |---|---|---|
-| `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` |
-| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` |
+| `GRAPHITI_LLM_MODEL` | `gpt-4.1-mini` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
+| `GRAPHITI_RERANKER_MODEL` | `gpt-4.1-nano` | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` |
 | `GRAPHITI_EMBEDDER_MODEL` | `text-embedding-3-small` | `nomic-embed-text` |
 
-The LLM + reranker reuse the same Qwen 3.5 4B model the `--with-ollama`
+The LLM + reranker reuse the same Ornith 1.5 9B model the `--with-ollama`
 installer already pulls for chat, so no extra `ollama pull` is needed
 unless you've overridden them. The embedder is a separate model — see
 the next section.
