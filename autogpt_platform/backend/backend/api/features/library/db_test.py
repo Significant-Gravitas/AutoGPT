@@ -175,11 +175,15 @@ async def test_list_library_agents_is_hidden_filter(
 async def test_list_library_agents_search_uses_full_text_search(mocker):
     """Search must use Postgres full-text search (search filter) instead of
     ILIKE (contains) for better relevance and performance."""
-    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
     mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mock_find_many = mocker.AsyncMock(return_value=[])
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
     mock_library_agent.return_value.find_many = mock_find_many
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
 
@@ -215,11 +219,15 @@ async def test_list_library_agents_search_uses_full_text_search(mocker):
 async def test_list_library_agents_search_normalizes_tsquery_operators(mocker):
     """Search terms containing tsquery operators (AND, OR, NOT, etc.) should
     be sanitized before reaching Prisma's search filter."""
-    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
     mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mock_find_many = mocker.AsyncMock(return_value=[])
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
     mock_library_agent.return_value.find_many = mock_find_many
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
 
@@ -253,11 +261,15 @@ def test_normalize_search_term():
 async def test_list_library_agents_empty_normalized_preserves_folder_filter(mocker):
     """When search_term normalizes to empty, folder_id/include_root_only
     should still be applied (search mode inactive)."""
-    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph = mocker.patch(
+        "backend.api.features.library.db.prisma.models.AgentGraph.prisma"
+    )
     mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mock_find_many = mocker.AsyncMock(return_value=[])
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent = mocker.patch(
+        "backend.api.features.library.db.prisma.models.LibraryAgent.prisma"
+    )
     mock_library_agent.return_value.find_many = mock_find_many
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
 

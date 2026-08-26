@@ -60,13 +60,14 @@ def _normalize_search_term(term: str) -> str:
     """Normalize a search term for Prisma full-text search.
 
     Prisma's ``search`` filter delegates to PostgreSQL's
-    ``plainto_tsquery`` which safely handles plain text. This helper
-    additionally strips stray tsquery operators (AND, OR, NOT, :, *,
-    parentheses) that a user might type无意, and collapses whitespace
-    so the query remains readable.
+    ``plainto_tsquery`` (or ``websearch_to_tsquery``) which safely
+    handles plain text by AND-ing words together. This helper strips
+    stray tsquery operators (``&``, ``|``, ``!``, ``:``, ``*``,
+    parentheses) that a user might type accidentally, and collapses
+    whitespace so the query remains readable.
     """
-    # Remove tsquery special characters (AND, OR, NOT are handled by
-    # plainto_tsquery; these are the raw operator symbols)
+    # Remove tsquery special characters that plainto_tsquery doesn't
+    # expect in raw form. plainto_tsquery treats input as plain text.
     cleaned = re.sub(r"[&|!():*]+", " ", term)
     # Collapse whitespace and strip
     return " ".join(cleaned.split())
