@@ -69,9 +69,17 @@ def roster(monkeypatch):
     async def fake_get_expert(user_id, expert_id, *, include_workflows=True, **_):
         return experts.get(expert_id)
 
+    async def fake_list_experts(user_id, *, with_metrics=True, **_):
+        return list(experts.values())
+
     db = MagicMock()
     db.get_expert = fake_get_expert
-    for module in ("delegate_to_expert", "get_sub_session_result"):
+    db.list_experts = fake_list_experts
+    for module in (
+        "delegate_to_expert",
+        "get_sub_session_result",
+        "expert_delegation",
+    ):
         monkeypatch.setattr(
             f"backend.copilot.tools.{module}.experts_db", lambda: db, raising=True
         )
@@ -222,6 +230,115 @@ class TestValidation:
             prompt="hi",
         )
         assert isinstance(r, ErrorResponse)
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_expert_error_carries_the_roster(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """The roster ids live only in the first message's <team_context>, so
+        a session older than the team needs the error itself to teach them."""
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-zzz",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Bea (expert_id: expert-b)" in r.message
+        assert "Ari" not in r.message  # the caller is not a valid target
+
+    @pytest.mark.asyncio
+    async def test_roster_hint_omits_paused_teammates(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """Both tools refuse a paused expert, so naming one in the hint just
+        buys another failed call."""
+        roster["expert-b"].schedules_paused_at = "2026-01-01T00:00:00Z"
+        roster["expert-c"] = _expert("expert-c", "Cy")
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-zzz",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Cy (expert_id: expert-c)" in r.message
+        assert "expert-b" not in r.message
+
+    @pytest.mark.asyncio
+    async def test_db_failure_is_not_reported_as_a_missing_expert(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """A transient lookup failure must not claim the teammate is gone —
+        that reads as "re-raise them", which is how the loop starts."""
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("connection reset")
+
+        async def fake_list_experts(user_id, *, with_metrics=True, **_):
+            return list(roster.values())
+
+        # Only the id lookup flakes: the roster read still works, so a broad
+        # catch here would fall through to the name pass and mislabel a live
+        # teammate as missing.
+        db = MagicMock()
+        db.get_expert = boom
+        db.list_experts = fake_list_experts
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.experts_db",
+            lambda: db,
+            raising=True,
+        )
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Could not reach that expert right now" in r.message
+        assert "No active expert" not in r.message
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_name_reference_resolves_unique_teammate(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="bea",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert not isinstance(r, ErrorResponse)
+        assert mock_sessions[0].expert_id == "expert-b"
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_name_rejected(self, roster, mock_turn, mock_sessions):
+        roster["expert-c"] = _expert("expert-c", "Bea")
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="Bea",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_name_resolving_to_caller_rejected(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="Ari",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "yourself" in r.message
         mock_turn.assert_not_awaited()
 
     @pytest.mark.asyncio
