@@ -40,7 +40,12 @@ from backend.copilot.sdk.session_waiter import (
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .expert_delegation import chain_refusal, safe_caller_name
+from .expert_delegation import (
+    chain_refusal,
+    resolve_target_expert,
+    safe_caller_name,
+    unknown_target_message,
+)
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -135,9 +140,17 @@ class HandoffToExpertTool(BaseTool):
         if refusal is not None:
             return self._error(refusal, session)
         try:
-            target = await self._resolve_target(user_id, target_id)
+            target = await self._resolve_target(user_id, target_id, session.expert_id)
         except _HandoffRefused as refused:
             return self._error(refused.message, session)
+        if target.id == session.expert_id:
+            # A name reference can resolve back to the caller even though the
+            # raw-id self check in _request_refusal passed.
+            return self._error(
+                "You are that expert — the task is already yours. Do it, or "
+                "use run_sub_session to isolate it in a fresh context.",
+                session,
+            )
         chain = await chain_refusal(user_id, session, target)
         if chain is not None:
             return self._error(chain, session)
@@ -222,12 +235,12 @@ class HandoffToExpertTool(BaseTool):
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
 
-    async def _resolve_target(self, user_id: str, target_id: str) -> Expert:
+    async def _resolve_target(
+        self, user_id: str, target_id: str, caller_expert_id: str | None
+    ) -> Expert:
         """Resolve the teammate, refusing anyone who can't safely own work."""
         try:
-            target = await experts_db().get_expert(
-                user_id, target_id, include_workflows=False
-            )
+            target = await resolve_target_expert(user_id, target_id)
         except Exception as e:
             logger.warning(f"Handoff target lookup failed for {target_id}: {e}")
             raise _HandoffRefused(
@@ -235,8 +248,7 @@ class HandoffToExpertTool(BaseTool):
             ) from e
         if target is None or target.is_archived:
             raise _HandoffRefused(
-                f"No active expert with id {target_id} on this team. Pick an "
-                "active teammate from your team."
+                await unknown_target_message(user_id, target_id, caller_expert_id)
             )
         if target.schedules_paused_at is not None:
             raise _HandoffRefused(
