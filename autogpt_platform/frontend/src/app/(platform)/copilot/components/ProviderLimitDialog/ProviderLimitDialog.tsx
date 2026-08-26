@@ -27,8 +27,15 @@ interface Props {
  * because people plan around it.
  */
 export function ProviderLimitDialog({ failure, sessionId, onDismiss }: Props) {
-  const { alternative, continueHere, isSwitching, resetHint } =
-    useProviderLimitDialog({ failure, sessionId, onDismiss });
+  const {
+    alternative,
+    continueHere,
+    isSwitching,
+    resetHint,
+    isLoadingOffers,
+    failedToLoadOffers,
+    retryOffers,
+  } = useProviderLimitDialog({ failure, sessionId, onDismiss });
 
   return (
     <Dialog
@@ -48,7 +55,25 @@ export function ProviderLimitDialog({ failure, sessionId, onDismiss }: Props) {
           {resetHint ? ` ${resetHint}` : ""}
         </Text>
 
-        {alternative ? (
+        {isLoadingOffers ? (
+          <Text variant="small" className="mt-3 !text-zinc-500">
+            Checking what else this chat can run on&hellip;
+          </Text>
+        ) : failedToLoadOffers ? (
+          <>
+            <Text variant="small" className="mt-3 !text-zinc-500">
+              We couldn&apos;t check your other connections just now.
+            </Text>
+            <Dialog.Footer>
+              <Button variant="secondary" onClick={onDismiss}>
+                Close
+              </Button>
+              <Button variant="primary" onClick={retryOffers}>
+                Try again
+              </Button>
+            </Dialog.Footer>
+          </>
+        ) : alternative ? (
           <>
             <Text variant="small" className="mt-3 !text-zinc-500">
               Continuing moves the rest of this chat to{" "}
