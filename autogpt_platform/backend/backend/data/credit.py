@@ -1184,7 +1184,10 @@ class UserCredit(UserCreditBase):
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=base_url + "/settings/billing?topup=success",
+            # {CHECKOUT_SESSION_ID} is filled by Stripe; the return page uses
+            # it as the Google Ads dedup key so a refresh can't count twice.
+            success_url=base_url
+            + "/settings/billing?topup=success&session_id={CHECKOUT_SESSION_ID}",
             cancel_url=base_url + "/settings/billing?topup=cancel",
             allow_promotion_codes=True,
             automatic_tax={"enabled": True},
