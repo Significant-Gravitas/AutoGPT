@@ -548,3 +548,63 @@ def test_reconstruct_mode_changed_chunk():
     assert isinstance(chunk, StreamModeChanged)
     assert chunk.mode == "extended_thinking"
     assert '"data"' in chunk.to_sse()
+
+
+def test_reconstruct_chunk_round_trips_compaction_progress():
+    """Regression: ``data-compaction`` was added to the wire protocol without
+    being registered here, so every live compaction phase was dropped on the
+    executor → Redis → rest_server relay ("Unknown chunk type: data-compaction")
+    and the progress bar never moved in a running deployment.
+    """
+    import orjson
+
+    from backend.copilot.response_model import StreamCompactionProgress
+
+    stored = orjson.loads(
+        StreamCompactionProgress(
+            phase="rebuilding",
+            tokensBefore=128_000,
+            tokensAfter=31_000,
+            messagesBefore=412,
+            messagesAfter=38,
+        ).model_dump_json()
+    )
+
+    chunk = stream_registry._reconstruct_chunk(stored)
+
+    assert isinstance(chunk, StreamCompactionProgress)
+    assert chunk.phase == "rebuilding"
+    assert chunk.tokensBefore == 128_000
+    assert chunk.tokensAfter == 31_000
+    assert chunk.messagesBefore == 412
+    assert chunk.messagesAfter == 38
+    assert '"data"' in chunk.to_sse()
+
+
+# ``data-cursor`` is deprecated and no longer emitted by new subscriptions
+# (see ``StreamCursor``), so it is the one type that may stay unmapped.
+_UNRELAYED_RESPONSE_TYPES = {"CURSOR"}
+
+
+def test_every_response_type_survives_the_relay():
+    """Every event the backend can publish must be reconstructable.
+
+    An unmapped type is discarded with only a log warning, so the feature
+    that emits it silently does nothing in a deployment while every test
+    stays green — this has now happened twice (MODE_CHANGED, COMPACTION).
+    Adding a ``ResponseType`` should force a decision here.
+    """
+    import inspect
+    import re
+
+    from backend.copilot.response_model import ResponseType
+
+    source = inspect.getsource(stream_registry._reconstruct_chunk)
+    mapped = set(re.findall(r"ResponseType\.(\w+)\.value", source))
+    expected = {m.name for m in ResponseType} - _UNRELAYED_RESPONSE_TYPES
+
+    missing = sorted(expected - mapped)
+    assert not missing, (
+        f"ResponseType(s) {missing} are not registered in _reconstruct_chunk — "
+        "they would be dropped on the executor → Redis → rest_server relay"
+    )

@@ -27,9 +27,9 @@ import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
-import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -92,6 +92,9 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports; the thread header clears them. */
+  hasFloatingControls?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -126,23 +129,13 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  hasFloatingControls,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // Old tool UI keeps its interactive in-transcript question card; the dock
-  // is the new-UI answering surface, so gate it to avoid double forms.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
-  // Mirrors the files card's visibility (useWorkspaceFileCards.isOpen): the
-  // composer only slides aside while the floating card is actually shown.
-  // New tool UI only — the old UI docks a side panel instead, which narrows
-  // the column by itself.
-  const areFilesOpen =
-    useCopilotUIStore(
-      (s) =>
-        s.artifactPanel.isOpen &&
-        s.artifactPanel.activeArtifact == null &&
-        s.artifactPanel.activeTab !== "artifacts",
-    ) && isNewToolUI;
+  // The composer and the message column only slide aside while the floating
+  // files card is shown; this host is the one that mounts the card.
+  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -254,9 +247,7 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider
-        value={isNewToolUI ? getPendingQuestions(messages) : null}
-      >
+      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
@@ -264,7 +255,7 @@ export const ChatContainer = ({
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isNewToolUI && isArtifactsEnabled && (
+                {isArtifactsEnabled && (
                   <>
                     <div className="absolute right-0 top-0 z-30">
                       <ContextPanelToggle sessionId={sessionId} />
@@ -290,6 +281,8 @@ export const ChatContainer = ({
                   queuedMessages={queuedMessages}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  hasFloatingControls={hasFloatingControls}
+                  areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice

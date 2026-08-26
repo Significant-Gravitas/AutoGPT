@@ -21,16 +21,6 @@ import {
 export function useWorkspaceFileCards(sessionId: string | null) {
   const queryClient = useQueryClient();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  // An open artifact owns the right side, so the card steps aside for it
-  // instead of floating on top of the artifact panel. The artifacts side
-  // panel likewise takes over: while its tab is active the trigger swaps the
-  // card for a popover (see ContextPanelToggle).
-  const isOpen = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeArtifact == null &&
-      s.artifactPanel.activeTab !== "artifacts",
-  );
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
@@ -93,7 +83,6 @@ export function useWorkspaceFileCards(sessionId: string | null) {
 
   return {
     files,
-    isOpen,
     isLoading,
     isError,
     isDeleting,
