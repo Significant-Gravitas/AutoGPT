@@ -83,14 +83,20 @@ class TechStackDetectorBlock(Block):
                 (
                     "technology",
                     TechnologyDetail(
-                        name="WordPress", category="cms", confidence=0.9
+                        name="WordPress",
+                        category="cms",
+                        confidence=0.9,
+                        evidence=["wp-content"],
                     ),
                 ),
                 (
                     "technologies",
                     [
                         TechnologyDetail(
-                            name="WordPress", category="cms", confidence=0.9
+                            name="WordPress",
+                            category="cms",
+                            confidence=0.9,
+                            evidence=["wp-content"],
                         )
                     ],
                 ),

@@ -9,9 +9,7 @@ RAPIDAPI_HOST = "web-metadata-and-contact-extractor.p.rapidapi.com"
 BASE_URL = f"https://{RAPIDAPI_HOST}"
 
 
-async def call_endpoint(
-    credentials: APIKeyCredentials, path: str, url: str
-) -> dict:
+async def call_endpoint(credentials: APIKeyCredentials, path: str, url: str) -> dict:
     """GET one of the API's /api/v1/* endpoints for the given target URL."""
     response = await Requests().get(
         f"{BASE_URL}{path}",
