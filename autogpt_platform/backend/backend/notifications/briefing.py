@@ -69,11 +69,8 @@ async def build_briefing(
     conditions = await _db().get_briefing_alert_conditions(user_id)
 
     if not agents and not conditions:
-        # Never send empty. "Empty" means no runs *and* nothing waiting: a
-        # period with no activity can still be carrying a deferred or
-        # unresolved condition, and the Briefing is the only place those are
-        # reported. Returning before reading them would strand anything
-        # actionable — the one thing this system promises never to drop.
+        # Never send empty — but a period with no runs can still carry an
+        # unresolved condition, and the Briefing is the only place those show.
         return None
     attention, reported_condition_ids = _attention_block(conditions)
     highlights = await _highlights(user_id, window.start, window.end, agents)

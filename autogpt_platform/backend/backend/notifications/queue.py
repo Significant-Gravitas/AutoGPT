@@ -33,11 +33,8 @@ USER_NOTIFICATIONS_QUEUE = "user_notifications_v3"
 OPS_NOTIFICATIONS_QUEUE = "ops_notifications_v3"
 AUDIENCE_QUEUE = "audience_changes_v3"
 FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v3"
-# Per-user work fanned out by the scheduled passes. The passes publish one
-# message per due user and return; the consumers do the assembling. That keeps
-# a tick O(1) in the number of users, so a pass can never run past its own
-# interval, and it buys per-user retry, isolation and a DLQ from the same
-# machinery the emails already use.
+# Per-user work fanned out by the scheduled passes: they publish one message
+# per due user and return, so a tick can never run past its own interval.
 PASS_WORK_QUEUE = "notification_work_v3"
 
 _QUORUM = "quorum"

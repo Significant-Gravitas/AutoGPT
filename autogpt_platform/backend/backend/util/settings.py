@@ -482,10 +482,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
-    # Senders are separated so subscription mail, product notifications and
-    # internal ops mail each carry their own reputation. Marketing mail (the
-    # onboarding tour and the monthly changelog) is sent from MailerLite as
-    # hello@news.agpt.co and has no sender here.
+    # Separated so each kind carries its own reputation. Marketing mail goes
+    # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
         default="AutoGPT <billing@agpt.co>",
         description="Sender for subscription and account service messages",

@@ -335,15 +335,9 @@ def get_delivery_stream(notification_type: NotificationType) -> DeliveryStream:
     return _STREAMS[notification_type]
 
 
-# Only the product families carry one-click unsubscribe headers, because they
-# are the only mail the preference check can actually stop.
-#
-# Ops is internal. Billing messages are service mail: `wants_notification`
-# returns True for them whatever the user's preferences say, so advertising
-# List-Unsubscribe on them would promise an opt-out we do not honour — the
-# subscriber unsubscribes, every preference goes off, and the billing mail
-# keeps arriving. Under Gmail/Yahoo bulk-sender rules that is a broken
-# unsubscribe, and it would land on the billing sender's own reputation.
+# Product mail only. Billing is service mail that `wants_notification` always
+# allows, so advertising an opt-out we do not honour would be a broken
+# unsubscribe under Gmail/Yahoo bulk-sender rules.
 def supports_list_unsubscribe(notification_type: NotificationType) -> bool:
     return get_delivery_stream(notification_type) is DeliveryStream.PRODUCT
 

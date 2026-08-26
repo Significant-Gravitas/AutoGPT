@@ -132,11 +132,9 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         await _release_welcome(user)
         raise
 
-    # The welcome is already published and the claim is a durable flag, so a
-    # failure here must not propagate: Stripe would retry the webhook, find
-    # the customer already welcomed, and take the returning-customer branch —
-    # enrolling them in the changelog instead of the tour. Losing the tour is
-    # the smaller failure, and it is logged loudly enough to replay by hand.
+    # Must not propagate: the welcome is already out and the claim is durable,
+    # so a Stripe retry would take the returning-customer branch and enrol them
+    # in the changelog instead of the tour. Report it rather than fail.
     enrolled = await queue_audience_change(
         AudienceEventModel(
             action=AudienceAction.ENROLL_TOUR, email=user.email, user_id=user.id
@@ -223,13 +221,9 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
     period_end = subscription.get("current_period_end")
     plan = await plan_from_subscription(subscription)
 
-    # Keyed on the cancellation episode rather than the billing period: a
-    # cancel → resume → cancel inside one period is two real cancellations and
-    # the customer should hear back both times. Stripe stamps `canceled_at`
-    # when the cancellation is requested and clears it on resume, so it names
-    # the episode — the resume branch reads it from `previous`, being the
-    # episode it closes. Older payloads without the field fall back to the
-    # period, which is the previous behaviour.
+    # The cancellation episode, not the billing period: cancel → resume →
+    # cancel inside one period is two real cancellations. Stripe stamps
+    # `canceled_at` on request and clears it on resume, so it names the episode.
     episode = (
         subscription.get("canceled_at")
         if is_cancelling

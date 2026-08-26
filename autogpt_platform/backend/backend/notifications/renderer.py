@@ -133,11 +133,9 @@ def _build_context(
     user_email: str,
     urls: EmailUrls,
 ) -> dict:
-    # Optional slots are dropped rather than passed as None, because the
-    # templates reach for them with Jinja's `default` filter — which only fires
-    # on undefined, not on a None that happens to be present. Only the top
-    # level is pruned: `totals.usd_estimate` is deliberately tested with
-    # `is not none` and has to survive as an explicit None.
+    # Dropped rather than passed as None: Jinja's `default` filter fires on
+    # undefined, not on None. Only the top level, so `totals.usd_estimate`
+    # survives for its `is not none` test.
     context = {k: v for k, v in data.model_dump().items() if v is not None}
     context["user_email"] = user_email
     context["urls"] = urls.model_dump()

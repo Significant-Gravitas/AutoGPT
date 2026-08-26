@@ -147,13 +147,8 @@ def _claim_key(event: PassWorkEvent) -> str:
 
 
 async def _flush_user_alerts(user_id: str) -> None:
-    # The preference record, not the user record: whether alerts are wanted is
-    # a preference, and it is the same value the queue consumer gates on.
-    #
-    # This raises rather than returning None for an unknown user, and that is
-    # left to propagate: a transient database failure is exactly what the
-    # consumer's retry is for. A genuinely deleted user cannot reach here for
-    # long, because AlertCondition cascades on the user row.
+    # Raises for an unknown user rather than returning None, and that is left
+    # to propagate — a transient database failure is what the retry is for.
     preference = await _db().get_user_notification_preference(user_id)
     built = await alerts.build_alert_email(user_id, preference.alerts_enabled)
     if built is None:
