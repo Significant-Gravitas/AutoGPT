@@ -22,7 +22,8 @@ through 50,000 in the currency's smallest unit, and the amount on any supplied
 `totals` entry whose type is `total` must equal that amount. When
 `request_approval` is true, the create request also asks Link to start approval;
 the block returns the resulting status and any approval URL. It does not
-retrieve the card.
+retrieve the card. Validation, processing, or Link request failures emit
+`error`; callers must not continue to Retrieve Card after a failure.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -54,7 +55,7 @@ retrieve the card.
 <!-- MANUAL: use_case -->
 **Standard Checkout**: Request a virtual card for a merchant that accepts payment through a conventional checkout form.
 
-**Approval-Gated Purchase**: Show an exact itemized context, then pass the approved request to Retrieve Card.
+**Approval-Gated Purchase**: Show exact purchase details, then pass the approved request to Retrieve Card.
 
 **Self-Hosted Automation**: Use this flow only where persisting the eventual card number and CVC is acceptable.
 <!-- END MANUAL -->
