@@ -212,6 +212,41 @@ async def test_list_library_agents_search_uses_full_text_search(mocker):
 
 
 @pytest.mark.asyncio
+async def test_list_library_agents_search_normalizes_tsquery_operators(mocker):
+    """Search terms containing tsquery operators (AND, OR, NOT, etc.) should
+    be sanitized before reaching Prisma's search filter."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="test & (OR | NOT)")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    for clause in where["OR"]:
+        if "search" in clause:
+            assert clause["search"] == "test OR"
+
+
+def test_normalize_search_term():
+    """_normalize_search_term strips tsquery operators and collapses whitespace."""
+    assert db._normalize_search_term("hello world") == "hello world"
+    assert db._normalize_search_term("test & OR | NOT") == "test OR NOT"
+    assert db._normalize_search_term("a (b | c) * d") == "a b c d"
+    assert db._normalize_search_term("  lots   of   spaces  ") == "lots of spaces"
+    assert db._normalize_search_term("it's a test") == "it's a test"
+    assert db._normalize_search_term(":::") == ""
+
+
+@pytest.mark.asyncio
 async def test_list_library_agents_exposes_matching_store_version_id(mocker):
     """The list response carries the approved StoreListingVersion id matching
     the agent's exact graph_id + graph_version, so install flows stay

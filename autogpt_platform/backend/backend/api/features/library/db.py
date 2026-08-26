@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+import re
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -53,6 +54,22 @@ from .embeddings import schedule_library_agent_embedding
 logger = logging.getLogger(__name__)
 config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
+
+
+def _normalize_search_term(term: str) -> str:
+    """Normalize a search term for Prisma full-text search.
+
+    Prisma's ``search`` filter delegates to PostgreSQL's
+    ``plainto_tsquery`` which safely handles plain text. This helper
+    additionally strips stray tsquery operators (AND, OR, NOT, :, *,
+    parentheses) that a user might type无意, and collapses whitespace
+    so the query remains readable.
+    """
+    # Remove tsquery special characters (AND, OR, NOT are handled by
+    # plainto_tsquery; these are the raw operator symbols)
+    cleaned = re.sub(r"[&|!():*]+", " ", term)
+    # Collapse whitespace and strip
+    return " ".join(cleaned.split())
 
 
 async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
@@ -226,22 +243,27 @@ async def list_library_agents(
         # Use Postgres full-text search for better relevance and performance.
         # Matches both the snapshotted marketplace name/description (shown on
         # the card for downloaded agents) and the underlying graph's own values.
-        where_clause["OR"] = [
-            {"name": {"search": search_term}},
-            {"description": {"search": search_term}},
-            {
-                "AgentGraph": {
-                    "is": {"name": {"search": search_term}}
-                }
-            },
-            {
-                "AgentGraph": {
-                    "is": {
-                        "description": {"search": search_term}
+        # Normalize the term to ensure valid tsquery input — Prisma delegates
+        # to plainto_tsquery which handles plain text, but we additionally
+        # strip stray operators for safety.
+        normalized = _normalize_search_term(search_term)
+        if normalized:
+            where_clause["OR"] = [
+                {"name": {"search": normalized}},
+                {"description": {"search": normalized}},
+                {
+                    "AgentGraph": {
+                        "is": {"name": {"search": normalized}}
                     }
-                }
-            },
-        ]
+                },
+                {
+                    "AgentGraph": {
+                        "is": {
+                            "description": {"search": normalized}
+                        }
+                    }
+                },
+            ]
 
     order_by: (
         prisma.types.LibraryAgentOrderByInput
