@@ -172,9 +172,9 @@ async def test_list_library_agents_is_hidden_filter(
 
 
 @pytest.mark.asyncio
-async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
-    """Search must match the snapshotted LibraryAgent name/description (shown on
-    the card for downloaded agents) as well as the underlying graph's values."""
+async def test_list_library_agents_search_uses_full_text_search(mocker):
+    """Search must use Postgres full-text search (search filter) instead of
+    ILIKE (contains) for better relevance and performance."""
     mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
     mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
 
@@ -191,24 +191,24 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     await db.list_library_agents("test-user", search_term="Published Title")
 
     where = mock_find_many.call_args.kwargs["where"]
-    assert {"name": {"contains": "Published Title", "mode": "insensitive"}} in where[
-        "OR"
-    ]
-    assert {
-        "description": {"contains": "Published Title", "mode": "insensitive"}
-    } in where["OR"]
+    assert {"name": {"search": "Published Title"}} in where["OR"]
+    assert {"description": {"search": "Published Title"}} in where["OR"]
     assert {
         "AgentGraph": {
-            "is": {"name": {"contains": "Published Title", "mode": "insensitive"}}
+            "is": {"name": {"search": "Published Title"}}
         }
     } in where["OR"]
     assert {
         "AgentGraph": {
             "is": {
-                "description": {"contains": "Published Title", "mode": "insensitive"}
+                "description": {"search": "Published Title"}
             }
         }
     } in where["OR"]
+    # Ensure legacy ILIKE filters are not used
+    for clause in where["OR"]:
+        if "contains" in clause or (isinstance(clause, dict) and "contains" in str(clause)):
+            raise AssertionError(f"Legacy contains filter found: {clause}")
 
 
 @pytest.mark.asyncio
