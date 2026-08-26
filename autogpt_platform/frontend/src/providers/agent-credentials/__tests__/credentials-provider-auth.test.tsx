@@ -32,6 +32,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 import CredentialsProvider, {
+  CredentialsActionsContext,
   CredentialsProvidersContext,
 } from "../credentials-provider";
 
@@ -62,6 +63,38 @@ function deferred<T>() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+/**
+ * Exposes `upsert` and the resulting saved-credential ids, so a test can drive
+ * the same sequence device auth does: mint a credential outside a list
+ * response, then let a reload land.
+ */
+function UpsertProbe({ provider }: { provider: string }) {
+  const providers = useContext(CredentialsProvidersContext);
+  const actions = useContext(CredentialsActionsContext);
+  const saved = providers?.[provider]?.savedCredentials ?? [];
+  return (
+    <div>
+      <button
+        data-testid="do-upsert"
+        onClick={() =>
+          actions?.upsert(provider, {
+            id: "cred-device",
+            provider,
+            type: "oauth2",
+            title: "Device Auth Credential",
+          } as never)
+        }
+      >
+        upsert
+      </button>
+      <button data-testid="do-reload" onClick={() => actions?.reload()}>
+        reload
+      </button>
+      <span data-testid="saved-ids">{saved.map((c) => c.id).join(",")}</span>
+    </div>
+  );
 }
 
 describe("CredentialsProvider authentication", () => {
@@ -144,5 +177,84 @@ describe("CredentialsProvider authentication", () => {
 
     expect(screen.getByTestId("provider-state").textContent).toBe("");
     expect(apiMock.listCredentials).not.toHaveBeenCalled();
+  });
+});
+
+describe("CredentialsProvider device-auth upserts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient.clear();
+    isLoggedIn.value = true;
+    apiMock.listCredentials.mockResolvedValue([]);
+    apiMock.listProviders.mockResolvedValue(["stripe_link"]);
+    apiMock.listSystemProviders.mockResolvedValue([]);
+    useAuthMock.mockImplementation(() => ({ isLoggedIn: isLoggedIn.value }));
+  });
+
+  async function mountProbe() {
+    render(
+      <CredentialsProvider>
+        <UpsertProbe provider="stripe_link" />
+      </CredentialsProvider>,
+      { wrapper: TestWrapper },
+    );
+    await waitFor(() => expect(screen.getByTestId("saved-ids")).toBeDefined());
+    await waitFor(() => expect(apiMock.listCredentials).toHaveBeenCalled());
+  }
+
+  it("survives a reload whose response predates the credential", async () => {
+    // The device-auth race: the credential is minted server-side by the poll,
+    // and a listCredentials() call that started before it existed resolves
+    // afterwards. Publishing that stale response unmodified drops the
+    // credential, and useCredentialsInput then tells the user their brand-new
+    // connection was removed.
+    await mountProbe();
+
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+    expect(screen.getByTestId("saved-ids").textContent).toContain(
+      "cred-device",
+    );
+
+    // Reload returns a list that does not know about it yet.
+    apiMock.listCredentials.mockResolvedValue([] as never);
+    await act(async () => {
+      screen.getByTestId("do-reload").click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("saved-ids").textContent).toContain(
+        "cred-device",
+      ),
+    );
+  });
+
+  it("retires the pending entry once the server returns it", async () => {
+    await mountProbe();
+
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+
+    apiMock.listCredentials.mockResolvedValue([
+      {
+        id: "cred-device",
+        provider: "stripe_link",
+        type: "oauth2",
+        title: "Device Auth Credential",
+      },
+    ] as never);
+    await act(async () => {
+      screen.getByTestId("do-reload").click();
+    });
+
+    // Present exactly once — the pending copy must not duplicate the loaded one.
+    await waitFor(() => {
+      const ids = (screen.getByTestId("saved-ids").textContent ?? "").split(
+        ",",
+      );
+      expect(ids.filter((i) => i === "cred-device")).toHaveLength(1);
+    });
   });
 });
