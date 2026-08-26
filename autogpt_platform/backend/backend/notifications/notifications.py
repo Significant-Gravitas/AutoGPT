@@ -25,7 +25,11 @@ from backend.data.notifications import (
     PassWorkEvent,
     get_notif_data_type,
 )
-from backend.data.user import generate_unsubscribe_link
+from backend.data.user import (
+    FOOTER_CHOICES,
+    generate_preference_link,
+    generate_unsubscribe_link,
+)
 from backend.notifications import briefing_runner, mailerlite
 from backend.notifications.dedupe import claim_daily_send
 from backend.notifications.email import EmailSender
@@ -156,6 +160,10 @@ class NotificationManager(AppService):
         name = task.get_name()
         if self._passes.get(name) is task:
             del self._passes[name]
+        if task.cancelled():
+            # Shutdown cancels these; `task.exception()` would re-raise the
+            # CancelledError inside the done-callback.
+            return
         if (exc := task.exception()) is not None:
             logger.error(f"Scheduled pass {name} failed: {exc}", exc_info=exc)
 
@@ -224,6 +232,9 @@ class NotificationManager(AppService):
             user_email=preference.email,
             data=event.data,
             unsubscribe_link=generate_unsubscribe_link(event.user_id),
+            volume_links={
+                c: generate_preference_link(event.user_id, c) for c in FOOTER_CHOICES
+            },
         )
         return True
 

@@ -22,11 +22,13 @@ INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 
 
 class _User:
+    """Shaped like `BillingEmailRecipient`, which is what the RPC returns."""
+
     def __init__(self, welcome_sent_at=None):
         self.id = "user-1"
         self.email = "sam@example.com"
         self.name = "Sam Carter"
-        self.welcomeEmailSentAt = welcome_sent_at
+        self.welcome_email_sent_at = welcome_sent_at
 
 
 def _subscription(**over) -> dict:

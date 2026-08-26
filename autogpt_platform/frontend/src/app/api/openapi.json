@@ -3120,6 +3120,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/user/preferences/from-email": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Apply a volume-knob choice from a Briefing footer link",
+        "description": "Apply one footer choice, authorised by the token in the link.\n\nDeliberately not `Security(requires_user)`. The session is the wrong\nauthority here: the settings page applies this on arrival, so a\nsession-authenticated write would let any third party change a logged-in\nreader's preferences just by getting them to follow a link. The HMAC binds\nthe choice to the recipient we sent it to, exactly as the unsubscribe link\ndoes, and works whether or not they happen to be signed in.",
+        "operationId": "postV1Apply a volume-knob choice from a briefing footer link",
+        "parameters": [
+          {
+            "name": "choice",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Choice" }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreference"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/user/timezone": {
       "get": {
         "tags": ["v1", "auth"],

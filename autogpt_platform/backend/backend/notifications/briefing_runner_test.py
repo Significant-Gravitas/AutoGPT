@@ -239,38 +239,36 @@ async def test_alerts_are_marked_sent_only_after_queue_success(queued: bool):
 
 
 @pytest.mark.asyncio
-async def test_missing_user_or_empty_alert_build_queues_nothing():
-    missing_client = make_db_client(
-        get_user_notification_preference=AsyncMock(return_value=None)
-    )
+async def test_an_empty_alert_build_queues_nothing():
+    """Everything was deferred or resolved, so there is nothing to say."""
+    user = _user()
     build_alert = AsyncMock(return_value=None)
     queue = AsyncMock()
-
-    with patch.object(
-        briefing_runner, "_db", return_value=missing_client
-    ), patch.object(
-        briefing_runner.alerts, "build_alert_email", build_alert
-    ), patch.object(
-        briefing_runner, "queue_notification_async", queue
-    ):
-        await briefing_runner._flush_user_alerts("missing")
-
-    build_alert.assert_not_awaited()
-    queue.assert_not_awaited()
-
-    user = _user()
-    found_client = make_db_client(
+    client = make_db_client(
         get_user_notification_preference=AsyncMock(
-            return_value=SimpleNamespace(alerts_enabled=user.alertsEnabled)
+            return_value=SimpleNamespace(alerts_enabled=True)
         )
     )
-    with patch.object(briefing_runner, "_db", return_value=found_client), patch.object(
+
+    with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.alerts, "build_alert_email", build_alert
     ), patch.object(briefing_runner, "queue_notification_async", queue):
         await briefing_runner._flush_user_alerts(user.id)
 
-    build_alert.assert_awaited_once_with(user.id, user.alertsEnabled)
+    build_alert.assert_awaited_once_with(user.id, True)
     queue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_database_failure_propagates_so_the_consumer_retries():
+    """`get_user_notification_preference` raises for an unknown user rather
+    than returning None. Swallowing that would drop the alert silently."""
+    client = make_db_client(
+        get_user_notification_preference=AsyncMock(side_effect=RuntimeError("db down"))
+    )
+    with patch.object(briefing_runner, "_db", return_value=client):
+        with pytest.raises(RuntimeError):
+            await briefing_runner._flush_user_alerts("user-1")
 
 
 @pytest.mark.asyncio

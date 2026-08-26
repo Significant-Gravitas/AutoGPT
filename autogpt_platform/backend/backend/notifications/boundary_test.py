@@ -24,8 +24,12 @@ import pytest
 # so are allowed their own Prisma access. Each is called from a process that
 # owns a connection; adding to this list means asserting the same.
 _RUNS_ELSEWHERE = {
-    # Called from the REST API process, via the Stripe webhook in api/features/v1.py.
-    "lifecycle.py",
+    # NOTE: lifecycle.py is deliberately NOT here. It was, on the grounds that
+    # it only ran in the REST API — then the welcome moved onto the work queue
+    # and it began running in the notification service too, where there is no
+    # Prisma connection. The allowlist entry hid that from this very check.
+    # An entry here is a promise about every process a module runs in, not just
+    # the one it was written for.
     # Called from data/execution.py, which is exposed on the DatabaseManager and
     # therefore runs inside it.
     "scoring.py",

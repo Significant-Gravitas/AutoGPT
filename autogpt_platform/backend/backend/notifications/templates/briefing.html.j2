@@ -195,10 +195,10 @@
             <tr><td align="center" style="padding-top:14px; font-size:12px; line-height:19px; color:#8a86a3;">
               You get this briefing <strong style="color:#5d5872;">{{ period.frequency }}</strong>, and only when your agents actually ran.<br>
               {%- for f in ['daily', 'weekly', 'monthly'] if f != period.frequency %}
-              <a href="{{ urls.settings }}?f={{ f }}" style="color:#6d28d9; text-decoration:underline;">Switch to {{ f }}</a> &nbsp;&middot;&nbsp;
+              <a href="{{ urls.volume.get(f) or (urls.settings ~ '?f=' ~ f) }}" style="color:#6d28d9; text-decoration:underline;">Switch to {{ f }}</a> &nbsp;&middot;&nbsp;
               {%- endfor %}
-              <a href="{{ urls.settings }}?f=alerts" style="color:#6d28d9; text-decoration:underline;">Alerts only</a> &nbsp;&middot;&nbsp;
-              <a href="{{ urls.settings }}?f=off" style="color:#6d28d9; text-decoration:underline;">Pause</a>
+              <a href="{{ urls.volume.get('alerts') or (urls.settings ~ '?f=alerts') }}" style="color:#6d28d9; text-decoration:underline;">Alerts only</a> &nbsp;&middot;&nbsp;
+              <a href="{{ urls.volume.get('off') or (urls.settings ~ '?f=off') }}" style="color:#6d28d9; text-decoration:underline;">Pause</a>
             </td></tr>
           </table>
         </td></tr>

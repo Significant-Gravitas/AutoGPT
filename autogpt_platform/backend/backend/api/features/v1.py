@@ -27,7 +27,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -139,6 +139,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
+    verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
@@ -309,6 +310,59 @@ async def update_preferences(
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
     return output
+
+
+@v1_router.post(
+    "/auth/user/preferences/from-email",
+    summary="Apply a volume-knob choice from a Briefing footer link",
+    tags=["auth"],
+)
+async def apply_email_preference_choice(
+    choice: Annotated[str, Query()],
+    token: Annotated[str, Query()],
+) -> NotificationPreference:
+    """Apply one footer choice, authorised by the token in the link.
+
+    Deliberately not `Security(requires_user)`. The session is the wrong
+    authority here: the settings page applies this on arrival, so a
+    session-authenticated write would let any third party change a logged-in
+    reader's preferences just by getting them to follow a link. The HMAC binds
+    the choice to the recipient we sent it to, exactly as the unsubscribe link
+    does, and works whether or not they happen to be signed in.
+    """
+    user_id = verify_preference_token(token, choice)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+
+    current = await get_user_notification_preference(user_id)
+    updated = _preference_with_choice(current, choice)
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Unknown preference choice")
+    return await update_user_notification_preference(user_id, updated)
+
+
+def _preference_with_choice(
+    current: NotificationPreference, choice: str
+) -> NotificationPreferenceDTO | None:
+    """The volume knob, server-side. "alerts" and "off" both stop the digest;
+    they differ in whether alerts survive."""
+    mapping: dict[str, tuple[BriefingFrequency, bool]] = {
+        "daily": (BriefingFrequency.DAILY, current.alerts_enabled),
+        "weekly": (BriefingFrequency.WEEKLY, current.alerts_enabled),
+        "monthly": (BriefingFrequency.MONTHLY, current.alerts_enabled),
+        "alerts": (BriefingFrequency.OFF, True),
+        "off": (BriefingFrequency.OFF, False),
+    }
+    if choice not in mapping:
+        return None
+    frequency, alerts = mapping[choice]
+    return NotificationPreferenceDTO(
+        email=current.email,
+        briefing_frequency=frequency,
+        alerts_enabled=alerts,
+        store_verdicts_enabled=current.store_verdicts_enabled,
+        daily_limit=current.daily_limit,
+    )
 
 
 ########################################################

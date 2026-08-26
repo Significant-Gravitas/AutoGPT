@@ -10,6 +10,8 @@ import {
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import type { NotificationPreferenceDTO } from "@/app/api/__generated__/models/notificationPreferenceDTO";
+import { http, HttpResponse } from "msw";
+
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -221,9 +223,11 @@ describe("SettingsPreferencesPage", () => {
     expect(submitted!.briefing_frequency).toBe("WEEKLY");
   });
 
-  test("applies an Alerts-only email footer link and saves it", async () => {
-    let submitted: NotificationPreferenceDTO | undefined;
-    mockUseSearchParams.mockReturnValue(new URLSearchParams({ f: "alerts" }));
+  test("applies an Alerts-only footer link when it carries a valid token", async () => {
+    let applied: URL | undefined;
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({ f: "alerts", t: "signed-token" }),
+    );
 
     server.use(
       getGetV1GetNotificationPreferencesMockHandler({
@@ -231,37 +235,44 @@ describe("SettingsPreferencesPage", () => {
         alerts_enabled: false,
       }),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
-      getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
-        submitted = (await request.json()) as NotificationPreferenceDTO;
-        return { ...defaultPreferences, ...submitted };
+      http.post("*/api/auth/user/preferences/from-email", ({ request }) => {
+        applied = new URL(request.url);
+        return HttpResponse.json({
+          ...defaultPreferences,
+          alerts_enabled: true,
+        });
       }),
     );
 
     render(<SettingsPreferencesPage />);
 
-    // One click, not two. The design calls these "live one-click links — a
-    // volume knob instead of a trapdoor", so arriving from the footer saves
-    // the choice; nobody has to find and press Save afterwards.
-    await waitFor(() => {
-      expect(submitted).toMatchObject({
-        briefing_frequency: "OFF",
-        alerts_enabled: true,
-      });
-    });
-
-    const alertsSwitch = await screen.findByRole("switch", { name: "Alerts" });
-    expect(alertsSwitch.getAttribute("aria-checked")).toBe("true");
-
-    // Saved, so there is nothing left to save.
-    await waitFor(() => {
-      const saveButton = screen.getByRole("button", { name: "Save changes" });
-      expect((saveButton as HTMLButtonElement).disabled).toBe(true);
-    });
-
-    // And the ?f= is stripped so a refresh cannot re-apply a stale choice.
+    // One click, not two: the design calls these "live one-click links".
+    await waitFor(() => expect(applied).toBeDefined());
+    expect(applied?.searchParams.get("choice")).toBe("alerts");
+    // Token-authenticated, so a bare ?f= from a third-party link is inert.
+    expect(applied?.searchParams.get("token")).toBe("signed-token");
     expect(mockRouterReplace).toHaveBeenCalledWith("/settings/account");
+  });
+
+  test("ignores a footer link with no token", async () => {
+    let applied = false;
+    mockUseSearchParams.mockReturnValue(new URLSearchParams({ f: "off" }));
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      http.post("*/api/auth/user/preferences/from-email", () => {
+        applied = true;
+        return HttpResponse.json(defaultPreferences);
+      }),
+    );
+
+    render(<SettingsPreferencesPage />);
+    await screen.findByRole("switch", { name: "Alerts" });
+
+    // A third party can put anyone on this URL; without the signed token it
+    // must not change a thing.
+    expect(applied).toBe(false);
   });
 
   test("saves briefing frequency and marketplace review changes", async () => {

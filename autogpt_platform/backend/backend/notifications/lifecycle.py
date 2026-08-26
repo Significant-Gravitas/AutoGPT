@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma.enums import NotificationType
-from prisma.models import User
 
 from backend.data.notifications import (
     AudienceAction,
@@ -27,6 +26,7 @@ from backend.data.notifications import (
     SubscriptionResumedData,
     SubscriptionWelcomeData,
 )
+from backend.data.user import BillingEmailRecipient
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
@@ -36,11 +36,19 @@ from backend.notifications.lifecycle_plan import (
     plan_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Lifecycle]")
 settings = Settings()
+
+
+def _db():
+    """These handlers run in two processes — the REST API on a Stripe webhook,
+    and the notification service when the welcome is picked up off the work
+    queue. Only one of them owns a Prisma connection, so both go via the RPC."""
+    return get_database_manager_async_client()
 
 
 async def _publish(event, claim_key: str | None = None) -> None:
@@ -91,7 +99,7 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     if user is None:
         return
 
-    if user.welcomeEmailSentAt is not None:
+    if user.welcome_email_sent_at is not None:
         await queue_audience_change(
             AudienceEventModel(
                 action=AudienceAction.ADD_CHANGELOG, email=user.email, user_id=user.id
@@ -275,41 +283,28 @@ async def on_subscription_deleted(subscription: dict) -> None:
     )
 
 
-async def _user_for(customer_id: object) -> User | None:
+async def _user_for(customer_id: object) -> BillingEmailRecipient | None:
     """Skip deleted or unknown accounts rather than emailing into the void."""
     if not customer_id or not isinstance(customer_id, str):
         return None
-    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    user = await _db().get_billing_email_recipient(customer_id)
     if user is None:
         logger.warning(f"No user for Stripe customer {customer_id}; skipping email")
     return user
 
 
-async def _claim_welcome(user: User) -> bool:
+async def _claim_welcome(user: BillingEmailRecipient) -> bool:
     """Set the "welcome sent" flag, and only send if this call is the one that
     set it."""
-    claimed = await User.prisma().update_many(
-        where={"id": user.id, "welcomeEmailSentAt": None},
-        data={"welcomeEmailSentAt": _now()},
-    )
-    return claimed > 0
+    return await _db().claim_welcome_email(user.id)
 
 
-async def _release_welcome(user: User) -> None:
+async def _release_welcome(user: BillingEmailRecipient) -> None:
     """Give the welcome claim back so a retry can actually send."""
-    try:
-        await User.prisma().update_many(
-            where={"id": user.id}, data={"welcomeEmailSentAt": None}
-        )
-    except Exception:
-        logger.warning(
-            f"Could not release the welcome claim for user {user.id}; they will "
-            "not be greeted on a retry",
-            exc_info=True,
-        )
+    await _db().release_welcome_email(user.id)
 
 
-def _greeting_name(user: User) -> str:
+def _greeting_name(user: BillingEmailRecipient) -> str:
     if user.name and user.name.strip():
         return user.name.strip().split()[0]
     return user.email.split("@")[0]

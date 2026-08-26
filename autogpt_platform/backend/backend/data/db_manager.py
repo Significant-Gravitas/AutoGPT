@@ -151,8 +151,10 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.data.user import (
+    claim_welcome_email,
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
+    get_billing_email_recipient,
     get_briefing_candidate,
     get_briefing_candidates,
     get_user_by_id,
@@ -162,6 +164,7 @@ from backend.data.user import (
     get_user_integrations,
     get_user_notification_preference,
     get_user_subscription_tier,
+    release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
     update_user_integrations,
@@ -578,6 +581,14 @@ class DatabaseManager(AppService):
     get_briefing_candidates = _(get_briefing_candidates)
     get_briefing_candidate = _(get_briefing_candidate)
     set_last_briefing_at = _(set_last_briefing_at)
+
+    # ============ Billing emails ============ #
+    # The lifecycle handlers run in the REST API on a Stripe webhook *and* in
+    # the notification service when the welcome comes off the work queue. That
+    # second process has no Prisma connection, so these cross the RPC.
+    get_billing_email_recipient = _(get_billing_email_recipient)
+    claim_welcome_email = _(claim_welcome_email)
+    release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
 
 
@@ -741,6 +752,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_briefing_candidates = d.get_briefing_candidates
     get_briefing_candidate = d.get_briefing_candidate
     set_last_briefing_at = d.set_last_briefing_at
+    get_billing_email_recipient = d.get_billing_email_recipient
+    claim_welcome_email = d.claim_welcome_email
+    release_welcome_email = d.release_welcome_email
 
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message

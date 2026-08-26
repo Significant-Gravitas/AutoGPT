@@ -43,11 +43,14 @@ export function usePreferencesPage() {
   // links — a volume knob instead of a trapdoor", so the choice is saved on
   // arrival rather than pre-filling a form the reader still has to submit.
   //
-  // A GET that writes is normally a bad idea, but the write goes through the
-  // authenticated API: a link prefetcher or mail scanner has no session, so it
-  // cannot apply anything. The param is stripped afterwards so a refresh or a
-  // shared URL does not re-apply a stale choice.
-  const footerChoice = useSearchParams().get("f");
+  // The choice is only honoured with the signed token the email carried. The
+  // session is the wrong authority here: applying on arrival off a bare ?f=
+  // would let a third party change a signed-in reader's preferences just by
+  // getting them to follow a link. The backend verifies an HMAC that binds the
+  // choice to the recipient, so an unsigned or tampered link does nothing.
+  const searchParams = useSearchParams();
+  const footerChoice = searchParams.get("f");
+  const footerToken = searchParams.get("t");
   const router = useRouter();
   const pathname = usePathname();
 
@@ -102,6 +105,25 @@ export function usePreferencesPage() {
   const updateTimezone = usePostV1UpdateUserTimezone();
   const updateNotifications = usePostV1UpdateNotificationPreferences();
 
+  async function applyFooterChoice(
+    choice: string,
+    token: string,
+    next: NotificationSettings,
+  ) {
+    // Token-authenticated, not session-authenticated — see the note on
+    // footerChoice above.
+    const res = await fetch(
+      `/api/auth/user/preferences/from-email?choice=${encodeURIComponent(choice)}&token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    );
+    if (!res.ok) throw new Error(`Preference link rejected (${res.status})`);
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
+
   async function applyNotificationSettings(next: NotificationSettings) {
     await updateNotifications.mutateAsync({
       data: {
@@ -139,7 +161,7 @@ export function usePreferencesPage() {
     function applyFooterChoiceOnArrival() {
       if (hasAppliedFooterChoice.current) return;
       if (!hasInitializedFormState.current) return;
-      if (!user || !footerChoice) return;
+      if (!footerChoice || !footerToken) return;
 
       const chosen = settingsFromFooterLink(footerChoice, initialSettings);
       hasAppliedFooterChoice.current = true;
@@ -147,7 +169,7 @@ export function usePreferencesPage() {
 
       if (!chosen) return;
 
-      applyNotificationSettings(chosen)
+      applyFooterChoice(footerChoice, footerToken, chosen)
         .then(() => {
           toast({
             title: describeFooterChoice(footerChoice),
@@ -163,7 +185,7 @@ export function usePreferencesPage() {
           });
         });
     },
-    [footerChoice, initialSettings, pathname, router, user],
+    [footerChoice, footerToken, initialSettings, pathname, router],
   );
 
   const dirty = isFormDirty(savedState, formState);

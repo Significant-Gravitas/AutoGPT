@@ -5,7 +5,7 @@ import hmac
 import logging
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
@@ -534,7 +534,10 @@ async def update_user_notification_preference(
         }
         if data.email:
             update_data["email"] = data.email
-        if data.daily_limit:
+        # `is not None`, not truthiness: 0 is the documented "send nothing"
+        # value that one-click unsubscribe writes, and a falsy check silently
+        # kept the previous limit instead.
+        if data.daily_limit is not None:
             update_data["maxEmailsPerDay"] = data.daily_limit
 
         user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
@@ -867,3 +870,139 @@ async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
         raise DatabaseError(
             f"Failed to record briefing time for user {user_id}: {e}"
         ) from e
+
+
+class BillingEmailRecipient(BaseModel):
+    """The four fields the billing emails need about a customer.
+
+    A narrow model rather than the Prisma `User`, because this crosses the
+    DatabaseManager RPC boundary: the lifecycle handlers run in the REST API
+    when a Stripe webhook arrives, and in the notification service when the
+    welcome is picked up off the work queue. That second process has no Prisma
+    connection.
+    """
+
+    id: str
+    email: str
+    name: str | None = None
+    welcome_email_sent_at: datetime | None = None
+
+
+async def get_billing_email_recipient(
+    stripe_customer_id: str,
+) -> BillingEmailRecipient | None:
+    """The account behind a Stripe customer, or None for a deleted or unknown
+    one — better to skip than to email into the void."""
+    try:
+        row = await prisma.user.find_first(
+            where={"stripeCustomerId": stripe_customer_id}
+        )
+        if row is None:
+            return None
+        return BillingEmailRecipient(
+            id=row.id,
+            email=row.email,
+            name=row.name,
+            welcome_email_sent_at=row.welcomeEmailSentAt,
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to look up the account for Stripe customer "
+            f"{stripe_customer_id}: {e}"
+        ) from e
+
+
+async def claim_welcome_email(user_id: str) -> bool:
+    """Take the one-shot welcome claim. True only for the caller that set it.
+
+    Conditional on the column still being null, so two webhook deliveries
+    racing each other cannot both send.
+    """
+    try:
+        claimed = await prisma.user.update_many(
+            where={"id": user_id, "welcomeEmailSentAt": None},
+            data={"welcomeEmailSentAt": datetime.now(tz=timezone.utc)},
+        )
+        return claimed > 0
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to claim the welcome email for user {user_id}: {e}"
+        ) from e
+
+
+async def release_welcome_email(user_id: str) -> None:
+    """Give the claim back when the send fails.
+
+    This is a column, not a key with a TTL: left set after a failed publish it
+    marks the customer welcomed forever, and every retry takes the
+    returning-customer branch instead.
+    """
+    try:
+        await prisma.user.update_many(
+            where={"id": user_id}, data={"welcomeEmailSentAt": None}
+        )
+    except Exception:
+        logger.warning(
+            "Could not release the welcome claim for user %s; they will not be "
+            "greeted on a retry",
+            user_id,
+            exc_info=True,
+        )
+
+
+# The volume-knob choices a Briefing footer can carry.
+FOOTER_CHOICES = frozenset({"daily", "weekly", "monthly", "alerts", "off"})
+
+
+def generate_preference_link(user_id: str, choice: str) -> str:
+    """A footer link that changes one setting in one click.
+
+    The choice is bound to the recipient by an HMAC, for the same reason the
+    unsubscribe link is: the settings page applies it on arrival, so a bare
+    `?f=off` would let any third party change an authenticated reader's
+    preferences simply by getting them to follow a link. Signing it means only
+    a link we generated, for that person, for that choice, is honoured.
+    """
+    if choice not in FOOTER_CHOICES:
+        raise ValueError(f"Unknown footer choice: {choice}")
+    token = _sign_preference_choice(user_id, choice)
+    base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+    return f"{base_url}/settings/account?f={choice}&t={quote_plus(token)}"
+
+
+def verify_preference_token(token: str, choice: str) -> str | None:
+    """The user id this token authorises for this choice, or None.
+
+    Returns None rather than raising: a bad token means the link is ignored and
+    the page loads normally, which is the right outcome for a stale forward or
+    a tampered URL.
+    """
+    try:
+        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
+        user_id, received = decoded.rsplit(":", 1)
+    except Exception:
+        return None
+    expected = _sign_preference_choice(user_id, choice)
+    try:
+        expected_sig = (
+            base64.urlsafe_b64decode(expected).decode("utf-8").rsplit(":", 1)[1]
+        )
+    except Exception:
+        return None
+    if not hmac.compare_digest(expected_sig, received):
+        return None
+    return user_id
+
+
+def _sign_preference_choice(user_id: str, choice: str) -> str:
+    secret_key = settings.secrets.unsubscribe_secret_key
+    # The choice is inside the signed payload, so a token minted for "daily"
+    # cannot be replayed as "off".
+    signature = hmac.new(
+        secret_key.encode("utf-8"),
+        f"{user_id}:{choice}".encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(
+        f"{user_id}:{signature.hex()}".encode("utf-8")
+    ).decode("utf-8")

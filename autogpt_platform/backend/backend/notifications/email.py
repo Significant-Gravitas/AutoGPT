@@ -59,10 +59,11 @@ class EmailSender:
         user_email: str,
         data: BaseNotificationData,
         unsubscribe_link: str,
+        volume_links: dict[str, str] | None = None,
     ) -> None:
         """Render and send one notification. Raises on delivery failure so the
         queue consumer's retry-with-backoff can recover."""
-        urls = build_urls(unsubscribe_link)
+        urls = build_urls(unsubscribe_link, volume_links)
         email = render(notification_type, data, user_email, urls)
         await self._deliver(notification_type, user_email, email, urls)
 

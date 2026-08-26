@@ -64,6 +64,9 @@ class EmailUrls(BaseModel):
     dashboard: str
     settings: str
     unsubscribe: str
+    # The volume knob's five footer links, each signed for this recipient and
+    # that choice. Keyed daily|weekly|monthly|alerts|off.
+    volume: dict[str, str] = {}
     attention: str
     billing: str
     prefs: str
@@ -72,7 +75,9 @@ class EmailUrls(BaseModel):
     discord: str
 
 
-def build_urls(unsubscribe_link: str) -> EmailUrls:
+def build_urls(
+    unsubscribe_link: str, volume: dict[str, str] | None = None
+) -> EmailUrls:
     base = settings.config.frontend_base_url or settings.config.platform_base_url
     return EmailUrls(
         dashboard=f"{base}/library",
@@ -81,6 +86,7 @@ def build_urls(unsubscribe_link: str) -> EmailUrls:
         # the volume knob one click rather than a form.
         settings=f"{base}/settings/account",
         unsubscribe=unsubscribe_link,
+        volume=volume or {},
         attention=f"{base}/library?filter=needs-attention",
         billing=f"{base}/settings/billing",
         prefs=f"{base}/settings/account",
