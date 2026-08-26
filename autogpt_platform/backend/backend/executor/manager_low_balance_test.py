@@ -29,6 +29,10 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         # Create mock database client
         mock_db_client = MagicMock()
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
+        # The forecast is derived from the account's real recent spend, not
+        # from the single transaction that crossed the threshold.
+        mock_db_client.get_recent_daily_spend.return_value = 100.0  # 1.00/day
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
@@ -80,6 +84,8 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 
         # Create mock database client
         mock_db_client = MagicMock()
+        mock_db_client.get_recent_daily_spend.return_value = 100.0
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
@@ -118,6 +124,8 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 
         # Create mock database client
         mock_db_client = MagicMock()
+        mock_db_client.get_recent_daily_spend.return_value = 100.0
+        mock_db_client.count_scheduled_agents.return_value = 2
 
         # Test the low balance handler
         billing.handle_low_balance(
