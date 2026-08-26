@@ -5,6 +5,7 @@ from urllib.parse import quote
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.outcome import as_utc, run_link
+from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import setup_count, to_home_expert
@@ -21,10 +22,17 @@ def compose_attention_items(
     reviews: list[PendingHumanReviewModel],
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
+    questions: list[ChatSessionInfo] | None = None,
 ) -> list[HomeAttentionItem]:
+    expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
     items.extend(
         _expert_attention(expert) for expert in experts if _needs_attention(expert)
+    )
+    items.extend(
+        _question_attention(session, question, expert_by_id)
+        for session, question in _open_questions(questions or [])
+        if _is_answerable(session, expert_by_id)
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -93,6 +101,64 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
     )
 
 
+def _open_questions(
+    sessions: list[ChatSessionInfo],
+) -> list[tuple[ChatSessionInfo, PendingQuestion]]:
+    """The questions still waiting on the user, one row per session.
+
+    Answering clears ``pending_question``, so a session without one has
+    nothing left to show. A session that asked twice keeps only its latest
+    question, and collapses to a single row here even if the caller hands us
+    the same session more than once — the item id is keyed on the session, so
+    two rows would be two cards with the same id.
+    """
+    latest: dict[str, tuple[ChatSessionInfo, PendingQuestion]] = {}
+    for session in sessions:
+        question = session.metadata.pending_question
+        if question is None:
+            continue
+        seen = latest.get(session.session_id)
+        if seen is None or seen[1].asked_at <= question.asked_at:
+            latest[session.session_id] = (session, question)
+    return list(latest.values())
+
+
+def _question_attention(
+    session: ChatSessionInfo,
+    question: PendingQuestion,
+    expert_by_id: dict[str, Expert],
+) -> HomeAttentionItem:
+    """A chat that ended waiting on the user. Replying there is the only fix,
+    so the item links straight back into the thread and has no own action."""
+    asker = expert_by_id.get(session.expert_id) if session.expert_id else None
+    return HomeAttentionItem(
+        id=f"question-{session.session_id}",
+        kind="question",
+        priority="normal",
+        title=f"{asker.name if asker else 'Autopilot'} has a question",
+        description=_clip(question.text),
+        why_it_matters="The work is paused until you answer in the chat.",
+        expert=to_home_expert(asker) if asker else None,
+        created_at=as_utc(question.asked_at),
+        primary_action=HomeAction(
+            label="Answer",
+            href=f"/copilot?sessionId={quote(session.session_id)}",
+        ),
+    )
+
+
+def _is_answerable(session: ChatSessionInfo, expert_by_id: dict[str, Expert]) -> bool:
+    """Whether replying in the thread can still clear the question.
+
+    ``expert_by_id`` holds only active experts, so a missing entry means the
+    asking teammate was archived. That thread now fails its expert-identity
+    build before the reply reaches ``clear_pending_question``, so the card
+    would survive every answer the user gives it and nothing else on Home can
+    dismiss it. Dropping it is the only way it ever goes away.
+    """
+    return session.expert_id is None or session.expert_id in expert_by_id
+
+
 def _credits_attention(schedule_count: int) -> HomeAttentionItem:
     return HomeAttentionItem(
         id="credits",
@@ -126,7 +192,11 @@ def _payload_preview(payload: object) -> str | None:
     if payload is None:
         return None
     rendered = payload if isinstance(payload, str) else json.dumps(payload, default=str)
-    compact = " ".join(rendered.split())
+    return _clip(rendered)
+
+
+def _clip(text: str) -> str:
+    compact = " ".join(text.split())
     if len(compact) <= _PREVIEW_MAX:
         return compact
     return f"{compact[:_PREVIEW_MAX - 3]}…"

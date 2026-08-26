@@ -16726,10 +16726,35 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
           },
+          "origin": {
+            "anyOf": [
+              { "type": "string", "enum": ["interactive", "automation"] },
+              { "type": "null" }
+            ],
+            "title": "Origin"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Pass Id"
+          },
+          "delegated_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Expert Id"
+          },
+          "delegated_by_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Session Id"
+          },
+          "handed_off_from_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Handed Off From Expert Id"
+          },
+          "pending_question": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingQuestion" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -20497,7 +20522,7 @@
           "id": { "type": "string", "title": "Id" },
           "kind": {
             "type": "string",
-            "enum": ["approval", "setup", "paused", "credits"],
+            "enum": ["approval", "setup", "paused", "credits", "question"],
             "title": "Kind"
           },
           "priority": {
@@ -23076,6 +23101,20 @@
         "title": "PendingInstallInfo",
         "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
       },
+      "PendingQuestion": {
+        "properties": {
+          "text": { "type": "string", "title": "Text" },
+          "asked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Asked At"
+          }
+        },
+        "type": "object",
+        "required": ["text", "asked_at"],
+        "title": "PendingQuestion",
+        "description": "The last unanswered question a session asked the user."
+      },
       "PhaseUsage": {
         "properties": {
           "phase": {
@@ -24389,7 +24428,9 @@
           "skill_loaded",
           "skill_deleted",
           "skill_list",
-          "expert_soul_updated"
+          "expert_soul_updated",
+          "expert_change_proposed",
+          "expert_change_applied"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

@@ -1131,6 +1131,38 @@ async def test_list_experts_defaults_a_missing_spend_entry_to_zero(
     assert by_id[missing] == 0
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_experts_with_metrics_false_skips_run_and_spend_lookups(
+    server: SpinTestServer, test_user
+):
+    """The copilot team-context roster only reads name/role/id/workflow
+    names — ``with_metrics=False`` lets it skip the AgentGraphExecution
+    query and per-expert Redis reads that ``with_metrics=True`` callers
+    (team page, briefing) still need, while leaving every field the roster
+    actually renders unchanged."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with (
+        patch.object(experts_db, "_latest_runs", new_callable=AsyncMock) as latest_runs,
+        patch.object(
+            experts_db, "_weekly_spends", new_callable=AsyncMock
+        ) as weekly_spend,
+    ):
+        experts = await experts_db.list_experts(test_user.id, with_metrics=False)
+
+    latest_runs.assert_not_awaited()
+    weekly_spend.assert_not_awaited()
+    me = next(e for e in experts if e.id == hired.expert.id)
+    assert me.name == hired.expert.name
+    assert me.role == hired.expert.role
+    assert [w.name for w in me.workflows] == [w.name for w in hired.expert.workflows]
+    assert me.last_run_at is None
+    assert me.last_run_status is None
+    assert me.weekly_spend == 0
+
+
 def test_expert_identity_projection_columns_exist_in_schema():
     """Guard the hand-written projection in ``list_expert_identities``.
 
@@ -1666,6 +1698,99 @@ async def test_templates_and_archived_experts_cannot_update_soul(
         await experts_db.update_soul(test_user.id, template.id, soul)
     with pytest.raises(experts_db.ExpertNotFoundError):
         await experts_db.update_soul(test_user.id, hired.expert.id, soul)
+
+
+_CURRENT_SOUL = ExpertSoulUpdate(
+    name="Mara",
+    identity="You are Mara.",
+    voice_preferences="Direct.",
+    boundaries="Ask before sending.",
+)
+_NEXT_SOUL = ExpertSoulUpdate(
+    name="Mara",
+    identity="You are Mara, a thoughtful strategist.",
+    voice_preferences="Direct.",
+    boundaries="Ask before sending.",
+)
+
+
+async def _expert_with_known_soul(user_id: str) -> str:
+    """Hire an expert and pin its soul to ``_CURRENT_SOUL``.
+
+    The compare-and-set matches on the raw columns, so the expected values
+    have to be ones this test wrote rather than whatever the template carried.
+    """
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(user_id, template.id, None)
+    await experts_db.update_soul(user_id, hired.expert.id, _CURRENT_SOUL)
+    return hired.expert.id
+
+
+async def _apply_next_soul(user_id: str, expert_id: str):
+    return await experts_db.update_soul_if_current(
+        user_id,
+        expert_id,
+        _NEXT_SOUL,
+        expected_name=_CURRENT_SOUL.name,
+        expected_identity=_CURRENT_SOUL.identity,
+        expected_voice_preferences=_CURRENT_SOUL.voice_preferences,
+        expected_boundaries=_CURRENT_SOUL.boundaries,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_if_current_refuses_a_soul_that_moved(
+    server: SpinTestServer, test_user
+):
+    expert_id = await _expert_with_known_soul(test_user.id)
+    await experts_db.update_soul(
+        test_user.id,
+        expert_id,
+        _CURRENT_SOUL.model_copy(update={"identity": "Edited from the team UI."}),
+    )
+
+    assert await _apply_next_soul(test_user.id, expert_id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_if_current_reports_a_write_archived_mid_flight(
+    server: SpinTestServer, test_user
+):
+    """The write commits, then the expert is archived before the read-back.
+
+    ``get_expert`` hides archived rows by default, so a plain re-read would
+    come back empty and the caller would report a landed edit as a refusal.
+    """
+    expert_id = await _expert_with_known_soul(test_user.id)
+    real_get_expert = experts_db.get_expert
+
+    async def archive_then_read(*args, **kwargs):
+        await experts_db.archive_expert(test_user.id, expert_id)
+        return await real_get_expert(*args, **kwargs)
+
+    with patch.object(experts_db, "get_expert", side_effect=archive_then_read):
+        updated = await _apply_next_soul(test_user.id, expert_id)
+
+    assert updated is not None
+    assert updated.identity == _NEXT_SOUL.identity
+    assert updated.is_archived
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_soul_if_current_raises_when_the_row_vanishes_after_the_write(
+    server: SpinTestServer, test_user
+):
+    """A row that is gone outright must not share ``None`` with a refusal —
+    the edit is committed, and the caller has to say so."""
+    expert_id = await _expert_with_known_soul(test_user.id)
+
+    with patch.object(experts_db, "get_expert", AsyncMock(return_value=None)):
+        with pytest.raises(experts_db.ExpertWriteNotReadableError):
+            await _apply_next_soul(test_user.id, expert_id)
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert row.identity == _NEXT_SOUL.identity
 
 
 @pytest.mark.asyncio(loop_scope="session")
