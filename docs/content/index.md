@@ -58,7 +58,7 @@ Blocks represent actions and are the building blocks of your workflows, includin
 - Custom scripts or functions
 - Conditional logic and decision-making components
 
-You can learn more under: [Build your own Blocks](../platform/new_blocks.md)
+You can learn more under: [Build your own Blocks](platform/new_blocks.md)
 
 ## Available Language Models
 
@@ -83,5 +83,4 @@ This strategy allows us to share previously closed-source components, fostering 
 ## Ready to Get Started?
 
 - Read the [Getting Started docs](https://agpt.co/docs/platform/getting-started) to self-host
-- [Join the waitlist](https://agpt.co/waitlist) for the cloud-hosted beta
 - [Contribute](contribute/index.md)
