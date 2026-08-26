@@ -45,6 +45,46 @@ export async function skipOnboardingIfPresent(
 }
 
 /**
+ * Dismiss the self-host connect step if this build shows it.
+ *
+ * It is the first onboarding screen when payment is off and the deployment is
+ * local -- which is exactly how the e2e stack is built -- so on those runs it
+ * sits in front of the Welcome step every other assertion starts from. It is
+ * genuinely optional: skipping leaves the account on the platform connection,
+ * which is what the rest of the wizard expects.
+ *
+ * Races the two headers rather than waiting on a timeout, so the helper works
+ * in both configurations without flaking on a slow render.
+ */
+export async function dismissConnectStepIfPresent(page: Page) {
+  const connectHeader = page.getByText("Power your agents in one sign-in");
+  const welcomeHeader = page.getByText("Welcome to AutoGPT");
+
+  const shown = await Promise.race([
+    connectHeader
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "connect" as const),
+    welcomeHeader
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "welcome" as const),
+  ]);
+
+  if (shown !== "connect") return;
+
+  // Two different buttons advance past this step, depending on whether the
+  // account already has a linked plan: "Skip for now" when it does not,
+  // "Continue" when it does. Both call the same skip handler, and which one
+  // renders depends on a request this step makes, so the helper waits for
+  // whichever turns up rather than assuming the unlinked case.
+  const skipButton = page.getByRole("button", {
+    name: /^(Skip for now|Continue)$/,
+  });
+  await skipButton.first().waitFor({ state: "visible", timeout: 15000 });
+  await skipButton.first().click();
+  await expect(welcomeHeader).toBeVisible({ timeout: 10000 });
+}
+
+/**
  * Walk through the onboarding wizard in the browser. The Subscription step
  * is gated behind ENABLE_PLATFORM_PAYMENT and only walked when present.
  * Returns the data that was entered so tests can verify it was submitted.
@@ -62,6 +102,9 @@ export async function completeOnboardingWizard(
   const role = options?.role ?? "Engineering";
   const painPoints = options?.painPoints ?? ["Research", "Reports & data"];
   const plan = options?.plan ?? "pro";
+
+  // Step 0: the self-host connect step, when this build shows it.
+  await dismissConnectStepIfPresent(page);
 
   // Step 1: Welcome — enter name
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible({
