@@ -229,10 +229,11 @@ export function ChatInput({
 
   // Narrows to string, so neither render site needs to re-test sessionId.
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
-  const hasTrayItems =
-    (showAdvancedComposerControls && !isStreaming) ||
-    (showAdvancedComposerControls && !hasSession) ||
-    Boolean(devtoolSessionId);
+  // Matches what the tray actually holds. The connection picker is not behind
+  // CHAT_MODE_OPTION, so gating the tray on that flag hid the picker outright
+  // in brain-dump mode; the dry-run toggle and the devtool badge keep their
+  // own conditions.
+  const hasTrayItems = !hasSession || !isStreaming || Boolean(devtoolSessionId);
 
   const canSend =
     !disabled &&
