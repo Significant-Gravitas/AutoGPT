@@ -76,6 +76,14 @@ interface UseCopilotStreamArgs {
   userId?: string | null;
   sessionId: string | null;
   hydratedMessages: UIMessage[] | undefined;
+  /**
+   * The session's messages as the API sent them.
+   *
+   * Conversion to UIMessages merges rows and drops their metadata, so the
+   * persisted failure envelope does not survive it. This is the same data
+   * before that happens.
+   */
+  rawSessionMessages?: unknown[];
   /** Id of the first hydrated message of the turn the backend is still
    *  running — the point the GET-resume replay starts from. */
   activeTurnStartMessageId?: string | null;
@@ -89,6 +97,7 @@ export function useCopilotStream({
   userId = null,
   sessionId,
   hydratedMessages,
+  rawSessionMessages,
   activeTurnStartMessageId = null,
   hasActiveStream,
   refetchSession,
@@ -517,12 +526,12 @@ export function useCopilotStream({
   // offered a way out -- leaving the chat latched to the connection that had
   // just refused it, with no way to say "continue on the other one".
   useEffect(() => {
-    if (!sessionId || !hydratedMessages) return;
+    if (!sessionId || !rawSessionMessages?.length) return;
     // A live failure is the fresher truth; never let history overwrite it.
     setProviderLimit((current) =>
-      current ? current : latestProviderFailure(hydratedMessages),
+      current ? current : latestProviderFailure(rawSessionMessages),
     );
-  }, [hydratedMessages, sessionId]);
+  }, [rawSessionMessages, sessionId]);
 
   useEffect(() => {
     if (!sessionId || !hydratedMessages) return;

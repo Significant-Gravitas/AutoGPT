@@ -10,6 +10,7 @@ import pytest
 import pytest_mock
 from pydantic import SecretStr
 
+from backend.copilot.offers import EntitlementUnavailable
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
@@ -3955,7 +3956,7 @@ def test_advanced_tier_is_refused_without_the_entitlement(
     declared Max-only but checked only where the picker decides what to grey
     out, so posting model="advanced" directly was served on platform credits."""
     mocker.patch(
-        "backend.api.features.chat.routes.advanced_tier_allowed",
+        "backend.api.features.chat.routes.advanced_tier_entitled",
         new_callable=AsyncMock,
         return_value=False,
     )
@@ -3975,13 +3976,48 @@ def test_advanced_tier_is_refused_without_the_entitlement(
     validate.assert_not_called()
 
 
+def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Not knowing is not permission.
+
+    The picker deliberately stays generous when the entitlement service is
+    down, because a billing hiccup should not make someone's model vanish
+    from the menu. Spending is the other way round: a second blue-team pass
+    found the endpoint reusing that generous helper, so an outage handed
+    Advanced to anyone who asked. It refuses now, and says so as a 503 rather
+    than a 403 -- the account may well be entitled; we simply cannot tell.
+    """
+    mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        side_effect=EntitlementUnavailable("billing down"),
+    )
+    validate = mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail == "advanced_tier_unavailable"
+    # The underlying failure is not handed to the client.
+    assert "billing down" not in str(detail)
+    validate.assert_not_called()
+
+
 def test_standard_tier_is_not_gated(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """The gate is on the paid tier only — Balanced must stay open to everyone
     even when the entitlement lookup says no."""
     allowed = mocker.patch(
-        "backend.api.features.chat.routes.advanced_tier_allowed",
+        "backend.api.features.chat.routes.advanced_tier_entitled",
         new_callable=AsyncMock,
         return_value=False,
     )
