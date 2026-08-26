@@ -625,6 +625,7 @@ class ClarifyingQuestion(BaseModel):
     question: str
     keyword: str
     example: str | None = None
+    options: list[str] = Field(default_factory=list)
 
 
 class AgentPreviewResponse(ToolResponseBase):

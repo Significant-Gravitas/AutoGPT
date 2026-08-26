@@ -407,18 +407,23 @@ describe("getChainHeading", () => {
 });
 
 describe("buildChainSegments edge cases", () => {
-  it("folds trailing narration optimistically while streaming", () => {
+  // Trailing text is the answer until a tool call proves otherwise. Folding
+  // it in optimistically meant it rendered as a chain row and then jumped
+  // out to message text when the text outgrew the narration cap or the
+  // turn settled.
+  it("keeps trailing narration out of the chain while streaming", () => {
     const parts = [toolPart("web_search"), textPart("Wrapping up.")];
 
-    expect(buildChainSegments(parts, isChainPart, true)).toEqual([
-      { kind: "chain", parts, index: 0 },
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+      { kind: "part", part: parts[1], index: 1 },
     ]);
   });
 
   it("keeps trailing narration out of a settled chain", () => {
     const parts = [toolPart("web_search"), textPart("Here you go.")];
 
-    expect(buildChainSegments(parts, isChainPart, false)).toEqual([
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
     ]);

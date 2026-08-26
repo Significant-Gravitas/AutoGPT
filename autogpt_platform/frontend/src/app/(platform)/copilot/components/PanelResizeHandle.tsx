@@ -46,6 +46,9 @@ export function PanelResizeHandle({
   useEffect(() => {
     onResizingChangeRef.current?.(isDragging);
   }, [isDragging]);
+  // A panel closed mid-drag unmounts the handle before the pointer comes up —
+  // say the drag ended, or the panel opens at zero duration the next time.
+  useEffect(() => () => onResizingChangeRef.current?.(false), []);
 
   // DOM integration: document-level pointer listeners bound only while
   // dragging, torn down on unmount so closing the panel mid-drag is safe.

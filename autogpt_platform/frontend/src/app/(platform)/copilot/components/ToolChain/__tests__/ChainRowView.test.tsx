@@ -1,6 +1,7 @@
 import { getGetV2GetSessionMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChainRow } from "../helpers";
 import { ChainRowView } from "../ChainRowView";
@@ -45,7 +46,9 @@ describe("ChainRowView - live sub-session rows", () => {
     );
 
     expect(await screen.findByText("Sub-AutoPilot")).toBeDefined();
-    expect(screen.getByText("Create a chat app")).toBeDefined();
+    // Delegated cards are status-only — the prompt stays in the teammate's
+    // own thread, not in the parent chain.
+    expect(screen.queryByText("Create a chat app")).toBeNull();
   });
 
   it("does not auto-open a result-poll row with no output (nothing to show)", () => {
@@ -99,6 +102,36 @@ describe("ChainRowView - live sub-session rows", () => {
       await screen.findByText(
         'Handing off to a teammate: "Create a chat app"…',
       ),
+    ).toBeDefined();
+  });
+
+  it("does not claim the teammate finished when the poll dies", async () => {
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    render(
+      <ChainRowView
+        row={row({
+          tool: "delegate_to_expert",
+          state: "done",
+          text: 'Teammate handled: "Create a chat app"',
+          output: { status: "running", sub_session_id: "sub-1" },
+          input: { prompt: "Create a chat app" },
+        })}
+        isLast
+      />,
+    );
+
+    // A dead poll can't refute the frozen "running", so the done label must
+    // never land — the row keeps saying the teammate is on it.
+    await expect(
+      screen.findByText('Teammate handled: "Create a chat app"'),
+    ).rejects.toThrow();
+    expect(
+      screen.getByText('Handing off to a teammate: "Create a chat app"…'),
     ).toBeDefined();
   });
 
