@@ -35,6 +35,7 @@ import {
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
 import { getLatestAssistantStatusMessage } from "./messageParts";
 import {
+  latestProviderFailure,
   parseProviderFailurePart,
   type ProviderFailure,
 } from "./providerFailure";
@@ -508,6 +509,20 @@ export function useCopilotStream({
     if (messages.length === 0) return;
     useCopilotStreamStore.getState().setMessageSnapshot(sessionId, messages);
   }, [sessionId, messages]);
+
+  // A failure the chat is still sitting on survives a reload, because the
+  // backend persisted the envelope onto the marker row for exactly this. It
+  // was only ever read from the live stream before, so refreshing, opening the
+  // chat in another tab, or closing the laptop took away the one control that
+  // offered a way out -- leaving the chat latched to the connection that had
+  // just refused it, with no way to say "continue on the other one".
+  useEffect(() => {
+    if (!sessionId || !hydratedMessages) return;
+    // A live failure is the fresher truth; never let history overwrite it.
+    setProviderLimit((current) =>
+      current ? current : latestProviderFailure(hydratedMessages),
+    );
+  }, [hydratedMessages, sessionId]);
 
   useEffect(() => {
     if (!sessionId || !hydratedMessages) return;

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeProviderFailure,
+  latestProviderFailure,
   parseProviderFailurePart,
+  PROVIDER_FAILURE_KEY,
   type ProviderFailure,
 } from "../providerFailure";
 
@@ -107,5 +109,49 @@ describe("describeProviderFailure", () => {
       }),
     );
     expect(copy.description).toContain("safety policy");
+  });
+});
+
+describe("latestProviderFailure", () => {
+  const envelope = {
+    kind: "usage_limit",
+    message: "Your ChatGPT plan is out of turns.",
+    authProvider: "codex",
+    credentialId: "cred-1",
+    resetsAt: 1767225600,
+    retryable: false,
+    reconnectFixesIt: false,
+  };
+
+  it("recovers the failure a reopened chat is still sitting on", () => {
+    // The backend persists the envelope onto the marker row precisely so a
+    // reload can still offer the way out. Reading it only from the live
+    // stream meant a refresh silently removed the switch-connection control
+    // and left the chat latched to the connection that had just refused it.
+    const failure = latestProviderFailure([
+      { role: "user", metadata: null },
+      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: envelope } },
+    ]);
+    expect(failure?.kind).toBe("usage_limit");
+    expect(failure?.credentialId).toBe("cred-1");
+  });
+
+  it("takes the newest one, so a recovered-from failure stays history", () => {
+    const older = { ...envelope, credentialId: "old" };
+    const newer = { ...envelope, credentialId: "new" };
+    const failure = latestProviderFailure([
+      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: older } },
+      { role: "assistant", metadata: { [PROVIDER_FAILURE_KEY]: newer } },
+    ]);
+    expect(failure?.credentialId).toBe("new");
+  });
+
+  it("is null for a chat that never failed", () => {
+    expect(
+      latestProviderFailure([
+        { role: "user", metadata: null },
+        { role: "assistant", metadata: { kind: "expert_run" } },
+      ]),
+    ).toBeNull();
   });
 });
