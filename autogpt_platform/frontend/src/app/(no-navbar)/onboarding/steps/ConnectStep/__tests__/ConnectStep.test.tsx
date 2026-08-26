@@ -102,19 +102,19 @@ describe("ConnectStep", () => {
     expect(
       await screen.findByRole("button", { name: /Sign in with ChatGPT/ }),
     ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /Add API keys instead/ }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /Skip for now/ })).toBeDefined();
   });
 
   it("can be skipped, because API keys are a legitimate answer", async () => {
     // A wizard that cannot be passed without linking an account would make
-    // the advanced path a dead end rather than an alternative.
+    // the advanced path a dead end rather than an alternative. The control
+    // is named for what it does -- it skips the step; it cannot add a key --
+    // and the line beside it says where keys actually live.
     mockOffers([offer()]);
 
     render(<ConnectStep />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add API keys instead/ }),
+      await screen.findByRole("button", { name: /Skip for now/ }),
     );
 
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);

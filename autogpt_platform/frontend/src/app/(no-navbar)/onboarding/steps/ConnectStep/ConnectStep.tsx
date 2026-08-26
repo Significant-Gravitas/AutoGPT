@@ -71,8 +71,12 @@ export function ConnectStep() {
                 or configure manually
               </Text>
               <Button variant="secondary" size="large" onClick={skip}>
-                Add API keys instead
+                Skip for now
               </Button>
+              <Text variant="small" as="span" className="!text-zinc-400">
+                You can add API keys in Settings &rarr; Integrations at any
+                time.
+              </Text>
             </>
           )}
         </div>
