@@ -7,6 +7,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 
 import type { CopilotLlmModel } from "../../../../store";
+import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 
 interface Segment {
   tier: CopilotLlmModel;
@@ -34,12 +35,29 @@ interface Props {
  */
 export function TierToggle({ segments, value, onSelect }: Props) {
   const locked = segments.filter((segment) => segment.lock);
+  const options = segments.map((segment) => ({
+    value: segment.tier,
+    disabled: Boolean(segment.lock),
+  }));
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const to = nextRovingValue(options, value, event.key);
+    if (to === null) return;
+    event.preventDefault();
+    onSelect(to);
+    // Selection follows focus in a radio group, so the newly chosen segment
+    // is also where focus belongs.
+    const group = event.currentTarget;
+    const next = group.querySelector<HTMLElement>(`[data-tier="${to}"]`);
+    next?.focus();
+  }
 
   return (
     <div className="mb-3 mt-1 flex flex-col gap-1.5 px-3">
       <div
         role="radiogroup"
         aria-label="Model tier"
+        onKeyDown={handleKeyDown}
         className="flex items-stretch gap-1 rounded-full bg-muted/70 p-1"
       >
         {segments.map((segment) =>
@@ -51,6 +69,8 @@ export function TierToggle({ segments, value, onSelect }: Props) {
               type="button"
               role="radio"
               aria-checked={segment.tier === value}
+              data-tier={segment.tier}
+              tabIndex={rovingTabIndex(options, { value: segment.tier }, value)}
               onClick={() => onSelect(segment.tier)}
               className={cn(
                 "min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors",
