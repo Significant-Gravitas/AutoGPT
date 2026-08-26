@@ -101,8 +101,11 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "This confirmation_id is unknown or has expired — previews last "
-            f"{PROPOSAL_TTL_MINUTES} minutes. Call {_PREVIEW_TOOLS} again for "
-            "a fresh preview."
+            f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
+            "earlier in this conversation, that change is APPLIED and the "
+            "expert exists — call list_team to check before doing anything "
+            f"else. Only call {_PREVIEW_TOOLS} again for a genuinely new "
+            "change."
         ),
         session_id=session_id,
     )

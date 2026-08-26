@@ -1,5 +1,4 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { ToolUIPart } from "ai";
 import {
   getAnimationText,
@@ -107,27 +106,4 @@ export function parseArguments(rawArguments: unknown): unknown {
   } catch {
     return {};
   }
-}
-
-/** A sub-session tool output freezes the status it had when the tool
- *  returned — a "running" card would say running forever after the work
- *  lands. While the frozen status is running/queued, read the truth off the
- *  polled session (cache-shared with the live view) and flip to completed
- *  once it goes idle. */
-export function useSubSessionEffectiveStatus(
-  subSessionId: string | null,
-  status: string | null,
-) {
-  const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
-  const { data, isError } = useGetV2GetSession(subSessionId ?? "", undefined, {
-    query: {
-      enabled: stale && !!subSessionId,
-      select: (res) => (res.status === 200 ? res.data : null),
-    },
-  });
-  if (!stale) return status;
-  // The frozen status is only trustworthy while the poll can refute it.
-  if (isError) return "unknown";
-  if (!data) return status;
-  return isSessionLive(data) ? status : "completed";
 }

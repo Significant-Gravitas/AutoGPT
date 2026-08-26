@@ -13,7 +13,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
-import { useSubSessionEffectiveStatus } from "./SubSessionLive/helpers";
+import { useSubSessionEffectiveStatus } from "./SubSessionLive/useSubSessionEffectiveStatus";
 import { SubSessionLive } from "./SubSessionLive/SubSessionLive";
 
 function agentHref(agent: Record<string, unknown>): string | null {
@@ -172,7 +172,14 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   );
 }
 
-export function SubSessionCard({ output }: OutputCardProps) {
+interface SubSessionCardProps extends OutputCardProps {
+  minimal?: boolean;
+}
+
+export function SubSessionCard({
+  output,
+  minimal = false,
+}: SubSessionCardProps) {
   const frozenStatus = str(output, "status");
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
@@ -204,7 +211,7 @@ export function SubSessionCard({ output }: OutputCardProps) {
         {status && <StatusPill status={status} />}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
-      {response && (
+      {!minimal && response && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
           {response}
         </p>
@@ -212,7 +219,7 @@ export function SubSessionCard({ output }: OutputCardProps) {
       {/* Keyed to the FROZEN status on purpose: once mounted for a running
           output, the live view stays up after completion showing the final
           steps + answer (it stops polling on its own). */}
-      {subSessionId && (
+      {!minimal && subSessionId && (
         <SubSessionLive
           subSessionId={subSessionId}
           active={["running", "queued"].includes(

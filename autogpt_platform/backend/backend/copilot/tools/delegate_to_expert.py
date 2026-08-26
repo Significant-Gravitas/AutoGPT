@@ -44,7 +44,12 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .expert_delegation import chain_refusal, safe_caller_name
+from .expert_delegation import (
+    chain_refusal,
+    resolve_target_expert,
+    safe_caller_name,
+    unknown_target_message,
+)
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
@@ -88,8 +93,9 @@ class DelegateToExpertTool(BaseTool):
                 "expert_id": {
                     "type": "string",
                     "description": (
-                        "Teammate to delegate to, from <team_context>. Must "
-                        "not be you."
+                        "Teammate to delegate to: their expert id from "
+                        "<team_context>, or their exact name if you don't "
+                        "have the id. Must not be you."
                     ),
                 },
                 "prompt": {
@@ -153,6 +159,14 @@ class DelegateToExpertTool(BaseTool):
         target = await self._load_delegate_target(user_id, target_id, session)
         if isinstance(target, ErrorResponse):
             return target
+        if target.id == session.expert_id:
+            # A name reference can resolve back to the caller even though the
+            # raw-id self check above passed.
+            return self._error(
+                "You are that expert — do the work yourself, or use "
+                "run_sub_session to isolate it in a fresh context.",
+                session,
+            )
 
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:
@@ -213,9 +227,7 @@ class DelegateToExpertTool(BaseTool):
     ) -> Expert | ErrorResponse:
         """Resolve the teammate, refusing anyone who can't safely take work."""
         try:
-            target = await experts_db().get_expert(
-                user_id, target_id, include_workflows=False
-            )
+            target = await resolve_target_expert(user_id, target_id)
         except Exception as e:
             logger.warning(f"Delegate target lookup failed for {target_id}: {e}")
             return self._error(
@@ -223,8 +235,7 @@ class DelegateToExpertTool(BaseTool):
             )
         if target is None or target.is_archived:
             return self._error(
-                f"No active expert with id {target_id} on this team. Pick one "
-                "of the teammates listed in your team context.",
+                await unknown_target_message(user_id, target_id, session.expert_id),
                 session,
             )
         if target.schedules_paused_at is not None:

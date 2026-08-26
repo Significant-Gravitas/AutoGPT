@@ -18,7 +18,15 @@ import { useLiveSubSession } from "./useLiveSubSession";
  *  polling their session list; when only the session is known, the expert
  *  is read off the polled session itself. Swapped for the full
  *  SubSessionCard the moment the tool returns. */
-export function SubSessionPendingCard({ input }: { input: unknown }) {
+interface PendingCardProps {
+  input: unknown;
+  minimal?: boolean;
+}
+
+export function SubSessionPendingCard({
+  input,
+  minimal = false,
+}: PendingCardProps) {
   const { expertsById } = useExpertMap();
   const args = asObject(input) ?? {};
   const inputExpertId = str(args, "expert_id");
@@ -28,7 +36,7 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
     inputSessionId ? null : inputExpertId,
   );
   const liveSessionId = inputSessionId ?? discoveredId;
-  // Cache-shared with SubSessionLive's query below — no extra request.
+  // Same query key as the live view below, so a full card polls once.
   const {
     session: liveSession,
     isError,
@@ -69,12 +77,14 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
           </Link>
         )}
       </div>
-      {prompt && (
+      {!minimal && prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
           {prompt}
         </p>
       )}
-      {liveSessionId && <SubSessionLive subSessionId={liveSessionId} active />}
+      {!minimal && liveSessionId && (
+        <SubSessionLive subSessionId={liveSessionId} active />
+      )}
     </div>
   );
 }

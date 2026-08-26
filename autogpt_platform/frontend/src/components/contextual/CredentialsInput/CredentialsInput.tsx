@@ -8,7 +8,6 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useState } from "react";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { ConnectCredentialDialog } from "./components/ConnectCredentialDialog/ConnectCredentialDialog";
@@ -66,10 +65,9 @@ export function CredentialsInput({
     isOptional,
   });
   const [isConnectDialogOpen, setConnectDialogOpen] = useState(false);
-  // The unified connect dialog ships with the new tool UI; off keeps the
-  // legacy per-type action flow everywhere.
-  const usesConnectDialog =
-    useGetFlag(Flag.NEW_TOOL_UI) && variant === "default";
+  // The builder node keeps its per-type action flow; everywhere else goes
+  // through the unified connect dialog.
+  const usesConnectDialog = variant === "default";
 
   if (!isLoaded(hookData)) {
     return null;

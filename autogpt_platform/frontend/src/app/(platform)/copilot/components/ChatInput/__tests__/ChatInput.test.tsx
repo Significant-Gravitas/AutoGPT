@@ -87,11 +87,15 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
 }));
 
 let mockFlagValue = false;
-let mockNewToolUIFlag = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION", NEW_TOOL_UI: "NEW_TOOL_UI" },
-  useGetFlag: (flag: string) =>
-    flag === "NEW_TOOL_UI" ? mockNewToolUIFlag : mockFlagValue,
+  Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION" },
+  useGetFlag: () => mockFlagValue,
+}));
+
+// Off by default so the rest of the suite sees the production-build behaviour.
+let mockTokenDevtoolEnabled = false;
+vi.mock("../../../tokenDevtool/gate", () => ({
+  isTokenDevtoolEnabled: () => mockTokenDevtoolEnabled,
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -257,8 +261,41 @@ afterEach(() => {
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
-  mockNewToolUIFlag = false;
+  mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+});
+
+describe("ChatInput token devtool badge", () => {
+  it("renders the badge while the brain-dump tray is disabled", () => {
+    // The tray is brain-dump-only; the badge must not depend on that flag.
+    mockFlagValue = false;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+  });
+
+  it("renders the badge inside the tray when brain dump is enabled", () => {
+    mockFlagValue = true;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+  });
+
+  it("stays hidden when the devtool gate is off", () => {
+    mockTokenDevtoolEnabled = false;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+  });
+
+  it("stays hidden before a session exists", () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId={null} />);
+
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+  });
 });
 
 describe("ChatInput mode toggle", () => {
@@ -690,6 +727,66 @@ describe("ChatInput submit behavior", () => {
     });
   });
 
+  it("clears the textarea on submit, without waiting for the stream to end", async () => {
+    // onSend resolves only when the whole assistant turn finishes, so a
+    // clear-after-await left the sent message sitting in the composer for
+    // the entire stream.
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
+    await act(async () => {
+      finishStream?.();
+    });
+  });
+
+  it("clears attachment chips on submit, without waiting for the stream to end", async () => {
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    // An attachment alone makes the message sendable, so the submit button
+    // going back to disabled is proof the chips were dropped.
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+    expect(onSend).toHaveBeenCalledWith("", [expect.any(File)], undefined);
+    await act(async () => {
+      finishStream?.();
+    });
+  });
+
   it("does not call onSend when disabled", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} disabled />);
@@ -721,42 +818,32 @@ describe("ChatInput submit behavior", () => {
   });
 
   it("allows sending again after a failed send", async () => {
-    const swallowWindow = (e: PromiseRejectionEvent) => e.preventDefault();
-    const swallowProcess = () => undefined;
-    window.addEventListener("unhandledrejection", swallowWindow);
-    process.on("unhandledRejection", swallowProcess);
-    try {
-      let failNext = true;
-      const onSend = vi.fn(async () => {
-        if (failNext) {
-          failNext = false;
-          throw new Error("fail");
-        }
-      });
-      render(<ChatInput onSend={onSend} />);
-      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
-      fireEvent.change(textarea, { target: { value: "hello" } });
-      const form = textarea.closest("form")!;
-      fireEvent.submit(form);
-      await waitFor(() => {
-        expect(onSend).toHaveBeenCalledTimes(1);
-      });
-      fireEvent.change(textarea, { target: { value: "retry" } });
-      fireEvent.submit(form);
-      await waitFor(() => {
-        expect(onSend).toHaveBeenCalledTimes(2);
-      });
-      expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
-    } finally {
-      window.removeEventListener("unhandledrejection", swallowWindow);
-      process.off("unhandledRejection", swallowProcess);
-    }
+    let failNext = true;
+    const onSend = vi.fn(async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("fail");
+      }
+    });
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalled();
+    });
+    fireEvent.change(textarea, { target: { value: "retry" } });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(2);
+    });
+    expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
   });
 });
 
-describe("ChatInput send failure with the new tool UI", () => {
+describe("ChatInput send failure", () => {
   it("toasts and puts the failed message back in the composer", async () => {
-    mockNewToolUIFlag = true;
     const onSend = vi.fn().mockRejectedValue(new Error("Backend exploded"));
     render(<ChatInput onSend={onSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
@@ -776,7 +863,6 @@ describe("ChatInput send failure with the new tool UI", () => {
   });
 
   it("keeps a draft typed during the stream alongside the failed message", async () => {
-    mockNewToolUIFlag = true;
     let rejectSend: ((error: Error) => void) | undefined;
     const onSend = vi.fn(
       () =>
@@ -802,7 +888,6 @@ describe("ChatInput send failure with the new tool UI", () => {
   });
 
   it("does not toast when the send succeeds", async () => {
-    mockNewToolUIFlag = true;
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} />);
     const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;

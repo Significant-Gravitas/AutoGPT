@@ -9,23 +9,22 @@ export interface MinimapEntry {
 const TITLE_CHARS = 60;
 const BODY_CHARS = 220;
 
-/** One tick per message, no exceptions — the rail mirrors the transcript, so
- *  a tool-only turn still gets its mark and falls back to a role label. */
+/** One tick per user message. The rail is a way back to what *you* asked —
+ *  ticking every assistant turn as well doubled the marks without adding a
+ *  distinct destination, since a reply sits directly under its question. */
 export function toMinimapEntries(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): MinimapEntry[] {
-  return messages.map((message) => {
-    const [title, body] = splitPreview(messageText(message));
-    return {
-      id: message.id,
-      title: title || roleFallback(message.role),
-      body,
-    };
-  });
-}
-
-function roleFallback(role: string): string {
-  return role === "user" ? "Your message" : "Autopilot worked on this";
+  return messages
+    .filter((message) => message.role === "user")
+    .map((message) => {
+      const [title, body] = splitPreview(messageText(message));
+      return {
+        id: message.id,
+        title: title || "Your message",
+        body,
+      };
+    });
 }
 
 function messageText(
