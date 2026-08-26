@@ -85,6 +85,18 @@ export interface MessageLike {
   parts?: Array<{ type?: string; text?: string }>;
 }
 
+/** Guards the breakdown recompute, which walks the whole loaded history and
+ *  so must not run per stream delta. Carries the session, so switching to a
+ *  thread with an identical message count still recomputes, and the last
+ *  message's part count, because the SDK appends a turn's tool calls and
+ *  results into the existing assistant message rather than a new one. */
+export function breakdownCacheKey(
+  sessionId: string,
+  messages: readonly MessageLike[],
+): string {
+  return `${sessionId}:${messages.length}:${messages.at(-1)?.parts?.length ?? 0}`;
+}
+
 export function computeBreakdown(
   messages: readonly MessageLike[],
 ): ContextBreakdown {

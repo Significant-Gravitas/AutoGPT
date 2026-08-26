@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { updateHistoryBreakdown, useTokenDevtoolStore } from "../store";
 import {
   BASE_CONTEXT_ESTIMATE,
+  breakdownCacheKey,
   breakdownTotal,
   computeBreakdown,
   displayContext,
@@ -160,6 +161,32 @@ describe("displayContext", () => {
 
   it("reports nothing when a compacted session has no live turns", () => {
     expect(displayContext(null, true, 90000)).toBeNull();
+  });
+});
+
+describe("breakdownCacheKey", () => {
+  const messages = [{ role: "user", parts: [{ type: "text", text: "hi" }] }];
+
+  it("changes when the session changes at an identical message count", () => {
+    expect(breakdownCacheKey("a", messages)).not.toBe(
+      breakdownCacheKey("b", messages),
+    );
+  });
+
+  it("changes when the last message grows parts in place", () => {
+    const before = [{ role: "assistant", parts: [{ type: "text" }] }];
+    const after = [
+      { role: "assistant", parts: [{ type: "text" }, { type: "tool-x" }] },
+    ];
+    expect(breakdownCacheKey("a", before)).not.toBe(
+      breakdownCacheKey("a", after),
+    );
+  });
+
+  it("is stable for the same session and the same parts", () => {
+    expect(breakdownCacheKey("a", messages)).toBe(
+      breakdownCacheKey("a", messages),
+    );
   });
 });
 

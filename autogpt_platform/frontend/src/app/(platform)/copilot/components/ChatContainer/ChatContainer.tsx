@@ -29,6 +29,7 @@ import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
+import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getKickoffAttemptToken,
@@ -199,16 +200,12 @@ export const ChatContainer = ({
   }, [isLimitReached]);
 
   // Token devtool: estimate the context from loaded history so the badge
-  // shows a value before the first live turn. Recomputed per message-count
-  // change (not per stream delta — serializing every part is not free). The
-  // key carries the session, so switching to a thread with the same message
-  // count still recomputes, and the last message's part count, because the
-  // SDK appends a turn's tool calls and results into the existing assistant
-  // message — without it the tool row would sit a full turn stale.
+  // shows a value before the first live turn. Guarded by breakdownCacheKey so
+  // it does not run per stream delta — serializing every part is not free.
   const devtoolBreakdownKeyRef = useRef("");
   useEffect(() => {
     if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
-    const key = `${sessionId}:${messages.length}:${messages.at(-1)?.parts?.length ?? 0}`;
+    const key = breakdownCacheKey(sessionId, messages);
     if (key === devtoolBreakdownKeyRef.current) return;
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
