@@ -1690,7 +1690,8 @@ def _get_provider_oauth_handler(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"Provider '{key}' authenticates via device code, not "
-                    f"OAuth. Use POST /{key}/device-auth/initiate."
+                    "OAuth. Use POST "
+                    f"/api/integrations/{key}/device-auth/initiate."
                 ),
             )
         raise HTTPException(
