@@ -17,21 +17,19 @@ describe("trackPaywallView", () => {
     sessionStorage.clear();
   });
 
-  it("reports the impression tagged with the pricing variant", () => {
-    trackPaywallView("control");
+  it("reports the paywall impression", () => {
+    trackPaywallView();
 
     expect(sendDatafastEvent).toHaveBeenCalledTimes(1);
-    expect(sendDatafastEvent).toHaveBeenCalledWith("paywall_view", {
-      variant: "control",
-    });
+    expect(sendDatafastEvent).toHaveBeenCalledWith("paywall_view", {});
   });
 
   // Cancelling Stripe checkout returns to `?step=1&subscription=cancelled` as a
   // full navigation, remounting the paywall. Without the session guard that
   // second mount would inflate the funnel's denominator.
   it("reports at most once per session", () => {
-    trackPaywallView("monthly-pro");
-    trackPaywallView("monthly-pro");
+    trackPaywallView();
+    trackPaywallView();
 
     expect(sendDatafastEvent).toHaveBeenCalledTimes(1);
   });
@@ -41,7 +39,7 @@ describe("trackPaywallView", () => {
       throw new Error("storage blocked");
     });
 
-    trackPaywallView("yearly-max");
+    trackPaywallView();
 
     expect(sendDatafastEvent).toHaveBeenCalledTimes(1);
   });
@@ -54,6 +52,6 @@ describe("trackPaywallView", () => {
       throw new Error("datafast unavailable");
     });
 
-    expect(() => trackPaywallView("control")).not.toThrow();
+    expect(() => trackPaywallView()).not.toThrow();
   });
 });

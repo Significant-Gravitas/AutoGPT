@@ -1,5 +1,4 @@
 import { analytics } from "@/services/analytics";
-import type { SubscriptionPricingExperimentVariant } from "./helpers";
 
 const PAYWALL_VIEW_SESSION_KEY = "paywall_view_tracked";
 
@@ -11,6 +10,11 @@ const PAYWALL_VIEW_SESSION_KEY = "paywall_view_tracked";
  * reached the subscription screen" from "saw the price and declined" — which
  * is the only question that matters between signup and payment.
  *
+ * Deliberately untagged by pricing arm. `posthog.init` runs in an effect with
+ * no bootstrap, so the experiment variant is still unresolved when this step
+ * mounts and would record "control" for everyone; PostHog records arm
+ * assignment itself, so segmentation belongs there rather than here.
+ *
  * Fires at most once per tab. Two paths would otherwise double-count:
  * cancelling Stripe checkout returns to `?step=1&subscription=cancelled` as a
  * full navigation that remounts this step, and a render committed before the
@@ -18,9 +22,7 @@ const PAYWALL_VIEW_SESSION_KEY = "paywall_view_tracked";
  * the store default of step 1. A genuinely new view (new tab or session) finds
  * the key unset and reports normally.
  */
-export function trackPaywallView(
-  variant: SubscriptionPricingExperimentVariant | "control",
-) {
+export function trackPaywallView() {
   try {
     if (sessionStorage.getItem(PAYWALL_VIEW_SESSION_KEY)) return;
     sessionStorage.setItem(PAYWALL_VIEW_SESSION_KEY, "1");
@@ -30,7 +32,7 @@ export function trackPaywallView(
   }
 
   try {
-    analytics.sendDatafastEvent("paywall_view", { variant });
+    analytics.sendDatafastEvent("paywall_view", {});
   } catch {
     // sendDatafastEvent hands the event to the third-party DataFast script,
     // which it calls without a guard of its own. This runs in a mount effect on

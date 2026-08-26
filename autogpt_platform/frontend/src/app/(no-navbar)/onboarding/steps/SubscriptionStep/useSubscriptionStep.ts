@@ -39,14 +39,13 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
-  const { billing, plans, variant } = useSubscriptionPricingExperiment();
+  const { billing, plans } = useSubscriptionPricingExperiment();
 
-  // This component only mounts once the paywall is genuinely on screen (the
-  // page gates on resolved flags and tier), so mount is the honest moment to
-  // report the impression. Reports the variant the user is looking at right
-  // now, so paywall → payment can be read per pricing arm.
+  // This step only mounts once the paywall is genuinely on screen, so mount is
+  // the honest moment to report the impression — and the one moment it can't
+  // be missed, whatever the flags resolve to afterwards.
   useMountEffect(() => {
-    trackPaywallView(variant);
+    trackPaywallView();
   });
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
