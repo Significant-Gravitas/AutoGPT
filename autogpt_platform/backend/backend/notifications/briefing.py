@@ -75,7 +75,7 @@ async def build_briefing(
         # reported. Returning before reading them would strand anything
         # actionable — the one thing this system promises never to drop.
         return None
-    attention = _attention_block(conditions)
+    attention, reported_condition_ids = _attention_block(conditions)
     highlights = await _highlights(user_id, window.start, window.end, agents)
     all_rows = [_ledger_row(agent, attention) for agent in agents]
     ledger, overflow = all_rows[:MAX_LEDGER_ROWS], all_rows[MAX_LEDGER_ROWS:]
@@ -113,7 +113,7 @@ async def build_briefing(
             only_agent=all_rows[0].agent if quiet and len(all_rows) == 1 else None,
             quiet_summary=_quiet_summary(totals) if quiet else None,
         ),
-        attention_condition_ids=[c.id for c in conditions],
+        attention_condition_ids=reported_condition_ids,
     )
 
 
@@ -133,17 +133,25 @@ async def mark_attention_reported(condition_ids: list[str]) -> None:
 
 def _attention_block(
     conditions: list[AlertConditionDTO],
-) -> list[BriefingAttentionItem]:
+) -> tuple[list[BriefingAttentionItem], list[str]]:
     """Absorbs every alert condition that was capped or deduped during the
-    period, plus anything still unresolved — so nothing actionable is ever
-    silently dropped. Sorted by severity, because the first card gets the
-    strong amber rule."""
+    period, plus anything still unresolved. Sorted by severity, because the
+    first card gets the strong amber rule.
+
+    Returns the items alongside the ids of exactly the conditions they came
+    from. The block is capped, and marking the overflow briefed would retire
+    conditions the reader never saw — they are filtered out of the next
+    period's candidates, so they would never surface in any briefing.
+    """
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
-    causes = sorted(
-        (parse_cause(c.cause, c.data) for c in conditions),
-        key=lambda c: SEVERITY[c.cause],
+    ranked = sorted(
+        ((parse_cause(c.cause, c.data), c) for c in conditions),
+        key=lambda pair: SEVERITY[pair[0].cause],
+    )[:MAX_ATTENTION_ITEMS]
+    return (
+        [cause.attention_item(base_url) for cause, _ in ranked],
+        [condition.id for _, condition in ranked],
     )
-    return [cause.attention_item(base_url) for cause in causes[:MAX_ATTENTION_ITEMS]]
 
 
 async def _highlights(

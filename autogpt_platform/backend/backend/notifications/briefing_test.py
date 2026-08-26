@@ -14,7 +14,11 @@ from prisma.enums import AlertCause, AlertConditionStatus, BriefingFrequency
 from backend.data.alerts import AlertConditionDTO
 from backend.data.briefing_data import AgentPeriodStats, ScoredRun
 from backend.notifications.alert_causes import AuthExpiredCause
-from backend.notifications.briefing import MAX_HIGHLIGHTS, build_briefing
+from backend.notifications.briefing import (
+    MAX_ATTENTION_ITEMS,
+    MAX_HIGHLIGHTS,
+    build_briefing,
+)
 from backend.notifications.conftest import make_db_client
 
 USER = "user-1"
@@ -44,9 +48,9 @@ def _agents(*specs: tuple[str, int, int, float]) -> list[AgentPeriodStats]:
     ]
 
 
-def _deferred_condition() -> AlertConditionDTO:
+def _deferred_condition(condition_id: str = "c1") -> AlertConditionDTO:
     return AlertConditionDTO(
-        id="c1",
+        id=condition_id,
         user_id=USER,
         cause=AlertCause.AUTH_EXPIRED,
         cause_key="auth_expired:gmail:g1",
@@ -168,6 +172,21 @@ async def test_the_briefing_reports_exactly_the_conditions_it_carried():
     # Only these are marked briefed, so a condition raised while the email was
     # being built still gets its turn next period.
     assert built.attention_condition_ids == ["c1"]
+
+
+@pytest.mark.asyncio
+async def test_conditions_past_the_display_cap_keep_their_turn():
+    """Only what the attention block actually showed is marked briefed.
+
+    Marking the overflow too would retire conditions the reader never saw:
+    they are filtered out of the next period's candidates, so they would never
+    appear in any briefing.
+    """
+    conditions = [_deferred_condition(f"c{i}") for i in range(1, 9)]
+    built = await _built(_agents(("Invoice Chaser", 6, 0, 0.25)), conditions=conditions)
+    assert built is not None
+    assert len(built.data.attention) == MAX_ATTENTION_ITEMS
+    assert built.attention_condition_ids == [f"c{i}" for i in range(1, 7)]
 
 
 @pytest.mark.asyncio
