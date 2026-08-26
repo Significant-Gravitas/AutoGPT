@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -39,7 +38,6 @@ vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
 }));
 
 afterEach(() => {
-  cleanup();
   // Not at the end of each test body: an assertion that throws above would
   // leak the shim, the location stub and NEXT_PUBLIC_GOOGLE_ADS_ID into every
   // later test here.

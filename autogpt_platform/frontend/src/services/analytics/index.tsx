@@ -44,7 +44,7 @@ export function SetupAnalytics(props: SetupProps) {
             strategy="afterInteractive"
             dangerouslySetInnerHTML={{
               __html: buildGoogleTagInitScript({
-                gaID: gaId,
+                GAID: gaId,
                 adsID,
                 debugMode,
                 preferences,
@@ -76,14 +76,14 @@ export function SetupAnalytics(props: SetupProps) {
 }
 
 interface InitScriptArgs {
-  gaID: string;
+  GAID: string;
   adsID: string;
   debugMode?: boolean;
   preferences: ConsentPreferences | null;
 }
 
 function buildGoogleTagInitScript({
-  gaID,
+  GAID,
   adsID,
   debugMode,
   preferences,
@@ -96,7 +96,7 @@ function buildGoogleTagInitScript({
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     buildConsentModeScript(preferences),
     `gtag('js', new Date());`,
-    `gtag('config', ${JSON.stringify(gaID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
     adsID
       ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
