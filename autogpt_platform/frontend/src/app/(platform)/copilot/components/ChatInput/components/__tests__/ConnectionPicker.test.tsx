@@ -207,6 +207,37 @@ describe("ConnectionPicker", () => {
     );
   });
 
+  it("is one tab stop, and the arrow keys move and select within it", async () => {
+    // A radio group is not a list of buttons that say role="radio". Tab moves
+    // past the whole group; the arrows move within it and select as they go.
+    // Previously every option was its own tab stop and the arrows did nothing,
+    // so a keyboard user could not operate the control the way its role
+    // promised.
+    mockOffers([offer()]);
+    render(<ConnectionPicker connectionLocked />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Model tier/ }),
+    );
+    const tiers = await screen.findByRole("radiogroup", { name: "Model tier" });
+    const balanced = within(tiers).getByRole("radio", {
+      name: "Balanced · sonnet-5",
+    });
+    const advanced = within(tiers).getByRole("radio", {
+      name: "Advanced · opus-5",
+    });
+
+    expect(balanced.getAttribute("tabindex")).toBe("0");
+    expect(advanced.getAttribute("tabindex")).toBe("-1");
+
+    balanced.focus();
+    await userEvent.keyboard("{ArrowRight}");
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced"),
+    );
+  });
+
   it("offers no tier choice when both tiers are the same model", async () => {
     // A single-model self-host resolves both tiers identically; choosing
     // between two identical options is a decision with no consequence.

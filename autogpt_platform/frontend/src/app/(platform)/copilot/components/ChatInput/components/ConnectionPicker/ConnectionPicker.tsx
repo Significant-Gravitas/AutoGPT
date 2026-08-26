@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
@@ -18,12 +18,14 @@ import { cn } from "@/lib/utils";
 import { ChoiceRow } from "./ChoiceRow";
 import {
   isLinkedAccount,
+  isSelectable,
   offerSubtitle,
   tierLabel,
   tierName,
   tierLock,
   tierSummary,
 } from "./helpers";
+import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { TierToggle } from "./TierToggle";
 import { useConnectionPicker } from "./useConnectionPicker";
 
@@ -98,6 +100,10 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     return null;
   }
 
+  const connectionOptions = offers.map((offer) => ({
+    value: offer.offer_id,
+    disabled: !isSelectable(offer),
+  }));
   const runsOnOwnPlan = active ? isLinkedAccount(active) : false;
   const showsTier = connectionLocked && Boolean(active);
   const label = showsTier
@@ -110,8 +116,8 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     runsOnOwnPlan && !showsTier ? `${label} · your plan` : label;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={
@@ -134,19 +140,42 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
             className="text-muted-foreground"
           />
         </button>
-      </DropdownMenuTrigger>
+      </PopoverTrigger>
 
-      <DropdownMenuContent
+      <PopoverContent
         align="start"
-        className="w-[26rem] max-w-[calc(100vw-2rem)] p-0"
+        className="w-[26rem] max-w-[calc(100vw-2rem)] border-border bg-popover p-0 text-popover-foreground"
       >
         {(!connectionLocked || onlyOfferIsLocked) && (
           <>
             <SectionLabel>Runs on</SectionLabel>
-            <div role="radiogroup" aria-label="Connection this chat runs on">
+            <div
+              role="radiogroup"
+              aria-label="Connection this chat runs on"
+              onKeyDown={(event) => {
+                const to = nextRovingValue(
+                  connectionOptions,
+                  active?.offer_id ?? "",
+                  event.key,
+                );
+                if (to === null) return;
+                event.preventDefault();
+                const target = offers.find((o) => o.offer_id === to);
+                if (target) chooseConnection(target);
+                event.currentTarget
+                  .querySelector<HTMLElement>(`[data-offer="${to}"]`)
+                  ?.focus();
+              }}
+            >
               {offers.map((offer) => (
                 <ChoiceRow
                   key={offer.offer_id}
+                  offerId={offer.offer_id}
+                  tabIndex={rovingTabIndex(
+                    connectionOptions,
+                    { value: offer.offer_id },
+                    active?.offer_id ?? "",
+                  )}
                   title={offer.display_name}
                   subtitle={offerSubtitle(offer)}
                   badge={isLinkedAccount(offer) ? "Connected" : undefined}
@@ -183,8 +212,8 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
             />
           </>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }
 
