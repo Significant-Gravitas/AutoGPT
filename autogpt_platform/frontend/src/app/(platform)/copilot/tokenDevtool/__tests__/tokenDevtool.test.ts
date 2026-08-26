@@ -153,13 +153,11 @@ describe("store.record", () => {
   // maps cannot linger in the breakdown map.
   it("prunes every map to the same set of sessions", () => {
     for (let i = 0; i < 25; i++) {
-      useTokenDevtoolStore
-        .getState()
-        .setBreakdown(`s${i}`, {
-          userTokens: 1,
-          assistantTokens: 0,
-          toolTokens: 0,
-        });
+      useTokenDevtoolStore.getState().setBreakdown(`s${i}`, {
+        userTokens: 1,
+        assistantTokens: 0,
+        toolTokens: 0,
+      });
       record(`s${i}`, [turn({ cacheCreationTokens: 1 })]);
     }
     const state = useTokenDevtoolStore.getState();
