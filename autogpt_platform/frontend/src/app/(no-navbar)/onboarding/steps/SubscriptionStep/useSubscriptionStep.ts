@@ -1,6 +1,10 @@
 import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  getSubscriptionValue,
+  trackAdsConversion,
+} from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
 import { useState } from "react";
 import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
@@ -71,23 +75,31 @@ export function useSubscriptionStep() {
 
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
+    const cycle = isYearly ? "yearly" : "monthly";
 
     try {
       // The paywall is the first step, so there's no profile to submit yet —
       // name / role / pain points are collected after payment. On a successful
       // checkout Stripe returns the user to Welcome to begin onboarding; on
-      // cancel, back to this paywall.
+      // cancel, back to this paywall. Stripe fills {CHECKOUT_SESSION_ID}; plan
+      // and cycle let the return page report the subscription to Google Ads.
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({
         data: {
           tier,
-          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success`,
+          success_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.welcome}&subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${planKey}&cycle=${cycle}`,
           cancel_url: `${baseUrl}?step=${PAYWALL_FIRST_STEPS.subscription}&subscription=cancelled`,
-          billing_cycle: isYearly ? "yearly" : "monthly",
+          billing_cycle: cycle,
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts — reporting earlier would count the in-place and failed
+        // paths as conversions.
+        trackAdsConversion("begin_checkout", {
+          value: getSubscriptionValue(planKey, cycle),
+        });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;
