@@ -277,7 +277,17 @@ export function useCopilotStream({
           }
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
-          if (limitFailure && limitFailure.authProvider !== "platform") {
+          //
+          // Which limit it is turns on whether the server sent a failure
+          // envelope, not on which connection the turn ran on. Our own daily
+          // budget is refused at admission and arrives with no envelope; an
+          // upstream 429 always carries one. Reading the connection instead
+          // meant a self-host -- where the route is "platform" because the
+          // deployment holds the key -- was told "Daily AutoPilot limit
+          // reached, upgrade your plan" when its own OpenRouter or local
+          // gateway had rate-limited it. That is a claim about an account we
+          // do not bill, offering a plan that would not help.
+          if (limitFailure) {
             setProviderLimit(limitFailure);
           } else {
             setRateLimitMessage(message);
