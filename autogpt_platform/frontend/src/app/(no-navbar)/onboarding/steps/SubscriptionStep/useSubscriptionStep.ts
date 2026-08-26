@@ -76,9 +76,6 @@ export function useSubscriptionStep() {
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
     const cycle = isYearly ? "yearly" : "monthly";
-    trackAdsConversion("begin_checkout", {
-      value: getSubscriptionValue(planKey, cycle),
-    });
 
     try {
       // The paywall is the first step, so there's no profile to submit yet —
@@ -97,6 +94,12 @@ export function useSubscriptionStep() {
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts — reporting earlier would count the in-place and failed
+        // paths as conversions.
+        trackAdsConversion("begin_checkout", {
+          value: getSubscriptionValue(planKey, cycle),
+        });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;

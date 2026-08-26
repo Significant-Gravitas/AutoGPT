@@ -16,7 +16,7 @@ export function resolveAnalyticsLoading({
   // Stored consent is only readable in the browser; nothing loads until it is.
   if (!preferences) return { googleTag: false, dataFast: false };
 
-  const isProductionDomain = host.includes("platform.agpt.co");
+  const isProductionDomain = isProductionHost(host);
   const hasAnalyticsConsent = preferences.hasConsented && preferences.analytics;
 
   return {
@@ -37,4 +37,15 @@ export function resolveAnalyticsLoading({
 export function isTourPath(pathname: string | null): boolean {
   if (!pathname) return false;
   return pathname === "/tour" || pathname.startsWith("/tour/");
+}
+
+const PRODUCTION_HOST = "platform.agpt.co";
+
+// The Host header is client-controlled, so a substring match would hand the
+// production tag to `platform.agpt.co.example.com` (and to
+// `notplatform.agpt.co`). Compare the hostname exactly, minus the port, the
+// casing and the root-label dot a client can legally send.
+function isProductionHost(host: string): boolean {
+  const hostname = host.toLowerCase().split(":")[0].replace(/\.$/, "");
+  return hostname === PRODUCTION_HOST;
 }

@@ -240,13 +240,16 @@ export function useOnboardingPage() {
   }, [currentStep, preparingStep, refreshSession]);
 
   async function handlePreparingComplete() {
-    trackAdsConversion("onboarding_complete", {
-      transactionID: user?.id,
-      email: user?.email,
-    });
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
+        // Only a confirmed completion counts: the fall-through below still
+        // sends the user to the copilot after three failures, but the backend
+        // never recorded the milestone.
+        trackAdsConversion("onboarding_complete", {
+          transactionID: user?.id,
+          email: user?.email,
+        });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");

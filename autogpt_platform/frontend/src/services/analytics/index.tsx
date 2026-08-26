@@ -6,15 +6,13 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { useMountEffect } from "@/hooks/useMountEffect";
 import { consent, type ConsentPreferences } from "@/services/consent/cookies";
-import { usePathname } from "next/navigation";
 import Script from "next/script";
-import { useEffect, useState } from "react";
 import { environment } from "../environment";
 import { buildConsentModeScript } from "./consent-mode";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
-import { isTourPath, resolveAnalyticsLoading } from "./loading-policy";
+import { isTourPath } from "./loading-policy";
+import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
 
@@ -34,35 +32,8 @@ export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
   const adsId = environment.getGoogleAdsID();
-
-  // Stored consent is only readable in the browser; the tag waits for it so
-  // the init script can replay the visitor's answer through Consent Mode.
-  const [preferences, setPreferences] = useState<ConsentPreferences | null>(
-    null,
-  );
-  useMountEffect(() => {
-    setPreferences(consent.load());
-  });
-
-  const pathname = usePathname();
-  const { googleTag: googleTagEnabled, dataFast: dataFastEnabled } =
-    resolveAnalyticsLoading({
-      host,
-      pathname,
-      isLocal: environment.isLocal(),
-      preferences,
-    });
-
-  useEffect(() => {
-    if (!googleTagEnabled) return;
-
-    // Google Analytics: feature usage signal (same as original implementation)
-    performance.mark("mark_feature_usage", {
-      detail: {
-        feature: "custom-ga",
-      },
-    });
-  }, [googleTagEnabled]);
+  const { preferences, googleTagEnabled, dataFastEnabled } =
+    useSetupAnalytics(host);
 
   return (
     <>

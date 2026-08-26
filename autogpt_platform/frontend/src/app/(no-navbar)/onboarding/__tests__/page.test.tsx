@@ -134,7 +134,8 @@ beforeEach(() => {
   mockRefreshSession.mockClear();
   mockCompletedSteps = [];
   routerReplace.mockClear();
-  completeOnboardingStep.mockClear();
+  completeOnboardingStep.mockReset();
+  completeOnboardingStep.mockResolvedValue({ status: 200 });
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
@@ -392,6 +393,34 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     removeGtagShim();
     vi.unstubAllEnvs();
   });
+
+  it("reports no onboarding_complete when the API never confirms", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    // All three attempts fail: the user still lands on the copilot, but the
+    // backend never recorded the milestone, so nothing converted.
+    completeOnboardingStep.mockRejectedValue(new Error("500"));
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(
+      () => {
+        expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      },
+      { timeout: 5000 },
+    );
+
+    expect(completeOnboardingStep).toHaveBeenCalledTimes(3);
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  }, 10000);
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
     // Regression test for the 422 caused by init's old `reset()` wiping

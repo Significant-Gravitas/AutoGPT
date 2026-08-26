@@ -51,6 +51,51 @@ describe("resolveAnalyticsLoading", () => {
     expect(result.googleTag).toBe(false);
   });
 
+  it("rejects hostnames that merely contain the production host", () => {
+    const consented = preferences({ analytics: true, advertising: true });
+
+    for (const host of [
+      "platform.agpt.co.example.com",
+      "notplatform.agpt.co",
+      "platform.agpt.co.evil.co",
+      "agpt.co",
+    ]) {
+      const result = resolveAnalyticsLoading({
+        ...production,
+        host,
+        preferences: consented,
+      });
+
+      expect({ host, ...result }).toEqual({
+        host,
+        googleTag: false,
+        dataFast: false,
+      });
+    }
+  });
+
+  it("accepts the production host with a port, odd casing or a trailing dot", () => {
+    const consented = preferences({ analytics: true, advertising: true });
+
+    for (const host of [
+      "platform.agpt.co:443",
+      "Platform.AGPT.co",
+      "platform.agpt.co.",
+    ]) {
+      const result = resolveAnalyticsLoading({
+        ...production,
+        host,
+        preferences: consented,
+      });
+
+      expect({ host, ...result }).toEqual({
+        host,
+        googleTag: true,
+        dataFast: true,
+      });
+    }
+  });
+
   it("loads the Google tag locally only with analytics consent", () => {
     const local = { host: "localhost:3000", pathname: "/", isLocal: true };
 

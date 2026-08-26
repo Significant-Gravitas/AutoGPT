@@ -50,6 +50,28 @@ beforeEach(() => {
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
 });
 
+const originalLocation = window.location;
+
+// The success path hands off to Stripe via window.location.href; jsdom tears
+// the environment down on a real navigation, so swap in a plain object.
+function stubLocation() {
+  const location = { origin: "http://localhost", href: "http://localhost/" };
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: location,
+  });
+  return location;
+}
+
+function restoreLocation() {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: originalLocation,
+  });
+}
+
 describe("subscription pricing experiment helpers", () => {
   test("defaults to monthly billing with no highlighted plan (matches the paywall)", () => {
     expect(getSubscriptionPricingExperimentConfig(undefined)).toMatchObject({
@@ -221,9 +243,10 @@ describe("SubscriptionStep", () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
     const gtagCalls = installGtagShim();
+    const location = stubLocation();
     server.use(
       http.post("*/api/credits/subscription", () =>
-        HttpResponse.json({ url: null }),
+        HttpResponse.json({ url: "https://checkout.stripe.com/pay/cs_test" }),
       ),
     );
 
@@ -237,6 +260,33 @@ describe("SubscriptionStep", () => {
         { send_to: "AW-123/BC", value: 50, currency: "USD" },
       ]);
     });
+    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+    restoreLocation();
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    // The backend modified the subscription in place — no Checkout ever
+    // started, so counting it would inflate the funnel.
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().currentStep).toBeGreaterThan(
+        1,
+      );
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
     removeGtagShim();
     vi.unstubAllEnvs();
   });

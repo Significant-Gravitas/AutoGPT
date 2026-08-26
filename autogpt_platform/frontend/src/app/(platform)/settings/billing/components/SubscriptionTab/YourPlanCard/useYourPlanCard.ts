@@ -196,13 +196,6 @@ export function useYourPlanCard() {
     // report the subscription to Google Ads.
     const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
-    // Only a free account goes through Checkout; paid users are modified in
-    // place, which is not a checkout start.
-    if (!isPaid) {
-      trackAdsConversion("begin_checkout", {
-        value: getSubscriptionValue(tier, cycle),
-      });
-    }
     try {
       const result = await updateTier({
         data: {
@@ -214,6 +207,12 @@ export function useYourPlanCard() {
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
       if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts: paid users are modified in place and get no URL, which is
+        // not a checkout start.
+        trackAdsConversion("begin_checkout", {
+          value: getSubscriptionValue(tier, cycle),
+        });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;

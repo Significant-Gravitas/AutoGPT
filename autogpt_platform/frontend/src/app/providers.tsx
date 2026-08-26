@@ -26,10 +26,12 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <NuqsAdapter>
         <PostHogProvider>
           <BackendAPIProvider>
-            <SentryUserTracker />
-            <PostHogUserTracker />
-            <AdsConversionTracker />
+            {/* All four read useSearchParams (directly or via useAuth), which
+                bails out of static rendering unless it sits under Suspense. */}
             <Suspense fallback={null}>
+              <SentryUserTracker />
+              <PostHogUserTracker />
+              <AdsConversionTracker />
               <PostHogPageViewTracker />
             </Suspense>
             <CredentialsProvider>
