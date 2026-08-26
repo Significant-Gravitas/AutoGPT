@@ -110,6 +110,7 @@ ToolName = Literal[
     "list_presets",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
