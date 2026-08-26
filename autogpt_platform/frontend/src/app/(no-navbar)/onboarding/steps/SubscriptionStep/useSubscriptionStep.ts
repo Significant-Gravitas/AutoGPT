@@ -3,6 +3,7 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { environment } from "@/services/environment";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "@/components/molecules/PlanCard/countries";
 import {
@@ -12,7 +13,7 @@ import {
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { trackPaywallView } from "./tracking";
+import { trackPaywallCheckoutCancelled, trackPaywallView } from "./tracking";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -40,12 +41,18 @@ export function useSubscriptionStep() {
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
   const { billing, plans } = useSubscriptionPricingExperiment();
+  const searchParams = useSearchParams();
 
   // This step only mounts once the paywall is genuinely on screen, so mount is
   // the honest moment to report the impression — and the one moment it can't
   // be missed, whatever the flags resolve to afterwards.
   useMountEffect(() => {
     trackPaywallView();
+    // Stripe sends the user back here with `subscription=cancelled` after they
+    // abandon checkout, so the return lands on this same mount.
+    if (searchParams.get("subscription") === "cancelled") {
+      trackPaywallCheckoutCancelled();
+    }
   });
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
