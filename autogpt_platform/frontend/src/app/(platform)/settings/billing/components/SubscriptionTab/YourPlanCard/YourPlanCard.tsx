@@ -172,6 +172,8 @@ export function YourPlanCard({ index = 0 }: Props) {
               size="small"
               onClick={onManage}
               disabled={!canManagePortal}
+              data-fast-goal="billing_portal_open"
+              data-fast-goal-surface="settings_billing"
             >
               Manage subscription
             </Button>
