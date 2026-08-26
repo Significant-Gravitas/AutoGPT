@@ -33,6 +33,12 @@ export function useProviderLimitDialog({
       ? connectionsQuery.data.data.offers
       : undefined;
 
+  // "There is no other connection" is a claim about the account, and while the
+  // list is still loading -- or failed to load -- we do not know that. Saying
+  // it anyway tells a user with a perfectly good second connection that they
+  // have none, at the moment they most need it.
+  const isLoadingOffers = connectionsQuery.isLoading;
+  const failedToLoadOffers = connectionsQuery.isError;
   const alternative = alternativeConnection(offers, failure);
 
   const { mutateAsync: changeConnection, isPending: isSwitching } =
@@ -71,6 +77,9 @@ export function useProviderLimitDialog({
 
   return {
     alternative,
+    isLoadingOffers,
+    failedToLoadOffers,
+    retryOffers: () => void connectionsQuery.refetch(),
     continueHere,
     isSwitching,
     resetHint: formatResetHint(failure?.resetsAt ?? null),

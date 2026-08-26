@@ -14,7 +14,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 import { ManageConnectionDialog } from "./ManageConnectionDialog";
-import { tierSummary } from "./helpers";
+import { tierSummary, isSelectable } from "./helpers";
 import { useAIConnectionsSection } from "./useAIConnectionsSection";
 
 export function AIConnectionsSection() {
@@ -34,7 +34,12 @@ export function AIConnectionsSection() {
 
   // One connection is not a choice. The rows still say what powers a chat,
   // they just stop presenting a decision that doesn't exist.
-  const hasChoice = connections.length > 1;
+  //
+  // Counted over what can actually be picked: a locked upsell row is listed
+  // so the user can see the connection exists, but offering it as a choice
+  // produces a click the server can only refuse.
+  const selectableCount = connections.filter(isSelectable).length;
+  const hasChoice = selectableCount > 1;
 
   return (
     <section aria-labelledby="ai-connections-heading" className="pb-8 pl-4">
@@ -68,7 +73,7 @@ export function AIConnectionsSection() {
               key={connection.offer_id}
               connection={connection}
               account={accountFor(connection)}
-              selectable={hasChoice}
+              selectable={hasChoice && isSelectable(connection)}
               isSelected={connection.offer_id === selectedKey}
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}
