@@ -6,7 +6,7 @@ import {
   isSessionLive,
   toMiniRow,
 } from "./helpers";
-import { LiveNotice, LiveSteps } from "./LiveSteps";
+import { LiveNotice, LiveSteps } from "./components/LiveSteps";
 import { useLiveSubSession } from "./useLiveSubSession";
 
 interface Props {

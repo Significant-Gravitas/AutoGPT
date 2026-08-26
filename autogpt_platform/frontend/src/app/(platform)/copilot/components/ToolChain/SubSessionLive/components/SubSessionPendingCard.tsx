@@ -3,12 +3,12 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { useExpertMap } from "../../../useExpertMap";
-import { CARD, StatusPill } from "../ResultCards";
-import { asObject, str } from "../resultHelpers";
-import { SubSessionLive } from "./SubSessionLive";
-import { useDelegatedSessionId } from "./useDelegatedSessionId";
-import { useLiveSubSession } from "./useLiveSubSession";
+import { useExpertMap } from "../../../../useExpertMap";
+import { CARD, StatusPill } from "../../ResultCards";
+import { asObject, str } from "../../resultHelpers";
+import { SubSessionLive } from "../SubSessionLive";
+import { useDelegatedSessionId } from "../useDelegatedSessionId";
+import { useLiveSubSession } from "../useLiveSubSession";
 
 /** The card for a delegated run that hasn't returned yet. A blocking
  *  delegate/handoff yields no tool output while the teammate works, so

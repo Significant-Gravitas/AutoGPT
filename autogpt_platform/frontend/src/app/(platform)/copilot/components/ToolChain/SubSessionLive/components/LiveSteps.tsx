@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import type { ChainRow } from "../helpers";
-import { RowIcon } from "../RowIcon";
-import { SwapText } from "../SwapText";
+import type { ChainRow } from "../../helpers";
+import { RowIcon } from "../../RowIcon";
+import { SwapText } from "../../SwapText";
 
 export function LiveSteps({ rows }: { rows: ChainRow[] }) {
   return rows.map((row, i) => {
