@@ -1,9 +1,11 @@
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
-import { FlashIcon } from "@hugeicons/core-free-icons";
+import { Delete02Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { getLastRunLabel, workflowNeedsSetup } from "../../../helpers";
 import { STATUS_BADGE_CLASS } from "../constants";
@@ -11,9 +13,10 @@ import { ExpertWorkflowGroupData } from "../helpers";
 
 type Props = {
   group: ExpertWorkflowGroupData;
+  onRemoveWorkflow: (workflow: ExpertWorkflowRef) => void;
 };
 
-export function ExpertWorkflowGroup({ group }: Props) {
+export function ExpertWorkflowGroup({ group, onRemoveWorkflow }: Props) {
   const { expert, workflows } = group;
   const lastRun = getLastRunLabel(expert);
   const countLabel = `${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"}`;
@@ -114,6 +117,15 @@ export function ExpertWorkflowGroup({ group }: Props) {
                         </Badge>
                       ))
                     : null}
+                  <Button
+                    variant="icon"
+                    size="icon"
+                    className="size-8 shrink-0 p-0 text-zinc-400 hover:text-red-600"
+                    aria-label={`Remove ${workflow.name ?? "workflow"} from ${expert.name}`}
+                    onClick={() => onRemoveWorkflow(workflow)}
+                  >
+                    <Icon icon={Delete02Icon} size={16} aria-hidden="true" />
+                  </Button>
                 </div>
               </div>
             );

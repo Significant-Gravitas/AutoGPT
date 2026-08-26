@@ -968,6 +968,42 @@ def test_install_workflow_unknown_expert_returns_404(
     assert response.status_code == 404
 
 
+# ─── Uninstall workflow ────────────────────────────────────────────────
+
+
+def test_uninstall_workflow_returns_204(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_uninstall = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.uninstall_workflow",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.delete("/experts/expert-1/workflows/workflow-1")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert mock_uninstall.await_args == mocker.call(
+        test_user_id, "expert-1", "workflow-1"
+    )
+
+
+def test_uninstall_workflow_unknown_workflow_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.uninstall_workflow",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertWorkflowNotFoundError("nope"),
+    )
+
+    response = client.delete("/experts/expert-1/workflows/nope")
+
+    assert response.status_code == 404
+
+
 # ─── Archive + list ────────────────────────────────────────────────────
 
 

@@ -4,6 +4,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
@@ -45,6 +46,10 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const [adoptedTargetKeys, setAdoptedTargetKeys] = useState<Set<string>>(
     new Set(),
   );
+  const [workflowPendingRemoval, setWorkflowPendingRemoval] = useState<{
+    expert: Expert;
+    workflow: ExpertWorkflowRef;
+  } | null>(null);
 
   const agentsQuery = useGetV2ListLibraryAgentsInfinite(
     { page: 1, page_size: AGENTS_PAGE_SIZE, is_hidden: false },
@@ -111,6 +116,14 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     }
   }
 
+  function askToRemoveWorkflow(expert: Expert, workflow: ExpertWorkflowRef) {
+    setWorkflowPendingRemoval({ expert, workflow });
+  }
+
+  function cancelWorkflowRemoval() {
+    setWorkflowPendingRemoval(null);
+  }
+
   return {
     filter,
     setFilter,
@@ -128,5 +141,8 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     adopt,
     pendingLibraryAgentIDs,
     adoptedTargetKeys,
+    workflowPendingRemoval,
+    askToRemoveWorkflow,
+    cancelWorkflowRemoval,
   };
 }
