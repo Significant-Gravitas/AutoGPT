@@ -32,21 +32,6 @@ export function turnInputTokens(turn: TokenTurn): number {
   return turn.promptTokens + turn.cacheReadTokens + turn.cacheCreationTokens;
 }
 
-/** Best-effort live context estimate: cache writes are the tokens newly
- *  persisted into the prompt cache, so summing them since the last
- *  compaction approximates the transcript the model currently sees. A
- *  compaction turn restarts the sum (the compacted context is re-written
- *  to cache in that same turn). */
-export function estimateContext(turns: TokenTurn[]): number {
-  let total = 0;
-  for (const turn of turns) {
-    total = turn.compacted
-      ? turn.cacheCreationTokens
-      : total + turn.cacheCreationTokens;
-  }
-  return total;
-}
-
 export function formatTokenCount(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${trimZeros((count / 1000).toFixed(1))}k`;
@@ -81,27 +66,32 @@ export function breakdownTotal(breakdown: ContextBreakdown): number {
 /** Displayed context: prefer the live cache-write estimate, but until it
  *  can exceed the history estimate (a fresh page load starts the live sum
  *  at zero), keep showing the history number. Once a compaction is observed
- *  the history estimate is stale by definition and the live one wins. */
+ *  the history estimate is stale by definition and the live one wins: the
+ *  compaction turn re-writes the whole summarized context to cache, so that
+ *  turn's write IS the new context — clamping it to a floor would over-report
+ *  a genuinely small post-compaction context. */
 export function displayContext(
-  turns: TokenTurn[] | undefined,
+  liveContext: number | null,
+  compacted: boolean,
   historyEstimate: number | undefined,
 ): number | null {
-  const live = turns?.length ? estimateContext(turns) : null;
-  if (turns?.some((turn) => turn.compacted)) return live;
-  if (live === null && historyEstimate === undefined) return null;
-  return Math.max(live ?? 0, historyEstimate ?? 0);
+  if (compacted) return liveContext;
+  if (liveContext === null && historyEstimate === undefined) return null;
+  return Math.max(liveContext ?? 0, historyEstimate ?? 0);
 }
 
-interface MessageLike {
+export interface MessageLike {
   role?: string;
   parts?: Array<{ type?: string; text?: string }>;
 }
 
-export function computeBreakdown(messages: unknown[]): ContextBreakdown {
+export function computeBreakdown(
+  messages: readonly MessageLike[],
+): ContextBreakdown {
   let user = 0;
   let assistant = 0;
   let tools = 0;
-  for (const message of messages as MessageLike[]) {
+  for (const message of messages) {
     for (const part of message?.parts ?? []) {
       const chars = partChars(part);
       if (part?.type === "text" || part?.type === "reasoning") {
@@ -119,12 +109,24 @@ export function computeBreakdown(messages: unknown[]): ContextBreakdown {
   };
 }
 
+/** Tool parts are the big ones and computeBreakdown re-walks the whole loaded
+ *  history on every recompute, so serializing them each time is O(history) per
+ *  call. AI SDK part objects are stable references across re-renders, so
+ *  caching per object collapses that to O(new parts). */
+const partCharCache = new WeakMap<object, number>();
+
 function partChars(part: unknown): number {
   const text = (part as { text?: unknown })?.text;
   if (typeof text === "string") return text.length;
+  if (part === null || typeof part !== "object") return 0;
+  const cached = partCharCache.get(part);
+  if (cached !== undefined) return cached;
+  let chars = 0;
   try {
-    return JSON.stringify(part)?.length ?? 0;
+    chars = JSON.stringify(part)?.length ?? 0;
   } catch {
-    return 0; // Circular/unserializable part — skip it, this is an estimate.
+    chars = 0; // Circular/unserializable part — skip it, this is an estimate.
   }
+  partCharCache.set(part, chars);
+  return chars;
 }

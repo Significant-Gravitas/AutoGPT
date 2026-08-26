@@ -36,11 +36,19 @@ export function TokenDevtoolBadge({ sessionId }: Props) {
   const breakdown = useTokenDevtoolStore(
     (s) => s.breakdownBySession[sessionId],
   );
-  const [open, setOpen] = useState(false);
-  const context = displayContext(
-    turns,
-    breakdown ? breakdownTotal(breakdown) : undefined,
+  const liveContext = useTokenDevtoolStore(
+    (s) => s.liveContextBySession[sessionId],
   );
+  const compacted = useTokenDevtoolStore(
+    (s) => s.compactedBySession[sessionId] ?? false,
+  );
+  const [open, setOpen] = useState(false);
+  const seed = breakdown ? breakdownTotal(breakdown) : undefined;
+  const context = displayContext(liveContext ?? null, compacted, seed);
+  // The rows describe the loaded-history seed, so showing them next to a
+  // headline sourced from the live cache-write sum would read as one total
+  // that does not add up. Only render them while the seed IS the headline.
+  const showBreakdown = breakdown !== undefined && context === seed;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,7 +84,7 @@ export function TokenDevtoolBadge({ sessionId }: Props) {
           summarizes ~{formatTokenCount(AUTOCOMPACT_TOKENS)}
         </p>
 
-        {breakdown && <BreakdownSection breakdown={breakdown} />}
+        {showBreakdown && <BreakdownSection breakdown={breakdown} />}
 
         {!turns?.length ? (
           <p className="text-sm text-zinc-500">

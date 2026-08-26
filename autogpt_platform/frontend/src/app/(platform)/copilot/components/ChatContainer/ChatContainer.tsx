@@ -201,12 +201,14 @@ export const ChatContainer = ({
   // Token devtool: estimate the context from loaded history so the badge
   // shows a value before the first live turn. Recomputed per message-count
   // change (not per stream delta — serializing every part is not free). The
-  // guard is keyed by session too, so switching to a thread that happens to
-  // have the same message count still recomputes.
+  // key carries the session, so switching to a thread with the same message
+  // count still recomputes, and the last message's part count, because the
+  // SDK appends a turn's tool calls and results into the existing assistant
+  // message — without it the tool row would sit a full turn stale.
   const devtoolBreakdownKeyRef = useRef("");
   useEffect(() => {
     if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
-    const key = `${sessionId}:${messages.length}`;
+    const key = `${sessionId}:${messages.length}:${messages.at(-1)?.parts?.length ?? 0}`;
     if (key === devtoolBreakdownKeyRef.current) return;
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);

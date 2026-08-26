@@ -5,12 +5,15 @@ import {
   breakdownTotal,
   computeBreakdown,
   displayContext,
-  estimateContext,
   formatTokenCount,
   turnInputTokens,
   type TokenTurn,
 } from "../tokenMath";
-import { createUsageCapturingFetch, parseUsageComment } from "../usageTap";
+import {
+  createUsageCapturingFetch,
+  isCompactionLine,
+  parseUsageComment,
+} from "../usageTap";
 
 const USAGE_LINE =
   ': usage {"type":"usage","promptTokens":1200,"completionTokens":300,"totalTokens":1500,"cacheReadTokens":40000,"cacheCreationTokens":2000}';
@@ -28,9 +31,22 @@ function turn(overrides: Partial<TokenTurn> = {}): TokenTurn {
 }
 
 afterEach(() => {
-  useTokenDevtoolStore.setState({ turnsBySession: {}, breakdownBySession: {} });
+  useTokenDevtoolStore.setState({
+    turnsBySession: {},
+    breakdownBySession: {},
+    liveContextBySession: {},
+    compactedBySession: {},
+  });
   vi.unstubAllGlobals();
 });
+
+function liveContextOf(sessionId: string) {
+  const state = useTokenDevtoolStore.getState();
+  return {
+    context: state.liveContextBySession[sessionId] ?? null,
+    compacted: state.compactedBySession[sessionId] ?? false,
+  };
+}
 
 describe("parseUsageComment", () => {
   it("parses a usage comment into turn usage", () => {
@@ -43,10 +59,31 @@ describe("parseUsageComment", () => {
     expect(turnInputTokens({ ...usage!, compacted: false })).toBe(43200);
   });
 
-  it("ignores data lines, other comments, and malformed JSON", () => {
+  it("ignores data lines and other comments", () => {
     expect(parseUsageComment('data: {"type":"text-delta"}')).toBeNull();
     expect(parseUsageComment(": keepalive")).toBeNull();
+    // No closing brace — rejected by the regex before JSON.parse is reached.
     expect(parseUsageComment(": usage {broken")).toBeNull();
+  });
+
+  it("ignores a well-shaped comment whose payload is invalid JSON", () => {
+    expect(parseUsageComment(': usage {"promptTokens":}')).toBeNull();
+  });
+
+  it("does not flag a turn because the assistant quoted the tool name", () => {
+    expect(
+      isCompactionLine(
+        'data: {"type":"text-delta","delta":"I will run context_compaction next"}',
+      ),
+    ).toBe(false);
+  });
+
+  it("flags a real compaction tool call", () => {
+    expect(
+      isCompactionLine(
+        'data: {"type":"tool-input-start","toolCallId":"c1","toolName":"context_compaction"}',
+      ),
+    ).toBe(true);
   });
 
   it("coerces missing or negative counts to zero", () => {
@@ -57,42 +94,72 @@ describe("parseUsageComment", () => {
   });
 });
 
-describe("estimateContext", () => {
+describe("store.record", () => {
+  function record(sessionId: string, turns: TokenTurn[]) {
+    turns.forEach((t) => useTokenDevtoolStore.getState().record(sessionId, t));
+  }
+
   it("sums cache writes across turns", () => {
-    const turns = [
+    record("s", [
       turn({ cacheCreationTokens: 30000 }),
       turn({ cacheCreationTokens: 5000 }),
-    ];
-    expect(estimateContext(turns)).toBe(35000);
+    ]);
+    expect(liveContextOf("s").context).toBe(35000);
   });
 
   it("restarts the sum on a compaction turn", () => {
-    const turns = [
+    record("s", [
       turn({ cacheCreationTokens: 90000 }),
       turn({ cacheCreationTokens: 20000, compacted: true }),
       turn({ cacheCreationTokens: 4000 }),
-    ];
-    expect(estimateContext(turns)).toBe(24000);
+    ]);
+    expect(liveContextOf("s").context).toBe(24000);
+  });
+
+  // The per-turn list is capped for display. The estimate must not be, or a
+  // long session would silently lose both its post-compaction restart point
+  // and the fact that it ever compacted.
+  it("keeps the estimate exact after the compaction turn is evicted", () => {
+    record("s", [turn({ cacheCreationTokens: 20000, compacted: true })]);
+    for (let i = 0; i < 55; i++) {
+      record("s", [turn({ cacheCreationTokens: 1000 })]);
+    }
+    const { context, compacted } = liveContextOf("s");
+    expect(useTokenDevtoolStore.getState().turnsBySession["s"]).toHaveLength(
+      50,
+    );
+    expect(
+      useTokenDevtoolStore.getState().turnsBySession["s"],
+    ).not.toContainEqual(expect.objectContaining({ compacted: true }));
+    expect(context).toBe(75000);
+    expect(compacted).toBe(true);
+  });
+
+  it("tracks sessions independently", () => {
+    record("a", [turn({ cacheCreationTokens: 10 })]);
+    record("b", [turn({ cacheCreationTokens: 20, compacted: true })]);
+    expect(liveContextOf("a")).toEqual({ context: 10, compacted: false });
+    expect(liveContextOf("b")).toEqual({ context: 20, compacted: true });
   });
 });
 
 describe("displayContext", () => {
   it("shows the seed before any live turns", () => {
-    expect(displayContext(undefined, 90000)).toBe(90000);
-    expect(displayContext([], 90000)).toBe(90000);
-    expect(displayContext(undefined, undefined)).toBeNull();
+    expect(displayContext(null, false, 90000)).toBe(90000);
+    expect(displayContext(null, false, undefined)).toBeNull();
   });
 
   it("keeps the seed until the live estimate exceeds it", () => {
-    const turns = [turn({ cacheCreationTokens: 2000 })];
-    expect(displayContext(turns, 90000)).toBe(90000);
-    const rebuilt = [turn({ cacheCreationTokens: 95000 })];
-    expect(displayContext(rebuilt, 90000)).toBe(95000);
+    expect(displayContext(2000, false, 90000)).toBe(90000);
+    expect(displayContext(95000, false, 90000)).toBe(95000);
   });
 
   it("drops the seed once a compaction is observed", () => {
-    const turns = [turn({ cacheCreationTokens: 70000, compacted: true })];
-    expect(displayContext(turns, 90000)).toBe(70000);
+    expect(displayContext(70000, true, 90000)).toBe(70000);
+  });
+
+  it("reports nothing when a compacted session has no live turns", () => {
+    expect(displayContext(null, true, 90000)).toBeNull();
   });
 });
 
@@ -153,6 +220,8 @@ describe("formatTokenCount", () => {
 });
 
 describe("createUsageCapturingFetch", () => {
+  const POST = { method: "POST" } as const;
+
   function sseResponse(chunks: string[]) {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
@@ -185,7 +254,7 @@ describe("createUsageCapturingFetch", () => {
     );
 
     const wrapped = createUsageCapturingFetch("session-1");
-    const text = await drain(await wrapped("http://x/stream"));
+    const text = await drain(await wrapped("http://x/stream", POST));
 
     expect(text).toBe(payload);
     await vi.waitFor(() => {
@@ -206,7 +275,7 @@ describe("createUsageCapturingFetch", () => {
     );
 
     const wrapped = createUsageCapturingFetch("session-2");
-    await drain(await wrapped("http://x/stream"));
+    await drain(await wrapped("http://x/stream", POST));
 
     await vi.waitFor(() => {
       const turns = useTokenDevtoolStore.getState().turnsBySession["session-2"];
@@ -234,6 +303,7 @@ describe("createUsageCapturingFetch", () => {
 
     const wrapped = createUsageCapturingFetch("session-abort");
     const response = await wrapped("http://x/stream", {
+      ...POST,
       signal: controller.signal,
     });
 
@@ -250,13 +320,34 @@ describe("createUsageCapturingFetch", () => {
     await vi.waitFor(() => expect(sourceCancelled).toBe(true));
   });
 
+  // The AI SDK's reconnect path GETs the active turn replayed from "0-0", so
+  // tapping it would record the same `: usage {...}` twice and permanently
+  // inflate the running estimate.
+  it("leaves the reconnect GET untapped", async () => {
+    const payload = `${USAGE_LINE}\n\n`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([payload])),
+    );
+
+    const wrapped = createUsageCapturingFetch("session-resume");
+    const text = await drain(
+      await wrapped("http://x/stream", { method: "GET" }),
+    );
+
+    expect(text).toBe(payload);
+    expect(
+      useTokenDevtoolStore.getState().turnsBySession["session-resume"],
+    ).toBeUndefined();
+  });
+
   it("returns error responses untouched", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("nope", { status: 500 })),
     );
     const wrapped = createUsageCapturingFetch("session-1");
-    const response = await wrapped("http://x/stream");
+    const response = await wrapped("http://x/stream", POST);
     expect(response.status).toBe(500);
     expect(await response.text()).toBe("nope");
     expect(

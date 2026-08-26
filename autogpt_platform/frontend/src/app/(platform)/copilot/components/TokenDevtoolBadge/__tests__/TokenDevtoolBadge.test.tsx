@@ -38,9 +38,21 @@ function seed({
   breakdown?: ContextBreakdown;
   sessionId?: string;
 }) {
+  reset();
   useTokenDevtoolStore.setState({
-    turnsBySession: turns ? { [sessionId]: turns } : {},
     breakdownBySession: breakdown ? { [sessionId]: breakdown } : {},
+  });
+  // Route turns through record() so the derived live-context sum and the
+  // sticky compacted flag stay consistent with production.
+  turns?.forEach((t) => useTokenDevtoolStore.getState().record(sessionId, t));
+}
+
+function reset() {
+  useTokenDevtoolStore.setState({
+    turnsBySession: {},
+    breakdownBySession: {},
+    liveContextBySession: {},
+    compactedBySession: {},
   });
 }
 
@@ -53,9 +65,7 @@ async function openPopover() {
   return screen.findByText("Context window");
 }
 
-afterEach(() => {
-  useTokenDevtoolStore.setState({ turnsBySession: {}, breakdownBySession: {} });
-});
+afterEach(reset);
 
 describe("TokenDevtoolBadge trigger", () => {
   it("shows the em-dash state when the session has no data", () => {

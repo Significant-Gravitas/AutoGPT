@@ -2,7 +2,8 @@ import { useTokenDevtoolStore } from "./store";
 import type { TokenTurn } from "./tokenMath";
 
 const USAGE_COMMENT = /^:\s*usage\s+(\{.*\})$/;
-const COMPACTION_MARKER = '"context_compaction"';
+const COMPACTION_TOOL = "context_compaction";
+const COLON = 58;
 
 export function parseUsageComment(
   line: string,
@@ -29,6 +30,21 @@ function toCount(value: unknown): number {
     : 0;
 }
 
+/** True only for a `data:` chunk that actually calls the compaction tool.
+ *  Substring-matching the raw line would also fire on an assistant reply that
+ *  merely quotes the tool name, which would wrongly invalidate the session's
+ *  history seed for the rest of the thread. */
+export function isCompactionLine(line: string): boolean {
+  if (!line.includes(COMPACTION_TOOL)) return false;
+  const payload = line.slice(line.indexOf(":") + 1);
+  try {
+    const chunk = JSON.parse(payload) as { toolName?: unknown };
+    return chunk?.toolName === COMPACTION_TOOL;
+  } catch {
+    return false;
+  }
+}
+
 /** Wraps fetch so the copilot SSE stream is teed: the AI SDK consumes one
  *  branch untouched while the other is scanned for usage comments and
  *  compaction tool calls. The tap must never break the chat — every failure
@@ -36,6 +52,11 @@ function toCount(value: unknown): number {
 export function createUsageCapturingFetch(sessionId: string): typeof fetch {
   return async (input, init) => {
     const response = await fetch(input, init);
+    // Only tap the POST that streams a fresh turn. The AI SDK's reconnect
+    // path re-GETs the active turn from "0-0", replaying the same
+    // `: usage {...}` comment — recording it again would permanently inflate
+    // the running context estimate.
+    if (init?.method?.toUpperCase() !== "POST") return response;
     if (!response.ok || !response.body) return response;
     const [main, tap] = response.body.tee();
     void scanForUsage(tap, sessionId, init?.signal);
@@ -72,13 +93,18 @@ async function scanForUsage(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
-        if (line.includes(COMPACTION_MARKER)) sawCompaction = true;
-        const usage = parseUsageComment(line);
-        if (usage) {
+        // Thousands of lines per turn on the app's most latency-sensitive
+        // path: reject the `data:` majority on one char before doing any
+        // trimming, regex, or JSON work.
+        if (line.charCodeAt(0) === COLON) {
+          const usage = parseUsageComment(line);
+          if (!usage) continue;
           useTokenDevtoolStore
             .getState()
             .record(sessionId, { ...usage, compacted: sawCompaction });
           sawCompaction = false;
+        } else if (isCompactionLine(line)) {
+          sawCompaction = true;
         }
       }
     }
@@ -86,6 +112,11 @@ async function scanForUsage(
     // Devtool tap only — swallow so it can never surface as a chat error.
   } finally {
     signal?.removeEventListener("abort", cancelTap);
+    // Cancel, not just releaseLock: tee() buffers every remaining chunk for a
+    // branch nobody reads, so bailing out mid-stream without cancelling would
+    // queue the rest of the turn (tool results run to megabytes) for the life
+    // of the request.
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
