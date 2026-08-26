@@ -48,7 +48,12 @@ from backend.copilot.model import (
     update_session_pinned,
     update_session_title,
 )
-from backend.copilot.offers import AIConnectionOffersResponse, get_connection_offers
+from backend.copilot.offers import (
+    AIConnectionOffersResponse,
+    EntitlementUnavailable,
+    advanced_tier_entitled,
+    get_connection_offers,
+)
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     StreamRegistryUnavailable,
@@ -1536,6 +1541,23 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
+    # The Advanced tier is a paid capability, and it was only enforced where
+    # the picker decides what to grey out. A client that skips the picker and
+    # posts model="advanced" was served it, on our credits. Checked first,
+    # before the session is touched or the message stored: a turn we are going
+    # to refuse should leave nothing behind.
+    if request.model == "advanced":
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            # Not knowing is not permission. The picker stays generous when
+            # the lookup is down; spending does not.
+            raise HTTPException(
+                status_code=503, detail="advanced_tier_unavailable"
+            ) from None
+        if not entitled:
+            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
+
     import time
 
     stream_start_time = time.perf_counter()

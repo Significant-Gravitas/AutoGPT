@@ -3942,3 +3942,64 @@ def test_change_connection_on_someone_elses_session_is_a_404(
     )
 
     assert response.status_code == 404
+
+
+# ─── Advanced tier is enforced where a turn starts, not just in the picker ──
+
+
+def test_advanced_tier_is_refused_without_the_entitlement(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Found by a blue-team review of this stack: the Advanced tier was
+    declared Max-only but checked only where the picker decides what to grey
+    out, so posting model="advanced" directly was served on platform credits."""
+    mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_allowed",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    validate = mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "advanced_tier_not_entitled"
+    # Refused before the session is even loaded, so nothing is left behind.
+    validate.assert_not_called()
+
+
+def test_standard_tier_is_not_gated(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The gate is on the paid tier only — Balanced must stay open to everyone
+    even when the entitlement lookup says no."""
+    allowed = mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_allowed",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+        # Stops the handler right after the gate with something the test
+        # client turns into a response rather than re-raising.
+        side_effect=fastapi.HTTPException(status_code=418, detail="stop here"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "standard"},
+    )
+
+    assert response.status_code == 418
+
+    # Short-circuits on the tier, so the entitlement is never consulted for
+    # Balanced. The request goes on to fail for unrelated reasons in this
+    # harness; what matters is that it was not refused for entitlement.
+    allowed.assert_not_called()
