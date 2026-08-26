@@ -15,7 +15,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useState, useRef } from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -78,6 +78,25 @@ export const CredentialsProvidersContext =
  * in the sidebar.  Pure so it can be exercised directly in tests without
  * dragging in React state machinery.
  */
+/**
+ * Fold credentials minted outside a list response into a freshly-loaded list.
+ *
+ * `loadCredentials` publishes whatever `listCredentials()` returned. A request
+ * already in flight when a credential is created captured the state *before*
+ * it existed, so publishing that response unmodified drops the new credential
+ * and `useCredentialsInput` then reports it as removed. Anything upserted
+ * since is merged back in, newest wins on id.
+ */
+export function mergePendingCredentials(
+  loaded: CredentialsMetaResponse[],
+  pending: CredentialsMetaResponse[] | undefined,
+): CredentialsMetaResponse[] {
+  if (!pending?.length) return loaded;
+  const byId = new Map(loaded.map((c) => [c.id, c]));
+  for (const credential of pending) byId.set(credential.id, credential);
+  return [...byId.values()];
+}
+
 export function upsertProviderCredentials(
   prev: CredentialsProvidersContextType | null,
   provider: CredentialsProviderName,
@@ -140,11 +159,29 @@ export default function CredentialsProvider({
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
 
+  // Credentials minted outside a list response, kept until a load returns
+  // them. Two races make this necessary: `loadCredentials` can publish `null`
+  // (still-loading) before the upsert lands, which makes
+  // `upsertProviderCredentials` a silent no-op; and a `listCredentials()`
+  // already in flight can resolve afterwards with a list that predates the
+  // credential and overwrite it. Either way the user is told their brand-new
+  // connection was removed.
+  const pendingUpsertsRef = useRef<
+    Partial<Record<CredentialsProviderName, CredentialsMetaResponse[]>>
+  >({});
+
   const upsertCredentials = useCallback(
     (
       provider: CredentialsProviderName,
       credentials: CredentialsMetaResponse,
     ) => {
+      const pending = pendingUpsertsRef.current[provider] ?? [];
+      pendingUpsertsRef.current[provider] = [
+        ...pending.filter(
+          (c: CredentialsMetaResponse) => c.id !== credentials.id,
+        ),
+        credentials,
+      ];
       setProviders((prev) =>
         upsertProviderCredentials(prev, provider, credentials),
       );
@@ -359,7 +396,27 @@ export default function CredentialsProvider({
           ...prev,
           ...Object.fromEntries(
             providerNames.map((provider) => {
-              const providerCredentials = credentialsByProvider[provider] ?? [];
+              const loaded = credentialsByProvider[provider] ?? [];
+              const pending = pendingUpsertsRef.current[provider];
+              const providerCredentials = mergePendingCredentials(
+                loaded,
+                pending,
+              );
+              if (pending?.length) {
+                // Retire the ones the server now returns; keep any it has not
+                // caught up on yet.
+                const loadedIds = new Set(
+                  loaded.map((c: CredentialsMetaResponse) => c.id),
+                );
+                const stillPending = pending.filter(
+                  (c: CredentialsMetaResponse) => !loadedIds.has(c.id),
+                );
+                if (stillPending.length) {
+                  pendingUpsertsRef.current[provider] = stillPending;
+                } else {
+                  delete pendingUpsertsRef.current[provider];
+                }
+              }
 
               return [
                 provider,
