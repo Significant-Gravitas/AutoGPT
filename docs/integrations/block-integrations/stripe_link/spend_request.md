@@ -52,11 +52,11 @@ retrieve the card.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-On a self-hosted deployment, request a card for a merchant that uses a normal
-checkout form. List payment methods, create the request with an exact itemized
-description, poll its status, and retrieve the card only after approval. Keep
-this flow out of environments where persisting the card number and CVC is not
-acceptable.
+**Standard Checkout**: Request a virtual card for a merchant that accepts payment through a conventional checkout form.
+
+**Approval-Gated Purchase**: Show an exact itemized context and retrieve the card only after the user approves it.
+
+**Self-Hosted Automation**: Use this flow only where persisting the eventual card number and CVC is acceptable.
 <!-- END MANUAL -->
 
 ---
@@ -102,10 +102,11 @@ for the result.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Pay for an MPP-protected API call without exposing a card number. Feed the
-`network_id`, `amount`, and `currency` from Get Payment Challenge into this
-block, show the user a clear purchase context, wait for `approved`, and then
-pass the spend-request ID to MPP Pay.
+**Paid API Access**: Authorize an MPP-protected API call without exposing a card number.
+
+**Challenge-Based Request**: Carry `network_id`, `amount`, and `currency` from Get Payment Challenge into the approval flow.
+
+**Token Payment Handoff**: Pass the spend-request ID to MPP Pay only after its status becomes `approved`.
 <!-- END MANUAL -->
 
 ---
@@ -145,11 +146,11 @@ avoid creating a second request while the first can still resume.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Poll after either create block until the status is terminal. Continue to MPP
-Pay or Retrieve Card only for `approved`. For `requires_action`, direct the
-user to `next_action_url` when it is present; otherwise surface the action
-message and type. Keep polling when `auto_resumes` is true, and create a new
-request only when it is false and the user still wants to proceed.
+**Approval Polling**: Wait for `approved` before continuing to MPP Pay or Retrieve Card.
+
+**Required-Action Recovery**: Send the user to `next_action_url` when present or surface the action message and type otherwise.
+
+**Safe Retry Routing**: Keep polling when `auto_resumes` is true and create a new request only when it is false.
 <!-- END MANUAL -->
 
 ---
@@ -176,10 +177,11 @@ card number, CVC, or unknown fields that Link may add to its response.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Run this before creating a spend request. Prefer the saved default when that
-matches the user's intent, or present the returned names and masked card
-details for an explicit choice, then pass the chosen `id` as
-`payment_method_id`.
+**Default Method Selection**: Choose the saved default payment method when it matches the user's intent.
+
+**Explicit User Choice**: Present method names and masked card details when the user should select one.
+
+**Spend Request Wiring**: Pass the chosen method's `id` into a create block as `payment_method_id`.
 <!-- END MANUAL -->
 
 ---
@@ -220,11 +222,11 @@ record.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-After an approved card spend request, use the returned card fields to complete
-a conventional checkout in an operator-controlled self-hosted deployment. Do
-not route the number or CVC through logs, messages, or additional nodes unless
-your environment is designed to handle that data, and do not retry an expired
-or denied request with old card details.
+**Conventional Checkout**: Complete a standard payment form with the card from an approved spend request.
+
+**Approved-Only Retrieval**: Stop when the request is denied or expired instead of trying old card details.
+
+**Sensitive-Data Boundary**: Keep the card number and CVC inside an operator-controlled environment designed to handle them.
 <!-- END MANUAL -->
 
 ---

@@ -47,11 +47,11 @@ error because support could not be determined.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Probe a paid API before constructing a payment. When `supports_mpp` is true,
-pass `network_id`, `amount`, and `currency` into Create Token Spend Request. If
-`payment_required` is also true while MPP support is false, stop or choose a
-payment method that the merchant actually advertises instead of assuming a Link
-card will work.
+**Paid API Discovery**: Probe an API endpoint for a Stripe MPP challenge before constructing a payment.
+
+**Spend Request Setup**: Pass `network_id`, `amount`, and `currency` to Create Token Spend Request when `supports_mpp` is true.
+
+**Unsupported Payment Routing**: Stop or choose an advertised payment method when `payment_required` is true but MPP support is false.
 <!-- END MANUAL -->
 
 ---
@@ -93,10 +93,11 @@ credential-bearing retry was attempted and returned a 2xx response.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-After a user approves a token spend request for a paid API, pass its ID and the
-same merchant request into this block. Continue the workflow only when `paid`
-is true, and retain the response as the order or receipt. If the payment attempt
-fails, create and approve a new spend request rather than reusing the token.
+**Paid API Purchase**: Submit an approved token spend request to the same merchant endpoint that supplied the challenge.
+
+**Receipt Capture**: Keep the merchant response as the order or receipt only when `paid` is true.
+
+**Failed Payment Recovery**: Create and approve a new spend request after a failed payment instead of reusing the token.
 <!-- END MANUAL -->
 
 ---

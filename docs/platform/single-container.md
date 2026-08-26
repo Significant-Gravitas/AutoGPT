@@ -514,15 +514,20 @@ non-loopback address can expose the app regardless of an INPUT-chain rule.
 
 ## Optional processes
 
-FalkorDB is mandatory. The one supported process toggle is:
+FalkorDB is mandatory. Bot services and their internal linking manager default
+off. After configuring a supported chat adapter and its public routes, enable
+both optional processes with:
 
 ```dotenv
-AUTOGPT_ENABLE_BOT_SERVICES=false
+AUTOGPT_ENABLE_BOT_SERVICES=true
 ```
 
-Bot services should remain off unless their required platform credentials and
-public routes are configured. This setting stops processes; it does not make the
-image smaller.
+For Discord, configure `AUTOPILOT_BOT_DISCORD_TOKEN`. Telegram requires both
+`AUTOPILOT_BOT_TELEGRAM_TOKEN` and
+`AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET`, plus a public HTTPS webhook registered
+with Telegram. Leave the toggle `false` until the chosen adapter credentials
+and routes are ready. This setting stops processes; it does not make the image
+smaller.
 
 ## Persistence
 
@@ -923,6 +928,10 @@ same `RESTORE_IMAGE`:
       quote="$(printf "\047")"
       setting="^[[:space:]]*listen_addresses([[:space:]]*=[[:space:]]*|[[:space:]]+)"
       hba_file_setting="^[[:space:]]*hba_file([[:space:]]*=[[:space:]]*|[[:space:]]+)"
+      unsafe_setting="^[[:space:]]*(shared_preload_libraries|local_preload_libraries|"
+      unsafe_setting="${unsafe_setting}session_preload_libraries|archive_mode|"
+      unsafe_setting="${unsafe_setting}archive_command)"
+      unsafe_setting="${unsafe_setting}([[:space:]]*=[[:space:]]*|[[:space:]]+)"
       include="^[[:space:]]*include(_if_exists|_dir)?([[:space:]]+|[[:space:]]*=)"
       end="[[:space:]]*(#.*)?$"
       set -- /data/postgres/postgresql.conf
@@ -933,7 +942,8 @@ same `RESTORE_IMAGE`:
       test "$(printf "%s\n" "${active_listen}" | grep -c .)" -eq 1
       printf "%s\n" "${active_listen}" | grep -Eiq "${setting}[[:space:]]*${quote}127[.]0[.]0[.]1${quote}${end}"
       if grep -Eiq "${include}" "$@" || \
-          grep -Eiq "${hba_file_setting}" "$@"; then
+          grep -Eiq "${hba_file_setting}" "$@" || \
+          grep -Eiq "${unsafe_setting}" "$@"; then
         exit 1
       fi
 
@@ -958,8 +968,9 @@ same `RESTORE_IMAGE`:
 ```
 
 The check also rejects PostgreSQL configuration that enables non-loopback
-listening, loads external configuration fragments, redirects `hba_file`, or
-weakens the generated local `peer` and loopback `scram-sha-256` access rules.
+listening, loads external configuration fragments or libraries, redirects
+`hba_file`, configures WAL archiving, or weakens the generated local `peer` and
+loopback `scram-sha-256` access rules.
 It does not prove that each database can start. A full
 recovery rehearsal boots live schedules, stored credentials, and executors,
 and some services fetch runtime data during startup. Perform it only on a
