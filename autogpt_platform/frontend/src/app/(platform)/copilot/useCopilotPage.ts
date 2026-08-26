@@ -178,6 +178,7 @@ export function useCopilotPage() {
     userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
+    rawSessionMessages,
     activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,
