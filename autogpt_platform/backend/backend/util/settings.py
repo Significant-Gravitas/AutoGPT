@@ -506,7 +506,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
     email_asset_base_url: str = Field(
-        default="https://cdn.agpt.co/email",
+        default="https://platform.agpt.co/email",
         description=(
             "Base URL the email hero art and logo are served from. Outlook "
             "does not render inline SVG and Gmail does not display data-URI "

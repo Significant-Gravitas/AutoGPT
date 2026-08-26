@@ -9,21 +9,29 @@ Ordered by what blocks what.
 
 ---
 
-## 1. CDN — hero art (blocks: every email)
+## 1. Hero art (no action needed)
 
-`backend/notifications/assets/` holds the hero art and the logo. They are
-hosted images rather than inline SVG because **Outlook does not render inline
-SVG at all**, and rather than data URIs because **Gmail does not display them**.
+The art lives in `autogpt_platform/frontend/public/email/`. Next.js serves
+`public/` at the site root, so it deploys with the frontend and needs no bucket,
+no CDN and no upload step:
 
-- Upload the whole of `backend/notifications/assets/` to the CDN.
-- Set `EMAIL_ASSET_BASE_URL` to the base URL it is served from (default
-  `https://cdn.agpt.co/email`), so `hero-briefing-clean.jpg` resolves at
-  `$EMAIL_ASSET_BASE_URL/hero-briefing-clean.jpg`.
-- Serve with long cache headers and CORS off — these are `<img src>` loads.
-- `mark-otto.png` is used only by the internal Ops band; it must be there too.
+    frontend/public/email/hero-briefing-clean.jpg
+      → https://platform.agpt.co/email/hero-briefing-clean.jpg
 
-Until this is done every email renders with the correct background colour bands
-(each hero `<td>` carries a sampled `bgcolor`) but no art.
+`EMAIL_ASSET_BASE_URL` points at that base. It defaults to
+`https://platform.agpt.co/email`; set it per environment so dev mail loads dev's
+copies.
+
+They are hosted images rather than inline SVG because **Outlook does not render
+inline SVG at all**, and rather than data URIs because **Gmail does not display
+them**. Whatever hosts them must be publicly readable — Gmail proxies images
+through its own fetchers, which carry no session, so anything behind auth (a
+Cloudflare Access site, a private bucket) renders as nothing.
+
+They used to sit in `backend/notifications/assets/`, which the backend never
+read: the templates emit a URL and the recipient's client fetches it. That
+arrangement made the upload a manual step someone had to remember, and it was
+missed — every email rendered with correct colour bands and no art.
 
 ## 2. Postmark — streams and senders (blocks: everything)
 

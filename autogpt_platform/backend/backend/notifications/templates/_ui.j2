@@ -67,7 +67,7 @@
    --------------------------------------------------------------- #}
 {%- macro hero_img(name, bgc, alt) -%}
     <tr><td bgcolor="{{ bgc }}" align="center" style="padding:0; line-height:0; font-size:0;">
-      <img src="{{ assets | default('https://cdn.agpt.co/email', true) }}/{{ name }}.jpg"
+      <img src="{{ assets | default('https://platform.agpt.co/email', true) }}/{{ name }}.jpg"
            width="560" height="184" alt="{{ alt }}"
            style="display:block; width:100%; max-width:560px; height:auto; border:0; outline:none; text-decoration:none;">
     </td></tr>
@@ -201,7 +201,7 @@
             </div>
           </td>
           <td width="118" align="right" valign="middle" class="mobile-hide" style="line-height:0; font-size:0;">
-            <img src="{{ assets | default('https://cdn.agpt.co/email', true) }}/mark-otto.png"
+            <img src="{{ assets | default('https://platform.agpt.co/email', true) }}/mark-otto.png"
                  width="118" height="80" alt=""
                  style="display:block; border:0; outline:none; text-decoration:none;">
           </td>
