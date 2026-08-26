@@ -121,8 +121,13 @@ export function usePaywallModal() {
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
+        // `plans` carries tier_costs / tier_costs_yearly straight from
+        // /credits/subscription — what Stripe actually charges. The static
+        // plan definition is only the fallback for a tier priced nowhere else.
+        const plan = plans.find((candidate) => candidate.key === tier);
+        const apiValue = isYearly ? plan?.usdYearly : plan?.usdMonthly;
         trackAdsConversion("begin_checkout", {
-          value: getSubscriptionValue(tier, cycle),
+          value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
       }

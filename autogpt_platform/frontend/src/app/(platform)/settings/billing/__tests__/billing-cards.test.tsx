@@ -1261,19 +1261,27 @@ describe("YourPlanCard begin_checkout", () => {
   });
 
   function freeAccount(checkoutURL: string | null) {
+    const hits = { get: 0, post: 0 };
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
-        tier: "NO_TIER",
-        monthly_cost: 0,
-        has_active_stripe_subscription: false,
-        status: "inactive",
-        // What Stripe actually charges, which is what Ads should bid on —
-        // deliberately not the $50 the plan card computes.
-        tier_costs: { PRO: 4900 },
+      http.get("*/api/credits/subscription", () => {
+        hits.get += 1;
+        return HttpResponse.json({
+          tier: "NO_TIER",
+          monthly_cost: 0,
+          has_active_stripe_subscription: false,
+          status: "inactive",
+          // What Stripe actually charges, which is what Ads should bid on —
+          // deliberately not the $50 the plan card computes.
+          tier_costs: { PRO: 4900 },
+        });
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
-      jsonHandler("post", "/api/credits/subscription", { url: checkoutURL }),
+      http.post("*/api/credits/subscription", () => {
+        hits.post += 1;
+        return HttpResponse.json({ url: checkoutURL });
+      }),
     );
+    return hits;
   }
 
   it("reports begin_checkout with the authoritative price once Stripe returns a URL", async () => {
@@ -1301,14 +1309,17 @@ describe("YourPlanCard begin_checkout", () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
     const gtagCalls = installGtagShim();
     stubLocation();
-    freeAccount(null);
+    const hits = freeAccount(null);
 
     render(<YourPlanCard />);
-    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+    await waitFor(() => expect(hits.get).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: /get pro/i }));
 
-    await waitFor(() => {
-      expect(gtagCalls.length).toBeGreaterThanOrEqual(0);
-    });
+    // The in-place branch refetches the subscription after the POST resolves,
+    // so a second GET is proof the whole path ran — not just that the request
+    // was sent.
+    await waitFor(() => expect(hits.post).toBe(1));
+    await waitFor(() => expect(hits.get).toBeGreaterThanOrEqual(2));
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
 });

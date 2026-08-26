@@ -15,6 +15,7 @@ export function useAdsConversionTracker() {
   const { user, isUserLoading } = useAuth();
   const pathname = usePathname();
   const checkoutReportedRef = useRef(false);
+  const checkoutParamsRef = useRef<URLSearchParams | null>(null);
   const lastTrackedPathRef = useRef<string | null>(null);
 
   // Waits for the session itself, not just for loading to finish: on the
@@ -24,15 +25,21 @@ export function useAdsConversionTracker() {
   // Re-runs on navigation because the email signup sets the flag and then
   // moves on client-side, without a reload.
   useEffect(() => {
+    // Snapshot before the session guard. Stripe's result is only in the URL on
+    // the landing render, and a client-side navigation — including the credits
+    // page stripping its own query — can drop it before a retry runs, which
+    // would latch the ref on an empty query and lose the conversion for good.
+    const checkoutParams =
+      checkoutParamsRef.current ?? new URLSearchParams(window.location.search);
+    checkoutParamsRef.current = checkoutParams;
+
     if (isUserLoading || !user) return;
 
     if (!checkoutReportedRef.current) {
-      // Stripe sends the user back with a full page load, so the checkout
-      // result is only ever in the URL at mount time. Latch only once it
-      // actually reached the tag — the tag loads afterInteractive and may not
-      // exist yet on this pass.
+      // Latch only once it actually reached the tag — the tag loads
+      // afterInteractive and may not exist yet on this pass.
       checkoutReportedRef.current = trackCheckoutReturn(
-        new URLSearchParams(window.location.search),
+        checkoutParams,
         user.email,
       );
     }

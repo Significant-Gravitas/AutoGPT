@@ -234,6 +234,9 @@ describe("AdsConversionTracker", () => {
     const { rerender } = render(<AdsConversionTracker />);
 
     pushed = installGtagShim();
+    // The navigation that triggers the retry also strips the query — the
+    // snapshot taken at mount is what has to carry it.
+    window.history.replaceState({}, "", "/library");
     pathname = "/library";
     rerender(<AdsConversionTracker />);
 
