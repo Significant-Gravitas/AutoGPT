@@ -28,7 +28,11 @@ from backend.notifications.briefing_period import (
     is_briefing_due,
     resolve_zone,
 )
-from backend.notifications.dedupe import PASS_CLAIM_TTL_SECONDS, claim_once
+from backend.notifications.dedupe import (
+    PASS_CLAIM_TTL_SECONDS,
+    claim_once,
+    release_claim,
+)
 from backend.notifications.queue import queue_notification_async, queue_pass_work
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -104,17 +108,42 @@ async def run_pass_work(event: PassWorkEvent) -> None:
     replicas, so without this a redelivery is a second email. The claim key
     carries the period, so the next period is never suppressed by this one.
     """
-    key = f"{event.kind.value}:{event.user_id}:{event.scheduled_for.isoformat()}"
+    key = _claim_key(event)
     if not await claim_once(key, ttl_seconds=PASS_CLAIM_TTL_SECONDS):
         logger.debug(f"{event.kind.value} for {event.user_id} already claimed")
         return
 
-    if event.kind is PassWorkKind.ALERT_FLUSH:
-        await _flush_user_alerts(event.user_id)
-    elif event.kind is PassWorkKind.WELCOME:
-        await lifecycle.send_welcome_for_session(event.context["session_id"])
-    else:
-        await _build_and_queue_briefing(event.user_id, event.scheduled_for)
+    try:
+        if event.kind is PassWorkKind.ALERT_FLUSH:
+            await _flush_user_alerts(event.user_id)
+        elif event.kind is PassWorkKind.WELCOME:
+            await lifecycle.send_welcome_for_session(event.context["session_id"])
+        else:
+            await _build_and_queue_briefing(event.user_id, event.scheduled_for)
+    except Exception:
+        # The consumer retries this message. Holding the claim would make the
+        # retry find its own claim, return early, and drop the work for the
+        # whole period — the claim outlives the retries by design.
+        await release_claim(key)
+        raise
+
+
+def _claim_key(event: PassWorkEvent) -> str:
+    """Identify the work's slot, not the moment it was published.
+
+    Every publisher of one slot has to arrive at the same key or the claim
+    stops being a claim: two schedulers reading the clock a microsecond apart
+    would each get their own key and both send. WELCOME has no slot — Stripe
+    redelivers at a fresh timestamp, so it keys on the checkout session, which
+    is also the only identifier it carries (`user_id` is empty).
+    """
+    if event.kind is PassWorkKind.WELCOME:
+        return f"{event.kind.value}:{event.context['session_id']}"
+    slot = event.scheduled_for.replace(second=0, microsecond=0)
+    if event.kind is PassWorkKind.BRIEFING:
+        # Briefings are scheduled by the hour; alert flushes run every minute.
+        slot = slot.replace(minute=0)
+    return f"{event.kind.value}:{event.user_id}:{slot.isoformat()}"
 
 
 async def _flush_user_alerts(user_id: str) -> None:
@@ -137,10 +166,9 @@ async def _flush_user_alerts(user_id: str) -> None:
 
 
 async def _build_and_queue_briefing(user_id: str, now: datetime) -> None:
-    preference = await _db().get_user_notification_preference(user_id)
-    if preference is None:
-        return
-
+    # No preference read here: `send_due_briefings` already gated on frequency
+    # via `is_briefing_due`, and a user who has since vanished falls out on the
+    # candidate lookup below rather than raising.
     user = await _db().get_briefing_candidate(user_id)
     if user is None:
         return
@@ -178,13 +206,13 @@ async def _matured_alert_user_ids() -> AsyncIterator[str]:
     cursor: str | None = None
     while True:
         page = await alerts.matured_alert_user_ids(after_user_id=cursor)
-        if not page:
-            return
-        for user_id in page:
+        for user_id in page.user_ids:
             yield user_id
-        if len(page) < alerts.MATURED_PAGE_SIZE:
+        # Deduplication makes `user_ids` shorter than the rows read, so only
+        # the page itself can say whether the walk is done.
+        if page.exhausted or not page.user_ids:
             return
-        cursor = page[-1]
+        cursor = page.user_ids[-1]
 
 
 async def _briefing_candidates(zones: list[str]) -> AsyncIterator[BriefingCandidate]:

@@ -762,7 +762,10 @@ def test_welcome_email_hangs_off_checkout_not_subscription_created(
     stub_lifecycle_emails["checkout"].assert_awaited_once()
     queued = stub_lifecycle_emails["checkout"].await_args
     assert queued.args[0] == PassWorkKind.WELCOME.value
-    assert PassWorkEvent.model_validate_json(queued.args[2]).context["session_id"]
+    assert (
+        PassWorkEvent.model_validate_json(queued.args[2]).context["session_id"]
+        == "cs_test_123"
+    )
 
     stub_lifecycle_emails["checkout"].reset_mock()
     mocker.patch(

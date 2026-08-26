@@ -5,12 +5,6 @@
 NotificationManager process runs therefore has to reach the database through
 the DatabaseManager RPC.
 
-This was worth a test rather than a docstring. The rule was documented and
-still got broken: three modules queried Prisma directly, both scheduled passes
-raised "Client is not connected to the query engine" on every tick, and the
-whole Alert and Briefing surface was dead — with the unit suite fully green,
-because the tests mocked `User.prisma()` and so never touched a connection.
-
 A grep is a blunt instrument, but it fails at the moment the boundary is
 crossed rather than the first time the service is deployed.
 """

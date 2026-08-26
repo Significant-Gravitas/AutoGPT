@@ -6,6 +6,7 @@ cancellation confirmation weeks late off `subscription.deleted`, and treating
 every `subscription.updated` as a cancellation.
 """
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -81,7 +82,7 @@ def _invoice(**over) -> dict:
     return invoice
 
 
-def _context(user, claim=True):
+def _context(user, claim=True, audience_ok=True):
 
     plan = SubscriptionPlan(
         name="Pro",
@@ -101,16 +102,21 @@ def _context(user, claim=True):
             AsyncMock(return_value=claim),
         ),
         patch("backend.notifications.lifecycle.queue_notification_async", AsyncMock()),
-        patch("backend.notifications.lifecycle.queue_audience_change", AsyncMock()),
+        patch(
+            "backend.notifications.lifecycle.queue_audience_change",
+            AsyncMock(
+                return_value=NotificationResult(success=audience_ok, message="test")
+            ),
+        ),
     ]
 
 
-async def _run(coro_factory, user, claim=True):
-    patches = _context(user, claim)
+async def _run(coro_factory, user, claim=True, audience_ok=True):
+    patches = _context(user, claim, audience_ok)
     started = [p.start() for p in patches]
     try:
         await coro_factory()
-        return {"notify": started[4], "audience": started[5]}
+        return {"notify": started[4], "audience": started[5], "claim": started[3]}
     finally:
         for p in patches:
             p.stop()
@@ -200,6 +206,62 @@ async def test_cancellation_fires_on_the_flip_not_on_every_update():
         _User(),
     )
     calls["notify"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_tour_enrolment_still_welcomes_the_customer(caplog):
+    """The publish helper swallows its own errors and returns a result, so an
+    unchecked call drops the enrolment in silence. The welcome is already out
+    and the claim is durable, so this cannot undo it — Stripe would retry and
+    take the returning-customer branch. It gets reported instead."""
+    user = _User(welcome_sent_at=None)
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ), caplog.at_level(logging.ERROR):
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER}, _subscription()
+            ),
+            user,
+            audience_ok=False,
+        )
+
+    assert (
+        calls["notify"].await_args.args[0].type is NotificationType.SUBSCRIPTION_WELCOME
+    )
+    assert "onboarding tour" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_second_cancellation_in_one_period_is_its_own_email():
+    """Cancel → resume → cancel inside one billing period is two real
+    cancellations. Keying the claim on the period alone swallows the second
+    confirmation, so the customer cancels and hears nothing back."""
+    episodes = (
+        (
+            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+            {"cancel_at_period_end": False},
+        ),
+        (
+            _subscription(cancel_at_period_end=False),
+            {"cancel_at_period_end": True, "canceled_at": 1789100000},
+        ),
+        (
+            _subscription(cancel_at_period_end=True, canceled_at=1789150000),
+            {"cancel_at_period_end": False},
+        ),
+    )
+    keys = []
+    for sub, previous in episodes:
+        calls = await _run(
+            lambda s=sub, p=previous: lifecycle.on_subscription_updated(s, p),
+            _User(),
+        )
+        keys.append(calls["claim"].await_args.args[0])
+
+    assert keys[0].startswith("cancelled:") and keys[1].startswith("resumed:")
+    assert keys[0] != keys[2], f"each cancellation needs its own key: {keys}"
 
 
 @pytest.mark.asyncio

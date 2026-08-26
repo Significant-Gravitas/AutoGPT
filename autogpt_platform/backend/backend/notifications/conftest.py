@@ -17,6 +17,10 @@ from typing import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
+from prisma.enums import BriefingFrequency
+
+from backend.data.alerts import MaturedAlertPage
+from backend.data.notifications import NotificationPreference
 
 NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 
@@ -42,15 +46,26 @@ def make_db_client(**overrides) -> SimpleNamespace:
     """
     client = SimpleNamespace(
         # Preferences and users
+        # The whole model, not just the fields one test happened to read:
+        # the consumer gates on `daily_limit` and `wants_notification` reads
+        # the frequency and the verdict switch, so a partial stub turns a real
+        # regression into an AttributeError somewhere unrelated.
         get_user_notification_preference=AsyncMock(
-            return_value=SimpleNamespace(
-                alerts_enabled=True, email="sam@example.com", user_id="user-1"
+            return_value=NotificationPreference(
+                user_id="user-1",
+                email="sam@example.com",
+                briefing_frequency=BriefingFrequency.WEEKLY,
+                alerts_enabled=True,
+                store_verdicts_enabled=True,
+                daily_limit=3,
             )
         ),
         get_user_by_id=AsyncMock(return_value=None),
         get_user_email_verification=AsyncMock(return_value=True),
         # Alert conditions
-        get_users_with_matured_alerts=AsyncMock(return_value=[]),
+        get_users_with_matured_alerts=AsyncMock(
+            return_value=MaturedAlertPage(user_ids=[], exhausted=True)
+        ),
         get_pending_alert_conditions=AsyncMock(return_value=[]),
         count_alerts_sent_since=AsyncMock(return_value=0),
         mark_alert_conditions_sent=AsyncMock(),

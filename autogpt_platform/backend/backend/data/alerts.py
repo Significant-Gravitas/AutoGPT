@@ -1,8 +1,8 @@
 """Persistence for live alert conditions.
 
-One row per "the platform is blocked on the human" condition, keyed by a stable
-`cause_key` so re-raising the same problem updates one row instead of piling up
-duplicates, and resolving it can find the row without the payload.
+One row per condition that needs the user's attention. `cause_key` identifies
+the condition, so re-raising the same problem updates the existing row instead
+of adding a duplicate, and resolving it can find the row by key alone.
 
 The lifecycle the alert engine drives off this table:
 
@@ -164,9 +164,20 @@ async def resolve_alert_condition(user_id: str, cause_key: str) -> bool:
         ) from e
 
 
+class MaturedAlertPage(BaseModel):
+    """One keyset page of users with matured alerts.
+
+    `exhausted` is set from the row count rather than the user count,
+    because de-duplication shrinks the page.
+    """
+
+    user_ids: list[str]
+    exhausted: bool
+
+
 async def get_users_with_matured_alerts(
     matured_before: datetime, after_user_id: str | None = None, limit: int = 1000
-) -> list[str]:
+) -> MaturedAlertPage:
     """Users holding at least one PENDING condition older than the debounce
     window, i.e. whose pending alerts are ready to go out as one email.
 
@@ -175,8 +186,11 @@ async def get_users_with_matured_alerts(
     full JSONB payload across the wire once a minute forever.
 
     `distinct` is applied by the query engine after the take, so the page is
-    requested by ordered `userId` and de-duplicated here — the caller pages
-    until a short page comes back.
+    requested by ordered `userId` and de-duplicated here. That makes the
+    returned user count smaller than the rows read, so `exhausted` reports
+    whether the *raw* page was short — the caller cannot infer it from the
+    number of users, which is the normal case for anyone holding more than
+    one condition.
     """
     try:
         where: AlertConditionWhereInput = {
@@ -194,7 +208,7 @@ async def get_users_with_matured_alerts(
         for row in rows:
             if not seen or seen[-1] != row.userId:
                 seen.append(row.userId)
-        return seen
+        return MaturedAlertPage(user_ids=seen, exhausted=len(rows) < limit)
     except Exception as e:
         raise DatabaseError(f"Failed to list users with matured alerts: {e}") from e
 

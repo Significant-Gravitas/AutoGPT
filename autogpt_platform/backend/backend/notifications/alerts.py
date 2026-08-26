@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
+from backend.data.alerts import MaturedAlertPage
 from backend.data.notifications import AlertData, AlertPrimary, NotificationEventModel
 from backend.notifications.alert_causes import SEVERITY, BaseCause, parse_cause
 from backend.util.clients import get_database_manager_async_client
@@ -63,7 +64,9 @@ async def resolve_alert(user_id: str, cause_key: str) -> None:
         logger.info(f"Alert condition {cause_key} resolved for user {user_id}")
 
 
-async def matured_alert_user_ids(after_user_id: str | None = None) -> list[str]:
+async def matured_alert_user_ids(
+    after_user_id: str | None = None,
+) -> MaturedAlertPage:
     """One page of users whose pending conditions have sat out the debounce
     window. Paged because this runs every minute over a platform-wide table."""
     return await _db().get_users_with_matured_alerts(

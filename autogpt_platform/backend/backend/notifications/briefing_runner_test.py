@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import BriefingFrequency
 
+from backend.data.alerts import MaturedAlertPage
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 from backend.notifications import briefing_runner
 from backend.notifications.conftest import make_db_client
@@ -60,7 +61,9 @@ def _result(success: bool) -> NotificationResult:
 @pytest.mark.asyncio
 async def test_no_matured_alerts_publishes_nothing():
     with patch.object(
-        briefing_runner.alerts, "matured_alert_user_ids", AsyncMock(return_value=[])
+        briefing_runner.alerts,
+        "matured_alert_user_ids",
+        AsyncMock(return_value=MaturedAlertPage(user_ids=[], exhausted=True)),
     ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
         await briefing_runner.flush_matured_alerts()
 
@@ -74,7 +77,9 @@ async def test_the_alert_pass_publishes_one_message_per_user():
     with patch.object(
         briefing_runner.alerts,
         "matured_alert_user_ids",
-        AsyncMock(return_value=["user-1", "user-2"]),
+        AsyncMock(
+            return_value=MaturedAlertPage(user_ids=["user-1", "user-2"], exhausted=True)
+        ),
     ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
         await briefing_runner.flush_matured_alerts()
 
@@ -82,6 +87,30 @@ async def test_the_alert_pass_publishes_one_message_per_user():
     for call in publish.await_args_list:
         event = PassWorkEvent.model_validate_json(call.args[2])
         assert event.kind is PassWorkKind.ALERT_FLUSH
+
+
+@pytest.mark.asyncio
+async def test_the_alert_walk_keeps_going_past_a_deduplicated_page():
+    """A full page of rows collapses to a handful of users once duplicates are
+    dropped, and anyone holding two conditions produces exactly that. Treating
+    the short user list as the end of the table would strand every user after
+    the first page."""
+    pages = [
+        MaturedAlertPage(user_ids=["user-1", "user-2"], exhausted=False),
+        MaturedAlertPage(user_ids=["user-3"], exhausted=True),
+    ]
+    with patch.object(
+        briefing_runner.alerts,
+        "matured_alert_user_ids",
+        AsyncMock(side_effect=pages),
+    ), patch.object(briefing_runner, "queue_pass_work", AsyncMock()) as publish:
+        await briefing_runner.flush_matured_alerts()
+
+    assert [c.args[1] for c in publish.await_args_list] == [
+        "user-1",
+        "user-2",
+        "user-3",
+    ]
 
 
 @pytest.mark.asyncio
@@ -177,6 +206,83 @@ async def test_the_claim_key_is_scoped_to_the_period():
 
     assert len(set(seen)) == 2, "each period must claim its own key"
     assert all("user-1" in k for k in seen)
+
+
+@pytest.mark.asyncio
+async def test_two_publishers_of_one_slot_share_a_claim_key():
+    """The claim exists to stop a second replica sending a second email, so it
+    has to key on the slot rather than the instant the message was published."""
+    seen = []
+
+    async def record(key, **_kw):
+        seen.append(key)
+        return True
+
+    same_slot = [
+        PassWorkEvent(
+            kind=PassWorkKind.BRIEFING,
+            user_id="user-1",
+            scheduled_for=NOW.replace(minute=m, second=s, microsecond=us),
+        )
+        for m, s, us in ((0, 0, 0), (17, 42, 987654))
+    ]
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(side_effect=record)
+    ), patch.object(briefing_runner, "_build_and_queue_briefing", AsyncMock()):
+        for event in same_slot:
+            await briefing_runner.run_pass_work(event)
+
+    assert len(set(seen)) == 1, f"one slot must be one key, got {seen}"
+
+
+@pytest.mark.asyncio
+async def test_welcome_is_claimed_by_checkout_session():
+    """A Stripe redelivery arrives at a new timestamp, so a timestamp key would
+    never suppress it — and every welcome carries an empty user_id, so the key
+    has to come from the session."""
+    seen = []
+
+    async def record(key, **_kw):
+        seen.append(key)
+        return True
+
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(side_effect=record)
+    ), patch.object(briefing_runner.lifecycle, "send_welcome_for_session", AsyncMock()):
+        for offset in (0, 90):
+            await briefing_runner.run_pass_work(
+                PassWorkEvent(
+                    kind=PassWorkKind.WELCOME,
+                    user_id="",
+                    scheduled_for=NOW + timedelta(seconds=offset),
+                    context={"session_id": "cs_test_123"},
+                )
+            )
+
+    assert len(set(seen)) == 1, f"one session must be one key, got {seen}"
+    assert "cs_test_123" in seen[0]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_pass_releases_its_claim():
+    """Otherwise the consumer's retry finds the claim it made itself, returns
+    early, and the user's briefing is dropped for the whole period."""
+    event = PassWorkEvent(
+        kind=PassWorkKind.BRIEFING, user_id="user-1", scheduled_for=NOW
+    )
+    with patch.object(
+        briefing_runner, "claim_once", AsyncMock(return_value=True)
+    ), patch.object(
+        briefing_runner, "release_claim", AsyncMock()
+    ) as release, patch.object(
+        briefing_runner,
+        "_build_and_queue_briefing",
+        AsyncMock(side_effect=RuntimeError("postmark exploded")),
+    ):
+        with pytest.raises(RuntimeError):
+            await briefing_runner.run_pass_work(event)
+
+    release.assert_awaited_once()
 
 
 @pytest.mark.asyncio
