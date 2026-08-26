@@ -134,6 +134,16 @@ class TestBuildVariableInjection:
         with pytest.raises(ValueError, match="too large"):
             build_variable_injection(big, ProgrammingLanguage.PYTHON)
 
+    def test_emoji_in_variables_is_safe_for_env_var(self):
+        """Emoji (and any Unicode) should serialize without surrogate errors."""
+        variables = {"message": "Holidays 🎅🏻", "name": "João"}
+        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        # The serialized value must contain escaped Unicode, not raw surrogates.
+        serialized = envs[VARIABLES_ENV_KEY]
+        assert json.loads(serialized) == variables
+        assert "🎅" not in serialized  # ensure_ascii=True escapes it
+
 
 class TestExecuteCodeBlockRun:
     """run() should inject variables: prefix the code and pass the env var."""
