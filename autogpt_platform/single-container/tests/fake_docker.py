@@ -200,6 +200,7 @@ def validate_layout(mounts: dict[str, Path]) -> None:
     requirements = re.findall(r"test (-[sd]) (/data/[^\s]+)", script)
     if not requirements:
         finish(2, error="documented validation supplied no requirements")
+    missing_requirements = []
     for predicate, container_path in requirements:
         path = host_path(container_path, mounts)
         valid = (
@@ -208,7 +209,7 @@ def validate_layout(mounts: dict[str, Path]) -> None:
             else path.is_file() and path.stat().st_size > 0
         )
         if not valid:
-            finish(1, error=f"missing required restore path: {container_path}")
+            missing_requirements.append(container_path)
     data_path = mounts["/data"]
     try:
         relative_data_path = data_path.relative_to(ROOT)
@@ -232,11 +233,21 @@ def validate_layout(mounts: dict[str, Path]) -> None:
         capture_output=True,
         encoding="utf-8",
     )
+    if validation.returncode == 0 and missing_requirements:
+        finish(2, error="documented validation did not reject a missing path")
     if validation.returncode != 0:
-        error = validation.stderr or validation.stdout
+        error_parts = [
+            part.strip()
+            for part in (validation.stderr, validation.stdout)
+            if part.strip()
+        ]
+        error_parts.extend(
+            f"missing required restore path: {container_path}"
+            for container_path in missing_requirements
+        )
         finish(
             validation.returncode,
-            error=error or "documented restore validation failed",
+            error="\n".join(error_parts) or "documented restore validation failed",
         )
 
 

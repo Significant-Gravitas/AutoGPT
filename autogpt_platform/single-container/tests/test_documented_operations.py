@@ -302,6 +302,31 @@ class DocumentedOperationsTest(unittest.TestCase):
                 "HBA_FILE '/tmp/unsafe-hba.conf'\n",
             ),
             (
+                "shared-preload-library",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "SHARED_PRELOAD_LIBRARIES 'unsafe'\n",
+            ),
+            (
+                "local-preload-library",
+                "postgres/postgresql.auto.conf",
+                "local_preload_libraries = 'unsafe'\n",
+            ),
+            (
+                "session-preload-library",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "session_preload_libraries 'unsafe'\n",
+            ),
+            (
+                "archive-mode",
+                "postgres/postgresql.auto.conf",
+                "Archive_Mode = always\n",
+            ),
+            (
+                "archive-command",
+                "postgres/postgresql.conf",
+                POSTGRESQL_CONF + "archive_command 'unsafe'\n",
+            ),
+            (
                 "earlier-broad-trust-rule",
                 "postgres/pg_hba.conf",
                 "host all all 0.0.0.0/0 trust\n" + PG_HBA_CONF,
@@ -419,12 +444,20 @@ class DocumentedOperationsTest(unittest.TestCase):
         self.assertFalse(any(command[0] == "start" for command in self._commands()))
 
     def test_backup_failures_clean_up_and_attempt_safe_recovery(self) -> None:
-        for operation in ("stop", "tar", "checksum", "malformed-checksum", "start"):
+        expected_errors = {
+            "stop": "injected stop failure",
+            "tar": "injected tar failure",
+            "checksum": "injected checksum failure",
+            "malformed-checksum": "Backup checksum is not a valid SHA-256 digest",
+            "start": "injected start failure",
+        }
+        for operation, expected_error in expected_errors.items():
             with self.subTest(operation=operation):
                 self._reset_backup_state()
                 result = self._run(COLD_BACKUP_BLOCK, FAKE_DOCKER_FAIL=operation)
 
                 self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
                 self._assert_no_backup_artifacts()
                 self.assertEqual(self._is_running(), operation != "start")
                 if operation in {"tar", "checksum", "malformed-checksum", "start"}:
@@ -432,8 +465,21 @@ class DocumentedOperationsTest(unittest.TestCase):
                         any(command[0] == "start" for command in self._commands())
                     )
 
+    def test_reset_backup_state_clears_stale_lock(self) -> None:
+        lock_path = self.state_dir / "backup-lock"
+        lock_path.write_text("stale", encoding="utf-8")
+
+        self._reset_backup_state()
+
+        self.assertFalse(lock_path.exists())
+
     def test_upgrade_mode_failure_restarts_and_cleans_up(self) -> None:
-        for operation in ("tar", "checksum", "malformed-checksum"):
+        expected_errors = {
+            "tar": "injected tar failure",
+            "checksum": "injected checksum failure",
+            "malformed-checksum": "Backup checksum is not a valid SHA-256 digest",
+        }
+        for operation, expected_error in expected_errors.items():
             with self.subTest(operation=operation):
                 self._reset_backup_state()
                 result = self._run(
@@ -443,6 +489,7 @@ class DocumentedOperationsTest(unittest.TestCase):
                 )
 
                 self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
                 self._assert_no_backup_artifacts()
                 self.assertTrue(self._is_running())
                 self.assertFalse((self.state_dir / "backup-lock").exists())
@@ -814,6 +861,7 @@ class DocumentedOperationsTest(unittest.TestCase):
         backup_dir = self.work_dir / "autogpt-backups"
         if backup_dir.exists():
             shutil.rmtree(backup_dir)
+        (self.state_dir / "backup-lock").unlink(missing_ok=True)
         self.log_path.unlink(missing_ok=True)
         self._set_running(True)
 

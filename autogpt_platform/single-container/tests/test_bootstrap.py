@@ -11,6 +11,31 @@ BOOTSTRAP_PATH = ASSET_DIR / "bootstrap.sh"
 
 
 class InterruptedMigrationPolicyTest(unittest.TestCase):
+    def test_sourcing_bootstrap_does_not_run_main(self) -> None:
+        result = self._run('printf "sourced-only\\n"')
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "sourced-only\n")
+
+    def test_executing_bootstrap_runs_main(self) -> None:
+        missing_runtime = ASSET_DIR / "tests" / ".missing-bootstrap-runtime.env"
+        self.assertFalse(missing_runtime.exists())
+
+        result = subprocess.run(
+            ["bash", str(BOOTSTRAP_PATH)],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+                "AUTOGPT_RUNTIME_ENV": str(missing_runtime),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"missing runtime config: {missing_runtime}", result.stderr)
+
     def test_checks_for_interrupted_migration_before_deploy(self) -> None:
         result = self._run("declare -f migrate_database")
 

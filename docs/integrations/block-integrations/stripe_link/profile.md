@@ -15,7 +15,8 @@ Get the delivery addresses saved on the user's Link wallet, with the default one
 The block makes an authenticated `GET /shipping_addresses` request to Link and
 returns the complete list under `addresses`. For `default_address`, it selects
 the address marked as default, falls back to the first saved address, and
-returns an empty object when the account has no addresses.
+returns an empty object when the account has no addresses. If the authenticated
+Link request fails, the block emits `error` instead of address outputs.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -28,10 +29,11 @@ returns an empty object when the account has no addresses.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Use `default_address` to prefill the delivery fields for a physical purchase,
-or present `addresses` to the user when they should choose among several saved
-destinations. Confirm that the selected address satisfies the merchant's
-country and postal-code requirements before submitting the order.
+**Default Delivery**: Prefill a physical purchase with the wallet's `default_address`.
+
+**Address Choice**: Present `addresses` when the user should choose among several saved destinations.
+
+**Fulfillment Validation**: Confirm that the selected address meets the merchant's country and postal-code requirements.
 <!-- END MANUAL -->
 
 ---
@@ -45,8 +47,8 @@ Get the Link account holder's name, email and phone. Use it to fill in a checkou
 <!-- MANUAL: how_it_works -->
 The block makes an authenticated `GET /userinfo` request to Link and maps the
 returned name, email, and phone fields directly to block outputs. Missing keys
-become empty strings, but an explicit null from Link is passed through rather
-than normalized. A failed Link request is reported through `error`.
+and explicit null values become empty strings so they satisfy the output schema.
+A failed Link request is reported through `error`.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -62,10 +64,11 @@ than normalized. A failed Link request is reported through `error`.
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Prefill the buyer-name and contact fields for a checkout, then combine them
-with Get Shipping Address for an order that needs delivery. Treat empty outputs
-as missing profile data and ask for the required value instead of submitting an
-incomplete checkout.
+**Checkout Prefill**: Fill buyer-name and contact fields from the connected Link profile.
+
+**Physical Orders**: Combine contact details with Get Shipping Address for a delivered purchase.
+
+**Missing Data Recovery**: Ask the user for any required value returned as an empty string.
 <!-- END MANUAL -->
 
 ---
