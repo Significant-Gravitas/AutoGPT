@@ -167,5 +167,7 @@
 * [Video Loop](block-integrations/video/loop.md)
 * [Video Narration](block-integrations/video/narration.md)
 * [Video Text Overlay](block-integrations/video/text_overlay.md)
+* [Webmetadata Security Headers Audit](block-integrations/webmetadata/security_headers_audit.md)
+* [Webmetadata Tech Stack Detector](block-integrations/webmetadata/tech_stack_detector.md)
 * [Wolfram LLM API](block-integrations/wolfram/llm_api.md)
 * [Zerobounce Validate Emails](block-integrations/zerobounce/validate_emails.md)

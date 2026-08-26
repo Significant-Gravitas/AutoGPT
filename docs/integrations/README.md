@@ -195,6 +195,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stripe Link MPP Pay](block-integrations/stripe_link/mpp.md#stripe-link-mpp-pay) | MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoint |
 | [Stripe Link Retrieve Card](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-card) | Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form |
 | [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
+| [Tech Stack Detector](block-integrations/webmetadata/tech_stack_detector.md#tech-stack-detector) | Fingerprints the CMS/framework/analytics stack (WordPress, Shopify, Next |
 
 ## Text Processing
 
@@ -558,6 +559,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
+| [Security Headers Audit](block-integrations/webmetadata/security_headers_audit.md#security-headers-audit) | Grades a URL's HTTP security headers (HSTS, CSP, X-Frame-Options, etc |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
 ## Media Generation
