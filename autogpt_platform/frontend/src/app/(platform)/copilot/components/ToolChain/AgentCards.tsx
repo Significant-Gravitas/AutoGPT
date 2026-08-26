@@ -13,7 +13,8 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
-import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
+import { useSubSessionEffectiveStatus } from "./SubSessionLive/helpers";
+import { SubSessionLive } from "./SubSessionLive/SubSessionLive";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");

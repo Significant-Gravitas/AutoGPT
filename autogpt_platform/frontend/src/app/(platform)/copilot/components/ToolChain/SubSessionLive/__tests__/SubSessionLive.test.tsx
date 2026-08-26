@@ -4,8 +4,8 @@ import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
-import { SubSessionCard } from "../AgentCards";
-import { ToolResult } from "../ToolResult";
+import { SubSessionCard } from "../../AgentCards";
+import { ToolResult } from "../../ToolResult";
 
 const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
 const SESSION_LIST_ROUTE = "/api/proxy/api/chat/sessions";
