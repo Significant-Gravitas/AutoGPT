@@ -64,7 +64,6 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-  const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
@@ -180,7 +179,11 @@ export function useCopilotPage() {
     activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,
-    copilotModel: showAdvancedComposerControls ? copilotLlmModel : undefined,
+    // Sent whenever the picker can set it. The tier control is not behind
+    // CHAT_MODE_OPTION -- it renders from the server's connection offer --
+    // so gating the value on that flag silently ran the turn on the tier the
+    // user had not chosen. Entitlement is the server's call, not the flag's.
+    copilotModel: copilotLlmModel,
   });
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 

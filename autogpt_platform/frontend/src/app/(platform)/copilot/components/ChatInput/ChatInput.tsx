@@ -221,7 +221,6 @@ export function ChatInput({
 
   // Narrows to string, so the render site needn't re-test sessionId.
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
-
   const canSend =
     !disabled &&
     (!!value.trim() || hasAttachments) &&
