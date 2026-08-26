@@ -15,6 +15,9 @@ docker run -d \
   --restart unless-stopped \
   --shm-size 2g \
   --ulimit nofile=65536:65536 \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
   -p 127.0.0.1:3000:3000 \
   -e AUTOGPT_PUBLIC_URL=http://localhost:3000 \
   -v autogpt-data:/data \
@@ -24,8 +27,9 @@ docker run -d \
 The first boot can take several minutes, and it applies the database migrations.
 Let it finish: stopping the container during that window can interrupt a
 migration, and the next boot will refuse to start until you resolve it (the log
-names the migration and the command). Wait until Docker reports the container
-as `healthy`, then open [http://localhost:3000](http://localhost:3000).
+names the migration and the recovery options described in the canonical guide
+below). Wait until Docker reports the container as `healthy`, then open
+[http://localhost:3000](http://localhost:3000).
 Registration starts open; the loopback-only port binding above keeps it local.
 If you expose the app to a network, anyone who can reach it can register until
 you close signup.
@@ -42,16 +46,15 @@ and generated application secrets survive container replacement.
 
 ## Stopping
 
-`docker stop` completes in well under Docker's stock 10-second timeout, so the
-appliance shuts down cleanly on a default host and needs no change to Docker's
-host-wide stop timeout. The bundled PostgreSQL, RabbitMQ, Valkey and FalkorDB
-are drained last and in full; everything stateless is stopped first, and is
-terminated rather than waited on once it has released what it holds.
+The image is designed and tested to stop inside Docker's stock 10-second
+timeout. Its measured margin is narrow, and a longer Docker timeout does not
+extend Supervisor's internal five-second state-service cap. Larger or slower
+state may therefore require normal crash recovery on the next boot.
 
-Agent runs that are still executing do not survive the stop. They are not
-resumed on the next boot, so re-run them.
+Agent runs that are still executing are abandoned and may remain displayed as
+`RUNNING`. They are not resumed on the next boot, so start a new run.
 
-Supervisor's process names are group-qualified inside the container -- use
+Supervisor's process names are group-qualified inside the container — use
 `supervisorctl status` to see them (`runtime:rest`, `state:postgres`, and so
 on) rather than assuming a bare name.
 
@@ -62,8 +65,9 @@ example, publishing host port `8080` requires
 `AUTOGPT_PUBLIC_URL=http://localhost:8080` and `-p 127.0.0.1:8080:3000`.
 
 Configure model providers and optional integrations with environment variables.
-Core memory is enabled and stored in the bundled FalkorDB; memory extraction
-also needs a configured chat model and embedding provider.
+The FalkorDB service always runs, while Graphiti memory is enabled by the
+image's default feature configuration; memory extraction also needs a
+configured chat model and embedding provider.
 
 The image supports `linux/amd64` and `linux/arm64`. Test installations used
 about 5–6 GiB of memory during startup and steady-state health checks, though
@@ -79,8 +83,11 @@ memory rather than the container's writable layer.
 - `vX.Y.Z` — immutable AutoGPT Platform release.
 - `sha-<git-sha>` — immutable build for an exact source revision.
 
+`canary-sha-*` tags are unsupported pre-release validation artifacts.
+
 ## More information
 
+- [Canonical single-container operations guide](https://docs.agpt.co/platform/self-hosting/single-container)
 - [AutoGPT repository](https://github.com/Significant-Gravitas/AutoGPT)
 - [Security policy](https://github.com/Significant-Gravitas/AutoGPT/security/policy)
 - [License](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/LICENSE.md)
