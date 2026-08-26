@@ -88,19 +88,25 @@ export interface MessageLike {
   /** `text` is widened to unknown because parts arrive from the AI SDK: tool
    *  parts carry arbitrary payloads and are not guaranteed to hold a string
    *  here, which is what partChars() runtime-checks. */
-  parts?: Array<{ type?: string; text?: unknown }>;
+  parts?: Array<{ type?: string; text?: unknown; state?: string }>;
 }
 
 /** Guards the breakdown recompute, which walks the whole loaded history and
- *  so must not run per stream delta. Carries the session, so switching to a
- *  thread with an identical message count still recomputes, and the last
- *  message's part count, because the SDK appends a turn's tool calls and
- *  results into the existing assistant message rather than a new one. */
+ *  so must not run per stream delta. Carries:
+ *  - the session, so switching to a thread with an identical message count
+ *    still recomputes;
+ *  - the last message's part count, because the SDK appends a turn's tool
+ *    calls and results into the existing assistant message, not a new one;
+ *  - whether the turn has settled, because assistant text grows in place
+ *    without adding a part — deltas are deliberately not tracked, so this is
+ *    what forces exactly one recompute when the turn finishes. */
 export function breakdownCacheKey(
   sessionId: string,
   messages: readonly MessageLike[],
+  isStreaming: boolean,
 ): string {
-  return `${sessionId}:${messages.length}:${messages.at(-1)?.parts?.length ?? 0}`;
+  const parts = messages.at(-1)?.parts?.length ?? 0;
+  return `${sessionId}:${messages.length}:${parts}:${isStreaming ? "live" : "settled"}`;
 }
 
 export function computeBreakdown(
@@ -133,10 +139,18 @@ export function computeBreakdown(
  *  caching per object collapses that to O(new parts). */
 const partCharCache = new WeakMap<object, number>();
 
-function partChars(part: { type?: string; text?: unknown }): number {
+function partChars(part: {
+  type?: string;
+  text?: unknown;
+  state?: string;
+}): number {
   if (typeof part?.text === "string") return part.text.length;
   if (part === null || typeof part !== "object") return 0;
-  const cached = partCharCache.get(part);
+  // A tool part still filling in its input/output is mutated in place, so
+  // caching it would pin a count that is about to change.
+  const cacheable =
+    part.state === undefined || part.state.endsWith("available");
+  const cached = cacheable ? partCharCache.get(part) : undefined;
   if (cached !== undefined) return cached;
   let chars = 0;
   try {
@@ -144,6 +158,6 @@ function partChars(part: { type?: string; text?: unknown }): number {
   } catch {
     chars = 0; // Circular/unserializable part — skip it, this is an estimate.
   }
-  partCharCache.set(part, chars);
+  if (cacheable) partCharCache.set(part, chars);
   return chars;
 }

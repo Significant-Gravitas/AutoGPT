@@ -205,11 +205,11 @@ export const ChatContainer = ({
   const devtoolBreakdownKeyRef = useRef("");
   useEffect(() => {
     if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
-    const key = breakdownCacheKey(sessionId, messages);
+    const key = breakdownCacheKey(sessionId, messages, isStreaming);
     if (key === devtoolBreakdownKeyRef.current) return;
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
-  }, [sessionId, messages]);
+  }, [sessionId, messages, isStreaming]);
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {

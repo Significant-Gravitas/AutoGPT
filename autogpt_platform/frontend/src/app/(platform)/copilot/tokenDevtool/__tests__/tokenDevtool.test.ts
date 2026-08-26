@@ -180,8 +180,8 @@ describe("breakdownCacheKey", () => {
   const messages = [{ role: "user", parts: [{ type: "text", text: "hi" }] }];
 
   it("changes when the session changes at an identical message count", () => {
-    expect(breakdownCacheKey("a", messages)).not.toBe(
-      breakdownCacheKey("b", messages),
+    expect(breakdownCacheKey("a", messages, false)).not.toBe(
+      breakdownCacheKey("b", messages, false),
     );
   });
 
@@ -190,14 +190,31 @@ describe("breakdownCacheKey", () => {
     const after = [
       { role: "assistant", parts: [{ type: "text" }, { type: "tool-x" }] },
     ];
-    expect(breakdownCacheKey("a", before)).not.toBe(
-      breakdownCacheKey("a", after),
+    expect(breakdownCacheKey("a", before, false)).not.toBe(
+      breakdownCacheKey("a", after, false),
+    );
+  });
+
+  // Assistant text grows in place, so counts alone never change — settling
+  // the turn is what forces the final recompute.
+  it("changes when the turn settles at unchanged counts", () => {
+    const streaming = [
+      { role: "assistant", parts: [{ type: "text", text: "a" }] },
+    ];
+    const settled = [
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "a much longer reply" }],
+      },
+    ];
+    expect(breakdownCacheKey("a", streaming, true)).not.toBe(
+      breakdownCacheKey("a", settled, false),
     );
   });
 
   it("is stable for the same session and the same parts", () => {
-    expect(breakdownCacheKey("a", messages)).toBe(
-      breakdownCacheKey("a", messages),
+    expect(breakdownCacheKey("a", messages, false)).toBe(
+      breakdownCacheKey("a", messages, false),
     );
   });
 });
@@ -229,6 +246,23 @@ describe("computeBreakdown", () => {
     expect(
       computeBreakdown([{ role: "assistant", parts: [part] }]).toolTokens,
     ).toBe(0);
+  });
+
+  // The per-part memo must not pin a count for a tool part the SDK is still
+  // filling in, or the tool row would freeze at its input-streaming size.
+  it("recounts a tool part that is still streaming", () => {
+    const part: Record<string, unknown> = {
+      type: "tool-x",
+      state: "input-streaming",
+    };
+    const first = computeBreakdown([
+      { role: "assistant", parts: [part] },
+    ]).toolTokens;
+    part.output = "y".repeat(400);
+    const second = computeBreakdown([
+      { role: "assistant", parts: [part] },
+    ]).toolTokens;
+    expect(second).toBeGreaterThan(first);
   });
 
   it("counts assistant reasoning as assistant text", () => {
@@ -389,6 +423,23 @@ describe("createUsageCapturingFetch", () => {
     expect(
       useTokenDevtoolStore.getState().turnsBySession["session-resume"],
     ).toBeUndefined();
+  });
+
+  it("records a usage comment that arrives without a trailing newline", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse([USAGE_LINE])),
+    );
+
+    const wrapped = createUsageCapturingFetch("session-flush");
+    await drain(await wrapped("http://x/stream", POST));
+
+    await vi.waitFor(() => {
+      const turns =
+        useTokenDevtoolStore.getState().turnsBySession["session-flush"];
+      expect(turns).toHaveLength(1);
+      expect(turns[0].promptTokens).toBe(1200);
+    });
   });
 
   it("returns error responses untouched", async () => {

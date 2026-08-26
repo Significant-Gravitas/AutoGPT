@@ -85,6 +85,25 @@ async function scanForUsage(
   // Usage arrives at turn end, after any compaction tool events — so a
   // marker seen earlier in the stream belongs to the next recorded turn.
   let sawCompaction = false;
+  const scan = (lines: string[]) => {
+    for (const line of lines) {
+      // Thousands of lines per turn on the app's most latency-sensitive
+      // path: reject the `data:` majority on one char before doing any
+      // trimming, regex, or JSON work.
+      if (line.charCodeAt(0) === COLON) {
+        const usage = parseUsageComment(line);
+        if (!usage) continue;
+        useTokenDevtoolStore.getState().record(sessionId, {
+          ...usage,
+          compacted: sawCompaction,
+          at: Date.now(),
+        });
+        sawCompaction = false;
+      } else if (isCompactionLine(line)) {
+        sawCompaction = true;
+      }
+    }
+  };
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -95,24 +114,11 @@ async function scanForUsage(
       if (buffer.length > MAX_BUFFERED_LINE) buffer = "";
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        // Thousands of lines per turn on the app's most latency-sensitive
-        // path: reject the `data:` majority on one char before doing any
-        // trimming, regex, or JSON work.
-        if (line.charCodeAt(0) === COLON) {
-          const usage = parseUsageComment(line);
-          if (!usage) continue;
-          useTokenDevtoolStore.getState().record(sessionId, {
-            ...usage,
-            compacted: sawCompaction,
-            at: Date.now(),
-          });
-          sawCompaction = false;
-        } else if (isCompactionLine(line)) {
-          sawCompaction = true;
-        }
-      }
+      scan(lines);
     }
+    // A stream that ends without a trailing newline leaves the last line —
+    // which is where the usage comment lives — sitting in the buffer.
+    if (buffer) scan([buffer]);
   } catch {
     // Devtool tap only — swallow so it can never surface as a chat error.
   } finally {
