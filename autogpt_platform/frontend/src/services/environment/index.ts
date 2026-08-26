@@ -94,7 +94,7 @@ function getGoogleAdsID() {
 }
 
 function getGoogleAdsConversionLabels() {
-  return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS;
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS || "";
 }
 
 function isProductionBuild() {

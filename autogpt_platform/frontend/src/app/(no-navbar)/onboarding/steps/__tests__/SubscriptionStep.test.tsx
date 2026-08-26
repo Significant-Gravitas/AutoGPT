@@ -38,7 +38,15 @@ vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
   AutoGPTLogo: () => <span>AutoGPTLogo</span>,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim, the location stub and NEXT_PUBLIC_GOOGLE_ADS_ID into every
+  // later test here.
+  restoreLocation();
+  removeGtagShim();
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   postHog.variant = undefined;
@@ -261,9 +269,6 @@ describe("SubscriptionStep", () => {
       ]);
     });
     expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
-    restoreLocation();
-    removeGtagShim();
-    vi.unstubAllEnvs();
   });
 
   test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
@@ -287,8 +292,6 @@ describe("SubscriptionStep", () => {
       );
     });
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
-    removeGtagShim();
-    vi.unstubAllEnvs();
   });
 
   test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {

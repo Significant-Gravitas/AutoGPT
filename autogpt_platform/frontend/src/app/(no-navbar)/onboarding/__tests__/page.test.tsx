@@ -142,6 +142,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim and NEXT_PUBLIC_GOOGLE_ADS_ID into every later test here.
+  removeGtagShim();
+  vi.unstubAllEnvs();
 });
 
 describe("OnboardingPage — flag-gated SubscriptionStep", () => {
@@ -390,8 +394,6 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
       "conversion",
       { send_to: "AW-123/OC" },
     ]);
-    removeGtagShim();
-    vi.unstubAllEnvs();
   });
 
   it("reports no onboarding_complete when the API never confirms", async () => {
@@ -418,8 +420,6 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
     expect(completeOnboardingStep).toHaveBeenCalledTimes(3);
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
-    removeGtagShim();
-    vi.unstubAllEnvs();
   }, 10000);
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {

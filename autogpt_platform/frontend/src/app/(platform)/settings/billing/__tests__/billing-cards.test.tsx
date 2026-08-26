@@ -13,9 +13,13 @@
 
 import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 
 import { AutoRefillCard } from "../components/AutomationCreditsTab/AutoRefillCard/AutoRefillCard";
@@ -1226,5 +1230,85 @@ describe("Card mutation flows", () => {
     expect(
       screen.queryByRole("button", { name: /manage subscription/i }),
     ).toBeNull();
+  });
+});
+
+describe("YourPlanCard begin_checkout", () => {
+  const originalLocation = window.location;
+
+  function stubLocation() {
+    const location = {
+      origin: "http://localhost",
+      pathname: "/settings/billing",
+      href: "http://localhost/settings/billing",
+    };
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: location,
+    });
+    return location;
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+    removeGtagShim();
+    vi.unstubAllEnvs();
+  });
+
+  function freeAccount(checkoutURL: string | null) {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+        // What Stripe actually charges, which is what Ads should bid on —
+        // deliberately not the $50 the plan card computes.
+        tier_costs: { PRO: 4900 },
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("post", "/api/credits/subscription", { url: checkoutURL }),
+    );
+  }
+
+  it("reports begin_checkout with the authoritative price once Stripe returns a URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        { send_to: "AW-123/BC", value: 49, currency: "USD" },
+      ]);
+    });
+    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+  });
+
+  it("reports no begin_checkout when the tier changes in place", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    stubLocation();
+    freeAccount(null);
+
+    render(<YourPlanCard />);
+    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls.length).toBeGreaterThanOrEqual(0);
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@ import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
-import { ACCOUNT_CREATED_COOKIE } from "./account-created-cookie";
+import { ACCOUNT_CREATED_COOKIE } from "../account-created-cookie";
+import { consent } from "@/services/consent/cookies";
 
 let pathname = "/copilot";
 vi.mock("next/navigation", () => ({
@@ -24,7 +25,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => auth.state,
 }));
 
-import { AdsConversionTracker } from "./AdsConversionTracker";
+import { AdsConversionTracker } from "../AdsConversionTracker";
 
 let pushed: unknown[][] = [];
 
@@ -56,6 +57,7 @@ describe("AdsConversionTracker", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     removeGtagShim();
+    consent.clear();
   });
 
   it("fires sign_up once for a just-created account and clears the flag", () => {
@@ -150,8 +152,12 @@ describe("AdsConversionTracker", () => {
     expect(conversions()).toEqual([]);
   });
 
-  it("fires top_up when a credits purchase returns", () => {
-    window.history.replaceState({}, "", "/settings/billing?topup=success");
+  it("fires top_up with the Stripe session as the dedup key", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/settings/billing?topup=success&session_id=cs_top_1",
+    );
 
     render(<AdsConversionTracker />);
 
@@ -159,9 +165,111 @@ describe("AdsConversionTracker", () => {
       [
         "event",
         "conversion",
-        { send_to: "AW-123/TU", user_data: { email: "ada@example.com" } },
+        {
+          send_to: "AW-123/TU",
+          transaction_id: "cs_top_1",
+          user_data: { email: "ada@example.com" },
+        },
       ],
     ]);
+  });
+
+  it("reports nothing while the session is absent, even once loading is done", () => {
+    // The regression: on the post-signup client navigation the effect runs
+    // with isUserLoading already false but no user yet. Reporting there sends
+    // a conversion with no dedup id and no enhanced-conversion email.
+    document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
+    auth.state = { user: null, isUserLoading: false };
+
+    const { rerender } = render(<AdsConversionTracker />);
+    expect(conversions()).toEqual([]);
+    expect(document.cookie).toContain(`${ACCOUNT_CREATED_COOKIE}=email`);
+
+    auth.state = {
+      user: { id: "user-3", email: "cleo@example.com" },
+      isUserLoading: false,
+    };
+    rerender(<AdsConversionTracker />);
+
+    expect(conversions()).toHaveLength(1);
+    expect(conversions()[0][2]).toMatchObject({
+      transaction_id: "user-3",
+      user_data: { email: "cleo@example.com" },
+    });
+  });
+
+  it("keeps the account-created flag when the tag has not loaded yet", () => {
+    removeGtagShim();
+    document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
+
+    const { rerender } = render(<AdsConversionTracker />);
+    expect(document.cookie).toContain(`${ACCOUNT_CREATED_COOKIE}=email`);
+
+    // The tag loads afterInteractive; the next navigation retries.
+    pushed = installGtagShim();
+    pathname = "/library";
+    rerender(<AdsConversionTracker />);
+
+    expect(conversions()).toHaveLength(1);
+    expect(document.cookie).not.toContain(`${ACCOUNT_CREATED_COOKIE}=email`);
+  });
+
+  it("retries the checkout return until it reaches the tag", () => {
+    removeGtagShim();
+    window.history.replaceState(
+      {},
+      "",
+      "/settings/billing?subscription=success&session_id=cs_2&plan=PRO&cycle=monthly",
+    );
+
+    const { rerender } = render(<AdsConversionTracker />);
+
+    pushed = installGtagShim();
+    pathname = "/library";
+    rerender(<AdsConversionTracker />);
+
+    expect(conversions()).toHaveLength(1);
+    expect(conversions()[0][2]).toMatchObject({
+      send_to: "AW-123/SB",
+      transaction_id: "cs_2",
+    });
+  });
+
+  it("drops the identifiers when the visitor rejected advertising", () => {
+    consent.save({
+      hasConsented: true,
+      timestamp: 1,
+      analytics: true,
+      monitoring: true,
+      advertising: false,
+    });
+    document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
+
+    render(<AdsConversionTracker />);
+
+    // The aggregate conversion still counts — Consent Mode keeps it
+    // cookieless — but nothing identifying rides along.
+    expect(conversions()).toEqual([
+      ["event", "conversion", { send_to: "AW-123/SU" }],
+    ]);
+  });
+
+  it("keeps the identifiers when the visitor accepted advertising", () => {
+    consent.save({
+      hasConsented: true,
+      timestamp: 1,
+      analytics: true,
+      monitoring: true,
+      advertising: true,
+    });
+    document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
+
+    render(<AdsConversionTracker />);
+
+    expect(conversions()[0][2]).toMatchObject({
+      transaction_id: "user-1",
+      user_data: { email: "ada@example.com" },
+    });
   });
 
   it("sends a page_view to the Ads tag on client-side navigation only", () => {

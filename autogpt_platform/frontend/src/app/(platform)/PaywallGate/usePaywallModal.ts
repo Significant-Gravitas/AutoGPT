@@ -18,6 +18,10 @@ import {
   type PlanDef,
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
+import {
+  getSubscriptionValue,
+  trackAdsConversion,
+} from "@/services/analytics/google-ads";
 
 interface CheckoutResponse {
   url?: string;
@@ -99,21 +103,27 @@ export function usePaywallModal() {
 
   async function fireUpdate(tier: string) {
     setSelectedTier(tier);
+    const cycle = isYearly ? "yearly" : "monthly";
     try {
       const result = await updateTier({
         data: {
           tier: tier as SubscriptionTierRequestTier,
-          success_url: `${window.location.origin}/profile/credits?subscription=success`,
+          // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return
+          // page report the subscription to Google Ads.
+          success_url: `${window.location.origin}/profile/credits?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`,
           // Backing out of Stripe Checkout must return to the page the user
           // was on so the paywall re-gates immediately. /profile/* is
           // paywall-exempt — landing there let users wander an app that
           // looks unlocked until the next non-exempt navigation.
           cancel_url: window.location.href,
-          billing_cycle: isYearly ? "yearly" : "monthly",
+          billing_cycle: cycle,
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
+        trackAdsConversion("begin_checkout", {
+          value: getSubscriptionValue(tier, cycle),
+        });
         window.location.href = url;
       }
     } catch (error) {

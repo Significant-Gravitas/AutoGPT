@@ -14,6 +14,7 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
+  centsToUSD,
   getSubscriptionValue,
   trackAdsConversion,
 } from "@/services/analytics/google-ads";
@@ -210,8 +211,12 @@ export function useYourPlanCard() {
         // A Checkout URL is the only proof that Stripe Checkout actually
         // starts: paid users are modified in place and get no URL, which is
         // not a checkout start.
+        // /credits/subscription returns what Stripe actually charges; the
+        // plan-card figure is only the fallback when the tier isn't priced there.
+        const cents =
+          cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
         trackAdsConversion("begin_checkout", {
-          value: getSubscriptionValue(tier, cycle),
+          value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
         });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).

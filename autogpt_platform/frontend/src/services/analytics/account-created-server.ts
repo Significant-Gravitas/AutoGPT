@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { environment } from "@/services/environment";
 import { cookies } from "next/headers";
 import {
   ACCOUNT_CREATED_COOKIE,
@@ -16,7 +17,11 @@ export async function markAccountCreated(method: SignupMethod): Promise<void> {
       path: "/",
       maxAge: ACCOUNT_CREATED_COOKIE_MAX_AGE_SECONDS,
       sameSite: "lax",
+      // Readable by the browser by design — that's how the conversion fires.
       httpOnly: false,
+      // ...but not settable over plaintext by a sibling subdomain, which would
+      // forge a sign-up. Local stacks run on http.
+      secure: !environment.isLocal(),
     });
   } catch (error) {
     Sentry.captureException(error, {

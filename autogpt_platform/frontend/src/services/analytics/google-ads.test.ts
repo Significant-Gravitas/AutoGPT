@@ -107,7 +107,7 @@ describe("parseConversionLabels", () => {
   });
 
   it("returns nothing for an unset value", () => {
-    expect(parseConversionLabels(undefined)).toEqual({});
+    expect(parseConversionLabels("")).toEqual({});
   });
 });
 

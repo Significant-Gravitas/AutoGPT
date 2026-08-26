@@ -2,6 +2,7 @@ import {
   PLANS,
   YEARLY_PRICE_FACTOR,
 } from "@/components/molecules/PlanCard/plans";
+import { consent } from "@/services/consent/cookies";
 import { environment } from "@/services/environment";
 import { gtag } from "./gtag";
 
@@ -33,9 +34,7 @@ export function trackAdsConversion(
 ): boolean {
   const adsID = environment.getGoogleAdsID();
   if (!adsID) return false;
-  const label = parseConversionLabels(
-    environment.getGoogleAdsConversionLabels(),
-  )[name];
+  const label = conversionLabels()[name];
   if (!label) return false;
 
   const params: Record<string, unknown> = { send_to: `${adsID}/${label}` };
@@ -43,10 +42,35 @@ export function trackAdsConversion(
     params.value = options.value;
     params.currency = options.currency ?? "USD";
   }
-  if (options.transactionID) params.transaction_id = options.transactionID;
-  if (options.email) params.user_data = { email: options.email };
+  // A visitor who answered the banner and said no to advertising still counts
+  // as an aggregate (cookieless) conversion, but never carries identifiers.
+  // Consent Mode asks Google to redact these; dropping them here means the
+  // recorded "no" does not depend on the vendor honouring that.
+  if (mayReportIdentifiers()) {
+    if (options.transactionID) params.transaction_id = options.transactionID;
+    if (options.email) params.user_data = { email: options.email };
+  }
 
   return gtag("event", "conversion", params);
+}
+
+function mayReportIdentifiers(): boolean {
+  const preferences = consent.load();
+  return !preferences.hasConsented || preferences.advertising;
+}
+
+// The labels come from a build-time env var; parse once per distinct value so
+// a conversion doesn't re-split the string every time.
+let cachedLabelsRaw: string | undefined;
+let cachedLabels: Partial<Record<AdsConversion, string>> = {};
+
+function conversionLabels(): Partial<Record<AdsConversion, string>> {
+  const raw = environment.getGoogleAdsConversionLabels();
+  if (raw !== cachedLabelsRaw) {
+    cachedLabelsRaw = raw;
+    cachedLabels = parseConversionLabels(raw);
+  }
+  return cachedLabels;
 }
 
 // Client-side navigations don't reload the tag, so the Ads destination gets
@@ -59,10 +83,10 @@ export function trackAdsPageView(path: string): boolean {
 
 // "sign_up=AbCdEf,subscribe=GhIjKl" → { sign_up: "AbCdEf", subscribe: "GhIjKl" }
 export function parseConversionLabels(
-  raw: string | undefined,
+  raw: string,
 ): Partial<Record<AdsConversion, string>> {
   const labels: Partial<Record<AdsConversion, string>> = {};
-  for (const part of (raw ?? "").split(",")) {
+  for (const part of raw.split(",")) {
     const [key, label] = part.split("=").map((piece) => piece.trim());
     if (isAdsConversion(key) && label) labels[key] = label;
   }
@@ -79,9 +103,22 @@ export function getSubscriptionValue(
   plan: string | null,
   cycle: string | null,
 ): number | undefined {
-  const monthly = PLANS.find((candidate) => candidate.key === plan)?.usdMonthly;
-  if (monthly == null) return undefined;
-  const amount =
-    cycle === "yearly" ? monthly * YEARLY_PRICE_FACTOR * 12 : monthly;
+  const definition = PLANS.find((candidate) => candidate.key === plan);
+  const monthly = definition?.usdMonthly;
+  if (!definition || monthly == null) return undefined;
+  if (cycle !== "yearly") return roundUSD(monthly);
+  // usdYearly is the amount Stripe actually charges wherever the surface knows
+  // it; the factor is only the fallback the pricing cards compute from
+  // (computePricing.ts). Bidding on the displayed number matters.
+  return roundUSD(definition.usdYearly ?? monthly * YEARLY_PRICE_FACTOR * 12);
+}
+
+// Stripe amounts arrive in cents; Ads wants the major unit.
+export function centsToUSD(cents: number | undefined): number | undefined {
+  if (cents == null) return undefined;
+  return roundUSD(cents / 100);
+}
+
+function roundUSD(amount: number): number {
   return Math.round(amount * 100) / 100;
 }

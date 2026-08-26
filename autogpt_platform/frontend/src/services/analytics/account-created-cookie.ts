@@ -5,9 +5,10 @@ export const SIGNUP_METHODS = ["email", "google"] as const;
 export type SignupMethod = (typeof SIGNUP_METHODS)[number];
 
 // The server sets this flag when it provisions a brand-new account (see
-// account-created-server.ts); the browser reads it once to report the
-// Google Ads sign-up conversion, then clears it so a reload can't report twice.
-export function consumeAccountCreatedFlag(): SignupMethod | null {
+// account-created-server.ts). Reading and clearing are separate on purpose:
+// the flag is the only record that a signup happened, so it must survive until
+// the conversion has actually reached the tag.
+export function readAccountCreatedFlag(): SignupMethod | null {
   if (typeof document === "undefined") return null;
 
   const prefix = `${ACCOUNT_CREATED_COOKIE}=`;
@@ -16,9 +17,15 @@ export function consumeAccountCreatedFlag(): SignupMethod | null {
     .find((part) => part.startsWith(prefix));
   if (!entry) return null;
 
-  document.cookie = `${ACCOUNT_CREATED_COOKIE}=; Path=/; Max-Age=0`;
   const value = entry.slice(prefix.length);
   return isSignupMethod(value) ? value : null;
+}
+
+// Called once the sign-up conversion is reported, so a reload can't report
+// twice.
+export function clearAccountCreatedFlag(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${ACCOUNT_CREATED_COOKIE}=; Path=/; Max-Age=0`;
 }
 
 function isSignupMethod(value: string): value is SignupMethod {

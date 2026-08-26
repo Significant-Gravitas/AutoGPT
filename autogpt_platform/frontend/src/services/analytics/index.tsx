@@ -19,7 +19,6 @@ type DatafastEvent = [name: string, metadata: Record<string, unknown>];
 declare global {
   interface Window {
     datafast?: (...event: DatafastEvent) => void;
-    [key: string]: unknown[] | ((...args: unknown[]) => void) | unknown;
   }
 }
 
@@ -31,7 +30,7 @@ type SetupProps = {
 export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
-  const adsId = environment.getGoogleAdsID();
+  const adsID = environment.getGoogleAdsID();
   const { preferences, googleTagEnabled, dataFastEnabled } =
     useSetupAnalytics(host);
 
@@ -45,8 +44,8 @@ export function SetupAnalytics(props: SetupProps) {
             strategy="afterInteractive"
             dangerouslySetInnerHTML={{
               __html: buildGoogleTagInitScript({
-                gaId,
-                adsId,
+                gaID: gaId,
+                adsID,
                 debugMode,
                 preferences,
               }),
@@ -77,26 +76,29 @@ export function SetupAnalytics(props: SetupProps) {
 }
 
 interface InitScriptArgs {
-  gaId: string;
-  adsId: string;
+  gaID: string;
+  adsID: string;
   debugMode?: boolean;
   preferences: ConsentPreferences | null;
 }
 
 function buildGoogleTagInitScript({
-  gaId,
-  adsId,
+  gaID,
+  adsID,
   debugMode,
   preferences,
 }: InitScriptArgs): string {
+  // The IDs come from env vars and go into a nonce-bearing inline script, so
+  // they are escaped rather than interpolated raw: a stray quote in a misfilled
+  // env var would otherwise become CSP-blessed script.
   return [
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
     buildConsentModeScript(preferences),
     `gtag('js', new Date());`,
-    `gtag('config', '${gaId}'${debugMode ? ", { 'debug_mode': true }" : ""});`,
-    adsId
-      ? `gtag('config', '${adsId}', { 'allow_enhanced_conversions': true });`
+    `gtag('config', ${JSON.stringify(gaID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    adsID
+      ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
   ].join("\n");
 }

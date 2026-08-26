@@ -1,7 +1,10 @@
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { consumeAccountCreatedFlag } from "./account-created-cookie";
+import {
+  clearAccountCreatedFlag,
+  readAccountCreatedFlag,
+} from "./account-created-cookie";
 import {
   getSubscriptionValue,
   trackAdsConversion,
@@ -14,29 +17,36 @@ export function useAdsConversionTracker() {
   const checkoutReportedRef = useRef(false);
   const lastTrackedPathRef = useRef<string | null>(null);
 
-  // Waits for the session so the user id (dedup) and email (enhanced
-  // conversions) can ride along. Re-runs on navigation because the email
-  // signup sets the flag and then moves on client-side, without a reload.
+  // Waits for the session itself, not just for loading to finish: on the
+  // post-signup client navigation the effect runs once with `user` still
+  // undefined, and a conversion sent then carries no id to dedup on and no
+  // email for enhanced conversions. Nothing here is reported without a user.
+  // Re-runs on navigation because the email signup sets the flag and then
+  // moves on client-side, without a reload.
   useEffect(() => {
-    if (isUserLoading) return;
+    if (isUserLoading || !user) return;
 
     if (!checkoutReportedRef.current) {
-      checkoutReportedRef.current = true;
       // Stripe sends the user back with a full page load, so the checkout
-      // result is only ever in the URL at mount time.
-      trackCheckoutReturn(
+      // result is only ever in the URL at mount time. Latch only once it
+      // actually reached the tag — the tag loads afterInteractive and may not
+      // exist yet on this pass.
+      checkoutReportedRef.current = trackCheckoutReturn(
         new URLSearchParams(window.location.search),
-        user?.email,
+        user.email,
       );
     }
 
-    const method = consumeAccountCreatedFlag();
+    const method = readAccountCreatedFlag();
     if (!method) return;
-    trackAdsConversion("sign_up", {
-      transactionID: user?.id,
-      email: user?.email,
+    const reported = trackAdsConversion("sign_up", {
+      transactionID: user.id,
+      email: user.email,
     });
-  }, [user?.id, isUserLoading, pathname]);
+    // The flag is the only record that a signup happened; keep it until the
+    // conversion is really out, so the next navigation can retry.
+    if (reported) clearAccountCreatedFlag();
+  }, [user, isUserLoading, pathname]);
 
   // The tag's own config call already reports the first page; only
   // client-side navigations need a page_view from here.
@@ -51,18 +61,26 @@ export function useAdsConversionTracker() {
   }, [pathname]);
 }
 
-function trackCheckoutReturn(params: URLSearchParams, email?: string) {
+// Returns whether the checkout result has been dealt with: true when there was
+// nothing to report, or when every conversion reached the tag.
+function trackCheckoutReturn(params: URLSearchParams, email?: string): boolean {
   const sessionID = params.get("session_id") ?? undefined;
+  let handled = true;
 
   if (params.get("subscription") === "success") {
-    trackAdsConversion("subscribe", {
-      value: getSubscriptionValue(params.get("plan"), params.get("cycle")),
-      transactionID: sessionID,
-      email,
-    });
+    handled =
+      trackAdsConversion("subscribe", {
+        value: getSubscriptionValue(params.get("plan"), params.get("cycle")),
+        transactionID: sessionID,
+        email,
+      }) && handled;
   }
 
   if (params.get("topup") === "success") {
-    trackAdsConversion("top_up", { transactionID: sessionID, email });
+    handled =
+      trackAdsConversion("top_up", { transactionID: sessionID, email }) &&
+      handled;
   }
+
+  return handled;
 }
