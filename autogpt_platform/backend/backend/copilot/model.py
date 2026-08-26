@@ -990,18 +990,37 @@ async def upsert_chat_session(
 
         # Ordinary upserts keep best-effort cache-on-DB-error behavior;
         # tenancy changes return above after eviction instead.
-        # Title (update_session_title) and pin state (update_session_pinned)
-        # are mutated *outside* this lock — they only touch their single field,
-        # not messages — so a concurrent rename, auto-title, or pin/unpin may
-        # have written a newer value to Redis while this upsert was in progress.
-        # Always prefer the cached title/pin to avoid reverting it with the
-        # stale in-memory copy.
+        # Title (update_session_title), pin state (update_session_pinned) and
+        # the connection route (update_session_llm_route) are mutated *outside*
+        # this lock — they only touch their own fields, not messages — so a
+        # concurrent rename, auto-title, pin/unpin or connection switch may
+        # have written a newer value to Redis while this upsert was in
+        # progress. Always prefer the cached value to avoid reverting it with
+        # the stale in-memory copy.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
                     updates["title"] = existing_cached.title
+                # The route decides who pays for the next turn. A long turn
+                # finishing after the user switched connection would otherwise
+                # put the old one back in Redis while the database holds the
+                # new one, and bill the next turn to the connection they just
+                # left. Only the two route keys are taken from the cache; the
+                # rest of this session's metadata is this turn's own.
+                cached_route = existing_cached.metadata
+                if (
+                    cached_route.llm_auth_provider != session.metadata.llm_auth_provider
+                    or cached_route.llm_credential_id
+                    != session.metadata.llm_credential_id
+                ):
+                    updates["metadata"] = session.metadata.model_copy(
+                        update={
+                            "llm_auth_provider": cached_route.llm_auth_provider,
+                            "llm_credential_id": cached_route.llm_credential_id,
+                        }
+                    )
                 session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:

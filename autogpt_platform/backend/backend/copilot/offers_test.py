@@ -7,7 +7,13 @@ import pytest
 import pytest_mock
 
 from backend.copilot import offers, provider_tiers, transports
-from backend.copilot.offers import get_connection_offers, offer_id_for
+from backend.copilot.offers import (
+    EntitlementUnavailable,
+    advanced_tier_allowed,
+    advanced_tier_entitled,
+    get_connection_offers,
+    offer_id_for,
+)
 from backend.copilot.transports import ChatTransportResponse
 from backend.data.llm_registry import registry
 from backend.util.settings import BehaveAs
@@ -514,3 +520,46 @@ async def test_a_model_the_catalog_does_not_know_is_named_by_its_slug(
     offer = (await get_connection_offers(USER_ID))[0]
 
     assert offer.tiers[0].display_model == "a-model-nobody-has-heard-of"
+
+
+class TestAdvancedTierEntitlement:
+    """The picker and the turn ask the same question and need opposite answers
+    when the entitlement service is down: show the tier, refuse the spend."""
+
+    async def test_entitled_reports_what_the_service_said(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mocker.patch.object(
+            offers, "has_entitlement", new=AsyncMock(return_value=True)
+        )
+        assert await advanced_tier_entitled(USER_ID) is True
+
+        mocker.patch.object(
+            offers, "has_entitlement", new=AsyncMock(return_value=False)
+        )
+        assert await advanced_tier_entitled(USER_ID) is False
+
+    async def test_enforcement_refuses_to_guess_when_lookup_fails(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        # Returning True here is what let an unentitled account spend on
+        # Advanced during a billing outage. Not knowing is not permission.
+        mocker.patch.object(
+            offers,
+            "has_entitlement",
+            new=AsyncMock(side_effect=RuntimeError("billing down")),
+        )
+        with pytest.raises(EntitlementUnavailable):
+            await advanced_tier_entitled(USER_ID)
+
+    async def test_the_picker_stays_generous_when_lookup_fails(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        # The control staying on offer costs nothing, because the turn is
+        # enforced separately.
+        mocker.patch.object(
+            offers,
+            "has_entitlement",
+            new=AsyncMock(side_effect=RuntimeError("billing down")),
+        )
+        assert await advanced_tier_allowed(USER_ID) is True

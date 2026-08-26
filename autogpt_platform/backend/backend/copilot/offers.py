@@ -95,7 +95,7 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     mode = await resolve_engine_mode(user_id, config)
     models = await platform_tier_models(mode, user_id, config)
     codex_models = codex_tier_models(mode)
-    advanced_allowed = await _advanced_tier_allowed(user_id)
+    advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
         for transport in await get_chat_transports(user_id)
@@ -177,17 +177,44 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
 ADVANCED_TIER_LOCK_REASON = "A Max plan or higher is required for Advanced."
 
 
-async def _advanced_tier_allowed(user_id: str) -> bool:
-    """Whether this user may pick the Advanced tier.
+class EntitlementUnavailable(Exception):
+    """The entitlement service could not answer.
 
-    A failure to resolve the entitlement leaves the tier open rather than
-    locked: a billing hiccup should not silently downgrade someone's model.
+    Raised only on the enforcement path, where "we do not know" has to be
+    refused rather than guessed at.
+    """
+
+
+async def advanced_tier_entitled(user_id: str) -> bool:
+    """Whether this user actually holds the Advanced entitlement.
+
+    This is the enforcement answer, so it never invents one: a lookup that
+    fails raises rather than returning a verdict. The presentation answer
+    lives in ``advanced_tier_allowed`` and is deliberately more forgiving --
+    the two must not be the same function, because a billing hiccup that
+    should merely leave a control enabled must not also authorize spend.
     """
     try:
         return await has_entitlement(user_id, Entitlement.ADVANCED_MODEL_TIER)
-    except Exception:
+    except Exception as exc:
+        raise EntitlementUnavailable(str(exc)) from exc
+
+
+async def advanced_tier_allowed(user_id: str) -> bool:
+    """Whether to offer this user the Advanced tier in the picker.
+
+    Presentation only. A failure to resolve the entitlement leaves the tier
+    on offer rather than locked: a billing hiccup should not make someone's
+    model quietly disappear from the menu. The turn itself is still checked
+    by ``advanced_tier_entitled``, which refuses when it cannot tell -- so
+    being generous here costs nothing.
+    """
+    try:
+        return await advanced_tier_entitled(user_id)
+    except EntitlementUnavailable:
         logger.warning(
-            "Could not resolve the Advanced tier entitlement; leaving it open",
+            "Could not resolve the Advanced tier entitlement; leaving it on "
+            "offer. The turn is still enforced separately.",
             exc_info=True,
         )
         return True
