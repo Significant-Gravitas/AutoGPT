@@ -27,7 +27,7 @@ _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
 # default (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``, per
 # ``docs/platform/copilot-local-llm.md`` — 9B params, ~5.8GB model file,
-# 256k native context, and OpenAI-compatible tool calling). The
+# 262k native context, and OpenAI-compatible tool calling). The
 # reranker reuses the same model since the prompts are simpler than
 # extraction and pulling a second model for it would double the local
 # install's disk + RAM footprint.

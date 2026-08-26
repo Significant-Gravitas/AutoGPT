@@ -104,7 +104,7 @@ model that handles all three.
 
 | Tier | Recommended Ollama tag | Why | Footprint |
 | --- | --- | --- | --- |
-| **Default** | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` | Official Ornith GGUF; agentic 9B model with OpenAI-compatible tool calling; 256 k native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~5.8 GB model file; allow additional RAM for context and the KV cache |
+| **Default** | `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M` | Official Ornith GGUF; agentic 9B model with OpenAI-compatible tool calling; 262,144-token native context; reasoning model (the chat UI renders its thinking separately from the answer) | ~5.8 GB model file; allow additional RAM for context and the KV cache |
 | **Tight RAM** | `qwen3:4b` | Smaller; native tools; set `think: false` to avoid the unclosed-`<think>` tool-call render bug | ~3-4 GB resident |
 | **GPU / advanced** | `qwen3:14b-q4_K_M` | Best tool-selection accuracy in this size class | ~12 GB VRAM |
 
@@ -129,8 +129,12 @@ backend's *actual* loaded window back at runtime — Ollama `/api/ps`, llama.cpp
 it. Backends that don't report a window (LiteLLM proxy, Jan,
 text-generation-webui) fall back to assuming 32k.
 
-Use **at least 24k** (32768 recommended): below that, the system prompt +
-tools leave almost no room for conversation and AutoPilot logs a warning.
+The default Ornith model has a 262,144-token native window, so the installer
+sets `OLLAMA_CONTEXT_LENGTH=262144`. This maximizes available conversation
+history but substantially increases KV-cache RAM/VRAM use. Operators using a
+custom model or constrained hardware can lower it, but should keep at least
+24k: below that, the system prompt + tools leave almost no room for
+conversation and AutoPilot logs a warning.
 
 The installer sets `OLLAMA_CONTEXT_LENGTH` for you. Manual setup per platform:
 
@@ -140,7 +144,7 @@ The installer sets `OLLAMA_CONTEXT_LENGTH` for you. Manual setup per platform:
 # /etc/systemd/system/ollama.service.d/host.conf
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="OLLAMA_CONTEXT_LENGTH=32768"
+Environment="OLLAMA_CONTEXT_LENGTH=262144"
 ```
 
 Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`.
@@ -149,7 +153,7 @@ Then `sudo systemctl daemon-reload && sudo systemctl restart ollama`.
 
 ```bash
 launchctl setenv OLLAMA_HOST 0.0.0.0:11434
-launchctl setenv OLLAMA_CONTEXT_LENGTH 32768
+launchctl setenv OLLAMA_CONTEXT_LENGTH 262144
 # Then restart Ollama — either:
 brew services restart ollama        # if installed via the brew formula
 # …or quit the menu-bar app and relaunch it (the .dmg install)
@@ -159,13 +163,13 @@ brew services restart ollama        # if installed via the brew formula
 
 ```powershell
 setx OLLAMA_HOST "0.0.0.0:11434"
-setx OLLAMA_CONTEXT_LENGTH "32768"
+setx OLLAMA_CONTEXT_LENGTH "262144"
 # Then quit Ollama from the system tray and relaunch it
 # (setx writes to HKCU but does NOT update already-running processes).
 ```
 
 Verify on any platform with `ollama ps` (the `CONTEXT` column should
-show your value, e.g. 32768). If you change it, AutoPilot picks up the
+show your value, e.g. 262144). If you change it, AutoPilot picks up the
 new window automatically on the next turn — nothing else to update.
 
 ## Networking — same host, different host, or remote

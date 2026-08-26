@@ -234,7 +234,7 @@ _bootstrap_ollama_linux() {
     sudo tee /etc/systemd/system/ollama.service.d/host.conf > /dev/null <<'OLLAMA_DROPIN'
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="OLLAMA_CONTEXT_LENGTH=32768"
+Environment="OLLAMA_CONTEXT_LENGTH=262144"
 OLLAMA_DROPIN
     sudo systemctl daemon-reload
     sudo systemctl restart ollama
@@ -288,7 +288,7 @@ _bootstrap_ollama_macos() {
     # effect.
     launchctl setenv OLLAMA_HOST "0.0.0.0:11434" \
         || handle_error "launchctl setenv OLLAMA_HOST failed"
-    launchctl setenv OLLAMA_CONTEXT_LENGTH "32768" \
+    launchctl setenv OLLAMA_CONTEXT_LENGTH "262144" \
         || handle_error "launchctl setenv OLLAMA_CONTEXT_LENGTH failed"
     # Stop any currently-running Ollama (tray app, brew service, raw
     # ``ollama serve``). ``pkill`` matches by name; ``|| true`` so the
@@ -310,7 +310,7 @@ _bootstrap_ollama_macos() {
     # Export the same vars on the serve invocation so the headless server
     # honors them too. ``disown`` so the background job survives this script's
     # exit even in shells with ``shopt -s huponexit`` (login shells, some CI).
-    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="32768" \
+    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="262144" \
         nohup ollama serve >/dev/null 2>&1 &
     disown 2>/dev/null || true
     for _ in $(seq 1 20); do
