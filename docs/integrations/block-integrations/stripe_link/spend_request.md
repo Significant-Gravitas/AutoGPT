@@ -1,6 +1,11 @@
 # Stripe Link Spend Request
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Use these blocks to choose a saved Link payment method, create a spend request,
+and wait for the user's decision. Shared Payment Token requests work with the
+MPP blocks on every deployment. The virtual-card create and retrieve blocks are
+self-hosted only because Retrieve Card emits a PAN and CVC that are persisted
+with the execution, while allowing Create Card without retrieval would leave an
+unusable flow.
 <!-- END MANUAL -->
 
 ## Stripe Link Create Card Spend Request
@@ -10,7 +15,14 @@ Create a Stripe Link spend request for a one-time virtual card. Self-hosted only
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block posts the selected payment-method ID, merchant name and URL, purchase
+context, amount, currency, test-mode setting, and optional approval-sheet fields
+to Link. The context must be at least 100 characters, the amount must be from 1
+through 50,000 in the currency's smallest unit, and the amount on any supplied
+`totals` entry whose type is `total` must equal that amount. When
+`request_approval` is true, the create request also asks Link to start approval;
+the block returns the resulting status and any approval URL. It does not
+retrieve the card.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -40,7 +52,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+On a self-hosted deployment, request a card for a merchant that uses a normal
+checkout form. List payment methods, create the request with an exact itemized
+description, poll its status, and retrieve the card only after approval. Keep
+this flow out of environments where persisting the card number and CVC is not
+acceptable.
 <!-- END MANUAL -->
 
 ---
@@ -52,7 +68,12 @@ MPP step 2 of 3: ask the user to authorize a payment to a merchant that answers 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block posts the same approval and amount fields as the card request, but
+identifies the merchant with the nonblank `network_id` from its HTTP 402
+challenge and sets `credential_type` to `shared_payment_token`. It does not
+send a merchant name or URL. When `request_approval` is true, Link starts the
+approval flow as part of creation; use the returned spend-request ID to poll
+for the result.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -81,7 +102,10 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Pay for an MPP-protected API call without exposing a card number. Feed the
+`network_id`, `amount`, and `currency` from Get Payment Challenge into this
+block, show the user a clear purchase context, wait for `approved`, and then
+pass the spend-request ID to MPP Pay.
 <!-- END MANUAL -->
 
 ---
@@ -93,7 +117,13 @@ Check whether a Stripe Link spend request has been approved yet. Poll this after
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block validates the `lsrq_...` ID and retrieves that spend request from
+Link. On a successful retrieval it returns the current status. A failed Link
+request yields only `error`. For `requires_action`, a successful response also
+provides the action type, message, URL, and whether Link will resume the request
+automatically. Only an explicit `new_spend_request` resolution sets
+`auto_resumes` to false; missing or unfamiliar resolutions keep polling to
+avoid creating a second request while the first can still resume.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -115,7 +145,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Poll after either create block until the status is terminal. Continue to MPP
+Pay or Retrieve Card only for `approved`. For `requires_action`, direct the
+user to `next_action_url` when it is present; otherwise surface the action
+message and type. Keep polling when `auto_resumes` is true, and create a new
+request only when it is false and the user still wants to proceed.
 <!-- END MANUAL -->
 
 ---
@@ -127,7 +161,10 @@ List the cards and bank accounts in the user's Link wallet. Use this first to pi
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block makes an authenticated `GET /payment-details` request and projects
+each result onto a fixed set of selection fields: ID, type, name, default flag,
+and, for cards, brand, last four digits, and expiry. It does not pass through a
+card number, CVC, or unknown fields that Link may add to its response.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -139,7 +176,10 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Run this before creating a spend request. Prefer the saved default when that
+matches the user's intent, or present the returned names and masked card
+details for an explicit choice, then pass the chosen `id` as
+`payment_method_id`.
 <!-- END MANUAL -->
 
 ---
@@ -151,7 +191,12 @@ Get the one-time virtual card number and CVC for an approved spend request, to t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This self-hosted-only block validates the `lsrq_...` ID and requests the spend
+request with its card data included. It returns the status first and emits card
+fields only when the status is `approved`; denied, expired, or otherwise
+unapproved requests produce an error without emitting a number or CVC. When
+emitted, those values are ordinary block outputs and remain in the execution
+record.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -175,7 +220,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+After an approved card spend request, use the returned card fields to complete
+a conventional checkout in an operator-controlled self-hosted deployment. Do
+not route the number or CVC through logs, messages, or additional nodes unless
+your environment is designed to handle that data, and do not retry an expired
+or denied request with old card details.
 <!-- END MANUAL -->
 
 ---
