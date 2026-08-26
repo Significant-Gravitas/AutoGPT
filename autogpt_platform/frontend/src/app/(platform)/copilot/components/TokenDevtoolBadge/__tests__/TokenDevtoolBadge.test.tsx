@@ -55,6 +55,7 @@ function reset() {
     breakdownBySession: {},
     liveContextBySession: {},
     compactedBySession: {},
+    sessionOrder: [],
   });
 }
 

@@ -37,6 +37,7 @@ afterEach(() => {
     breakdownBySession: {},
     liveContextBySession: {},
     compactedBySession: {},
+    sessionOrder: [],
   });
   vi.unstubAllGlobals();
 });
@@ -146,6 +147,27 @@ describe("store.record", () => {
     expect(tracked).toHaveLength(20);
     expect(tracked).toContain("s24");
     expect(tracked).not.toContain("s0");
+  });
+
+  // Retention is driven by one shared LRU, so a session evicted from the turn
+  // maps cannot linger in the breakdown map.
+  it("prunes every map to the same set of sessions", () => {
+    for (let i = 0; i < 25; i++) {
+      useTokenDevtoolStore
+        .getState()
+        .setBreakdown(`s${i}`, {
+          userTokens: 1,
+          assistantTokens: 0,
+          toolTokens: 0,
+        });
+      record(`s${i}`, [turn({ cacheCreationTokens: 1 })]);
+    }
+    const state = useTokenDevtoolStore.getState();
+    const keys = Object.keys(state.turnsBySession).sort();
+    expect(keys).toHaveLength(20);
+    expect(Object.keys(state.breakdownBySession).sort()).toEqual(keys);
+    expect(Object.keys(state.liveContextBySession).sort()).toEqual(keys);
+    expect(Object.keys(state.compactedBySession).sort()).toEqual(keys);
   });
 
   it("tracks sessions independently", () => {

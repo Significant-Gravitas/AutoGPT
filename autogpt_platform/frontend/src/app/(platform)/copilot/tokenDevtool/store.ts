@@ -15,24 +15,6 @@ const KEPT_TURNS = 50;
  *  would grow without bound as a long-lived tab visits more threads. */
 const KEPT_SESSIONS = 20;
 
-function withSession<T>(
-  entries: Record<string, T>,
-  sessionId: string,
-  value: T,
-): Record<string, T> {
-  const next = { ...entries, [sessionId]: value };
-  const keys = Object.keys(next);
-  if (keys.length <= KEPT_SESSIONS) return next;
-  const dropped = new Set(
-    keys
-      .filter((key) => key !== sessionId)
-      .slice(0, keys.length - KEPT_SESSIONS),
-  );
-  return Object.fromEntries(
-    Object.entries(next).filter(([key]) => !dropped.has(key)),
-  );
-}
-
 interface TokenDevtoolState {
   turnsBySession: Record<string, TokenTurn[]>;
   breakdownBySession: Record<string, ContextBreakdown>;
@@ -42,8 +24,34 @@ interface TokenDevtoolState {
    *  for good — it must not un-stick when the compaction turn scrolls out of
    *  the kept window. */
   compactedBySession: Record<string, boolean>;
+  /** Least-recently-touched first. Single source of truth for retention, so
+   *  the maps cannot prune to different key sets. */
+  sessionOrder: string[];
   record: (sessionId: string, turn: TokenTurn) => void;
   setBreakdown: (sessionId: string, breakdown: ContextBreakdown) => void;
+}
+
+/** Moves sessionId to most-recent and reports which sessions fall off the
+ *  end. Every map prunes against this one answer. */
+function touchSession(order: string[], sessionId: string) {
+  const next = [...order.filter((id) => id !== sessionId), sessionId];
+  if (next.length <= KEPT_SESSIONS) return { order: next, dropped: EMPTY };
+  return {
+    order: next.slice(-KEPT_SESSIONS),
+    dropped: new Set(next.slice(0, next.length - KEPT_SESSIONS)),
+  };
+}
+
+const EMPTY: ReadonlySet<string> = new Set();
+
+function without<T>(
+  entries: Record<string, T>,
+  dropped: ReadonlySet<string>,
+): Record<string, T> {
+  if (dropped.size === 0) return entries;
+  return Object.fromEntries(
+    Object.entries(entries).filter(([key]) => !dropped.has(key)),
+  );
 }
 
 export const useTokenDevtoolStore = create<TokenDevtoolState>((set) => ({
@@ -51,38 +59,50 @@ export const useTokenDevtoolStore = create<TokenDevtoolState>((set) => ({
   breakdownBySession: {},
   liveContextBySession: {},
   compactedBySession: {},
+  sessionOrder: [],
   record(sessionId, turn) {
-    set((state) => ({
-      turnsBySession: withSession(
-        state.turnsBySession,
-        sessionId,
-        [...(state.turnsBySession[sessionId] ?? []), turn].slice(-KEPT_TURNS),
-      ),
-      // A compaction turn restarts the sum: the compacted context is
-      // re-written to cache in that same turn.
-      liveContextBySession: withSession(
-        state.liveContextBySession,
-        sessionId,
-        turn.compacted
-          ? turn.cacheCreationTokens
-          : (state.liveContextBySession[sessionId] ?? 0) +
+    set((state) => {
+      const { order, dropped } = touchSession(state.sessionOrder, sessionId);
+      return {
+        sessionOrder: order,
+        breakdownBySession: without(state.breakdownBySession, dropped),
+        turnsBySession: {
+          ...without(state.turnsBySession, dropped),
+          [sessionId]: [...(state.turnsBySession[sessionId] ?? []), turn].slice(
+            -KEPT_TURNS,
+          ),
+        },
+        // A compaction turn restarts the sum: the compacted context is
+        // re-written to cache in that same turn.
+        liveContextBySession: {
+          ...without(state.liveContextBySession, dropped),
+          [sessionId]: turn.compacted
+            ? turn.cacheCreationTokens
+            : (state.liveContextBySession[sessionId] ?? 0) +
               turn.cacheCreationTokens,
-      ),
-      compactedBySession: withSession(
-        state.compactedBySession,
-        sessionId,
-        turn.compacted || (state.compactedBySession[sessionId] ?? false),
-      ),
-    }));
+        },
+        compactedBySession: {
+          ...without(state.compactedBySession, dropped),
+          [sessionId]:
+            turn.compacted || (state.compactedBySession[sessionId] ?? false),
+        },
+      };
+    });
   },
   setBreakdown(sessionId, breakdown) {
-    set((state) => ({
-      breakdownBySession: withSession(
-        state.breakdownBySession,
-        sessionId,
-        breakdown,
-      ),
-    }));
+    set((state) => {
+      const { order, dropped } = touchSession(state.sessionOrder, sessionId);
+      return {
+        sessionOrder: order,
+        turnsBySession: without(state.turnsBySession, dropped),
+        liveContextBySession: without(state.liveContextBySession, dropped),
+        compactedBySession: without(state.compactedBySession, dropped),
+        breakdownBySession: {
+          ...without(state.breakdownBySession, dropped),
+          [sessionId]: breakdown,
+        },
+      };
+    });
   },
 }));
 
