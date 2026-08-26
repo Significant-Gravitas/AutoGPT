@@ -46,9 +46,9 @@ Get the Link account holder's name, email and phone. Use it to fill in a checkou
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block makes an authenticated `GET /userinfo` request to Link and maps the
-returned name, email, and phone fields directly to block outputs. Missing keys
-and explicit null values become empty strings so they satisfy the output schema.
-A failed Link request is reported through `error`.
+returned name, first name, last name, email, and phone fields directly to block
+outputs. Missing keys and explicit null values become empty strings so they
+satisfy the output schema. A failed Link request is reported through `error`.
 <!-- END MANUAL -->
 
 ### Outputs
