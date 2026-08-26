@@ -1,6 +1,11 @@
 # Stripe Link MPP
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Use these blocks to purchase from HTTP endpoints that implement the Machine
+Payments Protocol (MPP). The flow reads a merchant's HTTP 402 Stripe challenge,
+creates a Shared Payment Token spend request for the user to approve, and then
+retries the purchase with that token. The token is not exposed as a graph
+output; the pay block sends it to the guarded merchant request only inside an
+`Authorization: Payment` credential.
 <!-- END MANUAL -->
 
 ## Stripe Link Get Payment Challenge
@@ -10,7 +15,14 @@ MPP step 1 of 3: read a merchant's HTTP 402 payment challenge to learn its netwo
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block sends the requested method and JSON body without authentication and
+does not follow redirects. A guarded HTTP client rejects disallowed URLs. For a
+Stripe `Payment` challenge, the block decodes the bounded base64url request and
+returns its network ID, amount, and currency. A successful response without a
+402 sets `supports_mpp` to false. A 402 with no challenge or no Stripe challenge
+sets `payment_required` to true; a selected Stripe challenge that is malformed
+or oversized produces an `error` instead. Other HTTP failures also return an
+error because support could not be determined.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,7 +47,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Probe a paid API before constructing a payment. When `supports_mpp` is true,
+pass `network_id`, `amount`, and `currency` into Create Token Spend Request. If
+`payment_required` is also true while MPP support is false, stop or choose a
+payment method that the merchant actually advertises instead of assuming a Link
+card will work.
 <!-- END MANUAL -->
 
 ---
@@ -47,7 +63,13 @@ MPP step 3 of 3: spend an approved Shared Payment Token at the merchant's endpoi
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block retrieves the spend request from Link and requires both an `approved`
+status and a Shared Payment Token. It then probes for the merchant's Stripe
+challenge without a Link payment credential and retries once with a generated
+`Authorization: Payment` credential. The probe carries caller-supplied headers
+other than `Authorization`. Redirects are disabled, and every merchant URL goes
+through the guarded HTTP client. `paid` is true only when that
+credential-bearing retry was attempted and returned a 2xx response.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -71,7 +93,10 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+After a user approves a token spend request for a paid API, pass its ID and the
+same merchant request into this block. Continue the workflow only when `paid`
+is true, and retain the response as the order or receipt. If the payment attempt
+fails, create and approve a new spend request rather than reusing the token.
 <!-- END MANUAL -->
 
 ---

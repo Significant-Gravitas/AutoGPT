@@ -1,6 +1,8 @@
 # Stripe Link Profile
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+These read-only blocks retrieve the connected Link account's saved contact and
+shipping information. They can supply checkout fields, but they do not create
+or approve a spend request.
 <!-- END MANUAL -->
 
 ## Stripe Link Get Shipping Address
@@ -10,7 +12,10 @@ Get the delivery addresses saved on the user's Link wallet, with the default one
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block makes an authenticated `GET /shipping_addresses` request to Link and
+returns the complete list under `addresses`. For `default_address`, it selects
+the address marked as default, falls back to the first saved address, and
+returns an empty object when the account has no addresses.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -23,7 +28,10 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Use `default_address` to prefill the delivery fields for a physical purchase,
+or present `addresses` to the user when they should choose among several saved
+destinations. Confirm that the selected address satisfies the merchant's
+country and postal-code requirements before submitting the order.
 <!-- END MANUAL -->
 
 ---
@@ -35,7 +43,10 @@ Get the Link account holder's name, email and phone. Use it to fill in a checkou
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+The block makes an authenticated `GET /userinfo` request to Link and maps the
+returned name, email, and phone fields directly to block outputs. Missing keys
+become empty strings, but an explicit null from Link is passed through rather
+than normalized. A failed Link request is reported through `error`.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -51,7 +62,10 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Prefill the buyer-name and contact fields for a checkout, then combine them
+with Get Shipping Address for an order that needs delivery. Treat empty outputs
+as missing profile data and ask for the required value instead of submitting an
+incomplete checkout.
 <!-- END MANUAL -->
 
 ---

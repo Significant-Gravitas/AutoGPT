@@ -27,8 +27,9 @@ docker run -d \
 The first boot can take several minutes, and it applies the database migrations.
 Let it finish: stopping the container during that window can interrupt a
 migration, and the next boot will refuse to start until you resolve it (the log
-names the migration and the command). Wait until Docker reports the container
-as `healthy`, then open [http://localhost:3000](http://localhost:3000).
+names the migration and the recovery options described in the canonical guide
+below). Wait until Docker reports the container as `healthy`, then open
+[http://localhost:3000](http://localhost:3000).
 Registration starts open; the loopback-only port binding above keeps it local.
 If you expose the app to a network, anyone who can reach it can register until
 you close signup.
@@ -53,7 +54,7 @@ state may therefore require normal crash recovery on the next boot.
 Agent runs that are still executing are abandoned and may remain displayed as
 `RUNNING`. They are not resumed on the next boot, so start a new run.
 
-Supervisor's process names are group-qualified inside the container -- use
+Supervisor's process names are group-qualified inside the container — use
 `supervisorctl status` to see them (`runtime:rest`, `state:postgres`, and so
 on) rather than assuming a bare name.
 

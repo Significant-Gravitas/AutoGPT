@@ -221,7 +221,7 @@ names such as `runtime:rest` and `state:postgres`.
 Container port `3000` does not change. To use host port `3300`, change the run
 command to:
 
-```bash
+```text
 --publish 127.0.0.1:3300:3000
 ```
 
@@ -326,11 +326,14 @@ existing account's password. Keep the port loopback-only throughout recovery,
 or enforce equivalent HTTPS and network access controls before reopening
 signup.
 
-The server accepts the `AUTH_*` social-provider credentials in `.env.example`,
-but the bundled local-mode frontend does not render social-login buttons, so
-they are not a supported appliance UI sign-in path. Agent block OAuth
-integrations use the separate unprefixed credentials. The prebuilt frontend
-does not support configuring Google Picker public keys at runtime.
+Setting both `AUTH_*_CLIENT_ID` and `AUTH_*_CLIENT_SECRET` values for a social
+provider registers reachable OAuth sign-in and callback endpoints. The bundled
+local-mode frontend does not render buttons for them, so leave each pair empty
+unless you intentionally use that direct provider flow. `AUTH_SIGNUP_ALLOWLIST`
+and `AUTH_ALLOW_NEW_ACCOUNTS` still gate first-time account creation through
+those endpoints. Agent block OAuth integrations use the separate unprefixed
+credentials. The prebuilt frontend does not support configuring Google Picker
+public keys at runtime.
 
 ## Models and memory
 
@@ -724,10 +727,11 @@ service-native backup procedures for its independently managed data services.
 
 By default, the block restarts the unchanged installation as soon as the
 archive completes, before calculating its checksum. The exit trap also attempts
-a restart if a backup command fails. For an upgrade, set
-`RESTART_AFTER_BACKUP=false` before running the block; a successful backup then
-leaves the appliance stopped at the cutover snapshot. With the default setting,
-verify that it is running again:
+a restart if a backup command fails. For an upgrade, export
+`RESTART_AFTER_BACKUP=false` only for that one block and immediately `unset`
+it afterward, whether the backup succeeds or fails. A successful upgrade backup
+then leaves the appliance stopped at the cutover snapshot. With the default
+setting, verify that it is running again:
 
 ```bash
 docker inspect --format '{{.State.Status}}' autogpt
@@ -1028,9 +1032,10 @@ Before an upgrade:
 
 1. Record the running image reference and image ID.
 2. Pull or build the new image while the old appliance remains available.
-3. Set `RESTART_AFTER_BACKUP=false`, then run the Cold backup block. A
-   successful backup leaves the appliance stopped; a failed backup restarts the
-   unchanged installation.
+3. Run `export RESTART_AFTER_BACKUP=false`, then run the Cold backup block once.
+   Immediately run `unset RESTART_AFTER_BACKUP` afterward, whether the backup
+   succeeds or fails. A successful backup leaves the appliance stopped; a
+   failed backup restarts the unchanged installation.
 4. Remove only the stopped container with `docker rm autogpt`.
 5. Repeat the Quick start run command with the same environment file, named
    volume, publish mapping, `--add-host`, and other original launch options, but

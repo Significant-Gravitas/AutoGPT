@@ -72,7 +72,7 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 
 This method is ideal if you're setting up for development or testing and want to skip manual configuration.
 
-### Experimental single-container image
+## Experimental single-container image
 
 For a small self-hosted installation that does not need a source checkout, see
 [Run AutoGPT in one Docker container](single-container.md). The image bundles
