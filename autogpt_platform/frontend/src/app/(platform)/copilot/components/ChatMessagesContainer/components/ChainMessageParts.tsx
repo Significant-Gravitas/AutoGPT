@@ -32,11 +32,7 @@ export function ChainMessageParts({
   liveCompactionCallId,
   liveCompactionStats,
 }: Props) {
-  const segments = buildChainSegments(
-    parts,
-    isChainableToolPart,
-    isCurrentlyStreaming,
-  );
+  const segments = buildChainSegments(parts, isChainableToolPart);
   const lastChainSegmentIndex = segments.findLastIndex(
     (segment) => segment.kind === "chain",
   );

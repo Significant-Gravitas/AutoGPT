@@ -300,7 +300,7 @@ jobs:
                 if (hasSigned && !claStatus.passed) {
                   console.log(`PR #${prNumber}: was signed but now shows ${claStatus.state} — debouncing ${DEMOTE_DEBOUNCE_SECONDS}s before demoting`);
                   await new Promise(resolve => setTimeout(resolve, DEMOTE_DEBOUNCE_MS));
-                  
+
                   // Re-fetch the PR — a new commit could have been pushed, or the
                   // PR closed, while we were waiting. Evaluate the refreshed state
                   // rather than the one captured before the delay.
@@ -309,12 +309,12 @@ jobs:
                     repo: context.repo.repo,
                     pull_number: prNumber
                   });
-                  
+
                   if (refreshedPr.state !== 'open') {
                     console.log(`PR #${prNumber}: no longer open after debounce — skipping`);
                     continue;
                   }
-                  
+
                   pr = refreshedPr;
                   currentLabels = refreshedPr.labels.map(l => l.name);
                   hasPending = currentLabels.includes(LABEL_PENDING);
@@ -322,7 +322,7 @@ jobs:
                   claStatus = await getClaStatus(refreshedPr.head.sha);
                   console.log(`PR #${prNumber}: post-debounce CLA ${claStatus.passed ? 'passed' : 'still ' + claStatus.state}`);
                 }
-                
+
                 if (claStatus.passed) {
                   // ✅ CLA signed - add signed label, remove pending
                   if (!hasSigned) {

@@ -49,6 +49,7 @@ from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.tenancy import get_user_team_ids, visibility_filter
+from backend.notifications.scoring import score_completed_run
 from backend.util import type as type_utils
 from backend.util.exceptions import (
     DatabaseError,
@@ -1216,6 +1217,11 @@ async def update_graph_execution_stats(
         where=where_clause,
         data=update_data,
     )
+
+    if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        # Score the finished run for the Briefing while its stats are fresh.
+        # Never raises — a scoring failure must not fail the run.
+        await score_completed_run(graph_exec_id)
 
     if cascade_running_children and status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Sweep any child node_execs that are still RUNNING. Without this,

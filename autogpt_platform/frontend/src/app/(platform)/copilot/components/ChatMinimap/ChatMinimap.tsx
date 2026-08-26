@@ -14,9 +14,9 @@ interface Props {
 }
 
 /**
- * A tick rail down the chat's left gutter — one mark per message. Ticks sit
- * shrunk until the cursor comes near, then swell toward it; hovering one
- * reveals that turn's opening line, and clicking scrolls the transcript to
+ * A tick rail down the chat's left gutter — one mark per message you sent.
+ * Ticks sit shrunk until the cursor comes near, then swell toward it; hovering
+ * one reveals that turn's opening line, and clicking scrolls the transcript to
  * it, so a long thread stays navigable without dragging the scrollbar.
  */
 export function ChatMinimap({ messages }: Props) {

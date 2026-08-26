@@ -7,6 +7,7 @@ import {
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
@@ -55,7 +56,7 @@ function clearHighestStep() {
 export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLoggedIn, isUserLoading, refreshSession } = useAuth();
+  const { isLoggedIn, isUserLoading, refreshSession, user } = useAuth();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -242,6 +243,13 @@ export function useOnboardingPage() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await postV1CompleteOnboardingStep({ step: "ONBOARDING_COMPLETE" });
+        // Only a confirmed completion counts: the fall-through below still
+        // sends the user to the copilot after three failures, but the backend
+        // never recorded the milestone.
+        trackAdsConversion("onboarding_complete", {
+          transactionID: user?.id,
+          email: user?.email,
+        });
         clearHighestStep();
         useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");

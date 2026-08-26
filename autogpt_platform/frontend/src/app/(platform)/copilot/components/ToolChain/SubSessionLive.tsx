@@ -238,7 +238,15 @@ function toMiniRow(step: LiveStep, index: number, running: boolean): ChainRow {
  *  polling their session list; when only the session is known, the expert
  *  is read off the polled session itself. Swapped for the full
  *  SubSessionCard the moment the tool returns. */
-export function SubSessionPendingCard({ input }: { input: unknown }) {
+interface PendingCardProps {
+  input: unknown;
+  minimal?: boolean;
+}
+
+export function SubSessionPendingCard({
+  input,
+  minimal = false,
+}: PendingCardProps) {
   const { expertsById } = useExpertMap();
   const args = asObject(input) ?? {};
   const inputExpertId = str(args, "expert_id");
@@ -248,7 +256,7 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
     inputSessionId ? null : inputExpertId,
   );
   const liveSessionId = inputSessionId ?? discoveredId;
-  // Cache-shared with SubSessionLive's query below — no extra request.
+  // Same query key as the live view below, so a full card polls once.
   const {
     session: liveSession,
     isError,
@@ -289,12 +297,14 @@ export function SubSessionPendingCard({ input }: { input: unknown }) {
           </Link>
         )}
       </div>
-      {prompt && (
+      {!minimal && prompt && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-sm text-zinc-500">
           {prompt}
         </p>
       )}
-      {liveSessionId && <SubSessionLive subSessionId={liveSessionId} active />}
+      {!minimal && liveSessionId && (
+        <SubSessionLive subSessionId={liveSessionId} active />
+      )}
     </div>
   );
 }
@@ -339,24 +349,28 @@ function useDelegatedSessionId(expertId: string | null) {
 /** A sub-session tool output freezes the status it had when the tool
  *  returned — a "running" card would say running forever after the work
  *  lands. While the frozen status is running/queued, read the truth off the
- *  polled session (cache-shared with the live view) and flip to completed
- *  once it goes idle. */
+ *  polled session and flip to completed once it goes idle.
+ *
+ *  Owns the poll through `useLiveSubSession` rather than piggybacking on a
+ *  mounted live view: a minimal delegate card renders no live view, so this
+ *  is the only thing left that can flip running → completed. On a full card
+ *  it is the same query key, so the two share one poll. */
 export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
-  const { data, isError } = useGetV2GetSession(subSessionId ?? "", undefined, {
-    query: {
-      enabled: stale && !!subSessionId,
-      select: (res) => (res.status === 200 ? res.data : null),
-    },
-  });
+  const { session, isError, isPaused } = useLiveSubSession(
+    subSessionId ?? "",
+    stale && !!subSessionId,
+  );
   if (!stale) return status;
-  // The frozen status is only trustworthy while the poll can refute it.
-  if (isError) return "unknown";
-  if (!data) return status;
-  return isSessionLive(data) ? status : "completed";
+  // The frozen status is only trustworthy while the poll can refute it. A
+  // minimal card has no "Live updates paused" notice to fall back on, so a
+  // dead poll has to show up in the pill or it reads as fact.
+  if (isError || isPaused) return "unknown";
+  if (!session) return status;
+  return isSessionLive(session) ? status : "completed";
 }
 
 function isSessionLive(session: SessionDetailResponse): boolean {
