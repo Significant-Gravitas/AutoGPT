@@ -1,4 +1,5 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import type { CredentialsMetaResponse as GeneratedCredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -108,6 +109,19 @@ export function upsertProviderCredentials(
  */
 export const CredentialsActionsContext = createContext<{
   reload: () => void;
+  /**
+   * Add a just-created credential to the store without waiting for a re-fetch.
+   *
+   * The OAuth path gets this for free because `oAuthCallback` upserts the
+   * credential it returns. Flows that mint a credential outside this provider
+   * — device authorization polls the backend directly — must call this, or the
+   * store stays stale and `useCredentialsInput` reports the brand-new
+   * credential as *removed* and deselects it.
+   */
+  upsert: (
+    provider: CredentialsProviderName,
+    credentials: GeneratedCredentialsMetaResponse,
+  ) => void;
 } | null>(null);
 
 export default function CredentialsProvider({
@@ -136,6 +150,27 @@ export default function CredentialsProvider({
       );
     },
     [setProviders],
+  );
+
+  /**
+   * Upsert a credential straight off the API. The generated model marks
+   * several fields nullable where the store's model uses `undefined`, so
+   * normalise here rather than widening the store or making every caller do it.
+   */
+  const upsertFromApi = useCallback(
+    (
+      provider: CredentialsProviderName,
+      credentials: GeneratedCredentialsMetaResponse,
+    ) => {
+      upsertCredentials(provider, {
+        ...credentials,
+        title: credentials.title ?? undefined,
+        scopes: credentials.scopes ?? undefined,
+        username: credentials.username ?? undefined,
+        host: credentials.host ?? undefined,
+      } as CredentialsMetaResponse);
+    },
+    [upsertCredentials],
   );
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
@@ -423,7 +458,9 @@ export default function CredentialsProvider({
   }, [queryClient, loadCredentials]);
 
   return (
-    <CredentialsActionsContext.Provider value={{ reload: loadCredentials }}>
+    <CredentialsActionsContext.Provider
+      value={{ reload: loadCredentials, upsert: upsertFromApi }}
+    >
       <CredentialsProvidersContext.Provider value={providers}>
         {children}
       </CredentialsProvidersContext.Provider>
