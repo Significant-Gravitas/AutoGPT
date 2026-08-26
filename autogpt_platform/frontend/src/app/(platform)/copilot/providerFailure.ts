@@ -42,12 +42,16 @@ const KINDS = new Set<string>([
   "transient",
 ]);
 
-export function parseProviderFailurePart(dataPart: {
-  type: string;
-  data?: unknown;
-}): ProviderFailure | null {
-  if (dataPart.type !== "data-provider-failure") return null;
-  const data = dataPart.data as Partial<ProviderFailure> | undefined;
+/**
+ * The envelope, from wherever it came from.
+ *
+ * The same object rides the live stream and is persisted onto the error
+ * marker row, so reopening a chat tomorrow can offer the same recovery the
+ * user was offered when it failed. One parser for both, because a second one
+ * would be free to disagree about the shape.
+ */
+export function parseProviderFailure(value: unknown): ProviderFailure | null {
+  const data = value as Partial<ProviderFailure> | undefined;
   if (!data || typeof data.kind !== "string" || !KINDS.has(data.kind)) {
     return null;
   }
@@ -60,6 +64,38 @@ export function parseProviderFailurePart(dataPart: {
     retryable: data.retryable === true,
     reconnectFixesIt: data.reconnectFixesIt === true,
   };
+}
+
+export function parseProviderFailurePart(dataPart: {
+  type: string;
+  data?: unknown;
+}): ProviderFailure | null {
+  if (dataPart.type !== "data-provider-failure") return null;
+  return parseProviderFailure(dataPart.data);
+}
+
+/** The key the backend stores the envelope under on a marker row. */
+export const PROVIDER_FAILURE_KEY = "provider_failure";
+
+/**
+ * The failure a reopened chat is still sitting on, if any.
+ *
+ * Scans newest-first and stops at the first marker carrying an envelope: an
+ * older failure the chat has since recovered from is history, not a state to
+ * restore. Anything the user can act on counts -- a spent quota is not the
+ * only failure worth offering a way out of.
+ */
+export function latestProviderFailure(
+  messages: { role?: string; metadata?: unknown }[],
+): ProviderFailure | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const meta = messages[i]?.metadata;
+    if (!meta || typeof meta !== "object") continue;
+    const raw = (meta as Record<string, unknown>)[PROVIDER_FAILURE_KEY];
+    if (raw === undefined) continue;
+    return parseProviderFailure(raw);
+  }
+  return null;
 }
 
 interface FailureCopy {
