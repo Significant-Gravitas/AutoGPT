@@ -10,9 +10,13 @@ import { useArtifactPanel } from "./useArtifactPanel";
 
 interface Props {
   mobile?: boolean;
+  /** The desktop copilot chat renders its own sidebar-right close control;
+   *  standalone hosts (share viewer, tour, mobile drawer) do not, so their
+   *  header keeps its Close button. */
+  hasExternalClose?: boolean;
 }
 
-export function ArtifactPanel({ mobile }: Props) {
+export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
   const {
     activeArtifact,
     history,
@@ -149,6 +153,7 @@ export function ArtifactPanel({ mobile }: Props) {
         <ArtifactPanelHeader
           artifact={activeArtifact}
           classification={classification}
+          hasExternalClose={hasExternalClose}
           canGoBack={history.length > 0}
           isSourceView={isSourceView}
           hasSourceToggle={classification.hasSourceToggle}

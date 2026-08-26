@@ -231,4 +231,24 @@ describe("getCatalogLabel", () => {
       "Searched the web for",
     );
   });
+
+  it("labels the expert team tools", () => {
+    expect(
+      getCatalogLabel("hire_expert", { template_id: "tpl" }, "done"),
+    ).toEqual({ category: "team", text: "Ready to hire" });
+    expect(getCatalogLabel("raise_expert", { name: "Otto" }, "done")).toEqual({
+      category: "team",
+      text: 'Ready to raise "Otto"',
+    });
+    expect(
+      getCatalogLabel(
+        "confirm_expert_change",
+        { confirmation_id: "c" },
+        "done",
+      ),
+    ).toEqual({ category: "team", text: "Added to the team" });
+    expect(
+      getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
+    ).toBe('Handed over: "own it"');
+  });
 });
