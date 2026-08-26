@@ -54,7 +54,7 @@ retrieve the card.
 <!-- MANUAL: use_case -->
 **Standard Checkout**: Request a virtual card for a merchant that accepts payment through a conventional checkout form.
 
-**Approval-Gated Purchase**: Show an exact itemized context and retrieve the card only after the user approves it.
+**Approval-Gated Purchase**: Show an exact itemized context, then pass the approved request to Retrieve Card.
 
 **Self-Hosted Automation**: Use this flow only where persisting the eventual card number and CVC is acceptable.
 <!-- END MANUAL -->
