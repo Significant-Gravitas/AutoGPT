@@ -263,10 +263,10 @@ describe("useChatSession — expert sessions", () => {
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     await waitFor(() => {
-      expect(createBody).toEqual({
-        expert_id: "expert-maria",
-        llm_auth_provider: "platform",
-      });
+      // No route travels unless the user picked one. Naming it here would
+      // make the server skip its own default, which is how a connection
+      // chosen for one chat leaked into every later chat.
+      expect(createBody).toEqual({ expert_id: "expert-maria" });
     });
   });
 

@@ -272,11 +272,18 @@ export function useChatSession({
     }
 
     try {
-      const sessionData: CreateSessionRequest = {
-        llm_auth_provider: resolvedLLMAuth.authProvider,
-      };
-      if (resolvedLLMAuth.authProvider === "codex") {
-        sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+      const sessionData: CreateSessionRequest = {};
+      // Only an explicit choice travels. Naming the route unconditionally
+      // makes every new chat an override, which is how a connection picked
+      // once quietly became the account's default and how a default changed
+      // in Settings stopped taking effect: the server skips its own default
+      // whenever the client names one. `copilotLlmAuth` is null until the
+      // user actually picks, and null means "use whatever the server says".
+      if (copilotLlmAuth !== null) {
+        sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
+        if (resolvedLLMAuth.authProvider === "codex") {
+          sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
+        }
       }
       if (dryRun) sessionData.dry_run = true;
       if (expertId) sessionData.expert_id = expertId;
