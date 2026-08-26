@@ -23,17 +23,18 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { revealKickoffMessages } from "../../expertKickoff";
 import {
-  buildRenderSegments,
+  getLastCompactionCallId,
+  getLatestCompactionPhase,
+  getLatestCompactionStats,
   getTurnMessages,
-  type MessagePart,
-  type RenderSegment,
   parseSpecialMarkers,
-  shouldShowTaskListNotice,
-  splitReasoningAndResponse,
 } from "./helpers";
+import {
+  getLatestAssistantStatusMessage,
+  isBookkeepingPart,
+} from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
-import { useCopilotUIStore } from "../../store";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
@@ -41,23 +42,14 @@ import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
-import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
-import { ExpertAvatar } from "./components/ExpertAvatar/ExpertAvatar";
-import { ExpertSchedulesButton } from "./components/ExpertSchedulesButton/ExpertSchedulesButton";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
-import { ReasoningGroup } from "./components/ReasoningGroup";
-import { StepsCollapse } from "./components/StepsCollapse";
-import { TaskListNotice } from "./components/TaskListNotice";
+import { ThreadHeader } from "./components/ThreadHeader";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
-import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-// Autopilot's product-facing title when a session carries no expert identity.
-const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -104,46 +96,14 @@ interface Props {
   /** Expert identity for expert-scoped sessions: drives the thread header
    *  and the assistant avatar/name. Null/undefined = default header. */
   expertIdentity?: ExpertIdentity | null;
-}
-
-interface RenderSegmentOptions {
-  onRetry?: () => void;
-  fileUrlBuilder?: (fileId: string) => string;
-  forceArtifacts?: boolean;
-  readOnly?: boolean;
-}
-
-function renderSegments(
-  segments: RenderSegment[],
-  messageID: string,
-  options: RenderSegmentOptions = {},
-): React.ReactNode[] {
-  const { onRetry, fileUrlBuilder, forceArtifacts, readOnly } = options;
-  return segments.map((seg, segIdx) => {
-    if (seg.kind === "collapsed-group") {
-      return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
-    }
-    if (seg.kind === "reasoning-group") {
-      return (
-        <ReasoningGroup
-          key={`${messageID}-reasoning-${seg.index}`}
-          parts={seg.parts}
-        />
-      );
-    }
-    return (
-      <MessagePartRenderer
-        key={`${messageID}-${seg.index}`}
-        part={seg.part}
-        messageID={messageID}
-        partIndex={seg.index}
-        onRetry={onRetry}
-        fileUrlBuilder={fileUrlBuilder}
-        forceArtifacts={forceArtifacts}
-        readOnly={readOnly}
-      />
-    );
-  });
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports (see ThreadHeader). */
+  hasFloatingControls?: boolean;
+  /** The host's floating workspace-files card is open, so the header and
+   *  the column slide aside for it. Only the copilot chat mounts that card;
+   *  every other host (share viewer, memory and builder panels) leaves this
+   *  off, whatever the persisted panel state says. */
+  areFilesOpen?: boolean;
 }
 
 /**
@@ -342,40 +302,15 @@ export function ChatMessagesContainer({
   filePattern,
   fileUrlBuilder,
   expertIdentity,
+  hasFloatingControls = false,
+  areFilesOpen = false,
 }: Props) {
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
     [allMessages],
   );
-  // The in-chat "progress in the sidebar" notice only applies to the old
-  // sidebar surface — hide it entirely when the task bar is on.
-  const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
-  // The workspace-files card floats over the column's right side, so the
-  // centred content slides left to make room for it. The docked artifacts
-  // panel already narrows the column on its own, so it must never also
-  // trigger this slide, or the two shifts stack and push the messages off
-  // screen under the app sidebar. New tool UI only: the old UI's files tab
-  // IS the docked panel.
-  const areFilesOpen =
-    useCopilotUIStore(
-      (s) =>
-        s.artifactPanel.isOpen &&
-        s.artifactPanel.activeArtifact == null &&
-        s.artifactPanel.activeTab !== "artifacts",
-    ) && isNewToolUI;
-  const isChatStreaming = status === "streaming" || status === "submitted";
-  const hasActiveTaskList =
-    !isTaskBarEnabled &&
-    shouldShowTaskListNotice({
-      isContextPanelEnabled,
-      isChatStreaming,
-      latestTaskList: getLatestTaskList(messages),
-    });
-
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -421,15 +356,9 @@ export function ChatMessagesContainer({
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
-    // data-status is transient copy for the Thinking indicator; neither
-    // counts as "real" content that hides the indicator.
-    const parts = lastMessage.parts.filter(
-      (p) =>
-        p.type !== "data-cursor" &&
-        p.type !== "data-status" &&
-        p.type !== "data-dream-operations",
-    );
+    // Ignore bookkeeping parts — none of them counts as "real" content that
+    // hides the Thinking indicator. See `isBookkeepingPart` for the list.
+    const parts = lastMessage.parts.filter((p) => !isBookkeepingPart(p));
     if (parts.length === 0) return false;
 
     const lastPart = parts[parts.length - 1];
@@ -464,21 +393,17 @@ export function ChatMessagesContainer({
   // the Thinking indicator is up — but only if it wasn't invalidated by a
   // more recent content part (in which case the model has moved on and the
   // status is stale).
-  const latestStatusMessage = (() => {
-    if (lastMessage?.role !== "assistant") return null;
-    for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
-      const part = lastMessage.parts[i];
-      if (part.type === "data-cursor") continue;
-      if (part.type === "data-dream-operations") continue;
-      if (part.type === "data-status") {
-        const data = (part as { data?: { message?: unknown } }).data;
-        return typeof data?.message === "string" ? data.message : null;
-      }
-      // Any other part = the model has produced output past the status.
-      return null;
-    }
-    return null;
-  })();
+  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+
+  // A live compaction narrates itself via CompactionCard — the generic
+  // Thinking indicator must not stack a second spinner and timer under it.
+  // The `rebuilding` phase arrives after the tool row has already closed,
+  // so `hasInflight` alone cannot cover that window.
+  const liveCompactionPhase =
+    isActivelyStreaming && lastMessage?.role === "assistant"
+      ? getLatestCompactionPhase(lastMessage.parts)
+      : null;
 
   // Suppressed during active-session restore so the ThinkingIndicator and
   // the "Retrieving latest messages" spinner can't both render — the
@@ -486,8 +411,8 @@ export function ChatMessagesContainer({
   // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
   const showThinking =
     !isRestoringActiveSession &&
+    liveCompactionPhase === null &&
     (status === "submitted" || (status === "streaming" && !hasInflight));
-  const isActivelyStreaming = status === "streaming" || status === "submitted";
   const { elapsedSeconds } = useElapsedTimer(
     isActivelyStreaming,
     activeStreamStartedAt,
@@ -497,10 +422,11 @@ export function ChatMessagesContainer({
       active={showThinking}
       elapsedSeconds={elapsedSeconds}
       statusMessage={latestStatusMessage}
-      variant={isNewToolUI ? "chain" : "legacy"}
     />
   );
-  const showIndicator = showThinking;
+  // Public viewers of a shared chat never see a live turn, so the indicator
+  // stays out of the transcript for them wherever it would render.
+  const showIndicator = !readOnly && showThinking;
   const [showRestoreFallback, setShowRestoreFallback] = useState(false);
   useEffect(() => {
     if (!isRestoringActiveSession) {
@@ -534,70 +460,13 @@ export function ChatMessagesContainer({
 
   return (
     <>
-      {/* Sits above the scroller rather than sticky inside it, so the bar
-          spans the full chat width while its row stays aligned with the
-          max-w-3xl message column. Under the new tool UI an expert session
-          wears the expert's identity and every other session is Autopilot's,
-          so the thread is never anonymous; the old UI keeps its header for
-          expert sessions only. */}
-      {isNewToolUI ? (
-        <div
-          data-testid="expert-thread-header"
-          className="z-10 w-full border-b border-b-[#80808017] bg-[#fafafa]/80 backdrop-blur-md"
-        >
-          <div
-            className={cn(
-              "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-              areFilesOpen && "xl:-translate-x-40",
-            )}
-          >
-            <ExpertAvatar
-              name={expertIdentity?.name ?? "Autopilot"}
-              avatarUrl={expertIdentity?.avatarUrl ?? null}
-              isAutopilot={!expertIdentity}
-            />
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium text-zinc-800">
-                {expertIdentity?.name ?? "Autopilot"}
-              </span>
-              <span className="truncate text-xs text-zinc-500">
-                {expertIdentity?.role ?? DEFAULT_EXPERT_ROLE}
-              </span>
-            </div>
-            {expertIdentity && !readOnly && !expertIdentity.isArchived && (
-              <ExpertSchedulesButton
-                expertId={expertIdentity.id}
-                expertName={expertIdentity.name}
-              />
-            )}
-          </div>
-        </div>
-      ) : (
-        expertIdentity && (
-          <div
-            data-testid="expert-thread-header"
-            className="z-10 w-full border-b border-zinc-200/60 bg-[#fafafa]/80 backdrop-blur-md"
-          >
-            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 pb-3 pt-4">
-              <ExpertAvatar
-                name={expertIdentity.name}
-                avatarUrl={expertIdentity.avatarUrl}
-                size="sm"
-              />
-              <span className="text-sm font-medium text-zinc-800">
-                {expertIdentity.name}
-              </span>
-              {!readOnly && !expertIdentity.isArchived && (
-                <ExpertSchedulesButton
-                  expertId={expertIdentity.id}
-                  expertName={expertIdentity.name}
-                />
-              )}
-            </div>
-          </div>
-        )
-      )}
-      {isNewToolUI && <ChatMinimap messages={messages} />}
+      <ThreadHeader
+        expertIdentity={expertIdentity}
+        readOnly={readOnly}
+        areFilesOpen={areFilesOpen}
+        hasFloatingControls={hasFloatingControls}
+      />
+      <ChatMinimap messages={messages} />
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -676,12 +545,33 @@ export function ChatMessagesContainer({
               isAssistant &&
               messageIndex <= messages.length - 1 &&
               (!nextMessage || nextMessage.role === "user");
-            // data-cursor / data-status parts are internal bookkeeping —
-            // strip them before any render/split logic so they never reach
-            // the user UI. data-status surfaces via ThinkingIndicator.
+            // Bookkeeping parts are stripped before any render/split logic so
+            // they never reach the user UI, and so one landing between two
+            // tool calls can't split a chain. data-status surfaces via
+            // ThinkingIndicator; data-compaction via CompactionCard.
             const renderableParts = message.parts.filter(
-              (p) => p.type !== "data-cursor" && p.type !== "data-status",
+              (p) => !isBookkeepingPart(p),
             );
+            // Only a message that is actively streaming can have a live
+            // compaction phase — a stopped or failed turn must not leave an
+            // eternal progress bar. Replayed/settled messages never carry
+            // `data-compaction` parts, so they derive null either way.
+            const compactionPhase = isCurrentlyStreaming
+              ? getLatestCompactionPhase(message.parts)
+              : null;
+            // The phase belongs to the LAST compaction row only; earlier
+            // (settled) rows in the same message stay settled.
+            const liveCompactionCallId =
+              compactionPhase !== null
+                ? getLastCompactionCallId(message.parts)
+                : null;
+            // Stats streamed on the `data-compaction` parts pace the live
+            // progress curve while the tool row is still open (its own
+            // output stats only exist once it closes).
+            const liveCompactionStats =
+              compactionPhase !== null
+                ? getLatestCompactionStats(message.parts)
+                : undefined;
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
                 p.type === "text",
@@ -703,30 +593,6 @@ export function ChatMessagesContainer({
               (p): p is FileUIPart => p.type === "file",
             );
 
-            // For finalized assistant messages, split into reasoning + response.
-            // During streaming, show everything normally with tool collapsing.
-            // The new tool UI renders chains inline instead, so it skips the
-            // reasoning split (and its "Show steps" modal) entirely.
-            const isFinalized =
-              !isNewToolUI &&
-              message.role === "assistant" &&
-              !isCurrentlyStreaming;
-            const { reasoning, response } = isFinalized
-              ? splitReasoningAndResponse(renderableParts)
-              : { reasoning: [] as MessagePart[], response: renderableParts };
-            const hasReasoning = reasoning.length > 0;
-
-            // Note: when interactive tools are pinned from reasoning into response,
-            // this index approximates their position (used only for React keys).
-            const responseStartIndex = renderableParts.length - response.length;
-            const responseSegments =
-              message.role === "assistant"
-                ? buildRenderSegments(response, responseStartIndex)
-                : null;
-            const reasoningSegments = hasReasoning
-              ? buildRenderSegments(reasoning, 0)
-              : null;
-
             return (
               <Message
                 from={message.role}
@@ -741,24 +607,12 @@ export function ChatMessagesContainer({
                       ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
                       : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
-                    "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900" +
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
-                    (isNewToolUI
-                      ? " group-[.is-assistant]:overflow-visible"
-                      : "")
+                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                   }
                 >
-                  {hasReasoning && reasoningSegments && (
-                    <StepsCollapse>
-                      {renderSegments(reasoningSegments, message.id, {
-                        fileUrlBuilder,
-                        forceArtifacts: readOnly,
-                        readOnly,
-                      })}
-                    </StepsCollapse>
-                  )}
-                  {isAssistant && isNewToolUI ? (
+                  {isAssistant ? (
                     <ChainMessageParts
                       parts={renderableParts}
                       messageID={message.id}
@@ -767,34 +621,28 @@ export function ChatMessagesContainer({
                       fileUrlBuilder={fileUrlBuilder}
                       forceArtifacts={readOnly}
                       readOnly={readOnly}
+                      compactionPhase={compactionPhase}
+                      liveCompactionCallId={liveCompactionCallId}
+                      liveCompactionStats={liveCompactionStats}
                     />
-                  ) : responseSegments ? (
-                    renderSegments(responseSegments, message.id, {
-                      onRetry: isLastAssistant ? onRetry : undefined,
-                      fileUrlBuilder,
-                      forceArtifacts: readOnly,
-                      readOnly,
-                    })
                   ) : (
-                    (() => {
-                      const parts = renderableParts.map((part, i) => (
+                    <UserMessageClamp>
+                      {renderableParts.map((part, i) => (
                         <MessagePartRenderer
                           key={`${message.id}-${i}`}
                           part={part}
                           messageID={message.id}
                           partIndex={i}
-                          onRetry={isLastAssistant ? onRetry : undefined}
                           fileUrlBuilder={fileUrlBuilder}
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
+                          compactionPhase={compactionPhase}
+                          liveCompactionCallId={liveCompactionCallId}
+                          liveCompactionStats={liveCompactionStats}
+                          isCurrentlyStreaming={isCurrentlyStreaming}
                         />
-                      ));
-                      return isNewToolUI ? (
-                        <UserMessageClamp>{parts}</UserMessageClamp>
-                      ) : (
-                        parts
-                      );
-                    })()
+                      ))}
+                    </UserMessageClamp>
                   )}
                   {isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
@@ -827,13 +675,7 @@ export function ChatMessagesContainer({
                     );
                   })()}
                 {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions
-                    className={cn(
-                      "mt-1 items-center justify-end gap-2",
-                      !isNewToolUI &&
-                        "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
-                    )}
-                  >
+                  <MessageActions className="mt-1 items-center justify-end gap-2">
                     {(() => {
                       const createdAt = turnStats?.get(message.id)?.createdAt;
                       if (!createdAt) return null;
@@ -869,13 +711,7 @@ export function ChatMessagesContainer({
                   />
                 )}
                 {readOnly && showActions && (
-                  <MessageActions
-                    className={cn(
-                      "mt-1 items-center justify-start gap-2",
-                      !isNewToolUI &&
-                        "opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100",
-                    )}
-                  >
+                  <MessageActions className="mt-1 items-center justify-start gap-2">
                     <CopyButton
                       text={textParts.map((p) => p.text).join("\n")}
                     />
@@ -884,12 +720,7 @@ export function ChatMessagesContainer({
               </Message>
             );
           })}
-          {!readOnly && hasActiveTaskList && (
-            <div className="px-1">
-              <TaskListNotice />
-            </div>
-          )}
-          {!readOnly && showIndicator && lastMessage?.role !== "assistant" && (
+          {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
               className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
@@ -910,7 +741,6 @@ export function ChatMessagesContainer({
                       statusMessage={
                         restoreStatusMessage ?? "Reconnecting to live stream..."
                       }
-                      variant={isNewToolUI ? "chain" : "legacy"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.

@@ -131,4 +131,26 @@ describe("ArtifactPanel (desktop) width clamping", () => {
 
     await expectPanelWidth(900 - PANEL_RESERVED_WIDTH);
   });
+
+  it("keeps the header Close button for standalone hosts", async () => {
+    offsetWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(2000);
+
+    render(<ArtifactPanel />);
+
+    expect(await screen.findByText("notes.txt")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDefined();
+  });
+
+  it("drops the header Close button when the host closes it externally", async () => {
+    offsetWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(2000);
+
+    render(<ArtifactPanel hasExternalClose />);
+
+    expect(await screen.findByText("notes.txt")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
 });

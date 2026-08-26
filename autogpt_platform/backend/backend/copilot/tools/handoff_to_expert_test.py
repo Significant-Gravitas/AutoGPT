@@ -75,13 +75,18 @@ def roster(monkeypatch):
     async def fake_get_expert(user_id, expert_id, *, include_workflows=True, **_):
         return experts.get(expert_id)
 
+    async def fake_list_experts(user_id, *, with_metrics=True, **_):
+        return list(experts.values())
+
     db = MagicMock()
     db.get_expert = fake_get_expert
-    monkeypatch.setattr(
-        "backend.copilot.tools.handoff_to_expert.experts_db",
-        lambda: db,
-        raising=True,
-    )
+    db.list_experts = fake_list_experts
+    for module in ("handoff_to_expert", "expert_delegation"):
+        monkeypatch.setattr(
+            f"backend.copilot.tools.{module}.experts_db",
+            lambda: db,
+            raising=True,
+        )
     return experts
 
 
@@ -190,6 +195,81 @@ class TestGuards:
         )
         assert isinstance(r, ErrorResponse)
         mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_db_failure_is_not_reported_as_a_missing_expert(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """A transient lookup failure must not claim the teammate is gone —
+        that reads as "re-raise them", which is how the loop starts."""
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("connection reset")
+
+        async def fake_list_experts(user_id, *, with_metrics=True, **_):
+            return list(roster.values())
+
+        # Only the id lookup flakes: the roster read still works, so a broad
+        # catch here would fall through to the name pass and mislabel a live
+        # teammate as missing.
+        db = MagicMock()
+        db.get_expert = boom
+        db.list_experts = fake_list_experts
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.experts_db",
+            lambda: db,
+            raising=True,
+        )
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Could not reach that expert right now" in r.message
+        assert "No active expert" not in r.message
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_name_reference_resolves_unique_teammate(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="bea",
+            prompt="hi",
+        )
+        assert not isinstance(r, ErrorResponse)
+        assert mock_sessions[0].expert_id == "expert-b"
+
+    @pytest.mark.asyncio
+    async def test_name_resolving_to_caller_rejected(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="Ari",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_target_error_carries_the_roster(
+        self, roster, mock_turn, mock_sessions
+    ):
+        r = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-zzz",
+            prompt="hi",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "Bea (expert_id: expert-b)" in r.message
+        assert "Ari" not in r.message
 
     @pytest.mark.asyncio
     async def test_archived_target_rejected(self, roster, mock_turn, mock_sessions):

@@ -15,9 +15,9 @@ const PANEL_DURATION = 0.3;
 
 interface Props {
   mobile?: boolean;
-  /** The desktop copilot chat renders its own sidebar-right close control
-   *  under the new tool UI; standalone hosts (share viewer, tour, mobile
-   *  drawer) do not, so their header keeps its Close button. */
+  /** The desktop copilot chat renders its own sidebar-right close control;
+   *  standalone hosts (share viewer, tour, mobile drawer) do not, so their
+   *  header keeps its Close button. */
   hasExternalClose?: boolean;
 }
 
