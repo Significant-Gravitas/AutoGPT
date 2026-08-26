@@ -62,7 +62,7 @@ jobs:
       # ------------------------ Backend setup ------------------------
 
       - name: Set up Backend - Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
