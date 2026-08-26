@@ -228,10 +228,16 @@ async def list_library_agents(
             }
         ]
 
+    # Normalize search term early so folder checks and search clause
+    # both use the same sanitized value. Normalization strips tsquery
+    # operators and collapses whitespace; an empty result means no
+    # search filter should be applied.
+    normalized = _normalize_search_term(search_term or "")
+
     # Apply folder filter (skip when searching — search spans all folders)
-    if folder_id is not None and not search_term:
+    if folder_id is not None and not normalized:
         where_clause["folderId"] = folder_id
-    elif include_root_only and not search_term:
+    elif include_root_only and not normalized:
         where_clause["folderId"] = None
 
     # Apply isHidden filter
@@ -239,31 +245,26 @@ async def list_library_agents(
         where_clause["isHidden"] = is_hidden
 
     # Build search filter if applicable
-    if search_term:
+    if normalized:
         # Use Postgres full-text search for better relevance and performance.
         # Matches both the snapshotted marketplace name/description (shown on
         # the card for downloaded agents) and the underlying graph's own values.
-        # Normalize the term to ensure valid tsquery input — Prisma delegates
-        # to plainto_tsquery which handles plain text, but we additionally
-        # strip stray operators for safety.
-        normalized = _normalize_search_term(search_term)
-        if normalized:
-            where_clause["OR"] = [
-                {"name": {"search": normalized}},
-                {"description": {"search": normalized}},
-                {
-                    "AgentGraph": {
-                        "is": {"name": {"search": normalized}}
+        where_clause["OR"] = [
+            {"name": {"search": normalized}},
+            {"description": {"search": normalized}},
+            {
+                "AgentGraph": {
+                    "is": {"name": {"search": normalized}}
+                }
+            },
+            {
+                "AgentGraph": {
+                    "is": {
+                        "description": {"search": normalized}
                     }
-                },
-                {
-                    "AgentGraph": {
-                        "is": {
-                            "description": {"search": normalized}
-                        }
-                    }
-                },
-            ]
+                }
+            },
+        ]
 
     order_by: (
         prisma.types.LibraryAgentOrderByInput

@@ -231,9 +231,12 @@ async def test_list_library_agents_search_normalizes_tsquery_operators(mocker):
     await db.list_library_agents("test-user", search_term="test & (OR | NOT)")
 
     where = mock_find_many.call_args.kwargs["where"]
-    for clause in where["OR"]:
-        if "search" in clause:
-            assert clause["search"] == "test OR"
+    expected = "test OR NOT"
+    # Check all four search clauses have the normalized term
+    assert where["OR"][0]["name"]["search"] == expected
+    assert where["OR"][1]["description"]["search"] == expected
+    assert where["OR"][2]["AgentGraph"]["is"]["name"]["search"] == expected
+    assert where["OR"][3]["AgentGraph"]["is"]["description"]["search"] == expected
 
 
 def test_normalize_search_term():
@@ -244,6 +247,33 @@ def test_normalize_search_term():
     assert db._normalize_search_term("  lots   of   spaces  ") == "lots of spaces"
     assert db._normalize_search_term("it's a test") == "it's a test"
     assert db._normalize_search_term(":::") == ""
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_empty_normalized_preserves_folder_filter(mocker):
+    """When search_term normalizes to empty, folder_id/include_root_only
+    should still be applied (search mode inactive)."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    # Only tsquery operators -> normalizes to empty string
+    await db.list_library_agents("test-user", search_term="& | *", folder_id="folder-123")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    # Search filter should NOT be added (normalized is empty)
+    assert "OR" not in where
+    # But folder filter SHOULD be applied
+    assert where["folderId"] == "folder-123"
 
 
 @pytest.mark.asyncio
