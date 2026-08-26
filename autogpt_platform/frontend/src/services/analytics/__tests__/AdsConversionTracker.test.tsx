@@ -52,6 +52,15 @@ describe("AdsConversionTracker", () => {
       "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
       "sign_up=SU,subscribe=SB,top_up=TU",
     );
+    // Identifiers only ride along on an affirmative yes, so the cases below
+    // that assert them start from an answered banner.
+    consent.save({
+      hasConsented: true,
+      timestamp: 1,
+      analytics: true,
+      monitoring: true,
+      advertising: true,
+    });
   });
 
   afterEach(() => {
@@ -255,13 +264,6 @@ describe("AdsConversionTracker", () => {
   });
 
   it("keeps the identifiers when the visitor accepted advertising", () => {
-    consent.save({
-      hasConsented: true,
-      timestamp: 1,
-      analytics: true,
-      monitoring: true,
-      advertising: true,
-    });
     document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
 
     render(<AdsConversionTracker />);
@@ -270,6 +272,17 @@ describe("AdsConversionTracker", () => {
       transaction_id: "user-1",
       user_data: { email: "ada@example.com" },
     });
+  });
+
+  it("drops the identifiers while the banner is unanswered", () => {
+    consent.clear();
+    document.cookie = `${ACCOUNT_CREATED_COOKIE}=email; Path=/`;
+
+    render(<AdsConversionTracker />);
+
+    expect(conversions()).toEqual([
+      ["event", "conversion", { send_to: "AW-123/SU" }],
+    ]);
   });
 
   it("sends a page_view to the Ads tag on client-side navigation only", () => {

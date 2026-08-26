@@ -42,10 +42,8 @@ export function trackAdsConversion(
     params.value = options.value;
     params.currency = options.currency ?? "USD";
   }
-  // A visitor who answered the banner and said no to advertising still counts
-  // as an aggregate (cookieless) conversion, but never carries identifiers.
-  // Consent Mode asks Google to redact these; dropping them here means the
-  // recorded "no" does not depend on the vendor honouring that.
+  // Identifiers ride along only on an affirmative yes. The aggregate
+  // (cookieless) conversion still counts either way.
   if (mayReportIdentifiers()) {
     if (options.transactionID) params.transaction_id = options.transactionID;
     if (options.email) params.user_data = { email: options.email };
@@ -54,9 +52,15 @@ export function trackAdsConversion(
   return gtag("event", "conversion", params);
 }
 
+// An unanswered banner is not a yes. Outside the EEA/UK/CH the Consent Mode
+// default is `granted`, but that gate lives in the tag's `region` parameter and
+// Google resolves it by IP — the browser has no region signal of its own. So
+// treating "no answer" as consent would hand Google an email it was told to
+// redact for every unanswered visitor in a denied-by-default region, which is
+// the vendor dependency this gate exists to remove.
 function mayReportIdentifiers(): boolean {
   const preferences = consent.load();
-  return !preferences.hasConsented || preferences.advertising;
+  return preferences.hasConsented && preferences.advertising;
 }
 
 // The labels come from a build-time env var; parse once per distinct value so

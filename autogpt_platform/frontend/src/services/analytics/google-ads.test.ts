@@ -3,12 +3,23 @@ import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
+import { consent } from "@/services/consent/cookies";
 import {
   getSubscriptionValue,
   parseConversionLabels,
   trackAdsConversion,
   trackAdsPageView,
 } from "./google-ads";
+
+function answerBanner(advertising: boolean) {
+  consent.save({
+    hasConsented: true,
+    timestamp: 1,
+    analytics: true,
+    monitoring: true,
+    advertising,
+  });
+}
 
 let pushed: unknown[][] = [];
 
@@ -20,11 +31,13 @@ describe("trackAdsConversion", () => {
       "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
       "sign_up=SIGNUP,subscribe=SUB",
     );
+    answerBanner(true);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     removeGtagShim();
+    consent.clear();
   });
 
   it("sends the conversion to the action label with value, dedup id and user data", () => {
@@ -47,6 +60,39 @@ describe("trackAdsConversion", () => {
           user_data: { email: "ada@example.com" },
         },
       ],
+    ]);
+  });
+
+  it("withholds the identifiers until the banner is answered", () => {
+    // Unanswered: Consent Mode denies ad_user_data in the EEA/UK/CH and the
+    // browser can't tell which region it's in, so nothing identifying goes out.
+    consent.clear();
+
+    trackAdsConversion("subscribe", {
+      value: 50,
+      transactionID: "cs_123",
+      email: "ada@example.com",
+    });
+
+    expect(pushed).toEqual([
+      [
+        "event",
+        "conversion",
+        { send_to: "AW-123/SUB", value: 50, currency: "USD" },
+      ],
+    ]);
+  });
+
+  it("withholds the identifiers when advertising was rejected", () => {
+    answerBanner(false);
+
+    trackAdsConversion("subscribe", {
+      transactionID: "cs_123",
+      email: "ada@example.com",
+    });
+
+    expect(pushed).toEqual([
+      ["event", "conversion", { send_to: "AW-123/SUB" }],
     ]);
   });
 
