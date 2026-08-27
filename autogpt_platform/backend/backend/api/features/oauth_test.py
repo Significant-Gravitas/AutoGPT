@@ -52,12 +52,14 @@ async def _create_test_user(user_id: str) -> None:
         "email": f"oauth-test-{user_id}@example.com",
         "name": "OAuth Test User",
     }
+    client = PrismaUser.prisma()
     try:
-        await PrismaUser.prisma().create(data=data)
+        await client.create(data=data)
     except RuntimeError as error:
         if "Event loop is closed" not in str(error):
             raise
-        await PrismaUser.prisma().create(data=data)
+        client._engine.session.open()
+        await client.create(data=data)
 
 
 @pytest.mark.asyncio
@@ -70,6 +72,7 @@ async def test_create_test_user_recovers_from_a_closed_connection_loop(mocker):
 
     await _create_test_user("user-1")
 
+    client._engine.session.open.assert_called_once_with()
     assert client.create.await_count == 2
 
 
