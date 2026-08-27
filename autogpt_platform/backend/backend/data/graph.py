@@ -28,7 +28,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
-from backend.data.grants import grant_covers_version, resolve_graph_grant
+from backend.data.grants import grant_covers_version, resolve_graph_grants
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
@@ -1091,9 +1091,9 @@ class GraphModel(Graph, GraphMeta):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node.id][field_name] = (
-                        f"Requires {', '.join(missing_deps)} to be set"
-                    )
+                    node_errors[node.id][
+                        field_name
+                    ] = f"Requires {', '.join(missing_deps)} to be set"
 
         return node_errors
 
@@ -1423,9 +1423,12 @@ async def get_graph(
     # Fall back to a team grant (share-with-team): pinned grants open exactly
     # the pinned version; followLatest grants open the current active version.
     if graph is None and user_id is not None:
-        if grant := await resolve_graph_grant(
+        grants = await resolve_graph_grants(
             user_id, graph_id, capability=GrantCapability.VIEW
-        ):
+        )
+        if version is not None:
+            grants = [grant for grant in grants if grant_covers_version(grant, version)]
+        for grant in grants:
             # Constrain to the grant's org: a followLatest grant must not
             # follow a graph that has since moved to a different organization.
             grant_where: AgentGraphWhereInput = {
@@ -1443,6 +1446,7 @@ async def get_graph(
             )
             if candidate is not None and version in (None, candidate.version):
                 graph = candidate
+                break
 
     if graph is None:
         return None
@@ -1768,15 +1772,14 @@ async def validate_graph_execution_permissions(
     # executed version to be the graph's active one. Granted agents live
     # outside the consumer's library, so a grant satisfies the library
     # requirement below too.
-    exec_grant = await resolve_graph_grant(
+    exec_grants = await resolve_graph_grants(
         user_id, graph_id, capability=GrantCapability.EXECUTE
     )
-    user_has_exec_grant = (
-        exec_grant is not None
-        and graph is not None
-        and graph.organizationId == exec_grant.organizationId
-        and grant_covers_version(exec_grant, graph_version)
-        and (not exec_grant.followLatest or graph.isActive)
+    user_has_exec_grant = graph is not None and any(
+        graph.organizationId == grant.organizationId
+        and grant_covers_version(grant, graph_version)
+        and (not grant.followLatest or graph.isActive)
+        for grant in exec_grants
     )
 
     # Step 4: Apply permission logic
