@@ -9,8 +9,9 @@ encoded here (see :func:`disable_chat_session_share`).
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, LiteralString, cast
 
 import sentry_sdk
 from prisma.enums import SharedVia
@@ -39,9 +40,10 @@ from backend.copilot.sharing.models import (
     sanitize_chat_session,
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.db import transaction
+from backend.data.db import get_database_schema, transaction
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
+from backend.data.workspace import WorkspaceFile
 from backend.util import type as type_utils
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,51 @@ _ERROR_TYPE = "error"
 _SCHEDULED_STATUS = "SCHEDULED"
 
 
+async def _lock_chat_session(
+    tx: Any,
+    session_id: str,
+    *,
+    user_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    exact_scope: bool = False,
+) -> PrismaChatSession | None:
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    predicates = ['"id" = $1']
+    values: list[Any] = [session_id]
+    if user_id is not None:
+        predicates.append(f'"userId" = ${len(values) + 1}')
+        values.append(user_id)
+    if exact_scope:
+        predicates.append(f'"organizationId" IS NOT DISTINCT FROM ${len(values) + 1}')
+        values.append(organization_id)
+        predicates.append(f'"teamId" IS NOT DISTINCT FROM ${len(values) + 1}')
+        values.append(team_id)
+    query = cast(
+        LiteralString,
+        f'SELECT "id" FROM {schema_prefix}"ChatSession" '
+        f"WHERE {' AND '.join(predicates)} FOR UPDATE",
+    )
+    if not await tx.query_raw(query, *values):
+        return None
+    return await PrismaChatSession.prisma(tx).find_unique(where={"id": session_id})
+
+
+async def _lock_execution_rows(tx: Any, execution_ids: set[str]) -> None:
+    if not execution_ids:
+        return
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    query = cast(
+        LiteralString,
+        f'SELECT "id" FROM {schema_prefix}"AgentGraphExecution" '
+        'WHERE "id" = $1 FOR UPDATE',
+    )
+    for execution_id in sorted(execution_ids):
+        await tx.query_raw(query, execution_id)
+
+
 # ---------- Enable / disable -------------------------------------------------
 
 
@@ -70,6 +117,8 @@ async def enable_chat_session_share(
     session_id: str,
     user_id: str,
     auto_share_executions: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> str:
     """Enable sharing on a chat session.
 
@@ -91,38 +140,60 @@ async def enable_chat_session_share(
     Raises ValueError if the session does not belong to *user_id*.
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
+        where={
+            "id": session_id,
+            "userId": user_id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        },
     )
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
 
-    if auto_share_executions:
-        execution_ids = list(
-            await _collect_execution_ids_from_messages(session_id=session_id)
+    share_token = generate_share_token()
+    now = datetime.now(UTC)
+
+    async with transaction() as tx:
+        session_tx = await _lock_chat_session(
+            tx,
+            session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            exact_scope=True,
         )
-        # Only auto-link executions the caller still owns.  Runs the
-        # caller doesn't own (deleted, cross-user) are silently skipped
-        # rather than failing the whole share — they shouldn't have
-        # been referenced in the chat in the first place, but defending
-        # against that here keeps share-enable robust.
+        if session_tx is None:
+            raise ValueError(f"Chat session {session_id} not found for user")
+
+        execution_ids = (
+            await _collect_execution_ids_from_messages(session_id=session_id, tx=tx)
+            if auto_share_executions
+            else set()
+        )
         executions_to_link = (
-            await AgentGraphExecution.prisma().find_many(
+            await AgentGraphExecution.prisma(tx).find_many(
                 where={
-                    "id": {"in": execution_ids},
+                    "id": {"in": list(execution_ids)},
                     "userId": user_id,
+                    "organizationId": organization_id,
+                    "teamId": team_id,
                     "isDeleted": False,
                 },
             )
             if execution_ids
             else []
         )
-    else:
-        executions_to_link = []
+        old_links = await ChatLinkedShare.prisma(tx).find_many(
+            where={"sessionId": session_id}
+        )
+        await _lock_execution_rows(
+            tx,
+            {
+                *(row.executionId for row in old_links),
+                *(execution.id for execution in executions_to_link),
+            },
+        )
 
-    share_token = generate_share_token()
-    now = datetime.now(UTC)
-
-    async with transaction() as tx:
         # Cascade-revoke previously-linked CHAT_LINK executions BEFORE
         # wiping the join table.  Otherwise a re-share with a different
         # ``autoShareExecutions`` value (or just a re-share to mint a
@@ -140,6 +211,8 @@ async def enable_chat_session_share(
             session_id=session_id,
             share_token=share_token,
             user_id=user_id,
+            organization_id=session_tx.organizationId,
+            team_id=session_tx.teamId,
             tx=tx,
         )
 
@@ -194,18 +267,7 @@ async def link_new_execution_to_chat_share(
 
         now = datetime.now(UTC)
         async with transaction() as tx:
-            # Re-check share state inside the transaction.  A concurrent
-            # ``disable_chat_session_share`` could have flipped
-            # ``isShared`` between the outer check above and the tx
-            # start; without this guard we'd create a ChatLinkedShare
-            # row pointing at a no-longer-shared session and possibly
-            # flip the execution to ``CHAT_LINK`` shared — orphan
-            # public state.  The pre-fetched ``session`` snapshot is
-            # only used for the early-return fast path; the
-            # transactional read is the authoritative one.
-            session_tx = await PrismaChatSession.prisma(tx).find_unique(
-                where={"id": session_id}
-            )
+            session_tx = await _lock_chat_session(tx, session_id)
             if (
                 not session_tx
                 or not session_tx.isShared
@@ -213,6 +275,17 @@ async def link_new_execution_to_chat_share(
             ):
                 return
 
+            execution = await AgentGraphExecution.prisma(tx).find_first(
+                where={
+                    "id": execution_id,
+                    "userId": session_tx.userId,
+                    "isDeleted": False,
+                },
+            )
+            if execution is None:
+                return
+
+            await _lock_execution_rows(tx, {execution_id})
             execution = await AgentGraphExecution.prisma(tx).find_first(
                 where={
                     "id": execution_id,
@@ -252,7 +325,12 @@ async def link_new_execution_to_chat_share(
         sentry_sdk.capture_exception(exc)
 
 
-async def disable_chat_session_share(session_id: str, user_id: str) -> None:
+async def disable_chat_session_share(
+    session_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> None:
     """Revoke sharing on a chat session and cascade-revoke linked executions.
 
     Cascade rule: an execution share is cleared only when (a) it was
@@ -263,20 +341,32 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
     at least one chat share still references it.
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
+        where={
+            "id": session_id,
+            "userId": user_id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        },
     )
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
 
     async with transaction() as tx:
-        # Flip the session to ``isShared=False`` FIRST so any concurrent
-        # ``link_new_execution_to_chat_share`` racing this transaction
-        # sees the new state on its own in-tx re-read and bails before
-        # creating an orphan ``ChatLinkedShare`` row.  The cascade
-        # bookkeeping (read linkages → revoke executions → delete
-        # rows) all runs inside the same transaction so the window for
-        # a phantom row is reduced to the gap between two committed
-        # transactions — which the hook's in-tx re-check covers.
+        session_tx = await _lock_chat_session(
+            tx,
+            session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            exact_scope=True,
+        )
+        if session_tx is None:
+            raise ValueError(f"Chat session {session_id} not found for user")
+        links = await ChatLinkedShare.prisma(tx).find_many(
+            where={"sessionId": session_id}
+        )
+        await _lock_execution_rows(tx, {row.executionId for row in links})
+
         await PrismaChatSession.prisma(tx).update(
             where={"id": session_id},
             data={
@@ -290,12 +380,6 @@ async def disable_chat_session_share(session_id: str, user_id: str) -> None:
             },
         )
 
-        # Walk the linkage table and disable only the chat-derived shares
-        # that aren't still referenced by another chat session's linkage.
-        # Reading INSIDE the tx ensures the pre-flip session update is
-        # visible and any concurrent linkage commit lands either fully
-        # before this read (and gets cascaded) or fully after (and is
-        # blocked by the in-tx session re-check).
         await _cascade_revoke_chat_linked_executions(session_id=session_id, tx=tx)
 
         await ChatLinkedShare.prisma(tx).delete_many(where={"sessionId": session_id})
@@ -360,67 +444,87 @@ async def get_shared_chat_messages_paginated(
     )
 
 
-async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
-    """Allowlist lookup for the public file-download endpoint.
+@asynccontextmanager
+async def shared_chat_file_access(share_token: str, file_id: str):
+    """Hold the chat share row stable until download preparation completes."""
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    lock_query = cast(
+        LiteralString,
+        f'SELECT "id" FROM {schema_prefix}"ChatSession" '
+        'WHERE "shareToken" = $1 AND "isShared" = true FOR SHARE',
+    )
+    async with transaction() as tx:
+        locked = await tx.query_raw(lock_query, share_token)
+        if not locked:
+            yield None
+            return
+        session_id = locked[0]["id"]
+        session = await PrismaChatSession.prisma(tx).find_unique(
+            where={"id": session_id}
+        )
+        if session is None:
+            yield None
+            return
 
-    Returns the owning ``session_id`` if the file is allowlisted,
-    ``None`` otherwise.  Uniform None for every failure mode prevents
-    timing-based enumeration of valid file IDs.
-
-    Falls back to a live re-scan of the chat's messages when the
-    static allowlist misses — files uploaded AFTER the share was
-    enabled (or referenced by later assistant messages) would
-    otherwise 404 forever, even though the file is clearly part of
-    the shared conversation.  The re-scan re-uses the same workspace-
-    ownership guard ``_build_shared_chat_files`` enforces at enable
-    time, so a malicious tool output trying to reference a foreign
-    workspace file still gets rejected.  On hit we backfill a
-    SharedChatFile row so subsequent downloads short-circuit.
-    """
-    record = await SharedChatFile.prisma().find_first(
-        where={"shareToken": share_token, "fileId": file_id}
-    )
-    if record is not None:
-        return record.sessionId
-
-    # Slow path: chat-share allowlists are built once at enable time,
-    # but the chat keeps accumulating messages.  Re-derive ownership
-    # from the live messages for this token before giving up.
-    session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
-    )
-    if session is None:
-        return None
-    if not await _file_referenced_in_session(session_id=session.id, file_id=file_id):
-        return None
-    workspace = await UserWorkspace.prisma().find_unique(
-        where={"userId": session.userId}
-    )
-    if workspace is None:
-        return None
-    file = await UserWorkspaceFile.prisma().find_first(
-        where={"id": file_id, "workspaceId": workspace.id, "isDeleted": False}
-    )
-    if file is None:
-        return None
-    # Backfill the allowlist so repeat downloads skip the re-scan.
-    try:
-        await SharedChatFile.prisma().create(
-            data={
-                "sessionId": session.id,
+        record = await SharedChatFile.prisma(tx).find_first(
+            where={
+                "sessionId": session_id,
                 "fileId": file_id,
                 "shareToken": share_token,
             }
         )
-    except (UniqueViolationError, ForeignKeyViolationError):
-        # Concurrent backfill or file deleted between checks — fall
-        # through; the file is still ownership-validated above so
-        # the download is safe to authorise this once.
-        pass
-    return session.id
+        if record is None:
+            if not await _file_referenced_in_session(
+                session_id=session_id,
+                file_id=file_id,
+                tx=tx,
+            ):
+                yield None
+                return
+            workspace = await UserWorkspace.prisma(tx).find_unique(
+                where={"userId": session.userId}
+            )
+            if workspace is None:
+                yield None
+                return
+            candidate = await UserWorkspaceFile.prisma(tx).find_first(
+                where={
+                    "id": file_id,
+                    "workspaceId": workspace.id,
+                    "organizationId": session.organizationId,
+                    "teamId": session.teamId,
+                    "scopeResolved": True,
+                    "isUserGlobalConfig": False,
+                    "isDeleted": False,
+                }
+            )
+            if candidate is None:
+                yield None
+                return
+            try:
+                await SharedChatFile.prisma(tx).create(
+                    data={
+                        "sessionId": session_id,
+                        "fileId": file_id,
+                        "shareToken": share_token,
+                    }
+                )
+            except UniqueViolationError:
+                pass
+
+        file = await UserWorkspaceFile.prisma(tx).find_first(
+            where={"id": file_id, "isDeleted": False}
+        )
+        yield WorkspaceFile.from_db(file) if file is not None else None
 
 
-async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
+async def _file_referenced_in_session(
+    *,
+    session_id: str,
+    file_id: str,
+    tx: Any | None = None,
+) -> bool:
     """True iff *file_id* appears in any of *session_id*'s messages.
 
     Scans ``content``, ``toolCalls``, and ``functionCall`` of every
@@ -429,7 +533,7 @@ async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
     file via ``workspace://``, ``[Attached files] file_id=``, or JSON
     tool output all qualify.
     """
-    candidate_rows = await PrismaChatMessage.prisma().find_many(
+    candidate_rows = await PrismaChatMessage.prisma(tx).find_many(
         where={"sessionId": session_id, "content": {"contains": file_id}},
     )
     for row in candidate_rows:
@@ -438,7 +542,7 @@ async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
         ):
             return True
 
-    rows = await PrismaChatMessage.prisma().find_many(
+    rows = await PrismaChatMessage.prisma(tx).find_many(
         where={"sessionId": session_id},
     )
     for row in rows:
@@ -457,7 +561,12 @@ async def _file_referenced_in_session(*, session_id: str, file_id: str) -> bool:
 # ---------- Linked execution discovery (share-modal helper) ------------------
 
 
-async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
+async def get_chat_share_state(
+    session_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> ChatShareState:
     """Return the current share state for *session_id* scoped to *user_id*.
 
     Returns ``ChatShareState(is_shared=False, ...)`` when the session is
@@ -466,7 +575,12 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     without an extra existence check.
     """
     row = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
+        where={
+            "id": session_id,
+            "userId": user_id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        },
     )
     if not row:
         return ChatShareState(
@@ -486,7 +600,10 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
         await _collect_execution_ids_from_messages(session_id=session_id)
     )
     file_count = await _count_referenced_workspace_files(
-        session_id=session_id, user_id=user_id
+        session_id=session_id,
+        user_id=user_id,
+        organization_id=row.organizationId,
+        team_id=row.teamId,
     )
 
     return ChatShareState(
@@ -499,7 +616,13 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     )
 
 
-async def _count_referenced_workspace_files(*, session_id: str, user_id: str) -> int:
+async def _count_referenced_workspace_files(
+    *,
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> int:
     """How many of the workspace files referenced by this chat's messages
     the owner actually owns (and would land in the public allowlist if
     the share were enabled right now).  Mirrors the ownership filter
@@ -526,6 +649,10 @@ async def _count_referenced_workspace_files(*, session_id: str, user_id: str) ->
         where={
             "id": {"in": list(file_ids)},
             "workspaceId": workspace.id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+            "scopeResolved": True,
+            "isUserGlobalConfig": False,
             "isDeleted": False,
         }
     )
@@ -539,6 +666,8 @@ async def _build_shared_chat_files(
     session_id: str,
     share_token: str,
     user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
     *,
     tx: Any | None = None,
 ) -> int:
@@ -567,6 +696,10 @@ async def _build_shared_chat_files(
         where={
             "id": {"in": list(file_ids)},
             "workspaceId": workspace.id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+            "scopeResolved": True,
+            "isUserGlobalConfig": False,
             "isDeleted": False,
         }
     )
@@ -745,6 +878,10 @@ async def _build_shared_execution_file_allowlist(
         where={
             "id": {"in": list(file_ids)},
             "workspaceId": workspace.id,
+            "organizationId": node_rows.organizationId,
+            "teamId": node_rows.teamId,
+            "scopeResolved": True,
+            "isUserGlobalConfig": False,
             "isDeleted": False,
         }
     )
@@ -792,7 +929,11 @@ async def _resolve_linked_executions(
     return out
 
 
-async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
+async def _collect_execution_ids_from_messages(
+    session_id: str,
+    *,
+    tx: Any | None = None,
+) -> set[str]:
     """Find execution IDs referenced by ``role=tool`` responses in a session.
 
     Matches both response shapes that ``run_agent`` produces:
@@ -800,7 +941,7 @@ async def _collect_execution_ids_from_messages(session_id: str) -> set[str]:
     ``AgentOutputResponse`` (nested ``execution.execution_id`` from the
     sync-complete ``wait_for_result`` path).
     """
-    rows = await PrismaChatMessage.prisma().find_many(
+    rows = await PrismaChatMessage.prisma(tx).find_many(
         where={"sessionId": session_id, "role": "tool"},
     )
     execution_ids: set[str] = set()

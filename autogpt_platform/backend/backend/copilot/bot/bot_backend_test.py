@@ -32,6 +32,7 @@ from .bot_backend import (
     BotBackend,
     BotStreamError,
     ChatTurnDeniedError,
+    PlatformLinkRevokedError,
     _extract_setup_requirements,
     _is_corrupted_setup_requirements,
 )
@@ -44,6 +45,9 @@ def api() -> BotBackend:
     # Swap in a MagicMock whose RPC methods are AsyncMocks — simpler than
     # patching each call site.
     instance._client = MagicMock()
+    instance._client.acquire_platform_link_lease = AsyncMock(return_value="lease-1")
+    instance._client.release_platform_link_lease = AsyncMock(return_value=True)
+    instance._client.is_platform_link_owner = AsyncMock(return_value=True)
     return instance
 
 
@@ -153,6 +157,91 @@ class TestCreateLinkTokens:
 
 class TestStreamChat:
     @pytest.mark.asyncio
+    async def test_stops_before_next_item_when_platform_link_is_revoked(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        api._client.is_platform_link_owner = AsyncMock(side_effect=[True, False])
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(StreamTextDelta(id="1", delta="first"))
+        await queue.put(
+            StreamToolOutputAvailable(
+                toolCallId="tool-1",
+                toolName="connect_integration",
+                output='{"type":"setup_requirements","message":"secret"}',
+            )
+        )
+        setup = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            stream = api.stream_chat(
+                platform="discord",
+                platform_user_id="platform-u1",
+                platform_server_id="server-1",
+                message="hi",
+                on_setup_required=setup,
+            )
+            assert await anext(stream) == "first"
+            with pytest.raises(PlatformLinkRevokedError):
+                await anext(stream)
+
+        setup.assert_not_awaited()
+        assert api._client.release_platform_link_lease.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_finish_lease_is_held_until_final_delivery_completes(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(StreamFinish())
+        delivery_started = asyncio.Event()
+        allow_delivery = asyncio.Event()
+
+        async def on_finish() -> None:
+            delivery_started.set()
+            await allow_delivery.wait()
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            stream = api.stream_chat(
+                platform="discord",
+                platform_user_id="platform-u1",
+                platform_server_id="server-1",
+                message="hi",
+                on_finish=on_finish,
+            )
+            finish = asyncio.create_task(anext(stream))
+            await delivery_started.wait()
+            api._client.release_platform_link_lease.assert_not_awaited()
+            allow_delivery.set()
+            with pytest.raises(StopAsyncIteration):
+                await finish
+
+        api._client.release_platform_link_lease.assert_awaited_once_with(
+            lease_id="lease-1"
+        )
+
+    @pytest.mark.asyncio
     async def test_yields_text_deltas_and_terminates_on_finish(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
@@ -164,9 +253,13 @@ class TestStreamChat:
         await queue.put(StreamFinish())
 
         captured_session_ids: list[str] = []
+        captured_owner_ids: list[str] = []
 
         async def capture(sid: str) -> None:
             captured_session_ids.append(sid)
+
+        async def capture_owner(user_id: str) -> None:
+            captured_owner_ids.append(user_id)
 
         with (
             patch(
@@ -184,11 +277,13 @@ class TestStreamChat:
                 platform_user_id="u1",
                 message="hi",
                 on_session_id=capture,
+                on_owner_user_id=capture_owner,
             ):
                 chunks.append(chunk)
 
         assert "".join(chunks) == "Hello world"
         assert captured_session_ids == ["sess"]
+        assert captured_owner_ids == ["u1"]
 
     @pytest.mark.asyncio
     async def test_inserts_paragraph_break_between_text_blocks(self, api: BotBackend):

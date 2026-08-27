@@ -45,7 +45,24 @@ def safe_caller_name(caller: str) -> str:
     return one_line[:CALLER_NAME_LIMIT].strip() or "a teammate"
 
 
-async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
+async def expert_matches_session_workspace(
+    user_id: str, expert: Expert, session: ChatSession
+) -> bool:
+    if (expert.organization_id, expert.team_id) != (
+        session.organization_id,
+        session.team_id,
+    ):
+        return False
+    try:
+        scope = await experts_db().resolve_private_expert_tenancy(user_id, expert.id)
+    except Exception:
+        return False
+    return scope == (session.organization_id, session.team_id)
+
+
+async def resolve_target_expert(
+    user_id: str, reference: str, session: ChatSession
+) -> Expert | None:
     """Resolve a teammate by id, falling back to a unique name match.
 
     The roster block that carries expert ids is injected only into the first
@@ -61,20 +78,30 @@ async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
     """
     expert = await experts_db().get_expert(user_id, reference, include_workflows=False)
     if expert is not None:
-        return expert
+        return (
+            expert
+            if await expert_matches_session_workspace(user_id, expert, session)
+            else None
+        )
     wanted = reference.strip().casefold()
     if not wanted:
         return None
-    matches = [
-        e
-        for e in await experts_db().list_experts(user_id, with_metrics=False)
-        if not e.is_archived and e.name.strip().casefold() == wanted
-    ]
+    matches = []
+    for candidate in await experts_db().list_experts(user_id, with_metrics=False):
+        if (
+            not candidate.is_archived
+            and candidate.name.strip().casefold() == wanted
+            and await expert_matches_session_workspace(user_id, candidate, session)
+        ):
+            matches.append(candidate)
     return matches[0] if len(matches) == 1 else None
 
 
 async def unknown_target_message(
-    user_id: str, reference: str, exclude_expert_id: str | None
+    user_id: str,
+    reference: str,
+    exclude_expert_id: str | None,
+    session: ChatSession,
 ) -> str:
     """A lookup-failure message that carries the roster the model is missing.
 
@@ -94,13 +121,15 @@ async def unknown_target_message(
     except Exception as e:
         logger.warning(f"Roster lookup for delegation error failed: {e}")
         return fallback
-    teammates = [
-        e
-        for e in experts
-        if not e.is_archived
-        and e.id != exclude_expert_id
-        and e.schedules_paused_at is None
-    ]
+    teammates = []
+    for candidate in experts:
+        if (
+            not candidate.is_archived
+            and candidate.id != exclude_expert_id
+            and candidate.schedules_paused_at is None
+            and await expert_matches_session_workspace(user_id, candidate, session)
+        ):
+            teammates.append(candidate)
     if not teammates:
         return fallback
     roster = "; ".join(f"{e.name} (expert_id: {e.id})" for e in teammates)

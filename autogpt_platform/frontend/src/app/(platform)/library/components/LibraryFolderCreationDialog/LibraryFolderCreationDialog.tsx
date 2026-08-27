@@ -50,9 +50,8 @@ export default function LibraryFolderCreationDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { teamId, setTeamId, teamRequestInit } = useCreateTeamSelection(
-    CreateSurface.LibraryFolder,
-  );
+  const { teamId, setTeamId, teamRequestInit, isReady } =
+    useCreateTeamSelection(CreateSurface.LibraryFolder);
 
   const { mutate: createFolder, isPending } = usePostV2CreateFolder({
     request: teamRequestInit,
@@ -227,7 +226,7 @@ export default function LibraryFolderCreationDialog() {
             type="submit"
             variant="primary"
             className="mt-2 min-w-[18rem]"
-            disabled={!form.formState.isValid || isPending}
+            disabled={!form.formState.isValid || isPending || !isReady}
             loading={isPending}
           >
             Create

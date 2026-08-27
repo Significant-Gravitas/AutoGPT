@@ -21,18 +21,26 @@ ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
-def get_local_media_path(storage_path: str) -> Path:
+def get_local_media_root() -> str:
     settings = Settings()
-    root = Path(
+    return os.path.realpath(
         settings.config.media_storage_dir or get_data_path() / "media"
-    ).resolve()
-    path = (root / storage_path).resolve()
-    if not path.is_relative_to(root):
+    )
+
+
+def get_local_media_path(storage_path: str) -> Path:
+    root = get_local_media_root()
+    path = os.path.realpath(os.path.join(root, storage_path))
+    if not path.startswith(os.path.join(root, "")):
         raise ValueError("Invalid media path")
-    return path
+    return Path(path)
 
 
-async def check_media_exists(user_id: str, filename: str) -> str | None:
+async def check_media_exists(
+    user_id: str,
+    filename: str,
+    organization_id: str | None = None,
+) -> str | None:
     """
     Check if a media file exists in storage for the given user.
     Tries both images and videos directories.
@@ -52,7 +60,10 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
         bucket_name = settings.config.media_gcs_bucket_name
 
         # Check images
-        image_path = f"users/{user_id}/images/{filename}"
+        owner_path = (
+            f"orgs/{organization_id}" if organization_id else f"users/{user_id}"
+        )
+        image_path = f"{owner_path}/images/{filename}"
         try:
             await async_client.download_metadata(bucket_name, image_path)
             # If we get here, the file exists - construct public URL
@@ -62,7 +73,7 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
             pass
 
         # Check videos
-        video_path = f"users/{user_id}/videos/{filename}"
+        video_path = f"{owner_path}/videos/{filename}"
         try:
             await async_client.download_metadata(bucket_name, video_path)
             # If we get here, the file exists - construct public URL
@@ -180,18 +191,35 @@ async def upload_media(
 
         # Generate unique filename
         filename = file.filename or ""
-        file_ext = os.path.splitext(filename)[1].lower()
         if use_file_name:
-            unique_filename = filename
+            normalized_filename = filename.replace("\\", "/")
+            safe_filename = os.path.basename(normalized_filename)
+            if (
+                not safe_filename
+                or safe_filename in {".", ".."}
+                or safe_filename != normalized_filename
+            ):
+                raise store_exceptions.InvalidFileTypeError("Invalid file name")
+            unique_filename = safe_filename
         else:
+            file_ext = os.path.splitext(filename)[1].lower()
             unique_filename = f"{uuid.uuid4()}{file_ext}"
 
-        # Construct storage path
+        owner_id = organization_id or user_id
+        normalized_owner_id = owner_id.replace("\\", "/")
+        safe_owner_id = os.path.basename(normalized_owner_id)
+        if (
+            not safe_owner_id
+            or safe_owner_id in {".", ".."}
+            or safe_owner_id != normalized_owner_id
+        ):
+            raise store_exceptions.StorageUploadError("Invalid media owner path")
+
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
         if organization_id:
-            storage_path = f"orgs/{organization_id}/{media_type}/{unique_filename}"
+            storage_path = f"orgs/{safe_owner_id}/{media_type}/{unique_filename}"
         else:
-            storage_path = f"users/{user_id}/{media_type}/{unique_filename}"
+            storage_path = f"users/{safe_owner_id}/{media_type}/{unique_filename}"
 
         file_bytes = await file.read()
         await scan_content_safe(file_bytes, filename=unique_filename)
@@ -202,7 +230,11 @@ async def upload_media(
                 raise store_exceptions.StorageConfigError(
                     "Missing storage bucket configuration"
                 )
-            local_path = get_local_media_path(storage_path)
+            local_root = get_local_media_root()
+            local_path_value = os.path.realpath(os.path.join(local_root, storage_path))
+            if not local_path_value.startswith(os.path.join(local_root, "")):
+                raise store_exceptions.StorageUploadError("Invalid media storage path")
+            local_path = Path(local_path_value)
             local_path.parent.mkdir(parents=True, exist_ok=True)
             async with aiofiles.open(local_path, "wb") as local_file:
                 await local_file.write(file_bytes)

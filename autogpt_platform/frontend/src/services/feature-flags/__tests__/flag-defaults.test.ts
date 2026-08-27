@@ -113,3 +113,23 @@ describe("org settings flag default fails closed", () => {
     expect(result.current).toBe(false);
   });
 });
+
+describe("single-container org feature overrides", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it.each([
+    [Flag.HIRE_EXPERTS, "NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS"],
+    [Flag.GRAPHITI_MEMORY, "NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY"],
+  ] as const)(
+    "resolves %s from its build override when LaunchDarkly has not answered",
+    (flag, environmentKey) => {
+      process.env[environmentKey] = "true";
+      const { result } = renderHook(() => useGetFlag(flag));
+      expect(result.current).toBe(true);
+    },
+  );
+});

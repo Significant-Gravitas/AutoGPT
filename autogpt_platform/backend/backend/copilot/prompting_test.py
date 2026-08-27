@@ -89,8 +89,8 @@ class TestGraphitiMemoryScope:
         assert "AutoPilot uses the user's personal memory" in result
         assert "each hired expert uses its own separate memory" in result
         assert (
-            "Personal memory is private and isolated to the current assistant"
-            in result
+            "Personal memory is private and isolated to the current assistant" in result
         )
         assert "cannot read each other's personal memory" in result
+        assert "Team/org memory is visible only to active members" in result
         assert "Memory is private to this user — no other user can see it" not in result

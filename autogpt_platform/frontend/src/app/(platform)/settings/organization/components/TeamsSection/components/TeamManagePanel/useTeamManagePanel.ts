@@ -151,6 +151,7 @@ export function useTeamManagePanel({
     members,
     isLoading: membersQuery.isLoading,
     isTeamAdmin,
+    currentTeamMember,
     memberToRemove,
     setMemberToRemove,
     isLeaveOpen,

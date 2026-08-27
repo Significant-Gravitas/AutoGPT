@@ -232,7 +232,7 @@ class AyrshareClient:
             "profileKey": profile_key,
         }
 
-        headers = self.headers
+        headers = dict(self.headers)
         headers["Profile-Key"] = profile_key
         if logout is not None:
             payload["logout"] = logout
@@ -512,14 +512,13 @@ class AyrshareClient:
         if notes:
             payload["notes"] = notes
 
-        headers = self.headers
+        headers = dict(self.headers)
         if profile_key:
             headers["Profile-Key"] = profile_key
 
         response = await self._requests.post(
             self.POST_ENDPOINT, json=payload, headers=headers
         )
-        logger.warning(f"Ayrshare request: {payload} and headers: {headers}")
         if not response.ok:
             logger.error(
                 f"Ayrshare API request failed ({response.status}): {response.text()}"
@@ -553,5 +552,7 @@ class AyrshareClient:
                 "Ayrshare API returned no posts",
                 response.status,
             )
-        logger.warn(f"Ayrshare API returned posts: {response_data['posts']}")
+        logger.debug(
+            "Ayrshare API returned %d post result(s)", len(response_data["posts"])
+        )
         return PostResponse(**response_data["posts"][0])

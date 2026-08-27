@@ -18,6 +18,7 @@ def _make_library_agent(
 ) -> prisma.models.LibraryAgent:
     return prisma.models.LibraryAgent(
         id="la1",
+        scopeKey="__scope__",
         userId="u1",
         agentGraphId=graph_id,
         settings="{}",  # type: ignore

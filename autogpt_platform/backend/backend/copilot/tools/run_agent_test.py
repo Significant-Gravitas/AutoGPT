@@ -40,6 +40,15 @@ def mock_embedding_functions():
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_chat_share_link():
+    with patch(
+        "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+        new_callable=AsyncMock,
+    ) as link:
+        yield link
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent(setup_test_data):
     """Test that the run_agent tool successfully executes an approved agent"""
@@ -311,7 +320,11 @@ async def test_run_agent_missing_sub_agent_credentials(setup_subagent_test_data)
     library_agent = setup_subagent_test_data["library_agent"]
 
     tool = RunAgentTool()
-    session = make_session(user_id=user.id)
+    session = make_session(
+        user_id=user.id,
+        organization_id=library_agent.organization_id,
+        team_id=library_agent.team_id,
+    )
 
     response = await tool.execute(
         user_id=user.id,
@@ -329,7 +342,7 @@ async def test_run_agent_missing_sub_agent_credentials(setup_subagent_test_data)
 
     assert result_data.get("type") == "setup_requirements", (
         "Expected the inline setup card for the sub-agent's Firecrawl "
-        f"credentials, got: {result_data.get('type')}"
+        f"credentials, got: {result_data}"
     )
     missing = result_data["setup_info"]["user_readiness"]["missing_credentials"]
     assert [c["provider"] for c in missing.values()] == ["firecrawl"]
@@ -1044,6 +1057,14 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
     lib.graph_version = 1
     lib.name = "Test Agent"
     lib.id = "lib-1"
+    lib.organization_id = session.organization_id
+    lib.team_id = session.team_id
+    library_client = MagicMock()
+    library_client.get_library_agent_by_graph_id = AsyncMock(return_value=lib)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.library_db",
+        MagicMock(return_value=library_client),
+    )
     mocker.patch(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
@@ -1090,9 +1111,7 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocker):
-    """Sessions created before org tagging carry no org — the run must fall
-    back to the user's default team instead of executing tenant-blind."""
+async def test_run_agent_personal_session_stays_personal(mocker):
     from unittest.mock import MagicMock
 
     tool = RunAgentTool()
@@ -1104,6 +1123,14 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
     lib.graph_version = 1
     lib.name = "Test Agent"
     lib.id = "lib-1"
+    lib.organization_id = None
+    lib.team_id = None
+    library_client = MagicMock()
+    library_client.get_library_agent_by_graph_id = AsyncMock(return_value=lib)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.library_db",
+        MagicMock(return_value=library_client),
+    )
     mocker.patch(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),
@@ -1143,9 +1170,10 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
     )
 
     assert response is not None
-    assert captured["organization_id"] == "personal-org"
-    assert captured["team_id"] == "personal-team"
-    default_team.assert_awaited_once()
+    assert isinstance(response, ExecutionStartedResponse)
+    assert captured["organization_id"] is None
+    assert captured["team_id"] is None
+    default_team.assert_not_called()
 
 
 async def test_run_agent_redirects_webhook_trigger_agent():
@@ -1163,6 +1191,8 @@ async def test_run_agent_redirects_webhook_trigger_agent():
     lib_agent.id = "lib-wh"
     lib_agent.graph_id = "graph-wh"
     lib_agent.graph_version = 1
+    lib_agent.organization_id = None
+    lib_agent.team_id = None
 
     graph = MagicMock()
     graph.id = "graph-wh"
@@ -1269,6 +1299,8 @@ async def test_run_preset_executes_with_merged_inputs():
     preset.inputs = {"a": 1, "b": 2}
     preset.credentials = {}
     preset.expert_id = None
+    preset.organization_id = session.organization_id
+    preset.team_id = session.team_id
 
     graph = MagicMock()
     graph.id = "g1"
@@ -1281,12 +1313,15 @@ async def test_run_preset_executes_with_merged_inputs():
     library_agent.graph_id = "g1"
     library_agent.graph_version = 2
     library_agent.name = "My Agent"
+    library_agent.organization_id = session.organization_id
+    library_agent.team_id = session.team_id
 
     execution = MagicMock()
     execution.id = "exec1"
 
     mock_lib_db = MagicMock()
     mock_lib_db.get_preset = AsyncMock(return_value=preset)
+    mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=library_agent)
     mock_graph_db = MagicMock()
     mock_graph_db.get_graph = AsyncMock(return_value=graph)
     add_exec = AsyncMock(return_value=execution)
@@ -1316,6 +1351,65 @@ async def test_run_preset_executes_with_merged_inputs():
     kwargs = add_exec.await_args.kwargs
     assert kwargs["preset_id"] == "p1"
     assert kwargs["inputs"] == {"a": 1, "b": 99}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_public_marketplace_graph_installs_into_destination_scope():
+    tool = RunAgentTool()
+    session = make_session(user_id="consumer-1")
+    session.organization_id = "destination-org"
+    session.team_id = "destination-team"
+    graph = MagicMock()
+    graph.id = "publisher-graph"
+    graph.version = 4
+    graph.name = "Public Agent"
+    graph.organization_id = "publisher-org"
+    graph.team_id = None
+    library_agent = MagicMock()
+    library_agent.id = "lib-1"
+    library_agent.graph_id = graph.id
+    library_agent.graph_version = graph.version
+    library_agent.name = graph.name
+    library_agent.organization_id = session.organization_id
+    library_agent.team_id = session.team_id
+    library_client = MagicMock()
+    library_client.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    install = AsyncMock(return_value=library_agent)
+    add_exec = AsyncMock(return_value=MagicMock(id="exec-1"))
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.library_db", return_value=library_client
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            new=install,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+            new=AsyncMock(),
+        ),
+        patch("backend.copilot.tools.run_agent.track_agent_run_success"),
+    ):
+        result = await tool._run_agent(
+            user_id="consumer-1",
+            session=session,
+            graph=graph,
+            graph_credentials={},
+            inputs={},
+            dry_run=False,
+        )
+
+    assert isinstance(result, ExecutionStartedResponse)
+    install.assert_awaited_once_with(
+        graph, "consumer-1", "destination-org", "destination-team"
+    )
+    assert add_exec.await_args.kwargs["organization_id"] == "destination-org"
+    assert add_exec.await_args.kwargs["team_id"] == "destination-team"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1377,6 +1471,8 @@ async def test_run_preset_rejects_webhook_trigger():
     preset.graph_id = "g-wh"
     preset.graph_version = 1
     preset.expert_id = None
+    preset.organization_id = None
+    preset.team_id = None
     preset.inputs = {"repo": "owner/repo"}
     preset.credentials = {}
 
@@ -1419,7 +1515,7 @@ async def test_maybe_save_preset_returns_none_when_flag_off():
         graph=graph,
         graph_credentials={},
         params=RunAgentInput(),
-        expert_id=None,
+        session=make_session(user_id="u1"),
     )
     assert result is None
 
@@ -1436,14 +1532,22 @@ async def test_maybe_save_preset_creates_with_default_name():
     created.id = "preset-new"
     mock_lib_db = MagicMock()
     mock_lib_db.create_preset = AsyncMock(return_value=created)
+    session = make_session(
+        user_id="u1",
+        expert_id="expert-1",
+        organization_id="org-1",
+        team_id="team-1",
+    )
 
-    with patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db):
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=mock_lib_db),
+    ):
         result = await tool._maybe_save_preset(
             user_id="u1",
             graph=graph,
             graph_credentials={},
             params=RunAgentInput(save_as_preset=True, inputs={"x": 1}),
-            expert_id="expert-1",
+            session=session,
         )
 
     assert result == "preset-new"
@@ -1452,6 +1556,8 @@ async def test_maybe_save_preset_creates_with_default_name():
     assert preset_arg.inputs == {"x": 1}
     assert preset_arg.graph_id == "g1"
     assert mock_lib_db.create_preset.await_args.kwargs["expert_id"] == "expert-1"
+    assert mock_lib_db.create_preset.await_args.kwargs["organization_id"] == "org-1"
+    assert mock_lib_db.create_preset.await_args.kwargs["team_id"] == "team-1"
 
 
 def _completed_run_mocks(
@@ -1472,6 +1578,14 @@ def _completed_run_mocks(
     lib.graph_version = 1
     lib.name = "Test Agent"
     lib.id = "lib-1"
+    lib.organization_id = "org-1"
+    lib.team_id = "team-1"
+    library_client = MagicMock()
+    library_client.get_library_agent_by_graph_id = AsyncMock(return_value=lib)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.library_db",
+        MagicMock(return_value=library_client),
+    )
     mocker.patch(
         "backend.copilot.tools.run_agent.get_or_create_library_agent",
         AsyncMock(return_value=lib),

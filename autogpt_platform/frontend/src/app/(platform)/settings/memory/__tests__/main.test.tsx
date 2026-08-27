@@ -61,10 +61,10 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   },
   useGetFlag: (flag: string) =>
     flag === "graphiti-memory" || flag === "hire-experts",
-}));
-
-vi.mock("@/services/feature-flags/with-feature-flag", () => ({
-  withFeatureFlag: (Component: React.ComponentType) => Component,
+  useFlagStatus: (flag: string) => ({
+    enabled: flag === "graphiti-memory" || flag === "hire-experts",
+    ready: true,
+  }),
 }));
 
 import SettingsMemoryPage from "../page";

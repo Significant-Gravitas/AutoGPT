@@ -238,8 +238,27 @@ async function goToTab(name: "General" | "Members" | "Invitations" | "Teams") {
 describe("OrganizationSettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     mockSearchParams.current = new URLSearchParams();
     seedActiveOrg(TEAM_ORG.id);
+  });
+
+  it("returns not found for a direct link when org settings are disabled", () => {
+    let requests = 0;
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
+    server.use(
+      getGetV2GetOrganizationDetailsMockHandler(() => {
+        requests += 1;
+        return TEAM_ORG;
+      }),
+      getGetV2ListOrganizationMembersMockHandler(() => {
+        requests += 1;
+        return [OWNER_MEMBER];
+      }),
+    );
+
+    expect(() => render(<OrganizationSettingsPage />)).toThrow();
+    expect(requests).toBe(0);
   });
 
   it("gives an owner all four tabs with profile and danger-zone on General", async () => {

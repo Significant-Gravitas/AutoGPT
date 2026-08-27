@@ -1,5 +1,7 @@
 """Tests for BaseTool large-output persistence in execute()."""
 
+from contextlib import asynccontextmanager
+from typing import Any, Awaitable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +13,11 @@ from backend.copilot.tools.base import (
     _summarize_binary_fields,
 )
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+
+
+class _PassthroughLeaseGuard:
+    async def run(self, action: Awaitable[Any]) -> Any:
+        return await action
 
 
 class _HugeOutputTool(BaseTool):
@@ -38,6 +45,21 @@ class _HugeOutputTool(BaseTool):
         )
 
 
+class _AuthenticatedTool(_HugeOutputTool):
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+
+class _MultiAccessTool(_AuthenticatedTool):
+    @property
+    def resource_access(self):
+        return "create"
+
+    def additional_resource_accesses(self, **kwargs):
+        return ("execute",)
+
+
 # ---------------------------------------------------------------------------
 # _persist_and_summarize
 # ---------------------------------------------------------------------------
@@ -47,20 +69,11 @@ class TestPersistAndSummarize:
     @pytest.mark.asyncio
     async def test_returns_middle_out_preview_with_retrieval_instructions(self):
         raw = "A" * 200_000
-
-        mock_workspace = MagicMock()
-        mock_workspace.id = "ws-1"
-        mock_db = AsyncMock()
-        mock_db.get_or_create_workspace = AsyncMock(return_value=mock_workspace)
-
         mock_manager = AsyncMock()
 
-        with (
-            patch("backend.copilot.tools.base.workspace_db", return_value=mock_db),
-            patch(
-                "backend.copilot.tools.base.WorkspaceManager",
-                return_value=mock_manager,
-            ),
+        with patch(
+            "backend.copilot.tools.base.get_workspace_manager",
+            new=AsyncMock(return_value=mock_manager),
         ):
             result = await _persist_and_summarize(raw, "user-1", "session-1", "tc-123")
 
@@ -84,10 +97,11 @@ class TestPersistAndSummarize:
     async def test_fallback_on_workspace_error(self):
         """If workspace write fails, return raw output for normal truncation."""
         raw = "B" * 200_000
-        mock_db = AsyncMock()
-        mock_db.get_or_create_workspace = AsyncMock(side_effect=RuntimeError("boom"))
 
-        with patch("backend.copilot.tools.base.workspace_db", return_value=mock_db):
+        with patch(
+            "backend.copilot.tools.base.get_workspace_manager",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
             result = await _persist_and_summarize(raw, "user-1", "session-1", "tc-fail")
 
         assert result == raw  # unchanged — fallback to normal truncation
@@ -114,6 +128,104 @@ class TestBaseToolExecuteLargeOutput:
         persist_mock.assert_not_awaited()
         assert "<tool-output-truncated" not in str(result.output)
 
+
+class TestBaseToolAuthorization:
+    @pytest.mark.asyncio
+    async def test_anonymous_call_returns_login_without_executing(self):
+        tool = _AuthenticatedTool(output_size=100)
+        tool._execute = AsyncMock()
+        session = MagicMock(session_id="session-1")
+
+        result = await tool.execute(None, session, "call-1")
+
+        assert result.success is False
+        assert "sign in" in str(result.output).lower()
+        tool._execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_live_role_downgrade_blocks_tool(self, monkeypatch):
+        tool = _AuthenticatedTool(output_size=100)
+        tool._execute = AsyncMock()
+        session = MagicMock(
+            session_id="session-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+        @asynccontextmanager
+        async def denied(*args, **kwargs):
+            yield False
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.base.live_resource_lease",
+            denied,
+        )
+
+        result = await tool.execute("user-1", session, "call-1")
+
+        assert result.success is False
+        tool._execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_additional_access_denial_blocks_tool(self, monkeypatch):
+        tool = _MultiAccessTool(output_size=100)
+        tool._execute = AsyncMock()
+        session = MagicMock(
+            session_id="session-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+        checked = []
+
+        @asynccontextmanager
+        async def allow_create_only(*args, **kwargs):
+            checked.append(args[-1])
+            yield _PassthroughLeaseGuard() if args[-1] == "create" else False
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.base.live_resource_lease",
+            allow_create_only,
+        )
+
+        result = await tool.execute("user-1", session, "call-1")
+
+        assert result.success is False
+        assert checked == ["create", "execute"]
+        tool._execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_all_resource_leases_remain_held_during_tool_action(
+        self, monkeypatch
+    ):
+        tool = _MultiAccessTool(output_size=100)
+        session = MagicMock(
+            session_id="session-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+        active: set[str] = set()
+
+        @asynccontextmanager
+        async def lease(*args, **kwargs):
+            access = args[-1]
+            active.add(access)
+            try:
+                yield _PassthroughLeaseGuard()
+            finally:
+                active.remove(access)
+
+        async def execute(*args, **kwargs):
+            assert active == {"create", "execute"}
+            return ToolResponseBase(type=ResponseType.ERROR, message="done")
+
+        tool._execute = AsyncMock(side_effect=execute)
+        monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
+
+        await tool.execute("user-1", session, "call-1")
+
+        assert active == set()
+        tool._execute.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_large_output_persisted(self):
         """Outputs over the threshold trigger persistence + preview."""
@@ -121,18 +233,11 @@ class TestBaseToolExecuteLargeOutput:
         session = MagicMock()
         session.session_id = "s-1"
 
-        mock_workspace = MagicMock()
-        mock_workspace.id = "ws-1"
-        mock_db = AsyncMock()
-        mock_db.get_or_create_workspace = AsyncMock(return_value=mock_workspace)
         mock_manager = AsyncMock()
 
-        with (
-            patch("backend.copilot.tools.base.workspace_db", return_value=mock_db),
-            patch(
-                "backend.copilot.tools.base.WorkspaceManager",
-                return_value=mock_manager,
-            ),
+        with patch(
+            "backend.copilot.tools.base.get_workspace_manager",
+            new=AsyncMock(return_value=mock_manager),
         ):
             result = await tool.execute("user-1", session, "tc-big")
 

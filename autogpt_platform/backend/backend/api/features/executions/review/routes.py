@@ -1,11 +1,14 @@
 import asyncio
 import logging
-from typing import Any, List
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
+from typing import Annotated, Any, List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
+from backend.api.live_auth import live_dependency
 from backend.copilot.constants import (
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
@@ -13,6 +16,7 @@ from backend.copilot.constants import (
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    get_graph_execution_exact_scope,
     get_graph_execution_meta,
     get_node_executions,
 )
@@ -22,10 +26,10 @@ from backend.data.human_review import (
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
-    has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
 from backend.data.model import USER_TIMEZONE_NOT_SET
+from backend.data.tenancy import get_user_team_ids, live_resource_access_barrier
 from backend.data.user import get_user_by_id
 from backend.data.workspace import get_or_create_workspace
 from backend.executor.utils import add_graph_execution
@@ -84,6 +88,12 @@ async def _resolve_node_ids(
 )
 async def list_pending_reviews(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+            autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+        )
+    ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(25, ge=1, le=100, description="Number of reviews per page"),
 ) -> List[PendingHumanReviewModel]:
@@ -106,7 +116,34 @@ async def list_pending_reviews(
         from results rather than failing the entire request.
     """
 
-    return await get_pending_reviews_for_user(user_id, page, page_size)
+    team_ids = (
+        [ctx.team_id]
+        if ctx.team_id is not None
+        else await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    )
+    scopes: list[tuple[str | None, str | None]] = [(ctx.org_id, None)]
+    scopes.extend((ctx.org_id, team_id) for team_id in sorted(set(team_ids)))
+    async with AsyncExitStack() as stack:
+        for organization_id, team_id in scopes:
+            allowed = await stack.enter_async_context(
+                live_resource_access_barrier(
+                    user_id,
+                    organization_id,
+                    team_id,
+                    "view",
+                )
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Resource access revoked")
+
+        return await get_pending_reviews_for_user(
+            user_id,
+            page,
+            page_size,
+            organization_id=ctx.org_id,
+            team_ids=team_ids,
+            team_id_restriction=ctx.team_id,
+        )
 
 
 @router.get(
@@ -122,6 +159,12 @@ async def list_pending_reviews(
 async def list_pending_reviews_for_execution(
     graph_exec_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+            autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+        )
+    ),
 ) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for a specific graph execution.
 
@@ -149,76 +192,162 @@ async def list_pending_reviews_for_execution(
     # Verify user owns the graph execution before returning reviews
     # (CoPilot synthetic IDs don't have graph execution records)
     if not is_copilot_synthetic_id(graph_exec_id):
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+        candidate = await get_graph_execution_meta(
+            user_id=user_id,
+            execution_id=graph_exec_id,
+            organization_id=ctx.org_id,
+            team_id_restriction=ctx.team_id,
         )
-        if not graph_exec:
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
+        organization_id, team_id = candidate.organization_id, candidate.team_id
+    else:
+        candidates = await get_pending_reviews_for_execution(graph_exec_id, user_id)
+        scopes = {(review.organization_id, review.team_id) for review in candidates}
+        if len(scopes) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph execution #{graph_exec_id} not found",
+            )
+        organization_id, team_id = next(iter(scopes))
+        if organization_id != ctx.org_id or (
+            ctx.team_id is not None and team_id != ctx.team_id
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Graph execution #{graph_exec_id} not found",
             )
 
-    return await get_pending_reviews_for_execution(graph_exec_id, user_id)
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "view"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        if not is_copilot_synthetic_id(graph_exec_id):
+            current = await get_graph_execution_exact_scope(
+                user_id,
+                graph_exec_id,
+                organization_id,
+                team_id,
+            )
+            if current is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Graph execution #{graph_exec_id} not found",
+                )
+        return await get_pending_reviews_for_execution(
+            graph_exec_id,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            enforce_scope=True,
+        )
 
 
-@router.post("/action", response_model=ReviewResponse)
-async def process_review_action(
+async def _live_review_action_dependency(
     request: ReviewRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> ReviewResponse:
-    """Process reviews with approve or reject actions."""
-
-    # Collect all node exec IDs from the request
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+            autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+        )
+    ),
+) -> AsyncIterator[dict[str, PendingHumanReviewModel]]:
     all_request_node_ids = {review.node_exec_id for review in request.reviews}
-
     if not all_request_node_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one review must be provided",
         )
-
-    # Batch fetch all requested reviews (regardless of status for idempotent handling)
     reviews_map = await get_reviews_by_node_exec_ids(
         list(all_request_node_ids), user_id
     )
-
-    # Validate all reviews were found (must exist, any status is OK for now)
     missing_ids = all_request_node_ids - set(reviews_map.keys())
     if missing_ids:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Review(s) not found: {', '.join(missing_ids)}",
         )
-
-    # Validate all reviews belong to the same execution
     graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
     if len(graph_exec_ids) > 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="All reviews in a single request must belong to the same execution.",
         )
-
     graph_exec_id = next(iter(graph_exec_ids))
     is_copilot = is_copilot_synthetic_id(graph_exec_id)
-
-    # Validate execution status for graph executions (skip for CoPilot synthetic IDs)
-    if not is_copilot:
-        graph_exec_meta = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    scopes = {
+        (review.organization_id, review.team_id) for review in reviews_map.values()
+    }
+    if len(scopes) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All reviews in a single request must belong to the same workspace.",
         )
-        if not graph_exec_meta:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Graph execution #{graph_exec_id} not found",
-            )
-        if graph_exec_meta.status not in (
-            ExecutionStatus.REVIEW,
-            ExecutionStatus.INCOMPLETE,
+    organization_id, team_id = next(iter(scopes))
+    if organization_id != ctx.org_id or (
+        ctx.team_id is not None and team_id != ctx.team_id
+    ):
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        current = await get_reviews_by_node_exec_ids(
+            list(all_request_node_ids), user_id
+        )
+        if set(current) != all_request_node_ids or any(
+            (review.organization_id, review.team_id) != (organization_id, team_id)
+            or review.graph_exec_id != graph_exec_id
+            for review in current.values()
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Cannot process reviews while execution status is {graph_exec_meta.status}",
+            raise HTTPException(status_code=404, detail="Review not found")
+        if not is_copilot:
+            graph_exec_meta = await get_graph_execution_exact_scope(
+                user_id,
+                graph_exec_id,
+                organization_id,
+                team_id,
             )
+            if not graph_exec_meta:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Graph execution #{graph_exec_id} not found",
+                )
+            if graph_exec_meta.status not in (
+                ExecutionStatus.REVIEW,
+                ExecutionStatus.INCOMPLETE,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Cannot process reviews while execution status is "
+                        f"{graph_exec_meta.status}"
+                    ),
+                )
+        yield current
+
+
+@router.post("/action", response_model=ReviewResponse)
+async def process_review_action(
+    request: ReviewRequest,
+    reviews_map: Annotated[
+        dict[str, PendingHumanReviewModel],
+        live_dependency(_live_review_action_dependency),
+    ],
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ReviewResponse:
+    """Process reviews with approve or reject actions."""
+
+    graph_exec_ids = {review.graph_exec_id for review in reviews_map.values()}
+    graph_exec_id = next(iter(graph_exec_ids))
+    is_copilot = is_copilot_synthetic_id(graph_exec_id)
 
     # Build review decisions map and track which reviews requested auto-approval
     # Auto-approved reviews use original data (no modifications allowed)
@@ -324,40 +453,39 @@ async def process_review_action(
 
     # Resume graph execution only for real graph executions (not CoPilot)
     # CoPilot sessions are resumed by the LLM retrying run_block with review_id
-    if not is_copilot and updated_reviews:
-        still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
+    if not is_copilot and updated_reviews.should_resume:
+        first_review = next(iter(updated_reviews.values()))
 
-        if not still_has_pending:
-            first_review = next(iter(updated_reviews.values()))
+        try:
+            user = await get_user_by_id(user_id)
+            settings = await get_graph_settings(
+                user_id=user_id, graph_id=first_review.graph_id
+            )
 
-            try:
-                user = await get_user_by_id(user_id)
-                settings = await get_graph_settings(
-                    user_id=user_id, graph_id=first_review.graph_id
-                )
+            user_timezone = (
+                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+            )
 
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
+            workspace = await get_or_create_workspace(user_id)
 
-                workspace = await get_or_create_workspace(user_id)
+            execution_context = ExecutionContext(
+                human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+                sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+                user_timezone=user_timezone,
+                workspace_id=workspace.id,
+                organization_id=first_review.organization_id,
+                team_id=first_review.team_id,
+            )
 
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
-                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-
-                await add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=user_id,
-                    graph_exec_id=graph_exec_id,
-                    execution_context=execution_context,
-                )
-                logger.info(f"Resumed execution {graph_exec_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
+            await add_graph_execution(
+                graph_id=first_review.graph_id,
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                execution_context=execution_context,
+            )
+            logger.info(f"Resumed execution {graph_exec_id}")
+        except Exception as e:
+            logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
 
     # Build error message if auto-approvals failed
     error_message = None

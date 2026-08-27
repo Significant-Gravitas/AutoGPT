@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
   ORIGINAL_TITLE,
@@ -630,6 +631,7 @@ describe("getCopilotAuthHeaders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSystemHeaders.mockReturnValue({});
+    useOrgTeamStore.setState({ activeOrgID: null, activeTeamID: null });
   });
 
   it("returns Authorization header when token is present and no impersonation active", async () => {
@@ -657,6 +659,19 @@ describe("getCopilotAuthHeaders", () => {
     expect(headers).toEqual({
       Authorization: "Bearer test-jwt-token",
       [IMPERSONATION_HEADER_NAME]: "impersonated-user-123",
+    });
+  });
+
+  it("includes the active organization on direct Copilot requests", async () => {
+    mockGetWebSocketToken.mockResolvedValue({
+      token: "test-jwt-token",
+      error: undefined,
+    });
+    useOrgTeamStore.setState({ activeOrgID: "org-1", activeTeamID: null });
+
+    await expect(getCopilotAuthHeaders()).resolves.toEqual({
+      Authorization: "Bearer test-jwt-token",
+      "X-Org-Id": "org-1",
     });
   });
 

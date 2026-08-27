@@ -34,6 +34,7 @@ export default function LibraryUploadAgentDialog() {
     agentObject,
     teamId,
     setTeamId,
+    isReady,
   } = useLibraryUploadAgentDialog();
 
   return (
@@ -135,7 +136,7 @@ export default function LibraryUploadAgentDialog() {
             type="submit"
             variant="primary"
             className="min-w-[18rem]"
-            disabled={!agentObject || isUploading}
+            disabled={!agentObject || isUploading || !isReady}
           >
             {isUploading ? (
               <div className="flex items-center gap-2">

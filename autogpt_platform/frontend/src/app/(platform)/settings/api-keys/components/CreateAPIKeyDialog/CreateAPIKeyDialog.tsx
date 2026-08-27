@@ -21,6 +21,7 @@ export function CreateAPIKeyDialog({ open, onOpenChange }: Props) {
     handleClose,
     teamId,
     setTeamId,
+    isReady,
   } = useCreateAPIKeyForm({ onClose: () => onOpenChange(false) });
 
   const isSuccess = view === "success";
@@ -55,6 +56,7 @@ export function CreateAPIKeyDialog({ open, onOpenChange }: Props) {
             isPending={isPending}
             teamId={teamId}
             setTeamId={setTeamId}
+            isReady={isReady}
           />
         )}
       </Dialog.Content>

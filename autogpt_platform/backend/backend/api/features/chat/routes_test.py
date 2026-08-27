@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
@@ -8,6 +9,9 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
@@ -58,9 +62,6 @@ def test_tool_response_union_exports_expert_soul_response() -> None:
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
-    from autogpt_libs.auth.dependencies import get_request_context
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(
@@ -76,6 +77,43 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     mocker.patch.object(
         chat_routes,
         "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "get_chat_session_metadata",
+        new=AsyncMock(
+            return_value=MagicMock(
+                organization_id="test-org",
+                team_id="test-team",
+                expert_id=None,
+            )
+        ),
+    )
+    mocker.patch.object(
+        chat_routes,
+        "has_live_resource_access",
+        new=AsyncMock(return_value=True),
+    )
+
+    @asynccontextmanager
+    async def allowed_lease(*_args, **_kwargs):
+        yield True
+
+    mocker.patch.object(chat_routes, "live_resource_lease", allowed_lease)
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.live_resource_lease", allowed_lease
+    )
+    mocker.patch(
+        "backend.api.live_auth.live_resource_permission_barrier", allowed_lease
+    )
+    mocker.patch.object(
+        chat_routes,
+        "require_exact_chat_session_scope",
+        new=AsyncMock(),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.require_exact_chat_session_scope",
         new=AsyncMock(),
     )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
@@ -306,6 +344,16 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(1_000_000, 5_000_000, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     # ``schedule_chat_turn`` owns acquire-slot + persist-message + dispatch
     # in one call. Patching it at the route boundary lets tests exercise
     # validation/enrichment (file_ids, message length, rate limits, etc.)
@@ -321,6 +369,11 @@ def _mock_stream_internals(
         "subscribe_to_session",
         new_callable=AsyncMock,
         return_value=None,
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "publish_chunk",
+        new_callable=AsyncMock,
     )
     return types.SimpleNamespace(
         enqueue=mock_schedule,
@@ -1314,6 +1367,75 @@ def test_list_chat_transports_self_hosted_deployment_stays_default_with_codex(
         "available": True,
         "default": False,
     }
+
+
+@pytest.mark.parametrize(
+    ("context", "scope", "view_action", "create_action", "execute_action"),
+    [
+        (
+            RequestContext(
+                user_id=TEST_USER_ID,
+                org_id="test-org",
+                team_id=None,
+                is_org_owner=False,
+                is_org_admin=False,
+                is_org_billing_manager=True,
+                is_team_admin=False,
+                is_team_billing_manager=False,
+                seat_status="ACTIVE",
+            ),
+            "org",
+            "VIEW_RESOURCES",
+            "CREATE_RESOURCES",
+            "EXECUTE_RESOURCES",
+        ),
+        (
+            RequestContext(
+                user_id=TEST_USER_ID,
+                org_id="test-org",
+                team_id="test-team",
+                is_org_owner=False,
+                is_org_admin=False,
+                is_org_billing_manager=False,
+                is_team_admin=False,
+                is_team_billing_manager=True,
+                seat_status="ACTIVE",
+            ),
+            "workspace",
+            "VIEW_AGENTS",
+            "CREATE_AGENTS",
+            "EXECUTE_AGENTS",
+        ),
+    ],
+)
+def test_billing_only_roles_cannot_use_copilot_resources(
+    context: RequestContext,
+    scope: str,
+    view_action: str,
+    create_action: str,
+    execute_action: str,
+) -> None:
+    app.dependency_overrides[get_request_context] = lambda: context
+
+    list_response = client.get("/sessions")
+    create_response = client.post("/sessions")
+    execute_response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "create a folder"},
+    )
+
+    assert list_response.status_code == 403
+    assert list_response.json()["detail"] == (
+        f"Missing {scope} permission: {view_action}"
+    )
+    assert create_response.status_code == 403
+    assert create_response.json()["detail"] == (
+        f"Missing {scope} permission: {create_action}"
+    )
+    assert execute_response.status_code == 403
+    assert execute_response.json()["detail"] == (
+        f"Missing {scope} permission: {execute_action}"
+    )
 
 
 def test_create_session_dry_run_true(
@@ -2662,6 +2784,10 @@ def _mock_validate_session(
         new_callable=AsyncMock,
         return_value=dummy,
     )
+    mocker.patch(
+        "backend.api.features.chat.routes.clear_pending_messages_unsafe",
+        new_callable=AsyncMock,
+    )
 
 
 def test_cancel_session_no_active_task(mocker: pytest_mock.MockerFixture) -> None:
@@ -2733,6 +2859,8 @@ def test_cancel_session_releases_orphan_running(
                 updated_at=stale,
                 metadata=ChatSessionMetadata(),
                 chat_status="running",
+                organization_id="test-org",
+                team_id="test-team",
             )
         ),
     )
@@ -3338,7 +3466,7 @@ def test_disconnect_stream_returns_204_and_awaits_registry(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    mock_session = MagicMock()
+    mock_session = MagicMock(organization_id="test-org", team_id="test-team")
     mocker.patch(
         "backend.api.features.chat.routes.get_chat_session_metadata",
         new_callable=AsyncMock,
@@ -3490,6 +3618,8 @@ def test_get_session_releases_orphan_when_redis_empty_and_db_running(
                 updated_at=stale,
                 metadata=ChatSessionMetadata(),
                 chat_status="running",
+                organization_id="test-org",
+                team_id="test-team",
             )
         ),
     )

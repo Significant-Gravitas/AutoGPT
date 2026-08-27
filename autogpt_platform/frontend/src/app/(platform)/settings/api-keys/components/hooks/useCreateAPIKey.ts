@@ -12,11 +12,11 @@ import { API_KEYS_QUERY_KEY } from "./useAPIKeysList";
 
 // teamId restricts the created key to a team (via X-Team-Id — the backend
 // stamps it onto the key's team_id_restriction). Null = org-home / unrestricted.
-export function useCreateAPIKey(teamId: string | null = null) {
+export function useCreateAPIKey(teamId: string | null = null, isReady = true) {
   const queryClient = useQueryClient();
 
   const mutation = usePostV1CreateNewApiKey({
-    request: getTeamRequestInit(teamId),
+    request: getTeamRequestInit(teamId, isReady),
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });

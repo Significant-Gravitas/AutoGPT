@@ -1059,6 +1059,23 @@ def test_rehire_expert_workspace_unavailable_returns_503(
     }
 
 
+def test_raise_expert_workspace_unavailable_returns_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.create_raised_expert",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPrivateTenancyNotFoundError("Otto"),
+    )
+
+    response = client.post("/experts/raise", json={"name": "Otto"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Your expert workspace is still being set up. Try again shortly."
+    }
+
+
 def test_rehire_dependency_unavailable_returns_503(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

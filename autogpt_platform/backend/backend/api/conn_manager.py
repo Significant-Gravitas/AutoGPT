@@ -2,9 +2,13 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Awaitable, Callable, Dict, Optional, Set
 
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.exceptions import MovedError, RedisError, ResponseError
@@ -16,10 +20,16 @@ from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
     exec_channel,
+    get_graph_execution_exact_scope,
     get_graph_execution_meta,
     graph_all_channel,
 )
+from backend.data.graph import get_graph, owned_graph_exists_exact_scope
 from backend.data.notification_bus import NotificationEvent
+from backend.data.tenancy import (
+    agent_graph_attachment_barrier,
+    live_resource_permission_barrier,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -57,6 +67,17 @@ def _notification_bus_channel(user_id: str) -> str:
 
 
 MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
+
+
+class _ExecutionSubscriptionScope(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    user_id: str
+    organization_id: str | None
+    team_id: str | None
+    graph_id: str
+    execution_id: str | None
+    team_action: TeamAction
 
 
 def _is_moved_error(exc: BaseException) -> bool:
@@ -259,15 +280,38 @@ class ConnectionManager:
         full_channel = event_bus_channel(
             exec_channel(user_id, meta.graph_id, graph_exec_id)
         )
-        await self._open_subscription(websocket, channel_key, full_channel)
+        scope = _ExecutionSubscriptionScope(
+            user_id=user_id,
+            organization_id=meta.organization_id,
+            team_id=meta.team_id,
+            graph_id=meta.graph_id,
+            execution_id=graph_exec_id,
+            team_action=TeamAction.VIEW_EXECUTIONS,
+        )
+        if not await self._execution_scope_is_live(scope):
+            raise ValueError("Access denied")
+        await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
 
     async def subscribe_graph_execs(
         self, *, user_id: str, graph_id: str, websocket: WebSocket
     ) -> str:
+        graph = await get_graph(graph_id, None, user_id)
+        if graph is None:
+            raise ValueError(f"graph #{graph_id} not found for user #{user_id}")
+        scope = _ExecutionSubscriptionScope(
+            user_id=user_id,
+            organization_id=graph.organization_id,
+            team_id=graph.team_id,
+            graph_id=graph_id,
+            execution_id=None,
+            team_action=TeamAction.VIEW_AGENTS,
+        )
         channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
         full_channel = event_bus_channel(graph_all_channel(user_id, graph_id))
-        await self._open_subscription(websocket, channel_key, full_channel)
+        if not await self._execution_scope_is_live(scope):
+            raise ValueError("Access denied")
+        await self._open_subscription(websocket, channel_key, full_channel, scope)
         return channel_key
 
     async def unsubscribe_graph_exec(
@@ -283,7 +327,11 @@ class ConnectionManager:
         return await self._close_subscription(websocket, channel_key)
 
     async def _open_subscription(
-        self, websocket: WebSocket, channel_key: str, full_channel: str
+        self,
+        websocket: WebSocket,
+        channel_key: str,
+        full_channel: str,
+        scope: _ExecutionSubscriptionScope,
     ) -> None:
         self.subscriptions.setdefault(channel_key, set()).add(websocket)
         per_ws = self._ws_subs.setdefault(websocket, {})
@@ -292,10 +340,71 @@ class ConnectionManager:
         sub = _Subscription(full_channel)
 
         async def on_message(data: Optional[bytes | str]) -> None:
-            await self._forward_exec_event(websocket, channel_key, data)
+            if not await self._execution_scope_is_live(scope):
+                await self._close_revoked_execution_websocket(websocket)
+                return
+            async with self._execution_scope_barrier(scope) as allowed:
+                if not allowed:
+                    await self._close_revoked_execution_websocket(websocket)
+                    return
+                await self._forward_exec_event(websocket, channel_key, data)
 
         await sub.start(on_message)
         per_ws[channel_key] = sub
+
+    async def _close_revoked_execution_websocket(self, websocket: WebSocket) -> None:
+        try:
+            await websocket.close(
+                code=4003,
+                reason="Execution subscription access was revoked",
+            )
+        except Exception as error:
+            if not _is_ws_close_race(error, websocket):
+                logger.warning(
+                    "Failed to close revoked execution subscription",
+                    exc_info=True,
+                )
+
+    async def _execution_scope_is_live(
+        self,
+        scope: _ExecutionSubscriptionScope,
+    ) -> bool:
+        async with self._execution_scope_barrier(scope) as allowed:
+            return allowed
+
+    @asynccontextmanager
+    async def _execution_scope_barrier(
+        self,
+        scope: _ExecutionSubscriptionScope,
+    ) -> AsyncIterator[bool]:
+        async with live_resource_permission_barrier(
+            scope.user_id,
+            scope.organization_id,
+            scope.team_id,
+            OrgAction.VIEW_RESOURCES,
+            scope.team_action,
+        ) as allowed:
+            if not allowed:
+                yield False
+                return
+            async with agent_graph_attachment_barrier(scope.graph_id):
+                if scope.execution_id is not None:
+                    execution = await get_graph_execution_exact_scope(
+                        scope.user_id,
+                        scope.execution_id,
+                        scope.organization_id,
+                        scope.team_id,
+                    )
+                    yield (
+                        execution is not None and execution.graph_id == scope.graph_id
+                    )
+                    return
+                yield await owned_graph_exists_exact_scope(
+                    scope.graph_id,
+                    scope.user_id,
+                    scope.organization_id,
+                    scope.team_id,
+                )
 
     async def _close_subscription(
         self, websocket: WebSocket, channel_key: str

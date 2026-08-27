@@ -29,7 +29,11 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.grants import grant_covers_version, resolve_graph_grants
-from backend.data.tenancy import get_user_team_ids, visibility_filter
+from backend.data.tenancy import (
+    agent_graph_attachment_barriers,
+    get_user_team_ids,
+    visibility_filter,
+)
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
@@ -1246,6 +1250,7 @@ async def list_graphs_paginated(
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
     organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> GraphsPaginated:
     """
     Retrieves paginated graph metadata objects.
@@ -1267,7 +1272,12 @@ async def list_graphs_paginated(
         team_ids = await get_user_team_ids(user_id, organization_id)
         where_clause = cast(
             AgentGraphWhereInput,
-            visibility_filter(user_id, organization_id, team_ids),
+            visibility_filter(
+                user_id,
+                organization_id,
+                team_ids,
+                team_id_restriction=team_id_restriction,
+            ),
         )
     else:
         where_clause = {"userId": user_id}
@@ -1302,7 +1312,9 @@ async def list_graphs_paginated(
     )
 
 
-async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
+async def get_graph_metadata(
+    graph_id: str, version: int | None = None
+) -> GraphMeta | None:
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
     }
@@ -1318,13 +1330,24 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     if not graph:
         return None
 
-    return Graph(
-        id=graph.id,
-        name=graph.name or "",
-        description=graph.description or "",
-        version=graph.version,
-        is_active=graph.isActive,
+    return GraphMeta.from_db(graph)
+
+
+async def owned_graph_exists_exact_scope(
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    graph = await AgentGraph.prisma().find_first(
+        where={
+            "id": graph_id,
+            "userId": user_id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        }
     )
+    return graph is not None
 
 
 async def get_graph(
@@ -1368,7 +1391,12 @@ async def get_graph(
                 graph_where_clause["AND"] = [
                     cast(
                         AgentGraphWhereInput,
-                        visibility_filter(user_id, organization_id, team_ids),
+                        visibility_filter(
+                            user_id,
+                            organization_id,
+                            team_ids,
+                            team_id_restriction=team_id,
+                        ),
                     )
                 ]
             elif user_id is not None:
@@ -1411,6 +1439,16 @@ async def get_graph(
         }
         if version is not None:
             library_where["agentGraphVersion"] = version
+        if organization_id is not None:
+            team_ids = await get_user_team_ids(user_id, organization_id)
+            library_where["AND"] = [
+                visibility_filter(
+                    user_id,
+                    organization_id,
+                    team_ids,
+                    team_id_restriction=team_id,
+                )
+            ]
 
         library_agent = await LibraryAgent.prisma().find_first(
             where=library_where,
@@ -1424,7 +1462,11 @@ async def get_graph(
     # the pinned version; followLatest grants open the current active version.
     if graph is None and user_id is not None:
         grants = await resolve_graph_grants(
-            user_id, graph_id, capability=GrantCapability.VIEW
+            user_id,
+            graph_id,
+            capability=GrantCapability.VIEW,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
         )
         if version is not None:
             grants = [grant for grant in grants if grant_covers_version(grant, version)]
@@ -1599,28 +1641,42 @@ async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     ]
 
 
-async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
+async def set_graph_active_version(
+    graph_id: str,
+    version: int,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> None:
     # Activate the requested version if it exists and is owned by the user.
+    where: AgentGraphWhereInput = {
+        "id": graph_id,
+        "version": version,
+        "userId": user_id,
+    }
+    if organization_id is not None:
+        where["organizationId"] = organization_id
+        where["teamId"] = team_id
     updated_count = await AgentGraph.prisma().update_many(
         data={"isActive": True},
-        where={
-            "id": graph_id,
-            "version": version,
-            "userId": user_id,
-        },
+        where=where,
     )
     if updated_count == 0:
         raise Exception(f"Graph #{graph_id} v{version} not found or not owned by user")
 
     # Deactivate all other versions.
+    other_versions: AgentGraphWhereInput = {
+        "id": graph_id,
+        "version": {"not": version},
+        "userId": user_id,
+        "isActive": True,
+    }
+    if organization_id is not None:
+        other_versions["organizationId"] = organization_id
+        other_versions["teamId"] = team_id
     await AgentGraph.prisma().update_many(
         data={"isActive": False},
-        where={
-            "id": graph_id,
-            "version": {"not": version},
-            "userId": user_id,
-            "isActive": True,
-        },
+        where=other_versions,
     )
 
 
@@ -1640,7 +1696,12 @@ async def get_graph_all_versions(
         where_clause["AND"] = [
             cast(
                 AgentGraphWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
+                visibility_filter(
+                    user_id,
+                    organization_id,
+                    team_ids,
+                    team_id_restriction=team_id,
+                ),
             )
         ]
     elif team_id is not None:
@@ -1662,18 +1723,21 @@ async def get_graph_all_versions(
 
 
 async def delete_graph(
-    graph_id: str, user_id: str, organization_id: str | None = None
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> int:
     where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
     if organization_id is not None:
-        # Scope the delete to the caller's active org. Tenant-less rows
-        # (created before org tagging, not yet backfilled) stay deletable
-        # by their owner — only rows tagged with a DIFFERENT org are
-        # protected from cross-org deletion.
-        where["OR"] = [
-            {"organizationId": organization_id},
-            {"organizationId": None},
-        ]
+        if team_id_restriction is not None:
+            where["organizationId"] = organization_id
+            where["teamId"] = team_id_restriction
+        else:
+            where["OR"] = [
+                {"organizationId": organization_id},
+                {"organizationId": None},
+            ]
     entries_count = await AgentGraph.prisma().delete_many(where=where)
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
@@ -1703,7 +1767,12 @@ async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
 
 
 async def validate_graph_execution_permissions(
-    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
+    user_id: str,
+    graph_id: str,
+    graph_version: int,
+    is_sub_graph: bool = False,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> None:
     """
     Validate that a user has permission to execute a specific graph.
@@ -1730,23 +1799,53 @@ async def validate_graph_execution_permissions(
         GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
+    team_ids = []
+    if organization_id is not None:
+        team_ids = (
+            [team_id_restriction]
+            if team_id_restriction is not None
+            else await get_user_team_ids(user_id, organization_id)
+        )
+    library_where: dict = {
+        "agentGraphId": graph_id,
+        "agentGraphVersion": graph_version,
+        "isDeleted": False,
+        "isArchived": False,
+    }
+    if organization_id is None:
+        library_where["userId"] = user_id
+    else:
+        library_where["organizationId"] = organization_id
+        if team_id_restriction is not None:
+            library_where["teamId"] = team_id_restriction
+        else:
+            library_where["OR"] = [
+                {"teamId": None},
+                *([{"teamId": {"in": team_ids}}] if team_ids else []),
+            ]
+
     graph, library_agent = await asyncio.gather(
         AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
         ),
-        LibraryAgent.prisma().find_first(
-            where={
-                "userId": user_id,
-                "agentGraphId": graph_id,
-                "agentGraphVersion": graph_version,
-                "isDeleted": False,
-                "isArchived": False,
-            }
-        ),
+        LibraryAgent.prisma().find_first(where=library_where),
     )
 
-    # Step 1: Check if user owns this graph
-    user_owns_graph = graph and graph.userId == user_id
+    graph_in_context = bool(
+        graph
+        and (
+            organization_id is None
+            or (
+                graph.organizationId == organization_id
+                and (
+                    graph.teamId == team_id_restriction
+                    if team_id_restriction is not None
+                    else graph.teamId is None or graph.teamId in team_ids
+                )
+            )
+        )
+    )
+    user_owns_graph = bool(graph_in_context and graph and graph.userId == user_id)
 
     # Step 2: Check if the exact graph version is in the library.
     user_has_in_library = library_agent is not None
@@ -1755,15 +1854,13 @@ async def validate_graph_execution_permissions(
         # Owners are allowed to execute a new version as long as some live
         # library entry still exists for the graph. Non-owners stay
         # version-specific.
+        owner_library_where = {
+            key: value
+            for key, value in library_where.items()
+            if key != "agentGraphVersion"
+        }
         owner_has_live_library_entry = (
-            await LibraryAgent.prisma().find_first(
-                where={
-                    "userId": user_id,
-                    "agentGraphId": graph_id,
-                    "isDeleted": False,
-                    "isArchived": False,
-                }
-            )
+            await LibraryAgent.prisma().find_first(where=owner_library_where)
             is not None
         )
 
@@ -1773,10 +1870,15 @@ async def validate_graph_execution_permissions(
     # outside the consumer's library, so a grant satisfies the library
     # requirement below too.
     exec_grants = await resolve_graph_grants(
-        user_id, graph_id, capability=GrantCapability.EXECUTE
+        user_id,
+        graph_id,
+        capability=GrantCapability.EXECUTE,
+        organization_id=organization_id,
+        team_id_restriction=team_id_restriction,
     )
     user_has_exec_grant = graph is not None and any(
         graph.organizationId == grant.organizationId
+        and (team_id_restriction is None or grant.principalId == team_id_restriction)
         and grant_covers_version(grant, graph_version)
         and (not grant.followLatest or graph.isActive)
         for grant in exec_grants
@@ -1845,14 +1947,12 @@ async def create_graph(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> GraphModel:
-    async with transaction() as tx:
-        await __create_graph(
-            tx,
-            graph,
-            user_id,
-            organization_id=organization_id,
-            team_id=team_id,
-        )
+    await _create_graph_with_barriers(
+        graph,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
 
     if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
         return created_graph
@@ -1882,14 +1982,12 @@ async def fork_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    async with transaction() as tx:
-        await __create_graph(
-            tx,
-            graph,
-            user_id,
-            organization_id=organization_id,
-            team_id=team_id,
-        )
+    await _create_graph_with_barriers(
+        graph,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
 
     return graph
 
@@ -1921,16 +2019,33 @@ async def copy_graph(
 
     dest_team = target_team_id or team_id
 
-    async with transaction() as tx:
-        await __create_graph(
-            tx,
-            graph,
-            user_id,
-            organization_id=organization_id,
-            team_id=dest_team,
-        )
+    await _create_graph_with_barriers(
+        graph,
+        user_id,
+        organization_id=organization_id,
+        team_id=dest_team,
+    )
 
     return graph
+
+
+async def _create_graph_with_barriers(
+    graph: Graph,
+    user_id: str,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+) -> None:
+    graph_ids = {entry.id for entry in [graph, *graph.sub_graphs]}
+    async with agent_graph_attachment_barriers(graph_ids):
+        async with transaction() as tx:
+            await __create_graph(
+                tx,
+                graph,
+                user_id,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
 
 
 async def __create_graph(
@@ -1943,16 +2058,23 @@ async def __create_graph(
 ):
     graphs = [graph] + graph.sub_graphs
 
-    # Auto-increment version for any graph entry (parent or sub-graph) whose
-    # (id, version) already exists.  This prevents UniqueViolationError when
-    # the copilot re-saves an agent that already exists at the requested version.
-    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
-    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    # Auto-increment versions only after proving every existing version of each
+    # submitted graph ID belongs to this exact owner and workspace.
     for g in graphs:
-        existing = await AgentGraph.prisma(tx).find_first(
+        existing_versions = await AgentGraph.prisma(tx).find_many(
             where={"id": g.id},
             order={"version": "desc"},
         )
+        if any(
+            existing.userId != user_id
+            or existing.organizationId != organization_id
+            or existing.teamId != team_id
+            for existing in existing_versions
+        ):
+            raise GraphNotAccessibleError(
+                f"Graph ID {g.id} belongs to a different owner or workspace"
+            )
+        existing = existing_versions[0] if existing_versions else None
         if existing and existing.version >= g.version:
             old_version = g.version
             g.version = existing.version + 1

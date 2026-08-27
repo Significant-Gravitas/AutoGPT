@@ -51,6 +51,7 @@ const expectedItems = [
 describe("SettingsSidebar", () => {
   beforeEach(() => {
     usePathnameMock.mockReturnValue("/settings/profile");
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "false";
   });
 
   it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {
@@ -63,6 +64,7 @@ describe("SettingsSidebar", () => {
       const link = screen.getByRole("link", { name: new RegExp(label, "i") });
       expect(link.getAttribute("href")).toBe(href);
     }
+    expect(screen.queryByRole("link", { name: /organization/i })).toBeNull();
   });
 
   it("marks the nav item matching the current pathname as active", () => {
@@ -82,5 +84,14 @@ describe("SettingsSidebar", () => {
 
     const integrations = screen.getByRole("link", { name: /integrations/i });
     expect(integrations.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("shows organization settings only when its flag is enabled", () => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
+    render(<SettingsSidebar />);
+
+    expect(
+      screen.getByRole("link", { name: /organization/i }).getAttribute("href"),
+    ).toBe("/settings/organization");
   });
 });

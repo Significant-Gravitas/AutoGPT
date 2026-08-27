@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
+from backend.data.tenancy import ResourceAccess
 from backend.util.exceptions import NotFoundError
 
 from .base import BaseTool
@@ -68,6 +69,10 @@ class ListAgentTriggersTool(BaseTool):
         return "list_agent_triggers"
 
     @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
+
+    @property
     def description(self) -> str:
         return (
             "List triggers (agents + webhook presets) for a library agent. "
@@ -115,7 +120,17 @@ class ListAgentTriggersTool(BaseTool):
 
         ldb = library_db()
         try:
-            parent = await ldb.get_library_agent(id=library_agent_id, user_id=user_id)
+            parent = await ldb.get_library_agent(
+                id=library_agent_id,
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
+            )
+            if (parent.organization_id, parent.team_id) != (
+                session.organization_id,
+                session.team_id,
+            ):
+                raise NotFoundError("not found")
         except NotFoundError as e:
             return ErrorResponse(
                 message=f"Library agent not found: {e}",
@@ -132,6 +147,9 @@ class ListAgentTriggersTool(BaseTool):
                 user_id=user_id,
                 library_agent_id=library_agent_id,
                 parent_graph_id=parent.graph_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                enforce_scope=True,
             ),
             # Scope to the session's memory scope (its expert, or AutoPilot's
             # unattributed presets) — without this the listing leaks other
@@ -143,6 +161,9 @@ class ListAgentTriggersTool(BaseTool):
                 graph_id=parent.graph_id,
                 expert_id=session.expert_id if session else None,
                 filter_by_expert=True,
+                organization_id=session.organization_id if session else None,
+                team_id=session.team_id if session else None,
+                enforce_team_scope=session is not None,
             ),
         )
         webhook_presets = [

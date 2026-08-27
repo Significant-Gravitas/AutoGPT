@@ -1,4 +1,313 @@
+import asyncio
+import inspect
+from collections.abc import AsyncIterator, Awaitable
+from contextlib import asynccontextmanager
+from contextvars import Context, ContextVar
+from typing import Literal, TypeVar
+
+from pydantic import BaseModel, ConfigDict
+
 from backend.data import db
+from backend.data.tenancy import ResourceAccess, context_without_live_tenancy_scopes
+
+
+class LiveResourceAccessRevoked(RuntimeError):
+    pass
+
+
+T = TypeVar("T")
+
+
+class LiveResourceLeaseGuard:
+    def __init__(self, lease_db, lease_id: str) -> None:
+        self._lease_db = lease_db
+        self.lease_id = lease_id
+
+    def __bool__(self) -> Literal[True]:
+        return True
+
+    async def validate(self) -> None:
+        try:
+            active = await self._lease_db.is_live_resource_lease_active(self.lease_id)
+        except Exception as exc:
+            raise LiveResourceAccessRevoked("workspace_lease_lost") from exc
+        if not active:
+            raise LiveResourceAccessRevoked("workspace_lease_lost")
+
+    async def _wait_for_loss(self) -> None:
+        while True:
+            await asyncio.sleep(0.1)
+            await self.validate()
+
+    async def run(self, action: Awaitable[T]) -> T:
+        start = asyncio.Event()
+        action_started = False
+
+        async def run_after_initial_validation() -> T:
+            nonlocal action_started
+            await start.wait()
+            action_started = True
+            return await action
+
+        action_task = asyncio.create_task(run_after_initial_validation())
+        loss_task = asyncio.create_task(self._wait_for_loss())
+        try:
+            await self.validate()
+            start.set()
+            done, _ = await asyncio.wait(
+                (action_task, loss_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if loss_task in done:
+                action_task.cancel()
+                await asyncio.gather(action_task, return_exceptions=True)
+                await loss_task
+            result = await action_task
+            await self.validate()
+            return result
+        finally:
+            if not action_task.done():
+                action_task.cancel()
+            if not loss_task.done():
+                loss_task.cancel()
+            await asyncio.gather(action_task, loss_task, return_exceptions=True)
+            if not action_started and inspect.iscoroutine(action):
+                action.close()
+
+
+class _ActiveLiveResourceLease(BaseModel):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    user_id: str
+    organization_id: str | None
+    team_id: str | None
+    access: ResourceAccess
+    guard: LiveResourceLeaseGuard
+
+
+_active_live_resource_leases: ContextVar[tuple[_ActiveLiveResourceLease, ...]] = (
+    ContextVar("active_live_resource_leases", default=())
+)
+
+
+def context_without_live_leases() -> Context:
+    context = context_without_live_tenancy_scopes()
+    context.run(_active_live_resource_leases.set, ())
+    return context
+
+
+async def run_with_live_resource_lease_guard(
+    guard: LiveResourceLeaseGuard,
+    *,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    access: ResourceAccess,
+    action: Awaitable[T],
+) -> T:
+    active = _ActiveLiveResourceLease(
+        user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+        access=access,
+        guard=guard,
+    )
+    token = _active_live_resource_leases.set(
+        (*_active_live_resource_leases.get(), active)
+    )
+    try:
+        return await guard.run(action)
+    finally:
+        _active_live_resource_leases.reset(token)
+
+
+class AgentGraphAttachmentLeaseGuard:
+    def __init__(self, lease_db, lease_id: str) -> None:
+        self._lease_db = lease_db
+        self.lease_id = lease_id
+
+    async def validate(self) -> None:
+        try:
+            active = await self._lease_db.is_agent_graph_attachment_lease_active(
+                self.lease_id
+            )
+        except Exception as exc:
+            raise LiveResourceAccessRevoked("graph_attachment_lease_lost") from exc
+        if not active:
+            raise LiveResourceAccessRevoked("graph_attachment_lease_lost")
+
+    async def _wait_for_loss(self) -> None:
+        while True:
+            await asyncio.sleep(0.1)
+            await self.validate()
+
+    async def run(self, action: Awaitable[T]) -> T:
+        start = asyncio.Event()
+        action_started = False
+
+        async def run_after_initial_validation() -> T:
+            nonlocal action_started
+            await start.wait()
+            action_started = True
+            return await action
+
+        action_task = asyncio.create_task(run_after_initial_validation())
+        loss_task = asyncio.create_task(self._wait_for_loss())
+        try:
+            await self.validate()
+            start.set()
+            done, _ = await asyncio.wait(
+                (action_task, loss_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if loss_task in done:
+                action_task.cancel()
+                await asyncio.gather(action_task, return_exceptions=True)
+                await loss_task
+            result = await action_task
+            await self.validate()
+            return result
+        finally:
+            if not action_task.done():
+                action_task.cancel()
+            if not loss_task.done():
+                loss_task.cancel()
+            await asyncio.gather(action_task, loss_task, return_exceptions=True)
+            if not action_started and inspect.iscoroutine(action):
+                action.close()
+
+
+class AlertConditionDeliveryLeaseGuard(AgentGraphAttachmentLeaseGuard):
+    async def validate(self) -> None:
+        try:
+            active = await self._lease_db.is_alert_condition_delivery_lease_active(
+                self.lease_id
+            )
+        except Exception as exc:
+            raise LiveResourceAccessRevoked("alert_condition_lease_lost") from exc
+        if not active:
+            raise LiveResourceAccessRevoked("alert_condition_lease_lost")
+
+
+class StoreListingVersionDeliveryLeaseGuard(AgentGraphAttachmentLeaseGuard):
+    async def validate(self) -> None:
+        try:
+            active = (
+                await self._lease_db.is_store_listing_version_delivery_lease_active(
+                    self.lease_id
+                )
+            )
+        except Exception as exc:
+            raise LiveResourceAccessRevoked("store_listing_version_lease_lost") from exc
+        if not active:
+            raise LiveResourceAccessRevoked("store_listing_version_lease_lost")
+
+
+async def require_exact_chat_session_scope(
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> None:
+    session = await chat_db().get_chat_session_metadata(session_id)
+    if session is None or (
+        session.user_id,
+        session.organization_id,
+        session.team_id,
+    ) != (user_id, organization_id, team_id):
+        raise LiveResourceAccessRevoked("workspace_access_revoked")
+
+
+@asynccontextmanager
+async def live_resource_lease(
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    access: ResourceAccess,
+) -> AsyncIterator[LiveResourceLeaseGuard | Literal[False]]:
+    for active in reversed(_active_live_resource_leases.get()):
+        if (
+            active.user_id,
+            active.organization_id,
+            active.team_id,
+            active.access,
+        ) == (user_id, organization_id, team_id, access):
+            await active.guard.validate()
+            yield active.guard
+            return
+
+    lease_db = credit_db()
+    lease_id = await lease_db.acquire_live_resource_lease(
+        user_id, organization_id, team_id, access
+    )
+    if lease_id is None:
+        yield False
+        return
+    guard = LiveResourceLeaseGuard(lease_db, lease_id)
+    active = _ActiveLiveResourceLease(
+        user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+        access=access,
+        guard=guard,
+    )
+    token = _active_live_resource_leases.set(
+        (*_active_live_resource_leases.get(), active)
+    )
+    try:
+        yield guard
+    finally:
+        try:
+            released = await lease_db.release_live_resource_lease(lease_id)
+            if not released:
+                raise LiveResourceAccessRevoked("workspace_lease_lost")
+        finally:
+            _active_live_resource_leases.reset(token)
+
+
+@asynccontextmanager
+async def agent_graph_attachment_lease(
+    graph_ids: list[str],
+) -> AsyncIterator[AgentGraphAttachmentLeaseGuard]:
+    lease_db = credit_db()
+    lease_id = await lease_db.acquire_agent_graph_attachment_lease(graph_ids)
+    guard = AgentGraphAttachmentLeaseGuard(lease_db, lease_id)
+    try:
+        yield guard
+    finally:
+        released = await lease_db.release_agent_graph_attachment_lease(lease_id)
+        if not released:
+            raise LiveResourceAccessRevoked("graph_attachment_lease_lost")
+
+
+@asynccontextmanager
+async def alert_condition_delivery_lease(
+    condition_ids: list[str],
+) -> AsyncIterator[AlertConditionDeliveryLeaseGuard]:
+    lease_db = credit_db()
+    lease_id = await lease_db.acquire_alert_condition_delivery_lease(condition_ids)
+    guard = AlertConditionDeliveryLeaseGuard(lease_db, lease_id)
+    try:
+        yield guard
+    finally:
+        released = await lease_db.release_alert_condition_delivery_lease(lease_id)
+        if not released:
+            raise LiveResourceAccessRevoked("alert_condition_lease_lost")
+
+
+@asynccontextmanager
+async def store_listing_version_delivery_lease(
+    version_id: str,
+) -> AsyncIterator[StoreListingVersionDeliveryLeaseGuard]:
+    lease_db = credit_db()
+    lease_id = await lease_db.acquire_store_listing_version_delivery_lease(version_id)
+    guard = StoreListingVersionDeliveryLeaseGuard(lease_db, lease_id)
+    try:
+        yield guard
+    finally:
+        released = await lease_db.release_store_listing_version_delivery_lease(lease_id)
+        if not released:
+            raise LiveResourceAccessRevoked("store_listing_version_lease_lost")
 
 
 def chat_db():

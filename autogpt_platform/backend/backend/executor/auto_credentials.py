@@ -9,9 +9,8 @@ import copy
 import logging
 from typing import Any, Mapping
 
-from redis.asyncio.lock import Lock as AsyncRedisLock
-
 from backend.blocks._base import BlockSchema
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
@@ -34,7 +33,7 @@ async def acquire_auto_credentials(
     user_id: str,
     credentials_owner_id: str | None = None,
     owner_field_values: Mapping[str, Mapping[str, Any]] | None = None,
-) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
+) -> tuple[dict[str, Any], list[CredentialLease]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
 
     Returns:
@@ -55,7 +54,7 @@ async def acquire_auto_credentials(
         ValueError: for other validation failures (invalid cred id, etc.).
     """
     extra_exec_kwargs: dict[str, Any] = {}
-    locks: list[AsyncRedisLock] = []
+    leases: list[CredentialLease] = []
     owner_field_values = owner_field_values or {}
 
     try:
@@ -96,7 +95,7 @@ async def acquire_auto_credentials(
                         else user_id
                     )
                     try:
-                        credentials, lock = await creds_manager.acquire(
+                        lease = await creds_manager.acquire_lease(
                             resolve_user_id, cred_id
                         )
                     except ValueError:
@@ -122,7 +121,8 @@ async def acquire_auto_credentials(
                             f"re-select the file to authenticate with your "
                             f"own account."
                         )
-                    locks.append(lock)
+                    leases.append(lease)
+                    credentials = lease.credentials
                     if provider != "external service" and not provider_matches(
                         credentials.provider, provider
                     ):
@@ -167,9 +167,9 @@ async def acquire_auto_credentials(
     except BaseException:
         # Release any locks already acquired so failures on later fields
         # don't strand earlier credentials until Redis TTL expires them.
-        for lock in locks:
+        for lease in leases:
             try:
-                await lock.release()
+                await lease.release()
             except Exception as release_exc:
                 logger.warning(
                     "Failed to release auto-credential lock after "
@@ -178,4 +178,4 @@ async def acquire_auto_credentials(
                 )
         raise
 
-    return extra_exec_kwargs, locks
+    return extra_exec_kwargs, leases

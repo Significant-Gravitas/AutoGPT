@@ -14,8 +14,13 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
+from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
+from backend.data.db_accessors import (
+    agent_graph_attachment_lease,
+    store_listing_version_delivery_lease,
+)
 from backend.data.notifications import (
     AudienceAction,
     AudienceEventModel,
@@ -31,7 +36,7 @@ from backend.data.user import (
     generate_unsubscribe_link,
 )
 from backend.notifications import briefing_runner, mailerlite
-from backend.notifications.dedupe import claim_daily_send
+from backend.notifications.dedupe import claim_daily_send, release_daily_send
 from backend.notifications.email import EmailSender
 from backend.notifications.preferences import SERVICE_MESSAGES, wants_notification
 from backend.notifications.queue import (
@@ -41,6 +46,11 @@ from backend.notifications.queue import (
     USER_NOTIFICATIONS_QUEUE,
     create_notification_config,
     queue_notification_async,
+)
+from backend.notifications.tenancy import (
+    authorized_notification_scopes,
+    run_with_notification_guards,
+    scope_keys,
 )
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -195,47 +205,102 @@ class NotificationManager(AppService):
         if not event:
             return False
 
-        preference = await get_database_manager_async_client(
-            should_retry=False
-        ).get_user_notification_preference(event.user_id)
+        async with authorized_notification_scopes(
+            event.user_id, event.authorization_scopes
+        ) as (authorized, guards):
+            if scope_keys(authorized) != scope_keys(event.authorization_scopes):
+                logger.info("Dropping notification after resource access was revoked")
+                return True
+
+            if event.type is NotificationType.VERDICT:
+                source_id = event.source_store_listing_version_id
+                if source_id is None:
+                    return True
+                db_client = get_database_manager_async_client(should_retry=False)
+                graph_id = await db_client.get_verdict_notification_source_graph_id(
+                    source_id
+                )
+                if graph_id is None:
+                    logger.info("Dropping verdict whose reviewed version was removed")
+                    return True
+                scope = event.authorization_scopes[0]
+                async with agent_graph_attachment_lease([graph_id]) as source_guard:
+                    async with store_listing_version_delivery_lease(
+                        source_id
+                    ) as version_guard:
+                        expected_status = event.expected_store_listing_status
+                        expected_reviewed_at = event.expected_store_listing_reviewed_at
+                        if expected_status is None or expected_reviewed_at is None:
+                            return True
+                        if not await db_client.is_verdict_notification_source_live(
+                            event.user_id,
+                            source_id,
+                            scope.organization_id,
+                            scope.team_id,
+                            expected_status,
+                            expected_reviewed_at,
+                        ):
+                            logger.info(
+                                "Dropping verdict whose reviewed revision changed"
+                            )
+                            return True
+                        await run_with_notification_guards(
+                            source_guard.run(
+                                version_guard.run(
+                                    self._deliver_user_notification(event)
+                                )
+                            ),
+                            guards,
+                        )
+                return True
+
+            await run_with_notification_guards(
+                self._deliver_user_notification(event),
+                guards,
+            )
+        return True
+
+    async def _deliver_user_notification(self, event: NotificationEventModel) -> bool:
+        db_client = get_database_manager_async_client(should_retry=False)
+        preference = await db_client.get_user_notification_preference(event.user_id)
         if not preference.email:
             logger.warning(f"User email not found for user {event.user_id}")
             return False
 
-        verified = await get_database_manager_async_client(
-            should_retry=False
-        ).get_user_email_verification(event.user_id)
+        verified = await db_client.get_user_email_verification(event.user_id)
         if not verified or not wants_notification(preference, event.type):
             logger.debug(
                 f"Skipping {event.type} for user {event.user_id}: not wanted or "
                 "unverified"
             )
-            return True
+            return False
 
-        # The volume knob's own ceiling, across every product notification.
-        # Service messages are exempt for the same reason they ignore the rest
-        # of the preferences: they are about the customer's account, and a
-        # payment failure has to reach them whatever their inbox settings say.
-        if event.type not in SERVICE_MESSAGES and not await claim_daily_send(
-            event.user_id, preference.daily_limit, _utc_today()
+        delivery_day = _utc_today()
+        reserved_daily_send = event.type not in SERVICE_MESSAGES
+        if reserved_daily_send and not await claim_daily_send(
+            event.user_id, preference.daily_limit, delivery_day, event.id
         ):
             logger.info(
                 f"Skipping {event.type} for user {event.user_id}: at their "
                 f"limit of {preference.daily_limit} emails a day"
             )
-            # Acked, not retried: tomorrow's send is a new decision, and a
-            # redelivery today would only be refused again.
-            return True
+            return False
 
-        await self.email_sender.send_notification(
-            notification_type=event.type,
-            user_email=preference.email,
-            data=event.data,
-            unsubscribe_link=generate_unsubscribe_link(event.user_id),
-            volume_links={
-                c: generate_preference_link(event.user_id, c) for c in FOOTER_CHOICES
-            },
-        )
+        try:
+            await self.email_sender.send_notification(
+                notification_type=event.type,
+                user_email=preference.email,
+                data=event.data,
+                unsubscribe_link=generate_unsubscribe_link(event.user_id),
+                volume_links={
+                    choice: generate_preference_link(event.user_id, choice)
+                    for choice in FOOTER_CHOICES
+                },
+            )
+        except BaseException:
+            if reserved_daily_send:
+                await release_daily_send(event.user_id, delivery_day, event.id)
+            raise
         return True
 
     async def _process_ops_notification(self, message: str) -> bool:
@@ -244,13 +309,24 @@ class NotificationManager(AppService):
         event = self._parse_message(message)
         if not event:
             return False
-        recipient = settings.config.refund_notification_email
-        await self.email_sender.send_notification(
-            notification_type=event.type,
-            user_email=recipient,
-            data=event.data,
-            unsubscribe_link="",
-        )
+        async with authorized_notification_scopes(
+            event.user_id, event.authorization_scopes
+        ) as (authorized, guards):
+            if scope_keys(authorized) != scope_keys(event.authorization_scopes):
+                logger.info(
+                    "Dropping ops notification after resource access was revoked"
+                )
+                return True
+            recipient = settings.config.refund_notification_email
+            await run_with_notification_guards(
+                self.email_sender.send_notification(
+                    notification_type=event.type,
+                    user_email=recipient,
+                    data=event.data,
+                    unsubscribe_link="",
+                ),
+                guards,
+            )
         return True
 
     async def _process_pass_work(self, message: str) -> bool:
@@ -266,7 +342,7 @@ class NotificationManager(AppService):
         except ValueError as e:
             logger.warning(f"Unparseable pass work (sending to DLQ): {e}")
             return False
-        await briefing_runner.run_pass_work(event)
+        await briefing_runner.run_pass_work(event, self._deliver_user_notification)
         return True
 
     async def _process_audience_change(self, message: str) -> bool:
@@ -457,6 +533,8 @@ class NotificationManager(AppService):
                 and (exc := disconnect_task.exception()) is not None
             ):
                 logger.warning(f"RabbitMQ disconnect failed during shutdown: {exc}")
+
+        await self.email_sender.close()
 
     def cleanup(self):
         self.running = False

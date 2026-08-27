@@ -36,6 +36,8 @@ import {
   setGreetingDone,
   takeIntroAwaitingFollowup,
 } from "@/services/onboarding/brain-dump-handoff";
+import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -119,6 +121,12 @@ export function useCopilotPage() {
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
+  const {
+    teamId: createTeamId,
+    setTeamId: setCreateTeamId,
+    teamRequestInit,
+    isReady: isTeamContextReady,
+  } = useCreateTeamSelection(CreateSurface.Copilot);
 
   const {
     sessionId,
@@ -140,7 +148,11 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun, expertId });
+  } = useChatSession({
+    dryRun: isDryRun,
+    expertId,
+    createRequestInit: teamRequestInit,
+  });
 
   // An open session owns its identity: the URL param only describes who the
   // NEXT session will address, and it is absent whenever a thread is reached
@@ -419,5 +431,9 @@ export function useCopilotPage() {
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting: isKickoffResolving || isKickoffStarting,
+    createTeamId,
+    setCreateTeamId,
+    isTeamContextReady,
+    canSelectCreateTeam: !expertId,
   };
 }

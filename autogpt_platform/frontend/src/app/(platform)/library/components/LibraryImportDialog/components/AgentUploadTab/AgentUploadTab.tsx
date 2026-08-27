@@ -12,6 +12,8 @@ import {
 } from "@/components/molecules/Form/Form";
 import { TabsLineContent } from "@/components/molecules/TabsLine/TabsLine";
 import { useLibraryUploadAgentDialog } from "../../../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 type AgentUploadTabProps = {
   upload: ReturnType<typeof useLibraryUploadAgentDialog>;
@@ -84,11 +86,19 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
             </FormItem>
           )}
         />
+        <TeamPicker
+          surfaceKey={CreateSurface.LibraryUpload}
+          value={upload.teamId}
+          onChange={upload.setTeamId}
+          wrapperClassName="!mb-4"
+        />
         <Button
           type="submit"
           variant="primary"
           className="w-full"
-          disabled={!upload.agentObject || upload.isUploading}
+          disabled={
+            !upload.agentObject || upload.isUploading || !upload.isReady
+          }
         >
           {upload.isUploading ? (
             <div className="flex items-center gap-2">

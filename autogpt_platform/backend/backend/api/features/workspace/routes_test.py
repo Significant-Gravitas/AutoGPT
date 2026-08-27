@@ -1,4 +1,5 @@
 import io
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,11 +27,26 @@ client = fastapi.testclient.TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def mock_live_resource_lease(mocker):
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(*args, **kwargs):
+        yield Guard()
+
+    mocker.patch("backend.api.features.workspace.routes.live_resource_lease", new=lease)
 
 
 def _make_workspace(user_id: str = "test-user-id") -> Workspace:
@@ -184,7 +200,14 @@ def test_list_files_scopes_to_session_when_provided(
     data = response.json()
     assert data["files"] == []
     assert data["has_more"] is False
-    mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", "sess-123")
+    mock_manager_cls.assert_called_once_with(
+        test_user_id,
+        "ws-001",
+        "sess-123",
+        organization_id="test-org",
+        team_id="test-team",
+        access="view",
+    )
     mock_instance.list_files.assert_called_once_with(
         limit=201,
         offset=0,
@@ -486,9 +509,11 @@ def test_download_file_not_found(mocker):
         "backend.api.features.workspace.routes.get_workspace",
         return_value=_make_workspace(),
     )
+    mock_manager = mocker.MagicMock()
+    mock_manager.get_file_info = mocker.AsyncMock(return_value=None)
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_file",
-        return_value=None,
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
     )
 
     response = client.get("/files/some-file-id/download")
@@ -770,7 +795,14 @@ def test_list_files_empty_session_id_treated_as_omitted(
     response = client.get("/files?session_id=")
     assert response.status_code == 200
     # Manager should be constructed with session_id=None, not ""
-    mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", None)
+    mock_manager_cls.assert_called_once_with(
+        test_user_id,
+        "ws-001",
+        None,
+        organization_id="test-org",
+        team_id="test-team",
+        access="view",
+    )
     mock_instance.list_files.assert_called_once_with(
         limit=201,
         offset=0,

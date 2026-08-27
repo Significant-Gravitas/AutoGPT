@@ -1,6 +1,7 @@
 """Scheduling and queue hand-off tests for alerts and Briefings."""
 
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -9,7 +10,7 @@ import pytest
 from prisma.enums import BriefingFrequency
 
 from backend.data.alerts import MaturedAlertPage
-from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.data.notifications import NotificationScope, PassWorkEvent, PassWorkKind
 from backend.notifications import briefing_runner
 from backend.notifications.conftest import make_db_client
 
@@ -24,6 +25,20 @@ def server() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def graph_cleanup() -> Iterator[None]:
     yield
+
+
+@pytest.fixture(autouse=True)
+def condition_delivery_lease():
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(_condition_ids):
+        yield Guard()
+
+    with patch.object(briefing_runner, "alert_condition_delivery_lease", lease):
+        yield
 
 
 def _candidates(users: list) -> object:
@@ -49,10 +64,6 @@ def _user(user_id: str = "user-1") -> SimpleNamespace:
         last_briefing_at=None,
         alertsEnabled=True,
     )
-
-
-def _result(success: bool) -> NotificationResult:
-    return NotificationResult(success=success)
 
 
 # ── the passes: publish, never assemble ─────────────────────────────────
@@ -175,7 +186,7 @@ async def test_work_is_claimed_before_anything_is_sent():
     ) as claim, patch.object(
         briefing_runner, "_flush_user_alerts", AsyncMock()
     ) as flush:
-        await briefing_runner.run_pass_work(event)
+        await briefing_runner.run_pass_work(event, AsyncMock(return_value=True))
 
     claim.assert_awaited_once()
     flush.assert_not_awaited()
@@ -200,9 +211,10 @@ async def test_the_claim_key_is_scoped_to_the_period():
 
     with patch.object(
         briefing_runner, "claim_once", AsyncMock(side_effect=record)
-    ), patch.object(briefing_runner, "_build_and_queue_briefing", AsyncMock()):
-        await briefing_runner.run_pass_work(first)
-        await briefing_runner.run_pass_work(later)
+    ), patch.object(briefing_runner, "_build_and_send_briefing", AsyncMock()):
+        deliver = AsyncMock(return_value=True)
+        await briefing_runner.run_pass_work(first, deliver)
+        await briefing_runner.run_pass_work(later, deliver)
 
     assert len(set(seen)) == 2, "each period must claim its own key"
     assert all("user-1" in k for k in seen)
@@ -228,9 +240,10 @@ async def test_two_publishers_of_one_slot_share_a_claim_key():
     ]
     with patch.object(
         briefing_runner, "claim_once", AsyncMock(side_effect=record)
-    ), patch.object(briefing_runner, "_build_and_queue_briefing", AsyncMock()):
+    ), patch.object(briefing_runner, "_build_and_send_briefing", AsyncMock()):
+        deliver = AsyncMock(return_value=True)
         for event in same_slot:
-            await briefing_runner.run_pass_work(event)
+            await briefing_runner.run_pass_work(event, deliver)
 
     assert len(set(seen)) == 1, f"one slot must be one key, got {seen}"
 
@@ -256,7 +269,8 @@ async def test_welcome_is_claimed_by_checkout_session():
                     user_id="",
                     scheduled_for=NOW + timedelta(seconds=offset),
                     context={"session_id": "cs_test_123"},
-                )
+                ),
+                AsyncMock(return_value=True),
             )
 
     assert len(set(seen)) == 1, f"one session must be one key, got {seen}"
@@ -276,11 +290,11 @@ async def test_a_failed_pass_releases_its_claim():
         briefing_runner, "release_claim", AsyncMock()
     ) as release, patch.object(
         briefing_runner,
-        "_build_and_queue_briefing",
+        "_build_and_send_briefing",
         AsyncMock(side_effect=RuntimeError("postmark exploded")),
     ):
         with pytest.raises(RuntimeError):
-            await briefing_runner.run_pass_work(event)
+            await briefing_runner.run_pass_work(event, AsyncMock(return_value=True))
 
     release.assert_awaited_once()
 
@@ -292,13 +306,18 @@ async def test_each_kind_routes_to_its_own_work():
     ), patch.object(
         briefing_runner, "_flush_user_alerts", AsyncMock()
     ) as flush, patch.object(
-        briefing_runner, "_build_and_queue_briefing", AsyncMock()
+        briefing_runner, "_build_and_send_briefing", AsyncMock()
     ) as build:
+        deliver = AsyncMock(return_value=True)
         await briefing_runner.run_pass_work(
-            PassWorkEvent(kind=PassWorkKind.ALERT_FLUSH, user_id="u", scheduled_for=NOW)
+            PassWorkEvent(
+                kind=PassWorkKind.ALERT_FLUSH, user_id="u", scheduled_for=NOW
+            ),
+            deliver,
         )
         await briefing_runner.run_pass_work(
-            PassWorkEvent(kind=PassWorkKind.BRIEFING, user_id="u", scheduled_for=NOW)
+            PassWorkEvent(kind=PassWorkKind.BRIEFING, user_id="u", scheduled_for=NOW),
+            deliver,
         )
 
     flush.assert_awaited_once()
@@ -306,50 +325,123 @@ async def test_each_kind_routes_to_its_own_work():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("queued", [True, False])
-async def test_alerts_are_marked_sent_only_after_queue_success(queued: bool):
+@pytest.mark.parametrize("delivered", [True, False])
+async def test_alerts_finalize_only_after_delivery(delivered: bool):
     user = _user()
-    built = SimpleNamespace(data=object(), condition_ids=["condition-1"])
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
     event = object()
     client = make_db_client(
         get_user_notification_preference=AsyncMock(
             return_value=SimpleNamespace(alerts_enabled=user.alertsEnabled)
-        )
+        ),
+        get_pending_alert_condition_scopes=AsyncMock(return_value=[scope]),
     )
+    deliver = AsyncMock(return_value=delivered)
 
     with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.alerts,
         "build_alert_email",
         AsyncMock(return_value=built),
-    ), patch.object(
-        briefing_runner.alerts, "alert_event", return_value=event
-    ), patch.object(
-        briefing_runner,
-        "queue_notification_async",
-        AsyncMock(return_value=_result(queued)),
-    ), patch.object(
-        briefing_runner.alerts, "mark_alert_sent", AsyncMock()
-    ) as mark_sent:
-        if queued:
-            await briefing_runner._flush_user_alerts(user.id)
-        else:
-            # A failed publish must reach the consumer so its retry can run;
-            # swallowing it would drop the alert silently.
-            with pytest.raises(RuntimeError):
-                await briefing_runner._flush_user_alerts(user.id)
+    ), patch.object(briefing_runner.alerts, "alert_event", return_value=event):
+        await briefing_runner._flush_user_alerts(user.id, "delivery-1", deliver)
 
-    if queued:
-        mark_sent.assert_awaited_once_with(["condition-1"])
+    if delivered:
+        finalized = client.finalize_alert_delivery.await_args.args
+        assert finalized[:3] == (user.id, ["condition-1"], [scope])
     else:
-        mark_sent.assert_not_awaited()
+        client.finalize_alert_delivery.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_an_empty_alert_build_queues_nothing():
+async def test_alert_finalizes_before_condition_lease_is_released():
+    order: list[str] = []
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
+
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(_condition_ids):
+        order.append("lease-enter")
+        try:
+            yield Guard()
+        finally:
+            order.append("lease-exit")
+
+    async def finalize(*_args):
+        order.append("finalize")
+
+    async def deliver(_event):
+        order.append("deliver")
+        return True
+
+    client = make_db_client(
+        get_user_notification_preference=AsyncMock(
+            return_value=SimpleNamespace(alerts_enabled=True)
+        ),
+        get_pending_alert_condition_scopes=AsyncMock(return_value=[scope]),
+        finalize_alert_delivery=AsyncMock(side_effect=finalize),
+    )
+    with patch.object(briefing_runner, "_db", return_value=client), patch.object(
+        briefing_runner.alerts,
+        "build_alert_email",
+        AsyncMock(return_value=built),
+    ), patch.object(
+        briefing_runner.alerts, "alert_event", return_value=object()
+    ), patch.object(
+        briefing_runner, "alert_condition_delivery_lease", lease
+    ):
+        await briefing_runner._flush_user_alerts("user-1", "delivery-1", deliver)
+
+    assert order == ["lease-enter", "deliver", "finalize", "lease-exit"]
+
+
+@pytest.mark.asyncio
+async def test_stale_alert_source_is_dropped_without_delivery_or_mutation():
+    user = _user()
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
+    client = make_db_client(
+        get_user_notification_preference=AsyncMock(
+            return_value=SimpleNamespace(alerts_enabled=True)
+        ),
+        get_pending_alert_condition_scopes=AsyncMock(return_value=[scope]),
+        get_stale_alert_condition_ids=AsyncMock(return_value=["condition-1"]),
+    )
+    deliver = AsyncMock(return_value=True)
+
+    with patch.object(briefing_runner, "_db", return_value=client), patch.object(
+        briefing_runner.alerts,
+        "build_alert_email",
+        AsyncMock(return_value=built),
+    ):
+        await briefing_runner._flush_user_alerts(user.id, "delivery-1", deliver)
+
+    deliver.assert_not_awaited()
+    client.resolve_alert_conditions_by_ids.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_empty_alert_build_sends_nothing():
     """Everything was deferred or resolved, so there is nothing to say."""
     user = _user()
     build_alert = AsyncMock(return_value=None)
-    queue = AsyncMock()
+    deliver = AsyncMock(return_value=True)
     client = make_db_client(
         get_user_notification_preference=AsyncMock(
             return_value=SimpleNamespace(alerts_enabled=True)
@@ -358,11 +450,11 @@ async def test_an_empty_alert_build_queues_nothing():
 
     with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.alerts, "build_alert_email", build_alert
-    ), patch.object(briefing_runner, "queue_notification_async", queue):
-        await briefing_runner._flush_user_alerts(user.id)
+    ):
+        await briefing_runner._flush_user_alerts(user.id, "delivery-1", deliver)
 
-    build_alert.assert_awaited_once_with(user.id, True)
-    queue.assert_not_awaited()
+    build_alert.assert_awaited_once_with(user.id, True, [])
+    deliver.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -374,31 +466,43 @@ async def test_a_database_failure_propagates_so_the_consumer_retries():
     )
     with patch.object(briefing_runner, "_db", return_value=client):
         with pytest.raises(RuntimeError):
-            await briefing_runner._flush_user_alerts("user-1")
+            await briefing_runner._flush_user_alerts(
+                "user-1", "delivery-1", AsyncMock(return_value=True)
+            )
 
 
 @pytest.mark.asyncio
-async def test_empty_briefing_is_not_queued():
+async def test_empty_briefing_is_not_sent():
     user = _user()
-    queue = AsyncMock()
+    deliver = AsyncMock(return_value=True)
     client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
 
     with patch.object(briefing_runner, "_db", return_value=client), patch.object(
         briefing_runner.briefing,
         "build_briefing",
         AsyncMock(return_value=None),
-    ), patch.object(briefing_runner, "queue_notification_async", queue):
-        await briefing_runner._build_and_queue_briefing(user.id, NOW)
+    ):
+        await briefing_runner._build_and_send_briefing(
+            user.id, NOW, "delivery-1", deliver
+        )
 
-    queue.assert_not_awaited()
+    deliver.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_failed_briefing_queue_does_not_mark_or_advance():
+async def test_skipped_briefing_delivery_does_not_finalize():
     user = _user()
-    built = SimpleNamespace(data=object(), attention_condition_ids=["condition-1"])
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        attention_condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
     event = object()
-    client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
+    client = make_db_client(
+        get_briefing_candidate=AsyncMock(return_value=user),
+        get_briefing_resource_scopes=AsyncMock(return_value=[scope]),
+    )
 
     with patch.object(
         briefing_runner.briefing,
@@ -407,31 +511,30 @@ async def test_failed_briefing_queue_does_not_mark_or_advance():
     ), patch.object(
         briefing_runner.briefing, "briefing_event", return_value=event
     ), patch.object(
-        briefing_runner,
-        "queue_notification_async",
-        AsyncMock(return_value=_result(False)),
-    ), patch.object(
-        briefing_runner.briefing, "mark_attention_reported", AsyncMock()
-    ) as mark_reported, patch.object(
         briefing_runner, "_db", return_value=client
     ):
-        # A failed publish raises so the consumer retries rather than
-        # advancing the cadence clock on an email that never went out.
-        with pytest.raises(RuntimeError):
-            await briefing_runner._build_and_queue_briefing(user.id, NOW)
+        await briefing_runner._build_and_send_briefing(
+            user.id, NOW, "delivery-1", AsyncMock(return_value=False)
+        )
 
-    mark_reported.assert_not_awaited()
-    client.set_last_briefing_at.assert_not_awaited()
+    client.finalize_briefing_delivery.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_queued_briefing_marks_conditions_and_advances_last_sent():
+async def test_delivered_briefing_finalizes_conditions_and_cadence():
     user = _user()
+    scope = NotificationScope()
     built = SimpleNamespace(
-        data=object(), attention_condition_ids=["condition-1", "condition-2"]
+        data=object(),
+        attention_condition_ids=["condition-1", "condition-2"],
+        authorization_scopes=[scope],
     )
     event = object()
-    client = make_db_client(get_briefing_candidate=AsyncMock(return_value=user))
+    client = make_db_client(
+        get_briefing_candidate=AsyncMock(return_value=user),
+        get_briefing_resource_scopes=AsyncMock(return_value=[scope]),
+    )
+    deliver = AsyncMock(return_value=True)
 
     with patch.object(
         briefing_runner.briefing,
@@ -440,20 +543,104 @@ async def test_queued_briefing_marks_conditions_and_advances_last_sent():
     ), patch.object(
         briefing_runner.briefing, "briefing_event", return_value=event
     ) as briefing_event, patch.object(
-        briefing_runner,
-        "queue_notification_async",
-        AsyncMock(return_value=_result(True)),
-    ) as queue, patch.object(
-        briefing_runner.briefing, "mark_attention_reported", AsyncMock()
-    ) as mark_reported, patch.object(
         briefing_runner, "_db", return_value=client
     ):
-        await briefing_runner._build_and_queue_briefing(user.id, NOW)
+        await briefing_runner._build_and_send_briefing(
+            user.id, NOW, "delivery-1", deliver
+        )
 
-    briefing_event.assert_called_once_with(user.id, built.data)
-    queue.assert_awaited_once_with(event)
-    mark_reported.assert_awaited_once_with(["condition-1", "condition-2"])
-    client.set_last_briefing_at.assert_awaited_once_with(user.id, NOW)
+    briefing_event.assert_called_once_with(user.id, built.data, [scope], "delivery-1")
+    deliver.assert_awaited_once_with(event)
+    finalized = client.finalize_briefing_delivery.await_args.args
+    assert finalized[:3] == (
+        user.id,
+        ["condition-1", "condition-2"],
+        [scope],
+    )
+    assert finalized[4] == NOW
+
+
+@pytest.mark.asyncio
+async def test_briefing_finalizes_before_condition_lease_is_released():
+    order: list[str] = []
+    user = _user()
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        attention_condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
+
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(_condition_ids):
+        order.append("lease-enter")
+        try:
+            yield Guard()
+        finally:
+            order.append("lease-exit")
+
+    async def finalize(*_args):
+        order.append("finalize")
+
+    async def deliver(_event):
+        order.append("deliver")
+        return True
+
+    client = make_db_client(
+        get_briefing_candidate=AsyncMock(return_value=user),
+        get_briefing_resource_scopes=AsyncMock(return_value=[scope]),
+        finalize_briefing_delivery=AsyncMock(side_effect=finalize),
+    )
+    with patch.object(
+        briefing_runner.briefing,
+        "build_briefing",
+        AsyncMock(return_value=built),
+    ), patch.object(
+        briefing_runner.briefing, "briefing_event", return_value=object()
+    ), patch.object(
+        briefing_runner, "_db", return_value=client
+    ), patch.object(
+        briefing_runner, "alert_condition_delivery_lease", lease
+    ):
+        await briefing_runner._build_and_send_briefing(
+            user.id, NOW, "delivery-1", deliver
+        )
+
+    assert order == ["lease-enter", "deliver", "finalize", "lease-exit"]
+
+
+@pytest.mark.asyncio
+async def test_stale_briefing_attention_is_dropped_without_delivery_or_mutation():
+    user = _user()
+    scope = NotificationScope()
+    built = SimpleNamespace(
+        data=object(),
+        attention_condition_ids=["condition-1"],
+        authorization_scopes=[scope],
+    )
+    client = make_db_client(
+        get_briefing_candidate=AsyncMock(return_value=user),
+        get_briefing_resource_scopes=AsyncMock(return_value=[scope]),
+        get_briefing_alert_condition_scopes=AsyncMock(return_value=[scope]),
+        get_stale_alert_condition_ids=AsyncMock(return_value=["condition-1"]),
+    )
+    deliver = AsyncMock(return_value=True)
+
+    with patch.object(
+        briefing_runner.briefing,
+        "build_briefing",
+        AsyncMock(return_value=built),
+    ), patch.object(briefing_runner, "_db", return_value=client):
+        await briefing_runner._build_and_send_briefing(
+            user.id, NOW, "delivery-1", deliver
+        )
+
+    deliver.assert_not_awaited()
+    client.resolve_alert_conditions_by_ids.assert_not_awaited()
 
 
 @pytest.mark.asyncio

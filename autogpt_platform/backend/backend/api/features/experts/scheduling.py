@@ -17,6 +17,7 @@ from prisma.enums import ResourceVisibility
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
+from backend.data.tenancy import agent_graph_attachment_barrier
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError
 from backend.util.settings import Settings
@@ -42,6 +43,29 @@ def effective_weekly_budget(row: prisma.models.Expert) -> int | None:
 
 
 async def create_workflow_schedule(
+    workflow_row_id: str,
+    expert_id: str,
+    user_id: str,
+    cron: str,
+    graph_id: str,
+    graph_version: int,
+    name: str,
+    user_timezone: str,
+) -> bool:
+    async with agent_graph_attachment_barrier(graph_id):
+        return await _create_workflow_schedule_locked(
+            workflow_row_id,
+            expert_id,
+            user_id,
+            cron,
+            graph_id,
+            graph_version,
+            name,
+            user_timezone,
+        )
+
+
+async def _create_workflow_schedule_locked(
     workflow_row_id: str,
     expert_id: str,
     user_id: str,

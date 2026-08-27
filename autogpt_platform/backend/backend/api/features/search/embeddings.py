@@ -2,26 +2,26 @@
 Unified Content Embeddings — shared across features.
 
 Generic OpenAI embedding generation + ``UnifiedContentEmbedding`` row CRUD
-that every feature (store, library, workspace, copilot) uses.
+that public store content and exact-scoped library agents use.
 
 Feature-specific wrappers live next to the feature they belong to:
 - ``backend.api.features.store.embeddings`` — store listing wrappers
 - ``backend.api.features.library.embeddings`` — library agent bg task
-- ``backend.api.features.workspace.embeddings`` — workspace file bg task
-- ``backend.copilot.chat_session_embeddings`` — chat session bg task
 """
 
 import asyncio
 import logging
 import time
+from functools import lru_cache
 from typing import Any
 
 import prisma
 from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
-from backend.api.features.search.content_handlers import CONTENT_HANDLERS
-from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.api.features.search.content_handlers import CONTENT_HANDLERS, ContentItem
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
+from backend.data.db_accessors import LiveResourceLeaseGuard, live_resource_lease
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -51,8 +51,6 @@ SEARCHABLE_EMBEDDING_TYPES = [
     ContentType.STORE_AGENT,
     ContentType.DOCUMENTATION,
     ContentType.LIBRARY_AGENT,
-    ContentType.WORKSPACE_FILE,
-    ContentType.CHAT_SESSION,
 ]
 
 
@@ -88,18 +86,14 @@ def build_searchable_text(
     return " ".join(parts)
 
 
-# Cached at module load: ``encoding_for_model`` loads a tokenizer file
-# from disk on every call (~10–20 ms). At backfill scale we run this on
-# every row, so amortising it module-level is a meaningful win. Falls
-# back to ``cl100k_base`` (the OpenAI ada/embedding-3 tokenizer) when
-# the configured model name is unknown to tiktoken — e.g. Ollama tags
-# like ``nomic-embed-text``.
-try:
-    _ENCODER = encoding_for_model(EMBEDDING_MODEL)
-except KeyError:
-    from tiktoken import get_encoding
+@lru_cache(maxsize=1)
+def _get_encoder():
+    try:
+        return encoding_for_model(EMBEDDING_MODEL)
+    except KeyError:
+        from tiktoken import get_encoding
 
-    _ENCODER = get_encoding("cl100k_base")
+        return get_encoding("cl100k_base")
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -128,11 +122,12 @@ async def generate_embedding(text: str) -> list[float]:
 
     # Truncate text to token limit using tiktoken
     # Character-based truncation is insufficient because token ratios vary by content type
-    tokens = _ENCODER.encode(text)
+    encoder = _get_encoder()
+    tokens = encoder.encode(text)
     original_token_count = len(tokens)
     if original_token_count > EMBEDDING_MAX_TOKENS:
         tokens = tokens[:EMBEDDING_MAX_TOKENS]
-        truncated_text = _ENCODER.decode(tokens)
+        truncated_text = encoder.decode(tokens)
         logger.info(
             f"Truncated text from {original_token_count} to {len(tokens)} tokens"
         )
@@ -308,6 +303,113 @@ async def ensure_content_embedding(
     )
 
 
+async def ensure_live_library_content_embedding(
+    *,
+    content_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    source_graph_id: str,
+    source_graph_version: int,
+    searchable_text: str,
+    metadata: dict | None = None,
+) -> bool:
+    exact_scope = {
+        "id": content_id,
+        "userId": user_id,
+        "organizationId": organization_id,
+        "teamId": team_id,
+        "agentGraphId": source_graph_id,
+        "agentGraphVersion": source_graph_version,
+        "isDeleted": False,
+        "isHidden": False,
+    }
+
+    async def generate_and_store() -> bool:
+        current = await prisma.models.LibraryAgent.prisma().find_first(
+            where=exact_scope
+        )
+        if current is None:
+            return False
+        existing = await get_content_embedding(
+            ContentType.LIBRARY_AGENT, content_id, user_id
+        )
+        if existing and existing.get("searchableText") == searchable_text:
+            return True
+
+        embedding = await generate_embedding(searchable_text)
+        async with transaction() as tx:
+            locked = await execute_raw_with_schema(
+                """
+                UPDATE {schema_prefix}"LibraryAgent"
+                SET "updatedAt" = "updatedAt"
+                WHERE id = $1
+                  AND "userId" = $2
+                  AND "organizationId" IS NOT DISTINCT FROM $3
+                  AND "teamId" IS NOT DISTINCT FROM $4
+                  AND "agentGraphId" = $5
+                  AND "agentGraphVersion" = $6
+                  AND "isDeleted" = false
+                  AND "isHidden" = false
+                """,
+                content_id,
+                user_id,
+                organization_id,
+                team_id,
+                source_graph_id,
+                source_graph_version,
+                client=tx,
+            )
+            if locked != 1:
+                return False
+            return await store_content_embedding(
+                content_type=ContentType.LIBRARY_AGENT,
+                content_id=content_id,
+                embedding=embedding,
+                searchable_text=searchable_text,
+                metadata=metadata,
+                user_id=user_id,
+                tx=tx,
+            )
+
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "create"
+    ) as lease:
+        if not lease:
+            return False
+        if isinstance(lease, LiveResourceLeaseGuard):
+            return await lease.run(generate_and_store())
+        return await generate_and_store()
+
+
+async def _ensure_content_item_embedding(item: ContentItem) -> bool:
+    if item.content_type is not ContentType.LIBRARY_AGENT:
+        return await ensure_content_embedding(
+            content_type=item.content_type,
+            content_id=item.content_id,
+            searchable_text=item.searchable_text,
+            metadata=item.metadata,
+            user_id=item.user_id,
+            force=True,
+        )
+    if (
+        item.user_id is None
+        or item.source_graph_id is None
+        or item.source_graph_version is None
+    ):
+        return False
+    return await ensure_live_library_content_embedding(
+        content_id=item.content_id,
+        user_id=item.user_id,
+        organization_id=item.organization_id,
+        team_id=item.team_id,
+        source_graph_id=item.source_graph_id,
+        source_graph_version=item.source_graph_version,
+        searchable_text=item.searchable_text,
+        metadata=item.metadata,
+    )
+
+
 async def delete_content_embedding(
     content_type: ContentType, content_id: str, user_id: str | None = None
 ) -> bool:
@@ -470,15 +572,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
             # row exists but is stale (e.g. a renamed block). Without force,
             # ensure_content_embedding would skip those as "already embedded".
             embedding_tasks = [
-                ensure_content_embedding(
-                    content_type=item.content_type,
-                    content_id=item.content_id,
-                    searchable_text=item.searchable_text,
-                    metadata=item.metadata,
-                    user_id=item.user_id,
-                    force=True,
-                )
-                for item in missing_items
+                _ensure_content_item_embedding(item) for item in missing_items
             ]
 
             results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
@@ -546,9 +640,6 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     - DOCUMENTATION: Removes embeddings for deleted doc files
     - LIBRARY_AGENT: Removes embeddings for soft-deleted/hidden library agents
       (matches the LibraryAgentHandler.get_missing_items filter)
-    - WORKSPACE_FILE: Removes embeddings for soft-deleted workspace files
-    - CHAT_SESSION: Removes embeddings for deleted/untitled chat sessions
-
     Returns:
         Dict with cleanup statistics per content type
     """

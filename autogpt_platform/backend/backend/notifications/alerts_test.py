@@ -111,7 +111,7 @@ async def test_overflow_past_the_daily_cap_folds_into_the_briefing():
         count_alerts_sent_since=AsyncMock(return_value=MAX_ALERT_EMAILS_PER_DAY),
     )
     mark_deferred = client.mark_alert_conditions_deferred
-    mark_sent = client.mark_alert_conditions_sent
+    finalize = client.finalize_alert_delivery
     with patch("backend.notifications.alerts._db", return_value=client):
         built = await build_alert_email(USER, alerts_enabled=True)
 
@@ -119,7 +119,7 @@ async def test_overflow_past_the_daily_cap_folds_into_the_briefing():
     mark_deferred.assert_awaited_once_with([pending[0].id])
     # Nothing is marked sent, so the 24h dedupe window never opens on an email
     # that was never sent.
-    mark_sent.assert_not_awaited()
+    finalize.assert_not_awaited()
 
 
 @pytest.mark.asyncio

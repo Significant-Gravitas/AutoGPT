@@ -66,3 +66,33 @@ async def test_spawn_background_task_does_not_log_cancellation():
     await asyncio.sleep(0)
 
     assert task not in _background_tasks
+
+
+@pytest.mark.asyncio
+async def test_spawn_background_task_drops_inherited_live_tenancy_scopes():
+    from backend.data import db_accessors, tenancy
+
+    live_token = tenancy._active_live_scopes.set(frozenset({("user", "org", "team")}))
+    actor_token = tenancy._active_actor_scopes.set(frozenset({("user", "org")}))
+    graph_token = tenancy._active_graph_scopes.set(frozenset({"graph"}))
+    remote_token = db_accessors._active_live_resource_leases.set(("stale",))  # type: ignore[arg-type]
+    seen: tuple[frozenset, frozenset, frozenset, tuple] | None = None
+
+    async def work() -> None:
+        nonlocal seen
+        seen = (
+            tenancy._active_live_scopes.get(),
+            tenancy._active_actor_scopes.get(),
+            tenancy._active_graph_scopes.get(),
+            db_accessors._active_live_resource_leases.get(),
+        )
+
+    try:
+        await spawn_background_task(work(), name="scope-free-task")
+    finally:
+        db_accessors._active_live_resource_leases.reset(remote_token)
+        tenancy._active_graph_scopes.reset(graph_token)
+        tenancy._active_actor_scopes.reset(actor_token)
+        tenancy._active_live_scopes.reset(live_token)
+
+    assert seen == (frozenset(), frozenset(), frozenset(), ())

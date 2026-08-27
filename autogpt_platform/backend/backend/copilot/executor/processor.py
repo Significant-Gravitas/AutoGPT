@@ -6,11 +6,13 @@ in a thread-local context, following the graph executor pattern.
 
 import asyncio
 import concurrent.futures
+import contextlib
 import logging
 import os
 import subprocess
 import threading
 import time
+from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
@@ -21,10 +23,11 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.response_model import StreamError, StreamStatus
+from backend.copilot.response_model import StreamBaseResponse, StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.data.db_accessors import credit_db, live_resource_lease
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
@@ -66,6 +69,35 @@ _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 # at least the pool worker thread isn't blocked forever.
 _FAIL_CLOSE_REDIS_TIMEOUT = 10.0
 _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS = 5.0
+
+
+async def _guard_stream_with_live_resource_lease(
+    stream: AsyncGenerator[StreamBaseResponse, None],
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> AsyncGenerator[StreamBaseResponse, None]:
+    try:
+        while True:
+            async with live_resource_lease(
+                user_id,
+                organization_id,
+                team_id,
+                "execute",
+            ) as allowed:
+                if not allowed:
+                    raise RuntimeError("workspace_access_revoked")
+                try:
+                    if hasattr(allowed, "run"):
+                        event = await allowed.run(anext(stream))
+                    else:
+                        event = await anext(stream)
+                except StopAsyncIteration:
+                    break
+            yield event
+    finally:
+        with contextlib.suppress(Exception):
+            await stream.aclose()
 
 
 # Module-level symbol preserved for backward-compat with callers that import
@@ -559,6 +591,7 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        dispatch_lease_id: str | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -585,6 +618,19 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            if (entry.organization_id, entry.team_id) != (
+                session.organization_id,
+                session.team_id,
+            ):
+                raise RuntimeError("copilot_session_tenancy_mismatch")
+            dispatch_lease_id = await credit_db().acquire_live_resource_lease(
+                session.user_id,
+                session.organization_id,
+                session.team_id,
+                "execute",
+            )
+            if dispatch_lease_id is None:
+                raise RuntimeError("workspace_access_revoked")
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -699,14 +745,8 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
-                organization_id=(
-                    session.organization_id
-                    if session.expert_id is not None
-                    else entry.organization_id
-                ),
-                team_id=(
-                    session.team_id if session.expert_id is not None else entry.team_id
-                ),
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 credential_lease=credential_lease,
                 session=session,
             )
@@ -714,18 +754,30 @@ class CoPilotProcessor:
             # FE shows escalating ``StreamStatus`` messages during long
             # silent gaps (deep thinking, slow tool execution, inter-tool
             # gaps) instead of looping the generic "Thinking…" phrases.
-            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            guarded_stream = _guard_stream_with_live_resource_lease(
+                raw_stream,
+                session.user_id,
+                session.organization_id,
+                session.team_id,
+            )
+            heartbeat_stream = wrap_stream_with_heartbeat(guarded_stream)
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
                 stream=heartbeat_stream,
             )
+            await credit_db().release_live_resource_lease(dispatch_lease_id)
+            dispatch_lease_id = None
             # Explicit aclose() on early exit: ``async for … break`` does
             # not close the generator, so GeneratorExit would never reach
             # stream_chat_completion_sdk, leaving its stream lock held
             # until GC eventually runs.
             try:
-                async for chunk in published_stream:
+                while True:
+                    try:
+                        chunk = await anext(published_stream)
+                    except StopAsyncIteration:
+                        break
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
@@ -762,6 +814,13 @@ class CoPilotProcessor:
             if not error_msg and cancel.is_set():
                 error_msg = "Operation cancelled"
             try:
+                if dispatch_lease_id is not None:
+                    try:
+                        await credit_db().release_live_resource_lease(dispatch_lease_id)
+                    except Exception as release_err:
+                        log.error(
+                            f"Failed to release Copilot dispatch lease: {release_err}"
+                        )
                 if credential_lease is not None:
                     try:
                         await credential_lease.release()

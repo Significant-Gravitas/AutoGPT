@@ -5,6 +5,8 @@ backend/conftest.py so that integration tests in this directory do not trigger
 the full SpinTestServer startup (which requires Postgres + RabbitMQ).
 """
 
+from contextlib import asynccontextmanager
+from typing import Any, Awaitable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -46,3 +48,19 @@ def stub_user_lookup_in_helpers(monkeypatch):
     client.get_user_by_id = AsyncMock(return_value=user)
     stub = MagicMock(return_value=client)
     monkeypatch.setattr("backend.copilot.tools.helpers.user_db", stub)
+
+
+class _PassthroughLeaseGuard:
+    async def run(self, action: Awaitable[Any]) -> Any:
+        return await action
+
+
+@pytest.fixture(autouse=True)
+def stub_live_resource_access(monkeypatch):
+    async def allowed_barrier(*args, **kwargs):
+        yield _PassthroughLeaseGuard()
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.base.live_resource_lease",
+        asynccontextmanager(allowed_barrier),
+    )

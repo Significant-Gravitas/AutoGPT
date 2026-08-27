@@ -11,6 +11,7 @@
     "last_run_at": null,
     "last_run_status": null,
     "name": "Maria",
+    "organization_id": null,
     "pod_id": null,
     "protected_soul_rules": [
       "The expert discloses that it is AI when acting externally.",
@@ -21,6 +22,7 @@
     "skills": [],
     "source_template_id": null,
     "tagline": "Grows your audience",
+    "team_id": null,
     "voice_preferences": "Direct and concise.",
     "voice_samples": [],
     "weekly_budget": null,

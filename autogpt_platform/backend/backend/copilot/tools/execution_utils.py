@@ -41,11 +41,47 @@ STOP_WAITING_STATUSES = TERMINAL_STATUSES | PAUSED_STATUSES
 _POST_SUBSCRIBE_RECHECK_DELAY = 0.1  # seconds to wait for subscription to establish
 
 
+def _execution_matches_scope(
+    execution: GraphExecution | None,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    if execution is None:
+        return False
+    if organization_id is None and team_id is None:
+        return True
+    return (execution.organization_id, execution.team_id) == (
+        organization_id,
+        team_id,
+    )
+
+
+async def _get_scoped_execution(
+    exec_db: Any,
+    user_id: str,
+    execution_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> GraphExecution | None:
+    execution = await exec_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=execution_id,
+        include_node_executions=False,
+        organization_id=organization_id,
+        team_id_restriction=team_id,
+    )
+    if not _execution_matches_scope(execution, organization_id, team_id):
+        return None
+    return execution
+
+
 async def wait_for_execution(
     user_id: str,
     graph_id: str,
     execution_id: str,
     timeout_seconds: int,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """
     Wait for an execution to reach a terminal or paused status using Redis pubsub.
@@ -65,10 +101,12 @@ async def wait_for_execution(
     exec_db = execution_db()
 
     # Quick check — maybe it's already done
-    execution = await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
+    execution = await _get_scoped_execution(
+        exec_db,
+        user_id,
+        execution_id,
+        organization_id,
+        team_id,
     )
     if not execution:
         return None
@@ -95,7 +133,14 @@ async def wait_for_execution(
     try:
         result = await asyncio.wait_for(
             _subscribe_and_wait(
-                event_bus, channel_key, user_id, execution_id, exec_db, task_holder
+                event_bus,
+                channel_key,
+                user_id,
+                execution_id,
+                exec_db,
+                task_holder,
+                organization_id,
+                team_id,
             ),
             timeout=timeout_seconds,
         )
@@ -115,10 +160,12 @@ async def wait_for_execution(
         await event_bus.close()
 
     # Return current state on timeout/error
-    return await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
+    return await _get_scoped_execution(
+        exec_db,
+        user_id,
+        execution_id,
+        organization_id,
+        team_id,
     )
 
 
@@ -129,6 +176,8 @@ async def _subscribe_and_wait(
     execution_id: str,
     exec_db: Any,
     task_holder: list[asyncio.Task],
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """
     Subscribe to execution events and wait for a terminal/paused status.
@@ -154,10 +203,12 @@ async def _subscribe_and_wait(
                 if isinstance(event, GraphExecutionEvent):
                     logger.debug(f"Received execution update: {event.status}")
                     if event.status in STOP_WAITING_STATUSES:
-                        result_execution = await exec_db.get_graph_execution(
-                            user_id=user_id,
-                            execution_id=execution_id,
-                            include_node_executions=False,
+                        result_execution = await _get_scoped_execution(
+                            exec_db,
+                            user_id,
+                            execution_id,
+                            organization_id,
+                            team_id,
                         )
                         done.set()
                         return
@@ -171,10 +222,12 @@ async def _subscribe_and_wait(
     # Give the subscription a moment to establish, then re-check DB
     await asyncio.sleep(_POST_SUBSCRIBE_RECHECK_DELAY)
 
-    execution = await exec_db.get_graph_execution(
-        user_id=user_id,
-        execution_id=execution_id,
-        include_node_executions=False,
+    execution = await _get_scoped_execution(
+        exec_db,
+        user_id,
+        execution_id,
+        organization_id,
+        team_id,
     )
     if execution and execution.status in STOP_WAITING_STATUSES:
         return execution

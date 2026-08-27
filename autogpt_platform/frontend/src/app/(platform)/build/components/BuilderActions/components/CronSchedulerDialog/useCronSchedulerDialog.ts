@@ -35,7 +35,7 @@ export const useCronSchedulerDialog = ({
 
   const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
-  const { teamId, setTeamId, hasTeams, teamRequestInit } =
+  const { teamId, setTeamId, hasTeams, teamRequestInit, isReady } =
     useCreateTeamSelection(CreateSurface.BuilderSchedule);
 
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
@@ -70,6 +70,7 @@ export const useCronSchedulerDialog = ({
   }, [open, defaultCronExpression]);
 
   const handleCreateSchedule = async () => {
+    if (!isReady) return;
     if (!cronExpression || cronExpression.trim() === "") {
       toast({
         variant: "destructive",
@@ -104,5 +105,6 @@ export const useCronSchedulerDialog = ({
     teamId,
     setTeamId,
     hasTeams,
+    isReady,
   };
 };

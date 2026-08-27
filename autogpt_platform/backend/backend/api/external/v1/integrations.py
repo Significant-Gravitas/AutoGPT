@@ -9,10 +9,13 @@ This module provides endpoints for external applications (like Autopilot) to:
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, HTTPException, Path, Security, status
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
+from fastapi import APIRouter, Body, HTTPException, Path, status
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
@@ -30,6 +33,10 @@ from backend.data.model import (
     HostScopedCredentials,
     UserPasswordCredentials,
     is_sdk_default,
+)
+from backend.data.tenancy import (
+    live_resource_access_barrier,
+    live_resource_permission_barrier,
 )
 from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.credentials_store import (
@@ -49,6 +56,43 @@ settings = Settings()
 creds_manager = IntegrationCredentialsManager()
 
 integrations_router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+@asynccontextmanager
+async def _live_credential_action(
+    auth: APIAuthorizationInfo,
+) -> AsyncIterator[None]:
+    async with live_resource_permission_barrier(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+        OrgAction.MANAGE_CREDENTIALS,
+        TeamAction.MANAGE_CREDENTIALS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Credential management access was revoked",
+            )
+        yield
+
+
+@asynccontextmanager
+async def _live_credential_view(
+    auth: APIAuthorizationInfo,
+) -> AsyncIterator[None]:
+    async with live_resource_access_barrier(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+        "view",
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Credential metadata access was revoked",
+            )
+        yield
 
 
 # ==================== Request/Response Models ==================== #
@@ -252,9 +296,7 @@ def _get_oauth_handler_for_external(
 
 @integrations_router.get("/providers", response_model=list[ProviderInfo])
 async def list_providers(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_INTEGRATIONS)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.READ_INTEGRATIONS),
 ) -> list[ProviderInfo]:
     """
     List all available integration providers.
@@ -262,53 +304,56 @@ async def list_providers(
     Returns a list of all providers with their supported credential types.
     Most providers support API key credentials, and some also support OAuth.
     """
-    # Ensure blocks are loaded
-    try:
-        from backend.blocks import load_all_blocks
+    async with _live_credential_view(auth):
+        # Ensure blocks are loaded
+        try:
+            from backend.blocks import load_all_blocks
 
-        load_all_blocks()
-    except Exception as e:
-        logger.warning(f"Failed to load blocks: {e}")
+            load_all_blocks()
+        except Exception as e:
+            logger.warning(f"Failed to load blocks: {e}")
 
-    from backend.sdk.registry import AutoRegistry
+        from backend.sdk.registry import AutoRegistry
 
-    providers = []
-    codex_allowed = await has_codex_access_for_discovery(auth.user_id)
-    for name in get_all_provider_names():
-        if name == ProviderName.CODEX and not codex_allowed:
-            continue
-        supports_oauth = name in HANDLERS_BY_NAME
-        handler_class = HANDLERS_BY_NAME.get(name)
-        default_scopes = (
-            getattr(handler_class, "DEFAULT_SCOPES", []) if handler_class else []
-        )
-
-        # Check if provider has specific auth types from SDK registration
-        sdk_provider = AutoRegistry.get_provider(name)
-        if sdk_provider and sdk_provider.supported_auth_types:
-            supports_api_key = "api_key" in sdk_provider.supported_auth_types
-            supports_user_password = (
-                "user_password" in sdk_provider.supported_auth_types
+        providers = []
+        codex_allowed = await has_codex_access_for_discovery(auth.user_id)
+        for name in get_all_provider_names():
+            if name == ProviderName.CODEX and not codex_allowed:
+                continue
+            supports_oauth = name in HANDLERS_BY_NAME
+            handler_class = HANDLERS_BY_NAME.get(name)
+            default_scopes = (
+                getattr(handler_class, "DEFAULT_SCOPES", []) if handler_class else []
             )
-            supports_host_scoped = "host_scoped" in sdk_provider.supported_auth_types
-        else:
-            # Fallback for legacy providers
-            supports_api_key = True  # All providers can accept API keys
-            supports_user_password = name in ("smtp",)
-            supports_host_scoped = name == "http"
 
-        providers.append(
-            ProviderInfo(
-                name=name,
-                supports_oauth=supports_oauth,
-                supports_api_key=supports_api_key,
-                supports_user_password=supports_user_password,
-                supports_host_scoped=supports_host_scoped,
-                default_scopes=default_scopes,
+            # Check if provider has specific auth types from SDK registration
+            sdk_provider = AutoRegistry.get_provider(name)
+            if sdk_provider and sdk_provider.supported_auth_types:
+                supports_api_key = "api_key" in sdk_provider.supported_auth_types
+                supports_user_password = (
+                    "user_password" in sdk_provider.supported_auth_types
+                )
+                supports_host_scoped = (
+                    "host_scoped" in sdk_provider.supported_auth_types
+                )
+            else:
+                # Fallback for legacy providers
+                supports_api_key = True  # All providers can accept API keys
+                supports_user_password = name in ("smtp",)
+                supports_host_scoped = name == "http"
+
+            providers.append(
+                ProviderInfo(
+                    name=name,
+                    supports_oauth=supports_oauth,
+                    supports_api_key=supports_api_key,
+                    supports_user_password=supports_user_password,
+                    supports_host_scoped=supports_host_scoped,
+                    default_scopes=default_scopes,
+                )
             )
-        )
 
-    return providers
+        return providers
 
 
 @integrations_router.post(
@@ -319,8 +364,8 @@ async def list_providers(
 async def initiate_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
     request: OAuthInitiateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
+    auth: APIAuthorizationInfo = require_permission(
+        APIKeyPermission.MANAGE_INTEGRATIONS
     ),
 ) -> OAuthInitiateResponse:
     """
@@ -364,30 +409,31 @@ async def initiate_oauth(
     # Store state token with external flow metadata
     # Note: initiated_by_api_key_id is only available for API key auth, not OAuth
     api_key_id = getattr(auth, "id", None) if auth.type == "api_key" else None
-    state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id=auth.user_id,
-        provider=provider if isinstance(provider_name, str) else provider_name.value,
-        scopes=request.scopes,
-        callback_url=request.callback_url,
-        state_metadata=request.state_metadata,
-        initiated_by_api_key_id=api_key_id,
-    )
+    async with _live_credential_action(auth):
+        state_token, code_challenge = await creds_manager.store.store_state_token(
+            user_id=auth.user_id,
+            provider=(
+                provider if isinstance(provider_name, str) else provider_name.value
+            ),
+            scopes=request.scopes,
+            callback_url=request.callback_url,
+            state_metadata=request.state_metadata,
+            initiated_by_api_key_id=api_key_id,
+        )
+        login_url = handler.get_login_url(
+            request.scopes, state_token, code_challenge=code_challenge
+        )
 
-    # Build login URL
-    login_url = handler.get_login_url(
-        request.scopes, state_token, code_challenge=code_challenge
-    )
+        from datetime import datetime, timedelta, timezone
 
-    # Calculate expiration (10 minutes from now)
-    from datetime import datetime, timedelta, timezone
-
-    expires_at = int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp())
-
-    return OAuthInitiateResponse(
-        login_url=login_url,
-        state_token=state_token,
-        expires_at=expires_at,
-    )
+        expires_at = int(
+            (datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp()
+        )
+        return OAuthInitiateResponse(
+            login_url=login_url,
+            state_token=state_token,
+            expires_at=expires_at,
+        )
 
 
 @integrations_router.post(
@@ -398,8 +444,8 @@ async def initiate_oauth(
 async def complete_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
     request: OAuthCompleteRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
+    auth: APIAuthorizationInfo = require_permission(
+        APIKeyPermission.MANAGE_INTEGRATIONS
     ),
 ) -> OAuthCompleteResponse:
     """
@@ -431,63 +477,57 @@ async def complete_oauth(
     # Get OAuth handler with the original callback URL
     handler = _get_oauth_handler_for_external(provider, valid_state.callback_url)
 
-    try:
-        scopes = valid_state.scopes
-        scopes = handler.handle_default_scopes(scopes)
-
-        credentials = await handler.exchange_code_for_tokens(
-            request.code, scopes, valid_state.code_verifier
-        )
-
-        # Handle Linear's space-separated scopes
-        if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
-            credentials.scopes = credentials.scopes[0].split(" ")
-
-        # Check scope mismatch
-        if not set(scopes).issubset(set(credentials.scopes)):
-            logger.warning(
-                f"Granted scopes {credentials.scopes} for provider {provider} "
-                f"do not include all requested scopes {scopes}"
+    async with _live_credential_action(auth):
+        try:
+            scopes = handler.handle_default_scopes(valid_state.scopes)
+            credentials = await handler.exchange_code_for_tokens(
+                request.code, scopes, valid_state.code_verifier
+            )
+            if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
+                credentials.scopes = credentials.scopes[0].split(" ")
+            if not set(scopes).issubset(set(credentials.scopes)):
+                logger.warning(
+                    f"Granted scopes {credentials.scopes} for provider {provider} "
+                    f"do not include all requested scopes {scopes}"
+                )
+        except Exception as e:
+            logger.error(
+                f"OAuth2 Code->Token exchange failed for provider {provider}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
             )
 
-    except Exception as e:
-        logger.error(f"OAuth2 Code->Token exchange failed for provider {provider}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
+        await creds_manager.create(auth.user_id, credentials)
+        logger.info(f"Successfully completed external OAuth for provider {provider}")
+        return OAuthCompleteResponse(
+            credentials_id=credentials.id,
+            provider=credentials.provider,
+            type=credentials.type,
+            title=credentials.title,
+            scopes=credentials.scopes,
+            username=credentials.username,
+            state_metadata=valid_state.state_metadata,
         )
-
-    # Store credentials
-    await creds_manager.create(auth.user_id, credentials)
-
-    logger.info(f"Successfully completed external OAuth for provider {provider}")
-
-    return OAuthCompleteResponse(
-        credentials_id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=credentials.scopes,
-        username=credentials.username,
-        state_metadata=valid_state.state_metadata,
-    )
 
 
 @integrations_router.get("/credentials", response_model=list[CredentialsMetaResponse])
 async def list_credentials(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_INTEGRATIONS)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.READ_INTEGRATIONS),
 ) -> list[CredentialsMetaResponse]:
     """
     List all credentials for the authenticated user.
 
     Returns metadata about each credential without exposing sensitive tokens.
     """
-    credentials = await creds_manager.store.get_all_creds(auth.user_id)
-    return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
-    ]
+    async with _live_credential_view(auth):
+        credentials = await creds_manager.store.get_all_creds(auth.user_id)
+        return [
+            to_meta_response(cred)
+            for cred in credentials
+            if not is_sdk_default(cred.id)
+        ]
 
 
 @integrations_router.get(
@@ -495,19 +535,20 @@ async def list_credentials(
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_INTEGRATIONS)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.READ_INTEGRATIONS),
 ) -> list[CredentialsMetaResponse]:
     """
     List credentials for a specific provider.
     """
-    credentials = await creds_manager.store.get_creds_by_provider(
-        auth.user_id, provider
-    )
-    return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
-    ]
+    async with _live_credential_view(auth):
+        credentials = await creds_manager.store.get_creds_by_provider(
+            auth.user_id, provider
+        )
+        return [
+            to_meta_response(cred)
+            for cred in credentials
+            if not is_sdk_default(cred.id)
+        ]
 
 
 @integrations_router.post(
@@ -523,8 +564,8 @@ async def create_credential(
         CreateUserPasswordCredentialRequest,
         CreateHostScopedCredentialRequest,
     ] = Body(..., discriminator="type"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
+    auth: APIAuthorizationInfo = require_permission(
+        APIKeyPermission.MANAGE_INTEGRATIONS
     ),
 ) -> CreateCredentialResponse:
     """
@@ -582,14 +623,15 @@ async def create_credential(
         )
 
     # Store credentials
-    try:
-        await creds_manager.create(auth.user_id, credentials)
-    except Exception:
-        logger.exception("Failed to store credentials")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to store credentials",
-        )
+    async with _live_credential_action(auth):
+        try:
+            await creds_manager.create(auth.user_id, credentials)
+        except Exception:
+            logger.exception("Failed to store credentials")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store credentials",
+            )
 
     logger.info(f"Created {request.type} credentials for provider {provider}")
 
@@ -615,8 +657,8 @@ class DeleteCredentialResponse(BaseModel):
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],
     cred_id: Annotated[str, Path(title="The credential ID to delete")],
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
+    auth: APIAuthorizationInfo = require_permission(
+        APIKeyPermission.DELETE_INTEGRATIONS
     ),
 ) -> DeleteCredentialResponse:
     """
@@ -626,25 +668,23 @@ async def delete_credential(
     use the main API's delete endpoint which handles webhook cleanup and
     token revocation.
     """
-    if is_sdk_default(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
-    if is_system_credential(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="System-managed credentials cannot be deleted",
-        )
-    creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
-    if not creds:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
-    if not provider_matches(creds.provider, provider):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
-
-    await creds_manager.delete(auth.user_id, cred_id)
+    async with _live_credential_action(auth):
+        if is_sdk_default(cred_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Credentials not found",
+            )
+        if is_system_credential(cred_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="System-managed credentials cannot be deleted",
+            )
+        creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
+        if not creds or not provider_matches(creds.provider, provider):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Credentials not found",
+            )
+        await creds_manager.delete(auth.user_id, cred_id)
 
     return DeleteCredentialResponse(deleted=True, credentials_id=cred_id)

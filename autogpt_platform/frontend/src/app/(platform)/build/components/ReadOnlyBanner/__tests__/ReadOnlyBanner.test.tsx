@@ -15,6 +15,14 @@ vi.mock("../../../hooks/useDuplicateGraph", () => ({
   }),
 }));
 
+vi.mock("@/components/contextual/TeamPicker/useCreateTeamSelection", () => ({
+  useCreateTeamSelection: () => ({
+    teamId: null,
+    setTeamId: vi.fn(),
+    isReady: true,
+  }),
+}));
+
 import { ReadOnlyBanner } from "../ReadOnlyBanner";
 
 describe("ReadOnlyBanner", () => {

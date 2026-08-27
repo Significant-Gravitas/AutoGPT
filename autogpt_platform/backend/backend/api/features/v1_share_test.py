@@ -1,7 +1,8 @@
 """Tests for the public shared file download endpoint."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -58,6 +59,14 @@ def _mock_download_response(**kwargs):
     return _handler
 
 
+def _mock_shared_file_access(file: WorkspaceFile | None):
+    @asynccontextmanager
+    async def _access(*args, **kwargs):
+        yield file
+
+    return _access
+
+
 class TestDownloadSharedFile:
     """Tests for GET /api/public/shared/{token}/files/{id}/download."""
 
@@ -68,14 +77,8 @@ class TestDownloadSharedFile:
     def test_valid_token_and_file_returns_inline_content(self):
         with (
             patch(
-                "backend.api.features.v1.execution_db.get_shared_execution_file",
-                new_callable=AsyncMock,
-                return_value="exec-123",
-            ),
-            patch(
-                "backend.api.features.v1.get_workspace_file_by_id",
-                new_callable=AsyncMock,
-                return_value=_make_workspace_file(),
+                "backend.api.features.v1.execution_db.shared_execution_file_access",
+                new=_mock_shared_file_access(_make_workspace_file()),
             ),
             patch(
                 "backend.api.features.v1.create_file_download_response",
@@ -98,9 +101,8 @@ class TestDownloadSharedFile:
 
     def test_token_not_in_allowlist_returns_404(self):
         with patch(
-            "backend.api.features.v1.execution_db.get_shared_execution_file",
-            new_callable=AsyncMock,
-            return_value=None,
+            "backend.api.features.v1.execution_db.shared_execution_file_access",
+            new=_mock_shared_file_access(None),
         ):
             response = self.client.get(
                 f"/api/public/shared/{VALID_TOKEN}/files/{VALID_FILE_ID}/download"
@@ -110,14 +112,8 @@ class TestDownloadSharedFile:
     def test_file_missing_from_workspace_returns_404(self):
         with (
             patch(
-                "backend.api.features.v1.execution_db.get_shared_execution_file",
-                new_callable=AsyncMock,
-                return_value="exec-123",
-            ),
-            patch(
-                "backend.api.features.v1.get_workspace_file_by_id",
-                new_callable=AsyncMock,
-                return_value=None,
+                "backend.api.features.v1.execution_db.shared_execution_file_access",
+                new=_mock_shared_file_access(None),
             ),
         ):
             response = self.client.get(
@@ -128,9 +124,8 @@ class TestDownloadSharedFile:
     def test_uniform_404_prevents_enumeration(self):
         """Both failure modes produce identical 404 — no information leak."""
         with patch(
-            "backend.api.features.v1.execution_db.get_shared_execution_file",
-            new_callable=AsyncMock,
-            return_value=None,
+            "backend.api.features.v1.execution_db.shared_execution_file_access",
+            new=_mock_shared_file_access(None),
         ):
             resp_no_allow = self.client.get(
                 f"/api/public/shared/{VALID_TOKEN}/files/{VALID_FILE_ID}/download"
@@ -138,14 +133,8 @@ class TestDownloadSharedFile:
 
         with (
             patch(
-                "backend.api.features.v1.execution_db.get_shared_execution_file",
-                new_callable=AsyncMock,
-                return_value="exec-123",
-            ),
-            patch(
-                "backend.api.features.v1.get_workspace_file_by_id",
-                new_callable=AsyncMock,
-                return_value=None,
+                "backend.api.features.v1.execution_db.shared_execution_file_access",
+                new=_mock_shared_file_access(None),
             ),
         ):
             resp_no_file = self.client.get(

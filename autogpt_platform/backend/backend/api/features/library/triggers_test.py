@@ -18,6 +18,15 @@ _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
 
 
+@pytest.fixture(autouse=True)
+def allow_attachment_barrier(monkeypatch: pytest.MonkeyPatch):
+    @contextlib.asynccontextmanager
+    async def allow(_graph_id: str):
+        yield
+
+    monkeypatch.setattr(f"{_PATH}.agent_graph_attachment_barrier", allow)
+
+
 def _graph():
     node = MagicMock()
     node.id = "trigger-node"
@@ -389,7 +398,14 @@ async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
 
     assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
     assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
-    m["set_webhook"].assert_awaited_once_with(_USER, "preset-1", "wh-new")
+    m["set_webhook"].assert_awaited_once_with(
+        _USER,
+        "preset-1",
+        "wh-new",
+        "personal-org",
+        "personal-team",
+        False,
+    )
 
 
 @pytest.mark.asyncio
@@ -469,7 +485,9 @@ def _delete_patches(*, preset):
 async def test_delete_with_webhook_prunes():
     with _delete_patches(preset=_preset(webhook_id="wh-1")) as m:
         await delete_preset_with_webhook_cleanup(user_id=_USER, preset_id="preset-1")
-    m["set_webhook"].assert_awaited_once_with(_USER, "preset-1", None)
+    m["set_webhook"].assert_awaited_once_with(
+        _USER, "preset-1", None, None, None, False
+    )
     m["prune"].assert_awaited_once_with(_USER, "wh-1")
     m["delete"].assert_awaited_once()
 

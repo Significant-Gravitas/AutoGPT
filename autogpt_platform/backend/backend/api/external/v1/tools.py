@@ -7,10 +7,11 @@ with zeroed counters. Rate limiting for external API consumers should be
 handled separately (e.g., via API key quotas).
 """
 
+import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Security
+from fastapi import APIRouter
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
@@ -71,15 +72,17 @@ class RunAgentRequest(BaseModel):
 
 
 def _create_ephemeral_session(
-    user_id: str, organization_id: str | None = None
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> ChatSession:
-    """Create an ephemeral session for stateless API requests.
-
-    ``organization_id`` should be the API key's org so tools launched
-    through this session attribute to the key's tenant (mirrors the
-    external ``execute_graph`` route).
-    """
-    return ChatSession.new(user_id, dry_run=False, organization_id=organization_id)
+    """Create an ephemeral session for stateless API requests."""
+    return ChatSession.new(
+        user_id,
+        dry_run=False,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
 
 
 @tools_router.post(
@@ -87,9 +90,7 @@ def _create_ephemeral_session(
 )
 async def find_agent(
     request: FindAgentRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.USE_TOOLS)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.USE_TOOLS),
 ) -> dict[str, Any]:
     """
     Search for agents in the marketplace based on capabilities and user needs.
@@ -100,7 +101,11 @@ async def find_agent(
     Returns:
         List of matching agents or no results response
     """
-    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
+    session = _create_ephemeral_session(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+    )
     result = await find_agent_tool._execute(
         user_id=auth.user_id,
         session=session,
@@ -114,9 +119,7 @@ async def find_agent(
 )
 async def run_agent(
     request: RunAgentRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.USE_TOOLS)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.USE_TOOLS),
 ) -> dict[str, Any]:
     """
     Run or schedule an agent from the marketplace.
@@ -140,10 +143,15 @@ async def run_agent(
         - execution_started: If agent was run or scheduled successfully
         - error: If something went wrong
     """
-    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
-    result = await run_agent_tool._execute(
+    session = _create_ephemeral_session(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+    )
+    result = await run_agent_tool.execute(
         user_id=auth.user_id,
         session=session,
+        tool_call_id=f"external:{session.session_id}",
         username_agent_slug=request.username_agent_slug,
         inputs=request.inputs,
         use_defaults=request.use_defaults,
@@ -151,7 +159,12 @@ async def run_agent(
         cron=request.cron or "",
         timezone=request.timezone,
     )
-    return _response_to_dict(result)
+    if isinstance(result.output, dict):
+        return result.output
+    parsed = json.loads(result.output)
+    if not isinstance(parsed, dict):
+        raise ValueError("Tool response must be a JSON object")
+    return parsed
 
 
 def _response_to_dict(result: ToolResponseBase) -> dict[str, Any]:

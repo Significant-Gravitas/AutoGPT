@@ -149,6 +149,8 @@ def _extract_lexical_keywords(text: str, max_keywords: int = _MAX_KEYWORDS) -> s
 async def hybrid_search_library_agents(
     query: str,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     limit: int = 5,
     min_score: float = LIBRARY_SIMILARITY_THRESHOLD,
 ) -> list[dict[str, Any]]:
@@ -157,6 +159,8 @@ async def hybrid_search_library_agents(
     Args:
         query: The user's goal text (free-form).
         user_id: Owner of the library agents to search.
+        organization_id: Exact organization scope to search.
+        team_id: Exact team scope to search.
         limit: Maximum number of matches to return.
         min_score: Minimum combined relevance to keep a match.
 
@@ -183,6 +187,8 @@ async def hybrid_search_library_agents(
         page_size=max(1, limit),
         min_score=0.0,
         user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
         weights=_LIBRARY_SEARCH_WEIGHTS,
         lexical_query=lexical_query,
     )

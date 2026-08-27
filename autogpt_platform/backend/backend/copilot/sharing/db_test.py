@@ -104,6 +104,7 @@ class _TxStub:
 
     def __init__(self) -> None:
         self.tx = MagicMock(name="tx")
+        self.tx.query_raw = AsyncMock(return_value=[{"id": "locked"}])
 
     async def __aenter__(self):
         return self.tx
@@ -177,6 +178,9 @@ def mock_prisma_calls():
     ):
         msg_prisma.return_value.count = AsyncMock(return_value=0)
         msg_prisma.return_value.find_many = AsyncMock(return_value=[])
+        session_prisma.return_value.find_unique = AsyncMock(
+            return_value=_mock_session()
+        )
         workspace_prisma.return_value.find_unique = AsyncMock(return_value=None)
         workspace_file_prisma.return_value.find_many = AsyncMock(return_value=[])
         # Default no-op for the execution-file allowlist so tests that
@@ -716,7 +720,11 @@ class TestSharedExecutionFileAllowlist:
             },
             Input=None,
         )
-        execution = SimpleNamespace(NodeExecutions=[hidden_node, output_node])
+        execution = SimpleNamespace(
+            NodeExecutions=[hidden_node, output_node],
+            organizationId="org-1",
+            teamId=None,
+        )
 
         mock_prisma_calls["execution"].return_value.find_unique = AsyncMock(
             return_value=execution

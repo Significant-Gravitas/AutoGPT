@@ -1,10 +1,17 @@
 """Tests for run-health helpers in execution_utils."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 
-from .execution_utils import build_run_health_warning, summarize_node_failures
+from .execution_utils import (
+    build_run_health_warning,
+    summarize_node_failures,
+    wait_for_execution,
+)
 
 STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9"
 
@@ -137,3 +144,53 @@ def test_many_failures_capped_detail_but_full_count():
     assert warning is not None
     assert "8 node(s) FAILED" in warning
     assert warning.count("boom") == 5
+
+
+@pytest.mark.asyncio
+async def test_wait_for_execution_rejects_cross_team_result():
+    execution = MagicMock(
+        status=ExecutionStatus.COMPLETED,
+        organization_id="org-1",
+        team_id="team-2",
+    )
+    exec_db = MagicMock()
+    exec_db.get_graph_execution = AsyncMock(return_value=execution)
+
+    with patch(
+        "backend.copilot.tools.execution_utils.execution_db", return_value=exec_db
+    ):
+        result = await wait_for_execution(
+            user_id="user-1",
+            graph_id="graph-1",
+            execution_id="exec-1",
+            timeout_seconds=1,
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_wait_for_execution_returns_exact_team_result():
+    execution = MagicMock(
+        status=ExecutionStatus.COMPLETED,
+        organization_id="org-1",
+        team_id="team-1",
+    )
+    exec_db = MagicMock()
+    exec_db.get_graph_execution = AsyncMock(return_value=execution)
+
+    with patch(
+        "backend.copilot.tools.execution_utils.execution_db", return_value=exec_db
+    ):
+        result = await wait_for_execution(
+            user_id="user-1",
+            graph_id="graph-1",
+            execution_id="exec-1",
+            timeout_seconds=1,
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result is execution

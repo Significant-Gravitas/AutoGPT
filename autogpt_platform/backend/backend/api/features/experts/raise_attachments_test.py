@@ -30,6 +30,16 @@ def _transaction_losing_the_insert():
 async def _marketplace_install_race(existing: object | None):
     """Marketplace install where a concurrent raise already made the row."""
     workflow_client = SimpleNamespace(find_first=AsyncMock(return_value=existing))
+    version_client = SimpleNamespace(
+        find_unique=AsyncMock(
+            return_value=SimpleNamespace(agentGraphId="agent-graph-1")
+        )
+    )
+
+    @asynccontextmanager
+    async def allow_attachment(*_args, **_kwargs):
+        yield
+
     with (
         patch.object(
             raise_attachments, "transaction", _transaction_losing_the_insert()
@@ -48,6 +58,16 @@ async def _marketplace_install_race(existing: object | None):
         ),
         patch.object(
             prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
+        ),
+        patch.object(
+            prisma.models.StoreListingVersion,
+            "prisma",
+            return_value=version_client,
+        ),
+        patch.object(
+            raise_attachments,
+            "agent_graph_attachment_barrier",
+            allow_attachment,
         ),
     ):
         yield workflow_client

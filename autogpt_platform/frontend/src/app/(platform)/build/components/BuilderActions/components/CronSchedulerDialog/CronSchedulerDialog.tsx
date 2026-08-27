@@ -36,6 +36,7 @@ export function CronSchedulerDialog({
     isCreatingSchedule,
     teamId,
     setTeamId,
+    isReady,
   } = useCronSchedulerDialog({
     open,
     setOpen,
@@ -108,7 +109,7 @@ export function CronSchedulerDialog({
           </Button>
           <Button
             loading={isCreatingSchedule}
-            disabled={isCreatingSchedule}
+            disabled={isCreatingSchedule || !isReady}
             onClick={handleCreateSchedule}
             className="h-fit"
           >

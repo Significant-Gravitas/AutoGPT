@@ -26,6 +26,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.orgs import db as orgs_db
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
 from backend.copilot.model import create_chat_session
@@ -223,10 +224,30 @@ async def _transfer_listing_to_official_creator(slv_id: str) -> None:
         where={"activeVersionId": slv_id}
     )
     assert listing is not None
-    await prisma.models.StoreListing.prisma().update(
-        where={"id": listing.id},
-        data={"owningUserId": store_assets.AUTOGPT_USER_ID},
+    organization_id, _ = await orgs_db.get_user_default_team(
+        store_assets.AUTOGPT_USER_ID
     )
+    assert organization_id is not None
+    async with db_client.tx() as tx:
+        await prisma.models.AgentGraph.prisma(tx).update_many(
+            where={"id": listing.agentGraphId},
+            data={
+                "userId": store_assets.AUTOGPT_USER_ID,
+                "organizationId": organization_id,
+                "teamId": None,
+            },
+        )
+        await prisma.models.StoreListing.prisma(tx).update(
+            where={"id": listing.id},
+            data={
+                "owningUserId": store_assets.AUTOGPT_USER_ID,
+                "owningOrgId": organization_id,
+            },
+        )
+        await prisma.models.StoreListingVersion.prisma(tx).update_many(
+            where={"storeListingId": listing.id},
+            data={"organizationId": organization_id, "teamId": None},
+        )
 
 
 async def _seed_template(
@@ -707,6 +728,8 @@ async def test_raise_expert_rejects_pending_version_of_approved_graph(
             "categories": approved.categories,
             "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
             "storeListingId": approved.storeListingId,
+            "organizationId": approved.organizationId,
+            "teamId": approved.teamId,
         }
     )
 
@@ -1347,10 +1370,125 @@ async def test_existing_non_private_hire_is_never_revived():
         patch.object(experts_db, "transaction", fake_transaction),
         pytest.raises(experts_db.ExpertNotFoundError),
     ):
-        await experts_db._reserve_hired_expert("owner-1", "template-1", {})
+        await experts_db._reserve_hired_expert(
+            "owner-1", "template-1", "personal-org", "personal-team", {}
+        )
 
     tx.expert.update.assert_not_awaited()
     tx.expert.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_existing_private_hire_backfills_missing_scope():
+    existing = SimpleNamespace(
+        id="expert-1",
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        isArchived=False,
+        organizationId=None,
+        teamId=None,
+    )
+    updated = SimpleNamespace(
+        **{
+            **vars(existing),
+            "organizationId": "personal-org",
+            "teamId": "personal-team",
+        }
+    )
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            find_first=AsyncMock(return_value=existing),
+            update=AsyncMock(return_value=updated),
+            create=AsyncMock(),
+            count=AsyncMock(return_value=0),
+        ),
+    )
+
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with patch.object(experts_db, "transaction", fake_transaction):
+        row, state = await experts_db._reserve_hired_expert(
+            "owner-1", "template-1", "personal-org", "personal-team", {}
+        )
+
+    assert row is updated
+    assert state == "existing"
+    tx.expert.update.assert_awaited_once_with(
+        where={"id": "expert-1"},
+        data={"organizationId": "personal-org", "teamId": "personal-team"},
+        include=experts_db._WORKFLOW_INCLUDE,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_existing_private_hire_rejects_foreign_scope():
+    existing = SimpleNamespace(
+        id="expert-1",
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        isArchived=False,
+        organizationId="other-org",
+        teamId="other-team",
+    )
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            find_first=AsyncMock(return_value=existing),
+            update=AsyncMock(),
+            create=AsyncMock(),
+            count=AsyncMock(return_value=0),
+        ),
+    )
+
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with (
+        patch.object(experts_db, "transaction", fake_transaction),
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
+    ):
+        await experts_db._reserve_hired_expert(
+            "owner-1", "template-1", "personal-org", "personal-team", {}
+        )
+
+    tx.expert.update.assert_not_awaited()
+    tx.expert.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_raised_expert_row_persists_exact_scope():
+    created = SimpleNamespace(id="expert-1")
+    tx = SimpleNamespace(
+        execute_raw=AsyncMock(),
+        expert=SimpleNamespace(
+            count=AsyncMock(side_effect=[0, 0]),
+            create=AsyncMock(return_value=created),
+        ),
+    )
+
+    @asynccontextmanager
+    async def fake_transaction(*args, **kwargs):
+        yield tx
+
+    with patch.object(experts_db, "transaction", fake_transaction):
+        result = await experts_db._create_raised_expert_row(
+            "owner-1",
+            "Otto",
+            "Operator",
+            "Direct",
+            organization_id="personal-org",
+            team_id="personal-team",
+            avatar_url=None,
+            color=None,
+            about=None,
+        )
+
+    assert result is created
+    create_call = tx.expert.create.await_args.kwargs
+    assert create_call["data"]["organizationId"] == "personal-org"
+    assert create_call["data"]["teamId"] == "personal-team"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1393,6 +1531,11 @@ async def test_hire_existing_team_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
         pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
         await experts_db.hire_expert("owner-1", "template-1", None)
@@ -1445,6 +1588,11 @@ async def test_hire_raced_org_expert_fails_closed():
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
         patch.object(experts_db, "transaction", fake_transaction),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
         pytest.raises(experts_db.ExpertNotFoundError) as exc_info,
     ):
         await experts_db.hire_expert("owner-1", "template-1", None)
@@ -1548,7 +1696,13 @@ async def test_rehire_reattach_failure_restores_archived_state():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_resolve_private_expert_tenancy_uses_owner_personal_scope():
-    find_first = AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+    find_first = AsyncMock(
+        return_value=SimpleNamespace(
+            id="expert-1",
+            organizationId="personal-org",
+            teamId="personal-team",
+        )
+    )
     manager = SimpleNamespace(find_first=find_first)
     lookup = AsyncMock(return_value=("personal-org", "personal-team"))
 
@@ -1604,7 +1758,11 @@ async def test_resolve_private_expert_tenancy_rejects_unsupported_experts():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_resolve_private_expert_tenancy_fails_without_personal_org():
     manager = SimpleNamespace(
-        find_first=AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+        find_first=AsyncMock(
+            return_value=SimpleNamespace(
+                id="expert-1", organizationId=None, teamId=None
+            )
+        )
     )
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=manager),
@@ -1622,7 +1780,11 @@ async def test_resolve_private_expert_tenancy_fails_without_personal_org():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_resolve_private_expert_tenancy_allows_missing_default_team():
     manager = SimpleNamespace(
-        find_first=AsyncMock(return_value=SimpleNamespace(id="expert-1"))
+        find_first=AsyncMock(
+            return_value=SimpleNamespace(
+                id="expert-1", organizationId="personal-org", teamId=None
+            )
+        )
     )
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=manager),
@@ -1636,6 +1798,33 @@ async def test_resolve_private_expert_tenancy_allows_missing_default_team():
         assert await experts_db.resolve_private_expert_tenancy(
             "owner-1", "expert-1"
         ) == ("personal-org", None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("stored_org", "stored_team"),
+    [(None, None), ("other-org", "personal-team"), ("personal-org", "other-team")],
+)
+async def test_resolve_private_expert_tenancy_rejects_row_scope_mismatch(
+    stored_org: str | None, stored_team: str | None
+):
+    manager = SimpleNamespace(
+        find_first=AsyncMock(
+            return_value=SimpleNamespace(
+                id="expert-1", organizationId=stored_org, teamId=stored_team
+            )
+        )
+    )
+    with (
+        patch.object(prisma.models.Expert, "prisma", return_value=manager),
+        patch.object(
+            experts_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+        pytest.raises(experts_db.ExpertPrivateTenancyNotFoundError),
+    ):
+        await experts_db.resolve_private_expert_tenancy("owner-1", "expert-1")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2678,6 +2867,8 @@ async def test_seed_clears_removed_cadence_after_listing_version_rotation(
             "categories": previous.categories,
             "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
             "storeListingId": listing.id,
+            "organizationId": previous.organizationId,
+            "teamId": previous.teamId,
         }
     )
     await prisma.models.StoreListing.prisma().update(

@@ -37,14 +37,17 @@ describe("useOrgTeamStore", () => {
     seedStore();
   });
 
-  it("setActiveOrg persists the org and resets the active team", () => {
+  it("setActiveOrg persists the org and clears active and cached teams", () => {
     useOrgTeamStore.getState().setActiveTeam("team-stale");
+    useOrgTeamStore.getState().setTeams([TEAM]);
 
     useOrgTeamStore.getState().setActiveOrg("org-1");
 
     const state = useOrgTeamStore.getState();
     expect(state.activeOrgID).toBe("org-1");
     expect(state.activeTeamID).toBeNull();
+    expect(state.teams).toEqual([]);
+    expect(state.isLoaded).toBe(false);
     expect(storage.get(Key.ACTIVE_ORG)).toBe("org-1");
     expect(storage.get(Key.ACTIVE_TEAM)).toBeNull();
   });

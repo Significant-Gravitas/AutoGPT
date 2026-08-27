@@ -4,10 +4,12 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
+from backend.api.live_auth import live_dependency, requires_live_resource_permission
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
 from .. import model as library_model
+from .live import require_live_library_create, require_live_library_delete
 
 router = APIRouter(
     prefix="/agents",
@@ -23,8 +25,9 @@ router = APIRouter(
 )
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
     ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
@@ -72,6 +75,7 @@ async def list_library_agents(
         include_root_only=include_root_only,
         is_hidden=is_hidden,
         organization_id=getattr(ctx, "org_id", None),
+        team_id_restriction=ctx.team_id,
     )
 
 
@@ -81,6 +85,10 @@ async def list_library_agents(
 )
 async def list_favorite_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
     page: int = Query(
         1,
         ge=1,
@@ -99,6 +107,8 @@ async def list_favorite_library_agents(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
@@ -106,8 +116,17 @@ async def list_favorite_library_agents(
 async def get_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> library_model.LibraryAgent:
-    return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
+    return await library_db.get_library_agent(
+        id=library_agent_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
+    )
 
 
 @router.get("/by-graph/{graph_id}")
@@ -115,9 +134,17 @@ async def get_library_agent_by_graph_id(
     graph_id: str,
     version: Optional[int] = Query(default=None),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> library_model.LibraryAgent:
     library_agent = await library_db.get_library_agent_by_graph_id(
-        user_id, graph_id, version
+        user_id,
+        graph_id,
+        version,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     if not library_agent:
         raise HTTPException(
@@ -136,12 +163,19 @@ async def get_library_agent_by_graph_id(
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> library_model.LibraryAgent | None:
     """
     Get Library Agent from Store Listing Version ID.
     """
     return await library_db.get_library_agent_by_store_version_id(
-        store_listing_version_id, user_id
+        store_listing_version_id,
+        user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
@@ -149,6 +183,7 @@ async def get_library_agent_by_store_listing_version_id(
     "",
     summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[live_dependency(require_live_library_create)],
 )
 async def add_marketplace_agent_to_library(
     store_listing_version_id: str = Body(embed=True),
@@ -156,6 +191,12 @@ async def add_marketplace_agent_to_library(
         default="marketplace", embed=True
     ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> library_model.LibraryAgent:
     """
     Add an agent from the marketplace to the user's library.
@@ -163,6 +204,8 @@ async def add_marketplace_agent_to_library(
     agent = await library_db.add_store_agent_to_library(
         store_listing_version_id=store_listing_version_id,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
     if source != "onboarding":
         await complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT)
@@ -172,11 +215,18 @@ async def add_marketplace_agent_to_library(
 @router.patch(
     "/{library_agent_id}",
     summary="Update Library Agent",
+    dependencies=[live_dependency(require_live_library_create)],
 )
 async def update_library_agent(
     library_agent_id: str,
     payload: library_model.LibraryAgentUpdateRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> library_model.LibraryAgent:
     """
     Update the library agent with the given fields.
@@ -191,32 +241,51 @@ async def update_library_agent(
         is_hidden=payload.is_hidden,
         settings=payload.settings,
         folder_id=payload.folder_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
 @router.delete(
     "/{library_agent_id}",
     summary="Delete Library Agent",
+    dependencies=[live_dependency(require_live_library_delete)],
 )
 async def delete_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.DELETE_AGENTS,
+        )
+    ),
 ) -> Response:
     """
     Soft-delete the specified library agent.
     """
     await library_db.delete_library_agent(
-        library_agent_id=library_agent_id, user_id=user_id
+        library_agent_id=library_agent_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
+@router.post(
+    "/{library_agent_id}/fork",
+    summary="Fork Library Agent",
+    dependencies=[live_dependency(require_live_library_create)],
+)
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
     ),
 ) -> library_model.LibraryAgent:
     # `library_db.fork_library_agent` activates the forked graph (validates
@@ -225,10 +294,7 @@ async def fork_library_agent(
     # rest_api.py and becomes a 400. Making the save itself atomic is a
     # follow-up.
     #
-    # Stamp the fork with the caller's active tenancy so an explicit X-Team-Id
-    # lands the forked agent in that team. ctx.team_id is already validated as
-    # an active membership by get_request_context (invalid -> None), so a bad
-    # team never lands the fork in someone else's workspace.
+    # Stamp the fork with the caller's membership-verified active tenancy.
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
@@ -247,9 +313,16 @@ async def fork_library_agent(
 async def list_trigger_agents(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> list[library_model.LibraryAgent]:
     """List trigger agents linked to the given parent agent."""
     return await library_db.list_trigger_agents(
         user_id=user_id,
         library_agent_id=library_agent_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+        enforce_scope=True,
     )

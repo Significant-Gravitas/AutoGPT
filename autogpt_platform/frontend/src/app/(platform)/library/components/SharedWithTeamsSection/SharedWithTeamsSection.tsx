@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 
@@ -43,6 +44,25 @@ export function SharedWithTeamsSection() {
                 ? "latest version"
                 : `v${grant.agent_graph_version}`}
             </Text>
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                as="NextLink"
+                href={`/build?flowID=${encodeURIComponent(grant.agent_graph_id)}&flowVersion=${grant.agent_graph_version}`}
+                variant="secondary"
+                size="small"
+              >
+                Open
+              </Button>
+              {grant.capability === "EXECUTE" ? (
+                <Button
+                  as="NextLink"
+                  href={`/build?flowID=${encodeURIComponent(grant.agent_graph_id)}&flowVersion=${grant.agent_graph_version}`}
+                  size="small"
+                >
+                  Run
+                </Button>
+              ) : null}
+            </div>
           </div>
         ))}
       </div>

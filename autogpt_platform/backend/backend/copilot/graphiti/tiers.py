@@ -82,7 +82,7 @@ class TierTarget(BaseModel):
 async def get_user_team_ids(user_id: str, org_id: str) -> list[str]:
     """Active team ids through DatabaseManager when this process has no Prisma."""
     memberships = await orgs_db().list_shared_memory_team_access(org_id, user_id)
-    return [membership.team_id for membership in memberships]
+    return [membership.team_id for membership in memberships if membership.can_view]
 
 
 async def resolve_team_name(user_id: str, org_id: str, team_id: str) -> str | None:
@@ -116,7 +116,7 @@ async def resolve_team_names(
 
 
 async def is_org_member(user_id: str, org_id: str) -> bool:
-    """True if *user_id* is an ACTIVE member (any role) of *org_id*.
+    """True when an ACTIVE org member may read shared resources.
 
     The org tier must re-check this per operation: ``session.organization_id``
     is membership-verified only at session creation, so a revoked or stale
@@ -124,7 +124,13 @@ async def is_org_member(user_id: str, org_id: str) -> bool:
     Mirrors the TEAM tier, which re-verifies via ``get_team_membership``.
     """
     member = await orgs_db().get_shared_memory_org_access(org_id, user_id)
-    return member is not None
+    return bool(member and member.can_view)
+
+
+async def can_write_org_memory(user_id: str, org_id: str) -> bool:
+    """True when an ACTIVE org member may write shared resources."""
+    member = await orgs_db().get_shared_memory_org_access(org_id, user_id)
+    return bool(member and member.can_write)
 
 
 async def is_org_admin(user_id: str, org_id: str) -> bool:
@@ -178,7 +184,13 @@ async def resolve_store_team(
     """
     if not await shared_memory_enabled(user_id):
         raise TierError(SHARED_MEMORY_DISABLED)
-    target = explicit_team_id or session_team_id
+    if (
+        session_team_id is not None
+        and explicit_team_id is not None
+        and explicit_team_id != session_team_id
+    ):
+        raise TierError("Team memory is limited to this session's workspace.")
+    target = session_team_id or explicit_team_id
     if not target:
         active_ids = await get_user_team_ids(user_id, org_id)
         if len(active_ids) == 1:
@@ -195,9 +207,9 @@ async def resolve_store_team(
             )
 
     membership = await get_team_membership(user_id, target, org_id)
-    if membership is None:
+    if membership is None or not membership.can_write:
         raise TierError(
-            "You are not an active member of the specified team, so you cannot "
+            "You do not have resource access to the specified team, so you cannot "
             "store to its team memory."
         )
     return membership
@@ -271,12 +283,13 @@ async def resolve_search_targets(
     organization_id: str | None,
     tier: str,
     *,
+    session_team_id: str | None = None,
     expert_id: str | None = None,
 ) -> list[TierTarget]:
     """Groups an explicit ``memory_search`` may read for the given tier.
 
-    ``all`` (default) unions personal + org + EVERY ACTIVE team the user
-    belongs to; ``personal``/``org``/``team`` restrict to that tier.
+    ``all`` (default) unions personal + org + the session workspace. Org-home
+    sessions may search every ACTIVE team the user belongs to.
     The org tier is included only for ACTIVE org members and team tiers only
     for the user's ACTIVE memberships (re-checked here, not trusted from the
     session), so a non-member never reads shared memory. Raises ``TierError``
@@ -329,6 +342,8 @@ async def resolve_search_targets(
 
     if include_team and organization_id:
         active_ids = await get_user_team_ids(user_id, organization_id)
+        if session_team_id is not None:
+            active_ids = [session_team_id] if session_team_id in active_ids else []
         names = await resolve_team_names(user_id, organization_id, active_ids)
         for team_id in active_ids:
             targets.append(

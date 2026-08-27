@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import urllib.parse
 from collections import defaultdict
@@ -12,7 +13,11 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.middleware import (
+    permission_dependency,
+    require_auth,
+    require_permission,
+)
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -20,6 +25,10 @@ from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
+from backend.data.tenancy import (
+    agent_graph_attachment_barrier,
+    live_resource_access_barrier,
+)
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
@@ -56,9 +65,7 @@ class UserInfoResponse(BaseModel):
     tags=["user", "meta"],
 )
 async def get_user_info(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.IDENTITY)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.IDENTITY),
 ) -> UserInfoResponse:
     user = await user_db.get_user_by_id(auth.user_id)
 
@@ -73,7 +80,7 @@ async def get_user_info(
 @v1_router.get(
     path="/blocks",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.READ_BLOCK))],
+    dependencies=[permission_dependency(APIKeyPermission.READ_BLOCK)],
 )
 async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.blocks.get_blocks().values()]
@@ -83,20 +90,26 @@ async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 @v1_router.post(
     path="/blocks/{block_id}/execute",
     tags=["blocks"],
-    dependencies=[Security(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
 )
 async def execute_graph_block(
     block_id: str,
     data: BlockInput,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.EXECUTE_BLOCK)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.EXECUTE_BLOCK),
 ) -> CompletedBlockOutput:
-    # Sync block exec doesn't pass through ``add_graph_execution`` (no
-    # central enqueue), and external API routes use API-key auth instead
-    # of JWT so the JWT-based dep doesn't apply either. Inline strict
-    # gate with the same fail-closed (503-on-blip) posture as the dep —
-    # consistent with chat / internal block / internal graph routes.
+    async with live_resource_access_barrier(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+        "execute",
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(403, detail="Execution access was revoked")
+        return await _execute_graph_block_live(block_id, data, auth)
+
+
+async def _execute_graph_block_live(
+    block_id: str, data: BlockInput, auth: APIAuthorizationInfo
+) -> CompletedBlockOutput:
     await enforce_payment_paywall(auth.user_id)
 
     obj = backend.blocks.get_block(block_id)
@@ -124,11 +137,15 @@ async def execute_graph_block(
     execution_context = ExecutionContext(
         user_id=auth.user_id,
         user_timezone=get_user_timezone_or_utc(user.timezone),
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
     )
 
     output = defaultdict(list)
-    async for name, data in obj.execute(data, execution_context=execution_context):
-        output[name].append(data)
+    block_timeout = obj.execution_timeout_seconds or 30 * 60
+    async with asyncio.timeout(block_timeout):
+        async for name, data in obj.execute(data, execution_context=execution_context):
+            output[name].append(data)
     return output
 
 
@@ -136,18 +153,11 @@ async def execute_graph_block(
     path="/graphs",
     tags=["graphs"],
     status_code=201,
-    dependencies=[
-        Security(
-            require_permission(
-                APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
-            )
-        )
-    ],
 )
 async def create_graph(
     graph: graph_db.Graph,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+    auth: APIAuthorizationInfo = require_permission(
+        APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
     ),
 ) -> graph_db.GraphModel:
     """
@@ -162,25 +172,34 @@ async def create_graph(
     graph_model.reassign_ids(user_id=auth.user_id, reassign_graph_id=True)
     graph_model.validate_graph(for_run=False)
 
-    # Validate BEFORE persisting so a credential issue can't leave the graph
-    # and library agent half-saved.
-    graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
-
-    # Dual-write org/team tenancy to BOTH the graph and the library entry,
-    # matching the internal create route. An org- or team-scoped API key must
-    # not leave the graph untenanted while its library row is org-tagged.
-    await graph_db.create_graph(
-        graph_model,
-        user_id=auth.user_id,
-        organization_id=auth.organization_id,
-        team_id=auth.team_id_restriction,
-    )
-    await library_db.create_library_agent(
-        graph_model,
+    async with live_resource_access_barrier(
         auth.user_id,
-        organization_id=auth.organization_id,
-        team_id=auth.team_id_restriction,
-    )
+        auth.organization_id,
+        auth.team_id_restriction,
+        "create",
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        async with agent_graph_attachment_barrier(graph_model.id):
+            # Validate BEFORE persisting so a credential issue can't leave the graph
+            # and library agent half-saved.
+            graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
+
+            # Dual-write org/team tenancy to BOTH the graph and the library entry,
+            # matching the internal create route. An org- or team-scoped API key must
+            # not leave the graph untenanted while its library row is org-tagged.
+            await graph_db.create_graph(
+                graph_model,
+                user_id=auth.user_id,
+                organization_id=auth.organization_id,
+                team_id=auth.team_id_restriction,
+            )
+            await library_db.create_library_agent(
+                graph_model,
+                auth.user_id,
+                organization_id=auth.organization_id,
+                team_id=auth.team_id_restriction,
+            )
 
     return graph_model
 
@@ -193,9 +212,7 @@ async def execute_graph(
     graph_id: str,
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.EXECUTE_GRAPH)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.EXECUTE_GRAPH),
 ) -> dict[str, Any]:
     # Strict route-level paywall: 503 on tier-lookup failure (rather
     # than fail-open via the deep gate inside add_graph_execution).
@@ -266,48 +283,62 @@ class GraphExecutionResult(TypedDict):
 async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
-    ),
+    auth: APIAuthorizationInfo = require_permission(APIKeyPermission.READ_GRAPH),
 ) -> GraphExecutionResult:
-    graph_exec = await execution_db.get_graph_execution(
-        user_id=auth.user_id,
-        execution_id=graph_exec_id,
-        include_node_executions=True,
-    )
-    if not graph_exec:
-        raise HTTPException(
-            status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
-        )
-
-    if not await graph_db.get_graph(
-        graph_id=graph_exec.graph_id,
-        version=graph_exec.graph_version,
-        user_id=auth.user_id,
-    ):
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
-    return GraphExecutionResult(
-        execution_id=graph_exec_id,
-        status=graph_exec.status.value,
-        nodes=[
-            ExecutionNode(
-                node_id=node_exec.node_id,
-                input=node_exec.input_data.get("value", node_exec.input_data),
-                output={k: v for k, v in node_exec.output_data.items()},
+    async with live_resource_access_barrier(
+        auth.user_id,
+        auth.organization_id,
+        auth.team_id_restriction,
+        "view",
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Graph execution #{graph_exec_id} not found.",
             )
-            for node_exec in graph_exec.node_executions
-        ],
-        output=(
-            [
-                {name: value}
-                for name, values in graph_exec.outputs.items()
-                for value in values
-            ]
-            if graph_exec.status == AgentExecutionStatus.COMPLETED
-            else None
-        ),
-    )
+        graph_exec = await execution_db.get_graph_execution(
+            user_id=auth.user_id,
+            execution_id=graph_exec_id,
+            include_node_executions=True,
+            organization_id=auth.organization_id,
+            team_id_restriction=auth.team_id_restriction,
+        )
+        if not graph_exec or graph_exec.graph_id != graph_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Graph execution #{graph_exec_id} not found.",
+            )
+
+        if not await graph_db.get_graph(
+            graph_id=graph_exec.graph_id,
+            version=graph_exec.graph_version,
+            user_id=auth.user_id,
+            organization_id=auth.organization_id,
+            team_id=auth.team_id_restriction,
+        ):
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+        return GraphExecutionResult(
+            execution_id=graph_exec_id,
+            status=graph_exec.status.value,
+            nodes=[
+                ExecutionNode(
+                    node_id=node_exec.node_id,
+                    input=node_exec.input_data.get("value", node_exec.input_data),
+                    output={k: v for k, v in node_exec.output_data.items()},
+                )
+                for node_exec in graph_exec.node_executions
+            ],
+            output=(
+                [
+                    {name: value}
+                    for name, values in graph_exec.outputs.items()
+                    for value in values
+                ]
+                if graph_exec.status == AgentExecutionStatus.COMPLETED
+                else None
+            ),
+        )
 
 
 ##############################################

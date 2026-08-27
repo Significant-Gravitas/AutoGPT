@@ -19,7 +19,13 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
-from backend.data.db_accessors import chat_db, understanding_db
+from backend.data.db_accessors import (
+    LiveResourceAccessRevoked,
+    chat_db,
+    live_resource_lease,
+    require_exact_chat_session_scope,
+    understanding_db,
+)
 from backend.data.understanding import (
     BusinessUnderstanding,
     format_understanding_for_prompt,
@@ -35,6 +41,7 @@ from .model import (
     ChatMessage,
     ChatSessionInfo,
     get_chat_session,
+    get_chat_session_metadata,
     update_session_title,
     upsert_chat_session,
 )
@@ -574,6 +581,8 @@ async def inject_user_context(
     skills_ctx: str = "",
     user_id: str | None = None,
     expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -710,7 +719,12 @@ async def inject_user_context(
     # like the other trusted blocks; degrades to "" on any lookup failure so
     # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
-    expert_ctx = await build_expert_context(user_id, expert_id)
+    expert_ctx = await build_expert_context(
+        user_id,
+        expert_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
     if expert_ctx:
         final_message = expert_ctx + final_message
     # Prepend Graphiti warm context as a <memory_context> block AFTER
@@ -1056,24 +1070,76 @@ async def _update_title_async(
     steps — a failure in one does not cancel the other, so a flaky
     Prisma call on cost recording never costs us the generated title.
     """
-    title, response = await _generate_session_title(message, user_id, session_id)
 
-    if user_id:
-        try:
-            await update_session_title(session_id, user_id, title, only_if_empty=True)
-            logger.debug("Generated title for session %s", session_id)
-        except Exception as e:
-            logger.warning("Failed to persist session title for %s: %s", session_id, e)
+    async def generate_persist_and_record() -> None:
+        if user_id:
+            await require_exact_chat_session_scope(
+                session_id,
+                user_id,
+                organization_id,
+                team_id,
+            )
+        title, response = await _generate_session_title(message, user_id, session_id)
 
-    if response is not None:
-        try:
-            await _record_title_generation_cost(
-                response=response, user_id=user_id, session_id=session_id
+        if user_id:
+            try:
+                await require_exact_chat_session_scope(
+                    session_id,
+                    user_id,
+                    organization_id,
+                    team_id,
+                )
+                await update_session_title(
+                    session_id, user_id, title, only_if_empty=True
+                )
+                logger.debug("Generated title for session %s", session_id)
+            except LiveResourceAccessRevoked:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "Failed to persist session title for %s: %s", session_id, e
+                )
+
+        if response is not None:
+            try:
+                await _record_title_generation_cost(
+                    response=response, user_id=user_id, session_id=session_id
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to record title generation cost for %s: %s", session_id, e
+                )
+
+    if user_id is None:
+        await generate_persist_and_record()
+        return
+
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is None:
+        return
+    organization_id, team_id = session.organization_id, session.team_id
+    try:
+        async with live_resource_lease(
+            user_id,
+            organization_id,
+            team_id,
+            "execute",
+        ) as allowed:
+            if not allowed:
+                return
+            await require_exact_chat_session_scope(
+                session_id,
+                user_id,
+                organization_id,
+                team_id,
             )
-        except Exception as e:
-            logger.warning(
-                "Failed to record title generation cost for %s: %s", session_id, e
-            )
+            action = generate_persist_and_record()
+            if hasattr(allowed, "run"):
+                await allowed.run(action)
+            else:
+                await action
+    except LiveResourceAccessRevoked:
+        logger.info("Skipped session title after resource access was revoked")
 
 
 async def assign_user_to_session(

@@ -89,7 +89,10 @@ def extract_uuids_from_text(text: str) -> list[str]:
 
 
 async def get_library_agent_by_id(
-    user_id: str, agent_id: str
+    user_id: str,
+    agent_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> LibraryAgentSummary | None:
     """Fetch a specific library agent by its ID (library agent ID or graph_id).
 
@@ -110,7 +113,12 @@ async def get_library_agent_by_id(
     """
     db = library_db()
     try:
-        agent = await db.get_library_agent_by_graph_id(user_id, agent_id)
+        agent = await db.get_library_agent_by_graph_id(
+            user_id,
+            agent_id,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
+        )
         if agent:
             logger.debug(f"Found library agent by graph_id: {agent.name}")
             return LibraryAgentSummary(
@@ -127,7 +135,12 @@ async def get_library_agent_by_id(
         logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
 
     try:
-        agent = await db.get_library_agent(agent_id, user_id)
+        agent = await db.get_library_agent(
+            agent_id,
+            user_id,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
+        )
         if agent:
             logger.debug(f"Found library agent by library_id: {agent.name}")
             return LibraryAgentSummary(
@@ -157,6 +170,8 @@ get_library_agent_by_graph_id = get_library_agent_by_id
 async def get_library_agents_by_ids(
     user_id: str,
     agent_ids: list[str],
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> list[LibraryAgentSummary]:
     """Fetch multiple library agents by their IDs.
 
@@ -170,7 +185,12 @@ async def get_library_agents_by_ids(
     agents: list[LibraryAgentSummary] = []
     for agent_id in agent_ids:
         try:
-            agent = await get_library_agent_by_id(user_id, agent_id)
+            agent = await get_library_agent_by_id(
+                user_id,
+                agent_id,
+                organization_id,
+                team_id,
+            )
             if agent:
                 agents.append(agent)
                 logger.debug(f"Fetched library agent by ID: {agent['name']}")
@@ -603,6 +623,8 @@ async def save_agent_to_library(
     is_update: bool = False,
     folder_id: str | None = None,
     is_hidden: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[Graph, Any]:
     """Save agent to database and user's library.
 
@@ -619,9 +641,19 @@ async def save_agent_to_library(
     graph = json_to_graph(agent_json)
     db = library_db()
     if is_update:
-        return await db.update_graph_in_library(graph, user_id)
+        return await db.update_graph_in_library(
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
     return await db.create_graph_in_library(
-        graph, user_id, folder_id=folder_id, is_hidden=is_hidden
+        graph,
+        user_id,
+        folder_id=folder_id,
+        is_hidden=is_hidden,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -671,7 +703,11 @@ def graph_to_json(graph: Graph) -> dict[str, Any]:
 
 
 async def get_agent_as_json(
-    agent_id: str, user_id: str | None
+    agent_id: str,
+    user_id: str | None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    exact_scope: bool = False,
 ) -> dict[str, Any] | None:
     """Fetch an agent and convert to JSON format for editing.
 
@@ -684,13 +720,51 @@ async def get_agent_as_json(
     """
     db = graph_db()
 
-    graph = await db.get_graph(agent_id, version=None, user_id=user_id)
+    graph = await db.get_graph(
+        agent_id,
+        version=None,
+        user_id=user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+    )
+
+    if (
+        graph
+        and exact_scope
+        and (
+            graph.organization_id,
+            graph.team_id,
+        )
+        != (organization_id, team_id)
+    ):
+        graph = None
 
     if not graph and user_id:
         try:
-            library_agent = await library_db().get_library_agent(agent_id, user_id)
+            library_agent = await library_db().get_library_agent_by_graph_id(
+                user_id,
+                agent_id,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
+            )
+            if library_agent is None:
+                library_agent = await library_db().get_library_agent(
+                    agent_id,
+                    user_id,
+                    organization_id=organization_id,
+                    team_id_restriction=team_id,
+                )
+            if exact_scope and (
+                library_agent.organization_id,
+                library_agent.team_id,
+            ) != (organization_id, team_id):
+                return None
             graph = await db.get_graph(
-                library_agent.graph_id, version=None, user_id=user_id
+                library_agent.graph_id,
+                version=None,
+                user_id=user_id,
+                organization_id=organization_id,
+                team_id=team_id,
             )
         except NotFoundError:
             pass

@@ -9,7 +9,7 @@ import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCr
 import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 export function ReadOnlyBanner() {
-  const { teamId, setTeamId } = useCreateTeamSelection(
+  const { teamId, setTeamId, isReady } = useCreateTeamSelection(
     CreateSurface.BuilderDuplicate,
   );
   const { duplicate, isDuplicating, canDuplicate, isCheckingLibrary } =
@@ -52,7 +52,7 @@ export function ReadOnlyBanner() {
             size="small"
             onClick={duplicate}
             loading={isDuplicating}
-            disabled={!canDuplicate}
+            disabled={!canDuplicate || !isReady}
             leftIcon={<Icon icon={Copy01Icon} className="size-4" />}
           >
             Duplicate

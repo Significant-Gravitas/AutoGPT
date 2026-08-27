@@ -16,7 +16,10 @@ dropping a payment-failed notice — or a whole briefing — entirely.
 """
 
 import logging
+from collections.abc import Awaitable
 from datetime import date
+from typing import cast
+from uuid import uuid4
 
 from backend.data.redis_client import get_redis_async
 
@@ -71,8 +74,48 @@ async def release_claim(key: str) -> None:
 # the right day, and are dropped well before they could be reused.
 _DAILY_COUNTER_TTL_SECONDS = 60 * 60 * 48
 
+_CLAIM_DAILY_SEND_SCRIPT = """
+local existing = redis.call('GET', KEYS[2])
+if existing then
+  return tonumber(existing)
+end
+local sent = redis.call('INCR', KEYS[1])
+if sent == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+local allowed = 0
+if sent <= tonumber(ARGV[1]) then
+  allowed = 1
+end
+redis.call('SET', KEYS[2], allowed, 'EX', ARGV[2])
+return allowed
+"""
 
-async def claim_daily_send(user_id: str, limit: int, on_day: date) -> bool:
+_RELEASE_DAILY_SEND_SCRIPT = """
+local reserved = redis.call('GET', KEYS[2])
+if reserved == '1' then
+  local remaining = redis.call('DECR', KEYS[1])
+  if remaining < 0 then
+    redis.call('SET', KEYS[1], 0, 'EX', ARGV[1])
+  end
+end
+redis.call('DEL', KEYS[2])
+return 1
+"""
+
+
+def _daily_send_keys(user_id: str, on_day: date, delivery_id: str) -> tuple[str, str]:
+    slot_tag = f"{user_id}:{on_day.isoformat()}"
+    counter_key = f"{_PREFIX}:daily_send:{{{slot_tag}}}"
+    return counter_key, f"{counter_key}:delivery:{delivery_id}"
+
+
+async def claim_daily_send(
+    user_id: str,
+    limit: int,
+    on_day: date,
+    delivery_id: str | None = None,
+) -> bool:
     """Take one of the user's sends for `on_day`, or refuse.
 
     The volume knob's `daily_limit` is the user's own ceiling across every
@@ -88,13 +131,23 @@ async def claim_daily_send(user_id: str, limit: int, on_day: date) -> bool:
     """
     if limit <= 0:
         return False
-    key = f"{_PREFIX}:daily_send:{user_id}:{on_day.isoformat()}"
+    counter_key, reservation_key = _daily_send_keys(
+        user_id, on_day, delivery_id or str(uuid4())
+    )
     try:
         redis_client = await get_redis_async()
-        sent = await redis_client.incr(key)
-        if sent == 1:
-            await redis_client.expire(key, _DAILY_COUNTER_TTL_SECONDS)
-        return sent <= limit
+        allowed = await cast(
+            Awaitable[object],
+            redis_client.eval(
+                _CLAIM_DAILY_SEND_SCRIPT,
+                2,
+                counter_key,
+                reservation_key,
+                str(limit),
+                str(_DAILY_COUNTER_TTL_SECONDS),
+            ),
+        )
+        return bool(allowed)
     except Exception:
         logger.warning(
             "Daily-send counter unavailable for %s; allowing the send",
@@ -102,3 +155,25 @@ async def claim_daily_send(user_id: str, limit: int, on_day: date) -> bool:
             exc_info=True,
         )
         return True
+
+
+async def release_daily_send(user_id: str, on_day: date, delivery_id: str) -> None:
+    counter_key, reservation_key = _daily_send_keys(user_id, on_day, delivery_id)
+    try:
+        redis_client = await get_redis_async()
+        await cast(
+            Awaitable[object],
+            redis_client.eval(
+                _RELEASE_DAILY_SEND_SCRIPT,
+                2,
+                counter_key,
+                reservation_key,
+                str(_DAILY_COUNTER_TTL_SECONDS),
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Could not release daily-send reservation for %s",
+            user_id,
+            exc_info=True,
+        )

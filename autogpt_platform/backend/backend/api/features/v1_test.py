@@ -1,4 +1,5 @@
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import ANY, AsyncMock, Mock, patch
@@ -29,6 +30,7 @@ from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
 
+from . import v1 as v1_module
 from .v1 import _resolve_write_team_id, upload_file, v1_router
 
 
@@ -56,7 +58,7 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
+def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id, monkeypatch):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
@@ -84,6 +86,38 @@ def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id):
         )
 
     app.dependency_overrides[get_request_context] = _fake_request_context
+
+    @asynccontextmanager
+    async def allow_graph_mutation(*_args, **_kwargs):
+        yield
+
+    @asynccontextmanager
+    async def allow_resource_action(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(
+        "backend.api.features.v1._live_graph_mutation", allow_graph_mutation
+    )
+    monkeypatch.setattr(
+        "backend.api.features.v1.live_resource_permission_barrier",
+        allow_resource_action,
+    )
+    monkeypatch.setattr(
+        "backend.api.features.v1.live_agent_graph_access_barrier",
+        allow_resource_action,
+    )
+    monkeypatch.setattr(
+        "backend.api.live_auth.live_resource_permission_barrier",
+        allow_resource_action,
+    )
+    monkeypatch.setattr(
+        "backend.api.live_auth.live_org_permission_barrier",
+        allow_resource_action,
+    )
+    monkeypatch.setattr(
+        "backend.api.live_auth.live_actor_org_permission_barrier",
+        allow_resource_action,
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -436,6 +470,189 @@ def test_execute_graph_block_not_found(
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+def test_execute_graph_block_rechecks_live_permission_before_charge(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    @asynccontextmanager
+    async def denied(*_args, **_kwargs):
+        yield False
+
+    block = Mock(disabled=False)
+    block.execute = AsyncMock()
+    mocker.patch("backend.api.features.v1.get_block", return_value=block)
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id", return_value=Mock(timezone="UTC")
+    )
+    charge = mocker.patch(
+        "backend.api.features.v1.execution_utils.charge_for_direct_block_execution",
+        new_callable=AsyncMock,
+    )
+    mocker.patch("backend.api.features.v1.live_resource_permission_barrier", denied)
+
+    response = client.post("/blocks/test-block/execute", json={})
+
+    assert response.status_code == 403
+    charge.assert_not_awaited()
+    block.execute.assert_not_called()
+
+
+def test_execute_graph_block_holds_live_permission_through_provider_iteration(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    active = False
+
+    @asynccontextmanager
+    async def barrier(*_args, **_kwargs):
+        nonlocal active
+        active = True
+        try:
+            yield True
+        finally:
+            active = False
+
+    async def execute(*_args, **_kwargs):
+        assert active is True
+        yield "output", "done"
+
+    async def charge(**_kwargs):
+        assert active is True
+
+    block = Mock(disabled=False, execution_timeout_seconds=5)
+    block.execute = execute
+    mocker.patch("backend.api.features.v1.get_block", return_value=block)
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id", return_value=Mock(timezone="UTC")
+    )
+    mocker.patch(
+        "backend.api.features.v1.execution_utils.charge_for_direct_block_execution",
+        side_effect=charge,
+    )
+    mocker.patch("backend.api.features.v1.live_resource_permission_barrier", barrier)
+
+    response = client.post("/blocks/test-block/execute", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {"output": ["done"]}
+    assert active is False
+
+
+@pytest.mark.asyncio
+async def test_enable_execution_sharing_rejects_revoked_target_team(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = Mock(graph_id="graph-1", team_id="team-revoked", outputs={})
+    monkeypatch.setattr(
+        v1_module.execution_db,
+        "get_graph_execution",
+        AsyncMock(return_value=candidate),
+    )
+
+    @asynccontextmanager
+    async def denied(user_id, organization_id, team_id, *_actions):
+        assert (user_id, organization_id, team_id) == (
+            "user-1",
+            "test-org",
+            "team-revoked",
+        )
+        yield False
+
+    replace = AsyncMock()
+    monkeypatch.setattr(v1_module, "live_resource_permission_barrier", denied)
+    monkeypatch.setattr(v1_module.execution_db, "replace_execution_share", replace)
+
+    with pytest.raises(HTTPException) as exc:
+        await v1_module.enable_execution_sharing(
+            "graph-1",
+            "exec-1",
+            "user-1",
+            _test_ctx("user-1", team_id=None),
+            v1_module.ShareRequest(),
+        )
+
+    assert exc.value.status_code == 403
+    replace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enable_execution_sharing_holds_exact_target_team_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = Mock(graph_id="graph-1", team_id="team-1", outputs={"out": []})
+    monkeypatch.setattr(
+        v1_module.execution_db,
+        "get_graph_execution",
+        AsyncMock(return_value=candidate),
+    )
+    monkeypatch.setattr(
+        v1_module.execution_db,
+        "get_graph_execution_exact_scope",
+        AsyncMock(return_value=candidate),
+    )
+    active = False
+
+    @asynccontextmanager
+    async def barrier(user_id, organization_id, team_id, *_actions):
+        nonlocal active
+        assert (user_id, organization_id, team_id) == (
+            "user-1",
+            "test-org",
+            "team-1",
+        )
+        active = True
+        try:
+            yield True
+        finally:
+            active = False
+
+    async def mutate(**_kwargs):
+        assert active is True
+
+    monkeypatch.setattr(v1_module, "live_resource_permission_barrier", barrier)
+    replace = AsyncMock(side_effect=mutate)
+    monkeypatch.setattr(v1_module.execution_db, "replace_execution_share", replace)
+
+    response = await v1_module.enable_execution_sharing(
+        "graph-1",
+        "exec-1",
+        "user-1",
+        _test_ctx("user-1", team_id=None),
+        v1_module.ShareRequest(),
+    )
+
+    assert response.share_token
+    assert replace.await_args.kwargs["team_id"] == "team-1"
+    assert replace.await_args.kwargs["organization_id"] == "test-org"
+    assert active is False
+
+
+@pytest.mark.asyncio
+async def test_delete_execution_rejects_revoked_target_team(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = Mock(team_id="team-revoked")
+    monkeypatch.setattr(
+        v1_module.execution_db,
+        "get_graph_execution",
+        AsyncMock(return_value=candidate),
+    )
+
+    @asynccontextmanager
+    async def denied(*_args, **_kwargs):
+        yield False
+
+    delete = AsyncMock()
+    monkeypatch.setattr(v1_module, "live_resource_permission_barrier", denied)
+    monkeypatch.setattr(v1_module.execution_db, "delete_graph_execution", delete)
+
+    with pytest.raises(HTTPException) as exc:
+        await v1_module.delete_graph_execution(
+            "exec-1", "user-1", _test_ctx("user-1", team_id=None)
+        )
+
+    assert exc.value.status_code == 403
+    delete.assert_not_awaited()
 
 
 # Credits endpoints tests
@@ -932,6 +1149,10 @@ def test_delete_graph(
         return_value=mock_graph,
     )
     mocker.patch(
+        "backend.api.features.v1.graph_db.get_graph_all_versions",
+        return_value=[mock_graph],
+    )
+    mocker.patch(
         "backend.api.features.v1.on_graph_deactivate",
         return_value=None,
     )
@@ -1353,6 +1574,10 @@ def _mock_schedule_create_pipeline(
         "backend.api.features.v1.graph_db.get_graph", new=AsyncMock(return_value=graph)
     )
     mocker.patch("backend.api.features.v1.complete_onboarding_step", new=AsyncMock())
+    mocker.patch(
+        "backend.api.features.v1.experts_db.resolve_expert_for_graph",
+        new=AsyncMock(return_value=None),
+    )
     add_schedule_mock = AsyncMock(
         return_value=GraphExecutionJobInfo(
             id="schedule-1",
@@ -1873,7 +2098,10 @@ def test_list_copilot_turn_schedules_filters_to_copilot_kind(
     assert body[0]["session_id"] == "sess-1"
 
     mock_client.get_execution_schedules.assert_awaited_once_with(
-        user_id=test_user_id, kind="copilot_turn"
+        user_id=test_user_id,
+        kind="copilot_turn",
+        organization_id="test-org",
+        team_ids=[],
     )
 
 

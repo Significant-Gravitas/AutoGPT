@@ -1,5 +1,6 @@
 """Tests for chat-turn orchestration — esp. the duplicate-message guard."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,10 +14,54 @@ from .chat import (
     ensure_chat_session,
     evaluate_turn_gate,
     list_user_chats,
+    resolve_chat_owner,
     start_chat_turn,
     upload_workspace_file,
 )
 from .models import BotChatRequest, Platform, TurnDenial, WorkspaceUploadRequest
+
+
+@asynccontextmanager
+async def _allow_live_access(*_args, **_kwargs):
+    yield True
+
+
+@asynccontextmanager
+async def _deny_live_access(*_args, **_kwargs):
+    yield False
+
+
+@asynccontextmanager
+async def _allow_platform_link(*_args, **_kwargs):
+    guard = MagicMock()
+
+    async def run(action):
+        return await action
+
+    guard.run = run
+    yield guard
+
+
+@pytest.fixture(autouse=True)
+def _mock_live_tenant_access():
+    orgs = MagicMock()
+    orgs.get_user_default_team = AsyncMock(return_value=(None, None))
+    with (
+        patch(
+            "backend.platform_linking.chat.live_resource_access_barrier",
+            new=_allow_live_access,
+        ),
+        patch(
+            "backend.platform_linking.chat.has_live_resource_access",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.platform_linking.chat._live_platform_link",
+            new=_allow_platform_link,
+        ),
+        patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+    ):
+        yield
 
 
 def _request(**overrides) -> BotChatRequest:
@@ -51,6 +96,20 @@ class TestStartChatTurn:
             yield
 
     @pytest.mark.asyncio
+    async def test_server_sender_must_be_link_owner(self):
+        db_mock = MagicMock()
+        db_mock.find_server_link_owner_for_sender = AsyncMock(return_value=None)
+        with patch(
+            "backend.platform_linking.chat.platform_linking_db",
+            return_value=db_mock,
+        ):
+            with pytest.raises(NotFoundError):
+                await resolve_chat_owner(_request(platform_server_id="guild-1"))
+        db_mock.find_server_link_owner_for_sender.assert_awaited_once_with(
+            "DISCORD", "guild-1", "pu1"
+        )
+
+    @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value=None)
@@ -67,7 +126,9 @@ class TestStartChatTurn:
         # Verify we raise and do NOT create a stream session.
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
-        session = MagicMock(session_id="sess-existing")
+        session = MagicMock(
+            session_id="sess-existing", organization_id=None, team_id=None
+        )
 
         with (
             patch(
@@ -102,7 +163,7 @@ class TestStartChatTurn:
     async def test_happy_path_creates_stream_and_enqueues(self):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
-        session = MagicMock(session_id="sess-new")
+        session = MagicMock(session_id="sess-new", organization_id=None, team_id=None)
         mock_create_chat_session = AsyncMock(return_value=session)
 
         with (
@@ -146,7 +207,7 @@ class TestStartChatTurn:
         # by creating a fresh session instead of raising.
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
-        session = MagicMock(session_id="sess-fresh")
+        session = MagicMock(session_id="sess-fresh", organization_id=None, team_id=None)
 
         with (
             patch(
@@ -206,13 +267,18 @@ class TestStartChatTurn:
     @pytest.mark.asyncio
     async def test_shared_server_replaces_cached_expert_session(self):
         db_mock = MagicMock()
-        db_mock.find_server_link_owner = AsyncMock(return_value="owner-1")
-        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
+        db_mock.find_server_link_owner_for_sender = AsyncMock(return_value="owner-1")
+        expert_session = MagicMock(
+            session_id="expert-session",
+            expert_id="expert-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
         fresh_session = MagicMock(
             session_id="fresh-autopilot",
             expert_id=None,
-            organization_id="personal-org",
-            team_id="personal-team",
+            organization_id="org-1",
+            team_id="team-1",
         )
         mock_append = AsyncMock(return_value=MagicMock())
         mock_enqueue = AsyncMock()
@@ -267,8 +333,13 @@ class TestStartChatTurn:
         self,
     ):
         db_mock = MagicMock()
-        db_mock.find_server_link_owner = AsyncMock(return_value="owner-1")
-        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
+        db_mock.find_server_link_owner_for_sender = AsyncMock(return_value="owner-1")
+        expert_session = MagicMock(
+            session_id="expert-session",
+            expert_id="expert-1",
+            organization_id=None,
+            team_id=None,
+        )
         mock_append = AsyncMock()
         mock_enqueue = AsyncMock()
 
@@ -378,6 +449,8 @@ class TestListUserChats:
             session_id="sess-1",
             title="My chat",
             updated_at=datetime(2026, 5, 1),
+            organization_id=None,
+            team_id=None,
         )
 
         with (
@@ -420,7 +493,77 @@ class TestListUserChats:
         ):
             await list_user_chats(Platform.DISCORD, "pu1", limit=10_000, offset=-50)
 
-        mock_get_sessions.assert_awaited_once_with("owner-1", limit=25, offset=0)
+        mock_get_sessions.assert_awaited_once_with(
+            "owner-1",
+            limit=25,
+            offset=0,
+            organization_id=None,
+            team_id=None,
+            team_ids=[],
+        )
+
+    @pytest.mark.asyncio
+    async def test_holds_dm_link_and_scope_lease_through_listing(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        get_sessions = AsyncMock(return_value=([], 0))
+        link_calls = []
+        scope_calls = []
+
+        @asynccontextmanager
+        async def live_link(*args):
+            link_calls.append(args)
+            guard = MagicMock()
+
+            async def run(action):
+                return await action
+
+            guard.run = run
+            yield guard
+
+        @asynccontextmanager
+        async def live_scope(*args):
+            scope_calls.append(args)
+            yield True
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch("backend.platform_linking.chat._live_platform_link", new=live_link),
+            patch(
+                "backend.platform_linking.chat.live_resource_access_barrier",
+                new=live_scope,
+            ),
+            patch("backend.platform_linking.chat.get_user_sessions", new=get_sessions),
+        ):
+            await list_user_chats(Platform.DISCORD, "pu1")
+
+        assert link_calls == [("DISCORD", None, "pu1", "owner-1")]
+        assert scope_calls == [("owner-1", None, None, "view")]
+        get_sessions.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_revoked_scope_cannot_list_chats(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        get_sessions = AsyncMock()
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.live_resource_access_barrier",
+                new=_deny_live_access,
+            ),
+            patch("backend.platform_linking.chat.get_user_sessions", new=get_sessions),
+        ):
+            with pytest.raises(NotFoundError):
+                await list_user_chats(Platform.DISCORD, "pu1")
+
+        get_sessions.assert_not_awaited()
 
 
 class TestUploadWorkspaceFile:
@@ -504,14 +647,25 @@ class TestUploadWorkspaceFile:
             p3 as mock_wm,
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(expert_id=None)),
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        expert_id=None, organization_id=None, team_id=None
+                    )
+                ),
             ),
         ):
             await upload_workspace_file(self._req(session_id="sess-1"))
         # Session-scoped manager (like the web upload) plus a flat filename —
         # write_file defaults the path to /sessions/<id>/<name> where AutoPilot
         # reads it. No explicit uploads/<uuid> path.
-        mock_wm.assert_called_once_with("owner-1", "ws-1", "sess-1")
+        mock_wm.assert_called_once_with(
+            "owner-1",
+            "ws-1",
+            "sess-1",
+            organization_id=None,
+            team_id=None,
+            access="create",
+        )
         kwargs = write.await_args.kwargs
         assert kwargs["filename"] == "a.png"
         assert "path" not in kwargs
@@ -566,12 +720,16 @@ class TestUploadWorkspaceFile:
         upload must never land files inside an expert-scoped session folder."""
         write = AsyncMock(return_value=MagicMock(id="file-1"))
         db = MagicMock()
-        db.find_server_link_owner = AsyncMock(return_value="owner-1")
+        db.find_server_link_owner_for_sender = AsyncMock(return_value="owner-1")
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        expert_id="expert-1", organization_id=None, team_id=None
+                    )
+                ),
             ),
         ):
             with pytest.raises(NotFoundError):
@@ -609,7 +767,11 @@ class TestUploadWorkspaceFile:
             p3,
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(expert_id="expert-1")),
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        expert_id="expert-1", organization_id=None, team_id=None
+                    )
+                ),
             ),
         ):
             result = await upload_workspace_file(self._req(session_id="sess-exp"))
@@ -636,7 +798,11 @@ class TestEnsureChatSession:
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
                 "backend.platform_linking.chat.get_chat_session",
-                new=AsyncMock(return_value=MagicMock(session_id="cached")),
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        session_id="cached", organization_id=None, team_id=None
+                    )
+                ),
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session", new=AsyncMock()
@@ -665,7 +831,13 @@ class TestEnsureChatSession:
             ),
             patch(
                 "backend.platform_linking.chat.create_chat_session",
-                new=AsyncMock(return_value=MagicMock(session_id="fresh")),
+                new=AsyncMock(
+                    return_value=MagicMock(
+                        session_id="fresh",
+                        organization_id="org-1",
+                        team_id="team-1",
+                    )
+                ),
             ) as mock_create,
         ):
             result = await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
@@ -679,9 +851,19 @@ class TestEnsureChatSession:
     @pytest.mark.asyncio
     async def test_shared_server_replaces_cached_expert_before_file_upload(self):
         db = MagicMock()
-        db.find_server_link_owner = AsyncMock(return_value="owner-1")
-        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
-        fresh_session = MagicMock(session_id="fresh-autopilot", expert_id=None)
+        db.find_server_link_owner_for_sender = AsyncMock(return_value="owner-1")
+        expert_session = MagicMock(
+            session_id="expert-session",
+            expert_id="expert-1",
+            organization_id="personal-org",
+            team_id="personal-team",
+        )
+        fresh_session = MagicMock(
+            session_id="fresh-autopilot",
+            expert_id=None,
+            organization_id="personal-org",
+            team_id="personal-team",
+        )
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
@@ -717,7 +899,12 @@ class TestEnsureChatSession:
     async def test_dm_reuses_owned_expert_session(self):
         db = MagicMock()
         db.find_user_link_owner = AsyncMock(return_value="owner-1")
-        expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
+        expert_session = MagicMock(
+            session_id="expert-session",
+            expert_id="expert-1",
+            organization_id=None,
+            team_id=None,
+        )
         with (
             patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
             patch(
@@ -862,3 +1049,168 @@ class TestEvaluateTurnGate:
             denial = await evaluate_turn_gate("user-1")
 
         assert denial is None
+
+
+class TestPlatformChatTenantBoundaries:
+    @pytest.mark.asyncio
+    async def test_cached_session_from_another_team_is_replaced(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=("org-1", "team-1"))
+        cached = MagicMock(
+            session_id="cached",
+            organization_id="org-1",
+            team_id="team-2",
+            expert_id=None,
+        )
+        fresh = MagicMock(
+            session_id="fresh",
+            organization_id="org-1",
+            team_id="team-1",
+            expert_id=None,
+        )
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch(
+                "backend.platform_linking.chat.evaluate_turn_gate",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=cached),
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=fresh),
+            ) as create,
+        ):
+            result = await ensure_chat_session(Platform.DISCORD, "pu1", None, "cached")
+
+        assert result.session_id == "fresh"
+        create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_attachment_turn_rejects_session_from_another_team(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=("org-1", "team-1"))
+        session = MagicMock(
+            session_id="other-team",
+            organization_id="org-1",
+            team_id="team-2",
+            expert_id=None,
+        )
+        append = AsyncMock()
+        enqueue = AsyncMock()
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch(
+                "backend.platform_linking.chat.evaluate_turn_gate",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.platform_linking.chat.append_and_save_message", new=append),
+            patch("backend.platform_linking.chat.enqueue_copilot_turn", new=enqueue),
+        ):
+            with pytest.raises(NotFoundError):
+                await start_chat_turn(
+                    _request(session_id="other-team", file_ids=["file-1"])
+                )
+
+        append.assert_not_awaited()
+        enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_upload_rejects_session_from_another_team(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=("org-1", "team-1"))
+        session = MagicMock(organization_id="org-1", team_id="team-2", expert_id=None)
+        workspace = MagicMock()
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch(
+                "backend.platform_linking.chat.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.platform_linking.chat.workspace_db", return_value=workspace),
+        ):
+            with pytest.raises(NotFoundError):
+                await upload_workspace_file(
+                    WorkspaceUploadRequest(
+                        platform=Platform.DISCORD,
+                        platform_user_id="pu1",
+                        session_id="other-team",
+                        filename="a.txt",
+                        mime_type="text/plain",
+                        content=b"x",
+                    )
+                )
+
+        workspace.get_or_create_workspace.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_list_postfilters_cross_team_rows(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=("org-1", "team-1"))
+        exact = MagicMock(
+            session_id="exact",
+            title="Exact",
+            updated_at=datetime(2026, 8, 26),
+            organization_id="org-1",
+            team_id="team-1",
+        )
+        other = MagicMock(
+            session_id="other",
+            title="Other",
+            updated_at=datetime(2026, 8, 26),
+            organization_id="org-1",
+            team_id="team-2",
+        )
+        get_sessions = AsyncMock(return_value=([exact, other], 2))
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch("backend.platform_linking.chat.get_user_sessions", new=get_sessions),
+        ):
+            result = await list_user_chats(Platform.DISCORD, "pu1")
+
+        assert [session.session_id for session in result.sessions] == ["exact"]
+        assert result.total == 1
+        assert get_sessions.await_args.kwargs["team_id"] == "team-1"
+
+    @pytest.mark.asyncio
+    async def test_revoked_scope_cannot_create_session(self):
+        db = MagicMock()
+        db.find_user_link_owner = AsyncMock(return_value="owner-1")
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=("org-1", "team-1"))
+        create = AsyncMock()
+        with (
+            patch("backend.platform_linking.chat.platform_linking_db", return_value=db),
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch(
+                "backend.platform_linking.chat.evaluate_turn_gate",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat.live_resource_access_barrier",
+                new=_deny_live_access,
+            ),
+            patch("backend.platform_linking.chat.create_chat_session", new=create),
+        ):
+            with pytest.raises(NotFoundError):
+                await ensure_chat_session(Platform.DISCORD, "pu1", None, None)
+
+        create.assert_not_awaited()

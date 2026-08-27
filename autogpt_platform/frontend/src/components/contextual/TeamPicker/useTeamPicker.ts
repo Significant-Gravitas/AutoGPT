@@ -10,7 +10,9 @@ interface Params {
 
 export function useTeamPicker({ value, onChange }: Params) {
   const enabled = useGetFlag(Flag.SHOW_ORG_SETTINGS);
-  const teams = useOrgTeamStore((s) => s.teams);
+  const allTeams = useOrgTeamStore((s) => s.teams);
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const teams = allTeams.filter((team) => team.orgId === activeOrgID);
   const hasTeams = enabled && teams.length > 0;
 
   const options: SelectOption[] = [

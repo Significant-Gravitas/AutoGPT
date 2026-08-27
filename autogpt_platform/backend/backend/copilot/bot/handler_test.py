@@ -93,6 +93,9 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
     api.ensure_session = AsyncMock(
         return_value=EnsureSessionResult(session_id="session-ensured")
     )
+    api.acquire_platform_link_lease = AsyncMock(return_value="lease-1")
+    api.release_platform_link_lease = AsyncMock(return_value=True)
+    api.is_platform_link_owner = AsyncMock(return_value=True)
 
     async def _empty_stream(*args, **kwargs):
         if False:
@@ -100,6 +103,19 @@ def _api(*, server_linked: bool = True, user_linked: bool = True) -> MagicMock:
 
     api.stream_chat = _empty_stream
     return api
+
+
+@contextlib.asynccontextmanager
+async def _allow_live_access(*_args, **_kwargs):
+    yield True
+
+
+def _chat_session(title: str | None):
+    return MagicMock(
+        title=title,
+        organization_id="org-1",
+        team_id="team-1",
+    )
 
 
 @contextlib.contextmanager
@@ -491,6 +507,7 @@ class TestBatching:
                 "connect_integration",
             )
             yield "Once connected, I can retry."
+            await kwargs["on_finish"]()
 
         api.stream_chat = setup_stream
         handler = MessageHandler(api)
@@ -570,10 +587,12 @@ class TestBatching:
 
         async def title_stream(*args, **kwargs):
             await kwargs["on_session_id"]("session-1")
+            await kwargs["on_owner_user_id"]("owner-1")
             yield "Done"
+            await kwargs["on_finish"]()
 
         api.stream_chat = title_stream
-        api.get_session_title = AsyncMock(return_value="Generated Web Title")
+        get_session = AsyncMock(return_value=_chat_session("Generated Web Title"))
         handler = MessageHandler(api)
         adapter = _adapter()
         redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
@@ -582,6 +601,14 @@ class TestBatching:
             patch(
                 "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=get_session,
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.live_resource_access_barrier",
+                new=_allow_live_access,
             ),
             patch(
                 "backend.copilot.bot.handler.asyncio.sleep",
@@ -597,7 +624,12 @@ class TestBatching:
             )
             await asyncio.gather(*captured, return_exceptions=True)
 
-        api.get_session_title.assert_awaited_once_with("session-1")
+        assert get_session.await_count == 2
+        get_session.assert_awaited_with("session-1", "owner-1")
+        api.acquire_platform_link_lease.assert_awaited_once_with(
+            "discord", "guild-1", "user-1"
+        )
+        api.release_platform_link_lease.assert_awaited_once_with("lease-1")
         adapter.rename_thread.assert_awaited_once_with(
             "thread-1", "Generated Web Title"
         )
@@ -608,12 +640,21 @@ class TestBatching:
 
         async def title_stream(*args, **kwargs):
             await kwargs["on_session_id"]("session-2")
+            await kwargs["on_owner_user_id"]("owner-1")
             yield "Done"
+            await kwargs["on_finish"]()
 
         api.stream_chat = title_stream
-        # First two polls return None (title not generated yet), third
-        # returns the real title.
-        api.get_session_title = AsyncMock(side_effect=[None, None, "Late Title"])
+        titles = [None, None, "Late Title"]
+        title_reads = 0
+
+        def read_session(*_args):
+            nonlocal title_reads
+            title = titles[min(title_reads // 2, len(titles) - 1)]
+            title_reads += 1
+            return _chat_session(title)
+
+        get_session = AsyncMock(side_effect=read_session)
         handler = MessageHandler(api)
         adapter = _adapter()
         redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
@@ -622,6 +663,14 @@ class TestBatching:
             patch(
                 "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=get_session,
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.live_resource_access_barrier",
+                new=_allow_live_access,
             ),
             patch(
                 "backend.copilot.bot.handler.asyncio.sleep",
@@ -637,7 +686,9 @@ class TestBatching:
             )
             await asyncio.gather(*captured, return_exceptions=True)
 
-        assert api.get_session_title.await_count == 3
+        assert get_session.await_count == 6
+        assert api.acquire_platform_link_lease.await_count == 3
+        assert api.release_platform_link_lease.await_count == 3
         adapter.rename_thread.assert_awaited_once_with("thread-2", "Late Title")
 
     @pytest.mark.asyncio
@@ -646,13 +697,17 @@ class TestBatching:
 
         async def title_stream(*args, **kwargs):
             await kwargs["on_session_id"]("session-3")
+            await kwargs["on_owner_user_id"]("owner-1")
             yield "Done"
+            await kwargs["on_finish"]()
 
         api.stream_chat = title_stream
-        # Simulate a transient backend error on the first attempt; the
-        # retry should still go through and pick up the title.
-        api.get_session_title = AsyncMock(
-            side_effect=[RuntimeError("transient"), "Recovered Title"]
+        get_session = AsyncMock(
+            side_effect=[
+                RuntimeError("transient"),
+                _chat_session("Recovered Title"),
+                _chat_session("Recovered Title"),
+            ]
         )
         handler = MessageHandler(api)
         adapter = _adapter()
@@ -662,6 +717,14 @@ class TestBatching:
             patch(
                 "backend.copilot.bot.turn_stream.get_redis_async",
                 new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=get_session,
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.live_resource_access_barrier",
+                new=_allow_live_access,
             ),
             patch(
                 "backend.copilot.bot.handler.asyncio.sleep",
@@ -677,8 +740,53 @@ class TestBatching:
             )
             await asyncio.gather(*captured, return_exceptions=True)
 
-        assert api.get_session_title.await_count == 2
+        assert get_session.await_count == 3
+        assert api.acquire_platform_link_lease.await_count == 2
+        assert api.release_platform_link_lease.await_count == 2
         adapter.rename_thread.assert_awaited_once_with("thread-3", "Recovered Title")
+
+    @pytest.mark.asyncio
+    async def test_thread_rename_stops_when_platform_link_is_revoked(self):
+        api = _api()
+
+        async def title_stream(*args, **kwargs):
+            await kwargs["on_session_id"]("session-4")
+            await kwargs["on_owner_user_id"]("owner-1")
+            yield "Done"
+            await kwargs["on_finish"]()
+
+        api.stream_chat = title_stream
+        api.is_platform_link_owner = AsyncMock(return_value=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        redis = AsyncMock(get=AsyncMock(return_value=None), set=AsyncMock())
+        get_session = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.get_redis_async",
+                new=AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=get_session,
+            ),
+            _capture_handler_tasks() as captured,
+        ):
+            await handler._stream_batch(
+                [("Bently", "u1", "hi")],
+                _ctx(channel_type="channel", channel_id="parent-1"),
+                adapter,
+                "thread-4",
+            )
+            await asyncio.gather(*captured, return_exceptions=True)
+
+        api.is_platform_link_owner.assert_awaited_once_with(
+            "discord", "guild-1", "user-1", "owner-1"
+        )
+        api.release_platform_link_lease.assert_awaited_once_with("lease-1")
+        get_session.assert_not_awaited()
+        adapter.rename_thread.assert_not_awaited()
 
 
 class TestStreamFallback:
@@ -699,6 +807,7 @@ class TestStreamFallback:
         api = _api()
 
         async def empty(*args, **kwargs):
+            await kwargs["on_finish"]()
             if False:
                 yield ""
 
@@ -721,6 +830,7 @@ class TestStreamFallback:
         async def whitespace(*args, **kwargs):
             yield "   "
             yield "\n\n"
+            await kwargs["on_finish"]()
 
         api.stream_chat = whitespace
         handler = MessageHandler(api)
@@ -750,6 +860,7 @@ class TestStreamFallback:
             # with buffer == "". That USED to fall into the `elif not buffer`
             # branch and send the "didn't produce a response" fallback.
             yield "x" * 50
+            await kwargs["on_finish"]()
 
         api.stream_chat = streaming_content
         handler = MessageHandler(api)

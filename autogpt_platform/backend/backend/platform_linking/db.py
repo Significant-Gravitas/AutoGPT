@@ -6,9 +6,11 @@ hold the Prisma connection). Other services go through
 routed via ``DatabaseManagerAsyncClient`` when no local Prisma is available.
 """
 
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
@@ -36,6 +38,7 @@ from .models import (
     LinkTokenResponse,
     LinkTokenStatusResponse,
     LinkType,
+    Platform,
     PlatformLinkInfo,
     PlatformUserLinkInfo,
     ResolveResponse,
@@ -45,10 +48,91 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 LINK_TOKEN_EXPIRY_MINUTES = 30
+PLATFORM_LINK_LEASE_TIMEOUT = timedelta(minutes=31)
+_platform_link_leases: dict[str, tuple[asyncio.Event, asyncio.Task[None]]] = {}
 
 
 def _link_base_url() -> str:
     return Settings().config.platform_link_base_url
+
+
+def _platform_link_scope(
+    platform: str,
+    platform_server_id: str | None,
+    platform_user_id: str,
+) -> str:
+    if platform_server_id is not None:
+        return f"platform-link:{platform}:server:{platform_server_id}"
+    return f"platform-link:{platform}:user:{platform_user_id}"
+
+
+async def _lock_platform_link_scope(
+    tx,
+    platform: str,
+    platform_server_id: str | None,
+    platform_user_id: str,
+    *,
+    shared: bool,
+) -> None:
+    scope = _platform_link_scope(platform, platform_server_id, platform_user_id)
+    lock = "pg_advisory_xact_lock_shared" if shared else "pg_advisory_xact_lock"
+    await tx.execute_raw(f"SELECT {lock}(hashtextextended($1, 0))", scope)
+
+
+async def acquire_platform_link_lease(
+    platform: str,
+    platform_server_id: str | None,
+    platform_user_id: str,
+) -> str:
+    release = asyncio.Event()
+    ready = asyncio.get_running_loop().create_future()
+    lease_id = str(uuid4())
+
+    async def hold() -> None:
+        try:
+            async with transaction(timeout=PLATFORM_LINK_LEASE_TIMEOUT) as tx:
+                await _lock_platform_link_scope(
+                    tx,
+                    platform,
+                    platform_server_id,
+                    platform_user_id,
+                    shared=True,
+                )
+                if not ready.done():
+                    ready.set_result(None)
+                await release.wait()
+        except BaseException as error:
+            if not ready.done():
+                ready.set_exception(error)
+            else:
+                logger.exception("Platform link lease %s failed", lease_id)
+        finally:
+            _platform_link_leases.pop(lease_id, None)
+
+    task = asyncio.create_task(hold(), name=f"platform-link-lease:{lease_id}")
+    try:
+        await asyncio.shield(ready)
+    except BaseException:
+        release.set()
+        await task
+        raise
+    _platform_link_leases[lease_id] = (release, task)
+    return lease_id
+
+
+async def release_platform_link_lease(lease_id: str) -> bool:
+    lease = _platform_link_leases.get(lease_id)
+    if lease is None:
+        return False
+    release, task = lease
+    release.set()
+    await task
+    return True
+
+
+async def is_platform_link_lease_active(lease_id: str) -> bool:
+    lease = _platform_link_leases.get(lease_id)
+    return lease is not None and not lease[1].done()
 
 
 # ── Owner lookups ─────────────────────────────────────────────────────
@@ -60,6 +144,19 @@ def _link_base_url() -> str:
 async def find_server_link_owner(platform: str, platform_server_id: str) -> str | None:
     link = await PlatformLink.prisma().find_first(
         where={"platform": platform, "platformServerId": platform_server_id}
+    )
+    return link.userId if link else None
+
+
+async def find_server_link_owner_for_sender(
+    platform: str, platform_server_id: str, platform_user_id: str
+) -> str | None:
+    link = await PlatformLink.prisma().find_first(
+        where={
+            "platform": platform,
+            "platformServerId": platform_server_id,
+            "ownerPlatformUserId": platform_user_id,
+        }
     )
     return link.userId if link else None
 
@@ -245,15 +342,18 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
 
 
 def _enforce_verified_identity(
-    token_platform_user_id: str, verified_platform_user_id: str | None
+    token_platform: str,
+    token_platform_user_id: str,
+    verified_platform_user_id: str | None,
 ) -> None:
     """When the caller carries a platform-verified identity (Telegram
     login_url payload), the token must have been minted for that same
     platform user — a forwarded/leaked link URL then fails instead of
     binding to whoever opened it."""
-    if (
-        verified_platform_user_id is not None
-        and token_platform_user_id != verified_platform_user_id
+    if token_platform == Platform.TELEGRAM.value and verified_platform_user_id is None:
+        raise NotAuthorizedError("Telegram identity verification is required.")
+    if verified_platform_user_id is not None and (
+        token_platform_user_id != verified_platform_user_id
     ):
         raise NotAuthorizedError("This link was created for a different platform user.")
 
@@ -273,7 +373,11 @@ async def confirm_server_link(
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
-    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
+    _enforce_verified_identity(
+        link_token.platform,
+        link_token.platformUserId,
+        verified_platform_user_id,
+    )
 
     owner = await find_server_link_owner(
         link_token.platform, link_token.platformServerId
@@ -338,7 +442,11 @@ async def confirm_user_link(
         raise LinkTokenExpiredError("This link has already been used.")
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise LinkTokenExpiredError("This link has expired.")
-    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
+    _enforce_verified_identity(
+        link_token.platform,
+        link_token.platformUserId,
+        verified_platform_user_id,
+    )
 
     owner = await find_user_link_owner(link_token.platform, link_token.platformUserId)
     if owner:
@@ -474,7 +582,20 @@ async def delete_server_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     if link.userId != user_id:
         raise NotAuthorizedError("Not your link.")
 
-    await PlatformLink.prisma().delete(where={"id": link_id})
+    async with transaction() as tx:
+        await _lock_platform_link_scope(
+            tx,
+            link.platform,
+            link.platformServerId,
+            link.ownerPlatformUserId,
+            shared=False,
+        )
+        current = await PlatformLink.prisma(tx).find_unique(where={"id": link_id})
+        if current is None:
+            raise NotFoundError("Link not found.")
+        if current.userId != user_id:
+            raise NotAuthorizedError("Not your link.")
+        await PlatformLink.prisma(tx).delete(where={"id": link_id})
     logger.info(
         "Unlinked %s server %s from user ...%s",
         link.platform,
@@ -491,7 +612,20 @@ async def delete_user_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     if link.userId != user_id:
         raise NotAuthorizedError("Not your link.")
 
-    await PlatformUserLink.prisma().delete(where={"id": link_id})
+    async with transaction() as tx:
+        await _lock_platform_link_scope(
+            tx,
+            link.platform,
+            None,
+            link.platformUserId,
+            shared=False,
+        )
+        current = await PlatformUserLink.prisma(tx).find_unique(where={"id": link_id})
+        if current is None:
+            raise NotFoundError("Link not found.")
+        if current.userId != user_id:
+            raise NotAuthorizedError("Not your link.")
+        await PlatformUserLink.prisma(tx).delete(where={"id": link_id})
     logger.info("Unlinked %s DMs from AutoGPT user ...%s", link.platform, user_id[-8:])
     return DeleteLinkResponse(success=True)
 
@@ -526,8 +660,13 @@ async def fetch_workspace_artifact(
             "fetch_workspace_artifact: no workspace for session %s", session_id
         )
         return None
-    file = await get_workspace_file(file_id, workspace.id)
-    if file is None:
+    file = await get_workspace_file(
+        file_id,
+        workspace.id,
+        session.organization_id,
+        session.team_id,
+    )
+    if file is None or file.session_id != session_id:
         # File isn't owned by the session's user — expected when the LLM emits
         # a stale or hallucinated workspace URI, so debug rather than warn.
         logger.debug(
@@ -546,7 +685,12 @@ async def fetch_workspace_artifact(
         return None
 
     manager = WorkspaceManager(
-        user_id=session.user_id, workspace_id=workspace.id, session_id=session_id
+        user_id=session.user_id,
+        workspace_id=workspace.id,
+        session_id=session_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        access="execute",
     )
     try:
         content = await manager.read_file_by_id(file_id)

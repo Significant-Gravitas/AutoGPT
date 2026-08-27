@@ -45,6 +45,7 @@ def _api(chunks: list[str]) -> MagicMock:
     async def _stream(*args, **kwargs):
         for chunk in chunks:
             yield chunk
+        await kwargs["on_finish"]()
 
     api.stream_chat = _stream
     return api

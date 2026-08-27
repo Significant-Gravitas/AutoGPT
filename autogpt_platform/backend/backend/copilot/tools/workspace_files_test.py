@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import db as copilot_db
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
@@ -27,6 +28,19 @@ from backend.copilot.tools.workspace_files import (
 
 # Re-export so pytest discovers the session-scoped fixture
 setup_test_data = setup_test_data
+
+
+async def _make_persisted_session(user_id: str):
+    session = make_session(user_id)
+    await copilot_db.create_chat_session(
+        session.session_id,
+        user_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        metadata=session.metadata,
+    )
+    return session
+
 
 # We need to mock make_session_path to return a known temp dir for tests.
 # The real one uses WORKSPACE_PREFIX = "/tmp/copilot-"
@@ -183,7 +197,7 @@ class TestResolveWriteContent:
 async def test_workspace_file_round_trip(setup_test_data):
     """E2E: write a file, list it, read it back (with save_to_path), then delete it."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
     session_id = session.session_id
 
     # ---- Write ----
@@ -252,7 +266,7 @@ async def test_workspace_file_round_trip(setup_test_data):
 async def test_read_workspace_file_with_offset_and_length(setup_test_data):
     """Read a slice of a text file using offset and length."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
 
     # Write a known-content file
     content = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" * 100  # 2600 chars
@@ -306,7 +320,7 @@ async def test_read_workspace_file_with_offset_and_length(setup_test_data):
 async def test_write_workspace_file_source_path(setup_test_data):
     """E2E: write a file from ephemeral source_path to workspace."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
     session_id = session.session_id
 
     # Create a file in the ephemeral dir
@@ -537,7 +551,7 @@ async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_da
     """When _resolve_file returns ErrorResponse for an allowed local path,
     ReadWorkspaceFileTool should fall back to _read_local_tool_result."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
 
     # Create a real tool-result file on disk so the fallback can read it.
     encoded = "-tmp-copilot-fallback-test"
@@ -583,7 +597,7 @@ async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_da
 async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_data):
     """When _resolve_file succeeds, the local-disk fallback must NOT be invoked."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
 
     fake_file_id = "fake-file-id-001"
     fake_content = b"workspace content"
@@ -634,7 +648,7 @@ async def test_read_workspace_file_redirects_sdk_tool_result_shorthand(
     redirect hint pointing at ``read_tool_result`` / ``@@agptfile``
     rather than the generic ``Path not allowed``."""
     user = setup_test_data["user"]
-    session = make_session(user.id)
+    session = await _make_persisted_session(user.id)
 
     mock_resolve = AsyncMock(
         return_value=ErrorResponse(

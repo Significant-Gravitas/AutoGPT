@@ -249,7 +249,13 @@ async def build_builder_context_turn_prefix(
         return ""
 
     try:
-        agent_json = await get_agent_as_json(graph_id, user_id)
+        agent_json = await get_agent_as_json(
+            graph_id,
+            user_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            exact_scope=True,
+        )
     except Exception:
         logger.exception(
             "[builder_context] Failed to fetch graph %s for session %s",

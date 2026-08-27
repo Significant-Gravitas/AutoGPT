@@ -203,19 +203,19 @@ model UserOnboarding {
   // backend, OpenAPI-generated union on the frontend). Storing as String[]
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
-  completedSteps                String[]         @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      String[]         @default([])
-  rewardedFor                   String[]         @default([])
+  completedSteps                String[]  @default([])
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -280,13 +280,13 @@ model OnboardingBrainDump {
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
   /// is instant — the user has already waited through the loading screen.
-  greeting         String?
+  greeting             String?
   /// List of {title, prompt} objects the user can pick from under the
   /// greeting. JSON so the shape can evolve without a migration.
-  suggestedPrompts Json    @default("[]")
+  suggestedPrompts     Json    @default("[]")
   /// True once the user has sent their first message. The greeting is
   /// never shown again after this, but its content is kept.
-  greetingSeen     Boolean @default(false)
+  greetingSeen         Boolean @default(false)
   /// List of {provider, reason} objects Claude picks from the transcript
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
@@ -362,6 +362,14 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
+  organizationId     String?
+  teamId             String?
+  sessionId          String?
+  executionId        String?
+  scopeKey           String  @default("__scope__")
+  scopeResolved      Boolean @default(true)
+  isUserGlobalConfig Boolean @default(false)
+
   // User-level organization. Null = root. The folder API soft-deletes
   // folders and reparents files to root; SetNull is a hard-delete safety net.
   folderId String?
@@ -370,8 +378,11 @@ model UserWorkspaceFile {
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
 
-  @@unique([workspaceId, path])
+  @@unique([workspaceId, scopeKey, path])
   @@index([workspaceId, isDeleted])
+  @@index([workspaceId, organizationId, teamId, isDeleted])
+  @@index([sessionId])
+  @@index([executionId])
   @@index([folderId])
 }
 
@@ -388,6 +399,11 @@ model UserWorkspaceFolder {
   name String
   icon String?
 
+  organizationId String?
+  teamId         String?
+  scopeKey       String  @default("__scope__")
+  scopeResolved  Boolean @default(true)
+
   // Forward-compat for nesting; unused by the v1 API (always null).
   parentId String?
   Parent   UserWorkspaceFolder?  @relation("WorkspaceFolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
@@ -397,8 +413,9 @@ model UserWorkspaceFolder {
 
   Files UserWorkspaceFile[]
 
-  @@unique([workspaceId, parentId, name])
+  @@unique([workspaceId, scopeKey, parentId, name])
   @@index([workspaceId, isDeleted])
+  @@index([workspaceId, organizationId, teamId, isDeleted])
 }
 
 // Tracks which workspace files are exposed via a shared execution.
@@ -770,7 +787,14 @@ model AlertCondition {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  cause AlertCause
+  // Immutable authorization provenance for resource-derived alerts. Personal
+  // account alerts leave these null.
+  organizationId         String?
+  teamId                 String?
+  sourceGraphExecutionId String?
+  SourceGraphExecution   AgentGraphExecution? @relation(fields: [sourceGraphExecutionId], references: [id], onDelete: Cascade)
+
+  cause    AlertCause
   // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
   // id>"), so re-raising the same condition updates one row instead of piling
   // up duplicates, and resolving it can find the row without the payload.
@@ -782,11 +806,13 @@ model AlertCondition {
   resolvedAt DateTime?
   // Set once the condition has been carried into a Briefing's attention
   // block, so the next Briefing doesn't repeat it.
-  briefedAt DateTime?
+  briefedAt  DateTime?
 
   @@unique([userId, causeKey])
   @@index([status, createdAt])
   @@index([userId, status])
+  @@index([userId, organizationId, teamId, status])
+  @@index([sourceGraphExecutionId])
 }
 
 model NotificationEvent {
@@ -846,9 +872,9 @@ model PushSubscription {
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   lastRunAt DateTime?
 
   userId String
@@ -887,10 +913,11 @@ model LibraryAgent {
   // Tenancy
   organizationId String?
   teamId         String?
+  scopeKey       String             @default("__scope__")
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, agentGraphId, agentGraphVersion])
+  @@unique([userId, agentGraphId, agentGraphVersion, scopeKey])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
   @@index([folderId])
@@ -940,17 +967,17 @@ model Expert {
   ownerUserId String?
   OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  name      String
-  avatarUrl String?
+  name             String
+  avatarUrl        String?
   // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
-  color     String   @default("")
-  role      String
-  tagline   String?
-  identity  String
-  bio       String?
-  skills    String[] @default([])
-  voicePreferences String @default("")
-  boundaries       String @default("")
+  color            String   @default("")
+  role             String
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
 
   toolProfile Json?
 
@@ -964,7 +991,7 @@ model Expert {
   // Weekly credit guardrail: null = platform default from config.
   // Spend is tracked per ISO week in Redis and reconciled from
   // CreditTransaction via the execution's expertId.
-  weeklyBudget Int?
+  weeklyBudget      Int?
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
@@ -1207,6 +1234,7 @@ model AgentGraphExecution {
   sharedVia            SharedVia?
   SharedExecutionFiles SharedExecutionFile[]
   ChatLinkedShares     ChatLinkedShare[]
+  AlertConditions      AlertCondition[]
 
   // Tenancy (nullable until cutover migration backfills existing data)
   organizationId String?
@@ -1890,6 +1918,7 @@ model StoreListingVersion {
 
   // Tenancy
   organizationId String?
+  teamId         String?
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
@@ -1897,6 +1926,7 @@ model StoreListingVersion {
   @@index([reviewerId])
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
   @@index([organizationId])
+  @@index([teamId])
 }
 
 // Content type enum for unified search across store agents, blocks, docs

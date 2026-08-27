@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -26,11 +27,22 @@ MixedCredentialsInput = CredentialsMetaInput[
 ]
 
 
+def _lease(credentials):
+    lease = MagicMock(credentials=credentials, is_active=True)
+    lease.release = AsyncMock()
+    lease.validate = AsyncMock()
+
+    async def wait_for_failure():
+        await asyncio.Event().wait()
+
+    lease.wait_for_failure = wait_for_failure
+    return lease
+
+
 @pytest.mark.asyncio
 async def test_execute_node_injects_and_releases_credential_lease():
     credentials = _codex_credentials("cred-1")
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+    lease = _lease(credentials)
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     captured: dict[str, object] = {}
@@ -59,8 +71,7 @@ async def test_execute_node_does_not_inject_runtime_lease_for_api_key():
         provider="openai",
         api_key=SecretStr("secret"),
     )
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+    lease = _lease(credentials)
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     captured: dict[str, object] = {}
@@ -95,8 +106,7 @@ async def test_execute_node_does_not_inject_runtime_lease_for_api_key():
 
 @pytest.mark.asyncio
 async def test_execute_node_releases_first_lease_when_second_acquisition_fails():
-    first = MagicMock(credentials=_codex_credentials("cred-1"))
-    first.release = AsyncMock()
+    first = _lease(_codex_credentials("cred-1"))
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(
         side_effect=[first, RuntimeError("second acquisition failed")]
@@ -159,8 +169,7 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
 @pytest.mark.asyncio
 async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease():
     credentials = _codex_credentials("owner-cred")
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+    lease = _lease(credentials)
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     captured: dict[str, object] = {}
@@ -173,6 +182,9 @@ async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease()
     )
     db_client = MagicMock()
     db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
 
     with (
         patch("backend.executor.manager.get_db_async_client", return_value=db_client),
@@ -215,6 +227,9 @@ async def test_revoked_owner_grant_fails_before_credential_access():
     )
     db_client = MagicMock()
     db_client.validate_execution_credentials_owner = AsyncMock(return_value=False)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
 
     with (
         patch("backend.executor.manager.get_db_async_client", return_value=db_client),
@@ -254,6 +269,43 @@ async def test_incomplete_owner_authorization_context_fails_closed():
 
 
 @pytest.mark.asyncio
+async def test_owner_mode_rejects_user_controlled_code_before_credential_access():
+    manager = MagicMock()
+    manager.acquire_lease = AsyncMock()
+    block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
+    block.allow_owner_credentials = False
+    context = ExecutionContext(
+        credentials_owner_id="owner-1",
+        credentials_grant_id="grant-1",
+    )
+    db_client = MagicMock()
+    db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
+
+    with (
+        patch("backend.executor.manager.get_db_async_client", return_value=db_client),
+        pytest.raises(ValueError, match="user-controlled code"),
+    ):
+        await anext(
+            execute_node(
+                _node(
+                    block,
+                    input_default={"credentials": _credential_metadata("owner-cred")},
+                ),
+                _entry(
+                    {"credentials": _credential_metadata("owner-cred")},
+                    execution_context=context,
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.acquire_lease.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_owner_reference_only_credential_rejected_before_lookup():
     manager = MagicMock()
     manager.get = AsyncMock()
@@ -270,6 +322,9 @@ async def test_owner_reference_only_credential_rejected_before_lookup():
     )
     db_client = MagicMock()
     db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
 
     with (
         patch("backend.executor.manager.get_db_async_client", return_value=db_client),
@@ -314,6 +369,9 @@ async def test_inactive_owner_reference_only_credential_stays_inactive_at_runtim
     )
     db_client = MagicMock()
     db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
 
     with patch("backend.executor.manager.get_db_async_client", return_value=db_client):
         outputs = [
@@ -362,6 +420,9 @@ async def test_consumer_activating_owner_reference_only_credential_fails_closed(
     )
     db_client = MagicMock()
     db_client.validate_execution_credentials_owner = AsyncMock(return_value=True)
+    db_client.acquire_agent_graph_attachment_lease = AsyncMock(return_value="lease-1")
+    db_client.is_agent_graph_attachment_lease_active = AsyncMock(return_value=True)
+    db_client.release_agent_graph_attachment_lease = AsyncMock(return_value=True)
 
     with (
         patch("backend.executor.manager.get_db_async_client", return_value=db_client),
@@ -535,8 +596,7 @@ async def test_required_unmapped_credential_still_fails_closed():
 @pytest.mark.asyncio
 async def test_codex_credential_is_rejected_and_released_without_entitlement():
     credentials = _codex_credentials("cred-1")
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+    lease = _lease(credentials)
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
@@ -562,8 +622,7 @@ async def test_codex_credential_is_rejected_and_released_without_entitlement():
 @pytest.mark.asyncio
 async def test_credential_metadata_cannot_hide_authoritative_codex_provider():
     credentials = _codex_credentials("cred-1")
-    lease = MagicMock(credentials=credentials)
-    lease.release = AsyncMock()
+    lease = _lease(credentials)
     manager = MagicMock()
     manager.acquire_lease = AsyncMock(return_value=lease)
     captured: dict[str, object] = {}

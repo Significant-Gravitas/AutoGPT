@@ -38,6 +38,8 @@ def _preset(
     is_active=True,
     webhook=True,
     expert_id=None,
+    organization_id=None,
+    team_id=None,
 ):
     preset = MagicMock()
     preset.id = id
@@ -50,6 +52,8 @@ def _preset(
     preset.inputs = {"repo": "owner/repo"}
     preset.credentials = {}
     preset.expert_id = expert_id
+    preset.organization_id = organization_id
+    preset.team_id = team_id
     preset.webhook = (
         MagicMock(url="https://x/ingress", provider="github") if webhook else None
     )
@@ -147,6 +151,9 @@ async def test_list_second_page_is_exactly_scoped_to_current_expert():
         graph_id=None,
         expert_id="expert-a",
         filter_by_expert=True,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        enforce_team_scope=True,
     )
 
 
@@ -163,7 +170,13 @@ async def test_list_rejects_unsafe_pagination(session, page, page_size):
 @pytest.mark.asyncio
 async def test_list_resolves_library_agent_id(session):
     ldb = MagicMock()
-    ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-xyz"))
+    ldb.get_library_agent = AsyncMock(
+        return_value=MagicMock(
+            graph_id="graph-xyz",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
+    )
     ldb.list_presets = AsyncMock(
         return_value=MagicMock(presets=[], pagination=MagicMock(total_items=0))
     )
@@ -226,7 +239,13 @@ async def test_update_rename_validates_preset_scope(session):
         )
     assert isinstance(result, PresetUpdatedResponse)
     assert result.name == "Renamed"
-    ldb.get_preset.assert_awaited_once_with(user_id=_USER, preset_id="preset-1")
+    ldb.get_preset.assert_awaited_once_with(
+        user_id=_USER,
+        preset_id="preset-1",
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        enforce_team_scope=True,
+    )
     assert tdb.update_triggered_preset.await_args.kwargs["inputs"] is None
 
 

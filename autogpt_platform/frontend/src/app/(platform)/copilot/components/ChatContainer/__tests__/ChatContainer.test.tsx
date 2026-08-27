@@ -174,6 +174,10 @@ class MockResizeObserver {
 }
 
 const baseProps = {
+  createTeamId: null,
+  onCreateTeamChange: vi.fn(),
+  isTeamContextReady: true,
+  canSelectCreateTeam: false,
   messages: [] as never[],
   status: "ready",
   error: undefined,

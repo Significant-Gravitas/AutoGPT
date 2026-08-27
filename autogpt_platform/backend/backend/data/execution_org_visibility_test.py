@@ -7,7 +7,7 @@ import pytest
 from prisma.enums import ResourceVisibility
 
 from backend.data.execution import (
-    create_graph_execution,
+    _create_graph_execution_locked,
     get_graph_execution,
     get_graph_execution_meta,
     get_graph_executions_paginated,
@@ -18,7 +18,7 @@ VISIBILITY_AND = [
         "OR": [
             {
                 "userId": "u-1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
+                "organizationId": None,
             },
             {"organizationId": "org-1", "teamId": None},
             {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
@@ -135,7 +135,7 @@ async def test_create_execution_rejects_non_private_expert_before_write(mocker):
     )
 
     with pytest.raises(ValueError, match="Expert #shared-expert is unavailable"):
-        await create_graph_execution(
+        await _create_graph_execution_locked(
             graph_id="graph-1",
             graph_version=1,
             starting_nodes_input=[],

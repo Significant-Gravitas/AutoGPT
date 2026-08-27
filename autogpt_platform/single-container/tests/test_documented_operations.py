@@ -180,6 +180,7 @@ class DocumentedOperationsTest(unittest.TestCase):
             }
         self.assertNotIn("cache", archived_paths)
         self.assertIn("config", archived_paths)
+        self.assertIn("media", archived_paths)
         self.assertIn("workspaces", archived_paths)
 
         restore = self._run(
@@ -222,6 +223,10 @@ class DocumentedOperationsTest(unittest.TestCase):
         self.assertEqual(
             (restored_data / "workspaces" / "example.txt").read_text(encoding="utf-8"),
             "durable workspace\n",
+        )
+        self.assertEqual(
+            (restored_data / "media" / "avatar.png").read_text(encoding="utf-8"),
+            "durable media\n",
         )
 
         validation = self._run(
@@ -815,6 +820,7 @@ class DocumentedOperationsTest(unittest.TestCase):
             "postgres/PG_VERSION": "16\n",
             "postgres/postgresql.conf": POSTGRESQL_CONF,
             "postgres/pg_hba.conf": PG_HBA_CONF,
+            "media/avatar.png": "durable media\n",
             "workspaces/example.txt": "durable workspace\n",
             "cache/regenerable.txt": "do not archive\n",
         }

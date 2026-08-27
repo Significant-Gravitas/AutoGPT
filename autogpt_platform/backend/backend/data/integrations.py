@@ -3,6 +3,8 @@ from typing import Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
+    AgentNodeWhereInput,
+    AgentPresetWhereInput,
     IntegrationWebhookCreateInput,
     IntegrationWebhookUpdateInput,
     IntegrationWebhookWhereInput,
@@ -15,9 +17,7 @@ from backend.data.includes import (
     INTEGRATION_WEBHOOK_INCLUDE,
     MAX_INTEGRATION_WEBHOOKS_FETCH,
 )
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
@@ -305,7 +305,13 @@ async def update_webhook(
     return Webhook.from_db(_updated_webhook)
 
 
-async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook]:
+async def find_webhooks_by_graph_id(
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    enforce_scope: bool = False,
+) -> list[Webhook]:
     """
     Find all webhooks that trigger nodes OR presets in a specific graph for a user.
 
@@ -325,12 +331,44 @@ async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook
             {"AgentPresets": {"some": {"agentGraphId": graph_id}}},
         ],
     }
+    if enforce_scope:
+        where_clause["organizationId"] = organization_id
+        where_clause["teamId"] = team_id
+        where_clause["OR"] = [
+            {
+                "AgentNodes": {
+                    "some": {
+                        "agentGraphId": graph_id,
+                        "AgentGraph": {
+                            "is": {
+                                "organizationId": organization_id,
+                                "teamId": team_id,
+                            }
+                        },
+                    }
+                }
+            },
+            {
+                "AgentPresets": {
+                    "some": {
+                        "agentGraphId": graph_id,
+                        "organizationId": organization_id,
+                        "teamId": team_id,
+                    }
+                }
+            },
+        ]
     webhooks = await IntegrationWebhook.prisma().find_many(where=where_clause)
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
 
 async def unlink_webhook_from_graph(
-    webhook_id: str, graph_id: str, user_id: str
+    webhook_id: str,
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    enforce_scope: bool = False,
 ) -> None:
     """
     Unlink a webhook from all nodes and presets in a specific graph.
@@ -346,19 +384,41 @@ async def unlink_webhook_from_graph(
     from backend.api.features.library.db import set_preset_webhook
     from backend.data.graph import set_node_webhook
 
+    webhook_where: IntegrationWebhookWhereInput = {
+        "id": webhook_id,
+        "userId": user_id,
+    }
+    if enforce_scope:
+        webhook_where["organizationId"] = organization_id
+        webhook_where["teamId"] = team_id
+    if not await IntegrationWebhook.prisma().find_first(where=webhook_where):
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
+
+    node_where: AgentNodeWhereInput = {
+        "agentGraphId": graph_id,
+        "webhookId": webhook_id,
+    }
+    preset_where: AgentPresetWhereInput = {
+        "agentGraphId": graph_id,
+        "webhookId": webhook_id,
+        "userId": user_id,
+    }
+    if enforce_scope:
+        node_where["AgentGraph"] = {
+            "is": {"organizationId": organization_id, "teamId": team_id}
+        }
+        preset_where["organizationId"] = organization_id
+        preset_where["teamId"] = team_id
+
     # Find all nodes in this graph that use this webhook
-    nodes = await AgentNode.prisma().find_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id}
-    )
+    nodes = await AgentNode.prisma().find_many(where=node_where)
 
     # Unlink webhook from each node
     for node in nodes:
         await set_node_webhook(node.id, None)
 
     # Find all presets for this graph that use this webhook
-    presets = await AgentPreset.prisma().find_many(
-        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id}
-    )
+    presets = await AgentPreset.prisma().find_many(where=preset_where)
 
     # Unlink webhook from each preset
     for preset in presets:
@@ -366,14 +426,9 @@ async def unlink_webhook_from_graph(
 
     # Check if webhook needs cleanup (prune_webhook_if_dangling handles the trigger check)
     webhook = await get_webhook(webhook_id, include_relations=False)
-    webhook_manager = get_webhook_manager(webhook.provider)
-    creds_manager = IntegrationCredentialsManager()
-    credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
-        if webhook.credentials_id
-        else None
-    )
-    await webhook_manager.prune_webhook_if_dangling(user_id, webhook.id, credentials)
+    from backend.integrations.webhooks.utils import prune_webhook_with_credential_lease
+
+    await prune_webhook_with_credential_lease(user_id, webhook)
 
 
 async def delete_webhook(user_id: str, webhook_id: str) -> None:

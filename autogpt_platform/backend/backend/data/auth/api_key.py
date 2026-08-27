@@ -10,6 +10,7 @@ from prisma.types import APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
+from backend.data.tenancy import has_live_tenancy
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
@@ -105,6 +106,7 @@ async def create_api_key(
         create_data["ownerType"] = owner_type
     if team_id_restriction is not None:
         create_data["teamIdRestriction"] = team_id_restriction
+        create_data["teamId"] = team_id_restriction
 
     saved_key_obj = await PrismaAPIKey.prisma().create(data=create_data)  # type: ignore
 
@@ -143,6 +145,13 @@ async def validate_api_key(plaintext_key: str) -> Optional[APIKeyInfo]:
             matched_api_key = await _migrate_key_to_secure_hash(
                 plaintext_key, matched_api_key
             )
+
+        if not await has_live_tenancy(
+            matched_api_key.user_id,
+            matched_api_key.organization_id,
+            matched_api_key.team_id_restriction,
+        ):
+            return None
 
         return matched_api_key.without_hash()
     except Exception as e:
@@ -200,37 +209,11 @@ async def list_user_api_keys(
     user_id: str,
     limit: int = MAX_USER_API_KEYS_FETCH,
     organization_id: str | None = None,
-    team_ids: list[str] | None = None,
 ) -> list[APIKeyInfo]:
-    """List keys visible to the user.
-
-    Without org context: the user's own keys. With an active org (from a
-    membership-verified RequestContext): own keys (including untagged
-    pre-backfill rows) plus the org's ORG-owned keys — org-wide ones and
-    those pinned to a team in ``team_ids``. Key material itself is never
-    returned (only head/tail).
-    """
-    where: dict = {"userId": user_id}
+    """List the user's keys in the active organization."""
+    where: dict[str, object] = {"userId": user_id}
     if organization_id is not None:
-        where = {
-            "OR": [
-                {
-                    "userId": user_id,
-                    "OR": [
-                        {"organizationId": organization_id},
-                        {"organizationId": None},
-                    ],
-                },
-                {
-                    "organizationId": organization_id,
-                    "ownerType": "ORG",
-                    "OR": [
-                        {"teamId": None},
-                        *([{"teamId": {"in": team_ids}}] if team_ids else []),
-                    ],
-                },
-            ]
-        }
+        where["organizationId"] = organization_id
 
     api_keys = await PrismaAPIKey.prisma().find_many(
         where=where,
@@ -272,7 +255,7 @@ def has_permission(api_key: APIKeyInfo, required_permission: APIKeyPermission) -
 async def get_api_key_by_id(
     key_id: str, user_id: str, organization_id: str | None = None
 ) -> APIKeyInfo | None:
-    where: dict = {"id": key_id, "userId": user_id}
+    where: dict[str, object] = {"id": key_id, "userId": user_id}
     if organization_id is not None:
         where["organizationId"] = organization_id
 

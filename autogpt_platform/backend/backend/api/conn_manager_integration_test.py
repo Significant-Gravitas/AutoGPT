@@ -4,7 +4,9 @@ when the cluster is unreachable."""
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -45,6 +47,15 @@ pytestmark = pytest.mark.skipif(
     not _has_live_cluster(),
     reason="local redis cluster not reachable; skip conn_manager integration",
 )
+
+
+@pytest.fixture(autouse=True)
+def _allow_live_execution_scope(monkeypatch):
+    @asynccontextmanager
+    async def _allow(_self, _scope):
+        yield True
+
+    monkeypatch.setattr(ConnectionManager, "_execution_scope_barrier", _allow)
 
 
 def _meta(user_id: str, graph_id: str, graph_exec_id: str) -> GraphExecutionMeta:
@@ -214,7 +225,11 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
     async def _fake_meta(_uid, gex_id):
         return _meta(user_id, graph_id, gex_id)
 
+    async def _fake_graph(*_args, **_kwargs):
+        return SimpleNamespace(organization_id=None, team_id=None)
+
     monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
+    monkeypatch.setattr("backend.api.conn_manager.get_graph", _fake_graph)
 
     cm = ConnectionManager()
     ws_agg: AsyncMock = AsyncMock(spec=WebSocket)

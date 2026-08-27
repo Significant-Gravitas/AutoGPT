@@ -351,7 +351,12 @@ async def try_ratify_on_hit(
     return promoted_count
 
 
-async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
+async def _promote_if_tentative(
+    driver: AutoGPTFalkorDriver,
+    edge_uuid: str,
+    *,
+    actor_user_id: str | None = None,
+) -> bool:
     """``_promote_edge`` with a ``status='tentative'`` guard.
 
     Distinct from ``_promote_edge`` because the hit-hook fires on
@@ -359,15 +364,24 @@ async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> 
     want to overwrite an active edge's ``ratified_at`` with a fresh
     timestamp on every retrieval. The guard makes the call idempotent.
     """
-    query = """
-    MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+    approval_set = (
+        ", e.approved_by = $actor_user_id, e.approved_at = $now"
+        if actor_user_id
+        else ""
+    )
+    query = f"""
+    MATCH ()-[e:RELATES_TO {{uuid: $uuid}}]->()
     WHERE e.status = 'tentative' AND e.expired_at IS NULL
-    SET e.status = 'active', e.ratified_at = $now
+    SET e.status = 'active', e.ratified_at = $now{approval_set}
     RETURN e.uuid AS uuid
     """
-    result = await driver.execute_query(
-        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
-    )
+    params = {
+        "uuid": edge_uuid,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
+    if actor_user_id:
+        params["actor_user_id"] = actor_user_id
+    result = await driver.execute_query(query, **params)
     records = result[0] if result else []
     return bool(records)
 

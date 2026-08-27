@@ -27,6 +27,8 @@ import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKick
 import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
+import { TeamPicker } from "@/components/contextual/TeamPicker/TeamPicker";
+import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   inputLayoutId: string;
@@ -43,6 +45,10 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  createTeamId: string | null;
+  onCreateTeamChange: (teamId: string | null) => void;
+  isTeamContextReady: boolean;
+  canSelectCreateTeam: boolean;
 }
 
 export function EmptySession({
@@ -55,6 +61,10 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  createTeamId,
+  onCreateTeamChange,
+  isTeamContextReady,
+  canSelectCreateTeam,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -65,7 +75,8 @@ export function EmptySession({
   const pulseChips = usePulseChips();
   const { options, recipient, isLoadingRecipient, selectRecipient } =
     useRecipientPicker();
-  const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const isComposerDisabled =
+    isCreatingSession || !!isInteractionLocked || !isTeamContextReady;
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -155,6 +166,17 @@ export function EmptySession({
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+              {canSelectCreateTeam && (
+                <div className="mb-2 flex justify-end px-2">
+                  <TeamPicker
+                    surfaceKey={CreateSurface.Copilot}
+                    value={createTeamId}
+                    onChange={onCreateTeamChange}
+                    label="Workspace"
+                    wrapperClassName="w-56 text-left"
+                  />
+                </div>
+              )}
               <motion.div
                 layoutId={inputLayoutId}
                 transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}

@@ -8,7 +8,7 @@ others.
 For an empty/whitespace query, ``global_search`` returns the
 most-recently-updated items per bucket. That branch uses three plain DB
 queries — no embedding needed since it's purely
-``ORDER BY updatedAt DESC LIMIT N`` — and the result is cached per-user
+``ORDER BY updatedAt DESC LIMIT N`` — and the result is cached per context
 with a short TTL because the UI surfaces this listing on every
 page-load.
 """
@@ -181,6 +181,51 @@ async def _search_bucket(
     return items
 
 
+async def _library_agents_bucket(
+    query: str | None,
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    limit: int,
+) -> list[SearchResultItem]:
+    from backend.api.features.library import model as library_model
+
+    try:
+        response = await library_db().list_library_agents(
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
+            search_term=query,
+            page=1,
+            page_size=limit,
+            sort_by=library_model.LibraryAgentSort.UPDATED_AT,
+        )
+    except Exception as error:
+        logger.warning(
+            "Failed to list library agents for %s in %s: %s",
+            user_id,
+            organization_id,
+            error,
+        )
+        return []
+
+    return [
+        SearchResultItem(
+            id=agent.id,
+            type="library_agent",
+            title=agent.name,
+            subtitle=agent.description or None,
+            metadata={
+                "graph_id": agent.graph_id,
+                "image_url": agent.image_url,
+                "is_favorite": agent.is_favorite,
+            },
+            updated_at=agent.updated_at,
+        )
+        for agent in response.agents[:limit]
+    ]
+
+
 async def _enrich_store_agent_metadata(items: list[SearchResultItem]) -> None:
     """Backfill ``creator`` and ``slug`` on any store-agent items that
     are missing them.
@@ -234,7 +279,12 @@ async def _enrich_store_agent_metadata(items: list[SearchResultItem]) -> None:
 # ----- recent (empty-query) buckets ------------------------------------------
 
 
-async def _recent_agents(user_id: str, limit: int) -> list[SearchResultItem]:
+async def _recent_agents(
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    limit: int,
+) -> list[SearchResultItem]:
     """Most-recently-updated library agents for the user."""
     # Local import — library.model pulls in a heavy graph chain that we
     # don't want to load at search-module import time.
@@ -243,6 +293,8 @@ async def _recent_agents(user_id: str, limit: int) -> list[SearchResultItem]:
     try:
         resp = await library_db().list_library_agents(
             user_id=user_id,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
             page=1,
             page_size=limit,
             sort_by=library_model.LibraryAgentSort.UPDATED_AT,
@@ -295,7 +347,11 @@ def _title_relevance_score(title: str, query: str) -> int:
 
 
 async def _files_bucket(
-    user_id: str, limit: int, query: str | None = None
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    limit: int,
+    query: str | None = None,
 ) -> list[SearchResultItem]:
     """Workspace files, filtered by ``query`` substring when provided.
 
@@ -317,7 +373,14 @@ async def _files_bucket(
             # User has no workspace yet — nothing to list, no need to
             # create one just for the recents view.
             return []
-        manager = WorkspaceManager(user_id, workspace.id, session_id=None)
+        manager = WorkspaceManager(
+            user_id,
+            workspace.id,
+            session_id=None,
+            organization_id=organization_id,
+            team_id=team_id,
+            access="view",
+        )
         fetch_limit = max(limit, _RELEVANCE_OVERFETCH_CAP) if query else limit
         files = await manager.list_files(
             limit=fetch_limit,
@@ -357,7 +420,11 @@ async def _files_bucket(
 
 
 async def _chats_bucket(
-    user_id: str, limit: int, query: str | None = None
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    limit: int,
+    query: str | None = None,
 ) -> list[SearchResultItem]:
     """Chat sessions, filtered by ``query`` substring when provided.
 
@@ -373,6 +440,8 @@ async def _chats_bucket(
         fetch_limit = max(limit, _RELEVANCE_OVERFETCH_CAP) if query else limit
         sessions, _total = await get_user_sessions(
             user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
             limit=fetch_limit,
             offset=0,
             title_contains=query or None,
@@ -417,11 +486,16 @@ async def _chats_bucket(
 # promptly, long enough to absorb rapid page-load chatter from the
 # sidebar. Redis-backed so the cache survives across worker processes.
 @cached(ttl_seconds=60, shared_cache=True, cache_none=False)
-async def _cached_recent_buckets(user_id: str, limit: int) -> GlobalSearchResponse:
+async def _cached_recent_buckets(
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    limit: int,
+) -> GlobalSearchResponse:
     agents, files, chats = await asyncio.gather(
-        _recent_agents(user_id, limit),
-        _files_bucket(user_id, limit),
-        _chats_bucket(user_id, limit),
+        _recent_agents(user_id, organization_id, team_id, limit),
+        _files_bucket(user_id, organization_id, team_id, limit),
+        _chats_bucket(user_id, organization_id, team_id, limit),
     )
     return GlobalSearchResponse(agents=agents, files=files, chats=chats)
 
@@ -430,7 +504,11 @@ async def _cached_recent_buckets(user_id: str, limit: int) -> GlobalSearchRespon
 
 
 async def global_search(
-    query: str, user_id: str, per_type_limit: int = 4
+    query: str,
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+    per_type_limit: int = 4,
 ) -> GlobalSearchResponse:
     """Bucketed search across agents (library + store), files, chat sessions.
 
@@ -442,25 +520,27 @@ async def global_search(
           embedding generation. Their embeddings only encode the
           name/title anyway, so we lose nothing in quality.
     - Empty/whitespace ``query``: most-recently-updated items per bucket,
-      cached per-user for 60s.
+      cached per validated org/team context for 60s.
     """
     query = (query or "").strip()
     limit = max(1, min(per_type_limit, 10))
 
     if not query:
-        return await _cached_recent_buckets(user_id, limit)
+        return await _cached_recent_buckets(user_id, organization_id, team_id, limit)
 
-    agents, files, chats = await asyncio.gather(
+    library_agents, store_agents, files, chats = await asyncio.gather(
+        _library_agents_bucket(query, user_id, organization_id, team_id, limit),
         _search_bucket(
             query,
             user_id,
-            [ContentType.LIBRARY_AGENT, ContentType.STORE_AGENT],
+            [ContentType.STORE_AGENT],
             limit,
         ),
         # Files & chats bypass the embedding index — see _files_bucket /
         # _chats_bucket docstrings. Direct ILIKE keeps freshly-created
         # rows findable without waiting on async embedding generation.
-        _files_bucket(user_id, limit, query=query),
-        _chats_bucket(user_id, limit, query=query),
+        _files_bucket(user_id, organization_id, team_id, limit, query=query),
+        _chats_bucket(user_id, organization_id, team_id, limit, query=query),
     )
+    agents = (library_agents + store_agents)[:limit]
     return GlobalSearchResponse(agents=agents, files=files, chats=chats)

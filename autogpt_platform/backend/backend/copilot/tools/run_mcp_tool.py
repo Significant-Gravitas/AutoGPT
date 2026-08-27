@@ -12,6 +12,7 @@ from backend.blocks.mcp.helpers import (
     invalidate_mcp_credential,
     normalize_mcp_url,
     parse_mcp_content,
+    release_mcp_credential_leases,
     server_host,
 )
 from backend.copilot.model import ChatSession
@@ -21,6 +22,10 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
 )
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    run_with_credential_lease_guard,
+)
 from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
@@ -214,7 +219,12 @@ class RunMCPToolTool(BaseTool):
 
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
-        creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
+        mcp_leases: list[CredentialLease] = []
+        creds = await auto_lookup_mcp_credential(
+            user_id,
+            normalize_mcp_url(server_url),
+            mcp_leases,
+        )
         auth_token = creds.access_token.get_secret_value() if creds else None
 
         # "Just connect" intent: return only the setup card so the user
@@ -240,9 +250,13 @@ class RunMCPToolTool(BaseTool):
                 probe_client = MCPClient(server_url, auth_token=auth_token)
                 try:
                     try:
-                        await probe_client.initialize()
+                        await run_with_credential_lease_guard(
+                            probe_client.initialize(),
+                            mcp_leases,
+                        )
                     except HTTPClientError as probe_err:
                         if probe_err.status_code in _AUTH_STATUS_CODES:
+                            await release_mcp_credential_leases(mcp_leases)
                             await invalidate_mcp_credential(user_id, creds.id)
                             connected = False
                         # Other HTTP statuses (5xx, redirects, etc.) →
@@ -274,29 +288,35 @@ class RunMCPToolTool(BaseTool):
                     # ``close`` is best-effort and swallows its own
                     # errors.
                     await probe_client.close()
+                    await release_mcp_credential_leases(mcp_leases)
             return self._build_setup_requirements(
                 server_url, session_id, connected=connected
             )
 
         client = MCPClient(server_url, auth_token=auth_token)
 
-        try:
+        async def initialize_and_run_tool():
             await client.initialize()
-
             if not tool_name:
                 # Stage 1: Discover available tools
                 return await self._discover_tools(client, server_url, session_id)
-            else:
-                # Stage 2: Execute the selected tool
-                return await self._execute_tool(
-                    client,
-                    server_url,
-                    tool_name,
-                    resolved_tool_arguments,
-                    session_id,
-                    user_id,
-                    session,
-                )
+
+            # Stage 2: Execute the selected tool
+            return await self._execute_tool(
+                client,
+                server_url,
+                tool_name,
+                resolved_tool_arguments,
+                session_id,
+                user_id,
+                session,
+            )
+
+        try:
+            return await run_with_credential_lease_guard(
+                initialize_and_run_tool(),
+                mcp_leases,
+            )
 
         except HTTPClientError as e:
             if e.status_code in _AUTH_STATUS_CODES:
@@ -309,6 +329,7 @@ class RunMCPToolTool(BaseTool):
                 # If we have a stale row, delete it so the next attempt
                 # doesn't loop on the same dead token.
                 if creds is not None:
+                    await release_mcp_credential_leases(mcp_leases)
                     await invalidate_mcp_credential(user_id, creds.id)
                 return self._build_setup_requirements(server_url, session_id)
             host = server_host(server_url)
@@ -336,6 +357,9 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+        finally:
+            await client.close()
+            await release_mcp_credential_leases(mcp_leases)
 
     async def _discover_tools(
         self,

@@ -42,6 +42,7 @@ export function TeamManagePanel({
     members,
     isLoading,
     isTeamAdmin,
+    currentTeamMember,
     memberToRemove,
     setMemberToRemove,
     isLeaveOpen,
@@ -177,7 +178,7 @@ export function TeamManagePanel({
         </div>
       ) : null}
 
-      {!isTeamAdmin && !team.is_default ? (
+      {currentTeamMember && !team.is_default ? (
         <div>
           <Button
             variant="secondary"

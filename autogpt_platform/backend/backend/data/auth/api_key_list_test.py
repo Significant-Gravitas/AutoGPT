@@ -1,11 +1,14 @@
 """Visibility tests for API key listing."""
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from prisma.models import APIKey as PrismaAPIKey
 
-from backend.data.auth.api_key import list_user_api_keys
+from backend.data.auth import api_key
+from backend.util.exceptions import NotAuthorizedError
 
 
 @pytest.fixture
@@ -18,30 +21,84 @@ def mock_key_client(mocker):
 
 @pytest.mark.asyncio
 async def test_list_keys_without_org_is_own_only(mock_key_client):
-    await list_user_api_keys("u-1")
+    await api_key.list_user_api_keys("u-1")
 
     where = mock_key_client.find_many.call_args.kwargs["where"]
     assert where == {"userId": "u-1"}
 
 
 @pytest.mark.asyncio
-async def test_list_keys_org_mode_includes_org_owned_keys(mock_key_client):
-    """Own keys (incl. untagged pre-backfill rows) + the org's ORG-owned
-    keys — org-wide and those pinned to the caller's teams. Personal keys
-    of OTHER members must not appear."""
-    await list_user_api_keys("u-1", organization_id="org-1", team_ids=["team-a"])
+async def test_list_keys_org_mode_is_own_exact_org(mock_key_client):
+    await api_key.list_user_api_keys("u-1", organization_id="org-1")
 
     where = mock_key_client.find_many.call_args.kwargs["where"]
     assert where == {
-        "OR": [
-            {
-                "userId": "u-1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-            },
-            {
-                "organizationId": "org-1",
-                "ownerType": "ORG",
-                "OR": [{"teamId": None}, {"teamId": {"in": ["team-a"]}}],
-            },
-        ]
+        "userId": "u-1",
+        "organizationId": "org-1",
     }
+
+
+@pytest.mark.asyncio
+async def test_get_key_org_mode_is_exact(mock_key_client):
+    mock_key_client.find_first.return_value = None
+
+    assert (
+        await api_key.get_api_key_by_id("key-1", "u-1", organization_id="org-1") is None
+    )
+
+    mock_key_client.find_first.assert_awaited_once_with(
+        where={"id": "key-1", "userId": "u-1", "organizationId": "org-1"}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["revoke", "suspend", "update"])
+async def test_org_management_rejects_legacy_unscoped_key(
+    mock_key_client, operation: str
+):
+    mock_key_client.find_unique.return_value = SimpleNamespace(
+        id="key-1", userId="u-1", organizationId=None
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        if operation == "revoke":
+            await api_key.revoke_api_key("key-1", "u-1", "org-1")
+        elif operation == "suspend":
+            await api_key.suspend_api_key("key-1", "u-1", "org-1")
+        else:
+            await api_key.update_api_key_permissions("key-1", "u-1", [], "org-1")
+
+    mock_key_client.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_team_restricted_key_stamps_resource_team(mock_key_client, mocker):
+    generated = SimpleNamespace(
+        head="agpt_head",
+        tail="tail",
+        hash="hash",
+        salt="salt",
+        key="agpt_plaintext",
+    )
+    mocker.patch.object(api_key.keysmith, "generate_key", return_value=generated)
+    mock_key_client.create.side_effect = lambda *, data: SimpleNamespace(
+        **data,
+        status="ACTIVE",
+        createdAt=datetime.now(timezone.utc),
+        lastUsedAt=None,
+        revokedAt=None,
+        ownerType=data.get("ownerType"),
+    )
+
+    await api_key.create_api_key(
+        "key",
+        "u-1",
+        [],
+        organization_id="org-1",
+        team_id_restriction="team-1",
+    )
+
+    data = mock_key_client.create.await_args.kwargs["data"]
+    assert data["organizationId"] == "org-1"
+    assert data["teamId"] == "team-1"
+    assert data["teamIdRestriction"] == "team-1"

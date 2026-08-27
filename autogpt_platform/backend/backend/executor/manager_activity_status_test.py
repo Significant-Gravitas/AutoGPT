@@ -12,13 +12,30 @@ from backend.data.execution import (
 )
 from backend.data.model import GraphExecutionStats
 from backend.executor.manager import (
+    ExecutionManager,
     ExecutionProcessor,
     _get_execution_credit_balance,
     _propagate_node_failure,
     _record_execution_failure,
 )
+from backend.executor.utils import CancelExecutionEvent
 from backend.util.decorator import TimingInfo
 from backend.util.exceptions import ExecutionFailureReason, InsufficientBalanceError
+
+
+def _execution_meta(**overrides):
+    values = {
+        "id": "exec-1",
+        "user_id": "user-1",
+        "graph_id": "graph-1",
+        "graph_version": 1,
+        "organization_id": None,
+        "team_id": None,
+        "status": ExecutionStatus.QUEUED,
+        "stats": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
 
 
 def test_continued_execution_clears_prior_terminal_analysis():
@@ -28,7 +45,7 @@ def test_continued_execution_clears_prior_terminal_analysis():
         graph_id="graph-1",
         graph_version=1,
     )
-    execution_meta = SimpleNamespace(
+    execution_meta = _execution_meta(
         status=ExecutionStatus.RUNNING,
         stats=GraphExecutionMeta.Stats(
             error="You have no credits left to run an agent.",
@@ -78,7 +95,7 @@ def test_failed_execution_is_not_continued():
         graph_version=1,
     )
     db_client = MagicMock()
-    db_client.get_graph_execution_meta.return_value = SimpleNamespace(
+    db_client.get_graph_execution_meta.return_value = _execution_meta(
         status=ExecutionStatus.FAILED,
         stats=GraphExecutionMeta.Stats(
             error="You have no credits left to run an agent.",
@@ -99,6 +116,109 @@ def test_failed_execution_is_not_continued():
 
     processor._on_graph_execution.assert_not_called()
     db_client.update_graph_execution_start_time.assert_not_called()
+
+
+def test_queued_execution_is_not_started_after_start_transition_loses():
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = _execution_meta(
+        status=ExecutionStatus.QUEUED,
+        stats=None,
+    )
+    db_client.has_live_resource_access.return_value = True
+    db_client.update_graph_execution_start_time.return_value = None
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock()
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.send_execution_update") as send_update,
+    ):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_not_called()
+    send_update.assert_not_called()
+
+
+def test_review_execution_is_not_resumed_by_redelivery():
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id="exec-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    db_client = MagicMock()
+    db_client.get_graph_execution_meta.return_value = _execution_meta(
+        status=ExecutionStatus.REVIEW,
+        stats=None,
+    )
+    db_client.has_live_resource_access.return_value = True
+    processor = ExecutionProcessor()
+    processor._on_graph_execution = MagicMock()
+
+    with patch("backend.executor.manager.get_db_client", return_value=db_client):
+        processor.on_graph_execution(execution, threading.Event(), MagicMock())
+
+    processor._on_graph_execution.assert_not_called()
+    db_client.update_graph_execution_start_time.assert_not_called()
+
+
+def test_cancel_is_visible_before_executor_submit_returns():
+    graph_exec_id = "exec-1"
+    execution = GraphExecutionEntry(
+        user_id="user-1",
+        graph_exec_id=graph_exec_id,
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    manager = ExecutionManager()
+    manager.pool_size = 1
+    manager._run_client = MagicMock()
+    manager._run_client.get_channel.return_value = MagicMock()
+    future = MagicMock()
+    future.done.return_value = False
+    captured_event = None
+
+    def submit(_fn, _entry, cancel_event, _lock):
+        nonlocal captured_event
+        captured_event = cancel_event
+        manager._handle_cancel_message(
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            CancelExecutionEvent(graph_exec_id=graph_exec_id)
+            .model_dump_json()
+            .encode(),
+        )
+        return future
+
+    manager._executor = MagicMock()
+    manager._executor.submit.side_effect = submit
+    cluster_lock = MagicMock()
+    cluster_lock.try_acquire.return_value = manager.executor_id
+    db_client = MagicMock()
+    db_client.get_graph_executions_count.return_value = 0
+
+    with (
+        patch("backend.executor.manager.get_db_client", return_value=db_client),
+        patch("backend.executor.manager.ClusterLock", return_value=cluster_lock),
+        patch("backend.executor.manager.redis.get_redis", return_value=MagicMock()),
+    ):
+        manager._handle_run_message(
+            MagicMock(),
+            SimpleNamespace(delivery_tag=1),
+            MagicMock(),
+            execution.model_dump_json().encode(),
+        )
+
+    assert captured_event is not None
+    assert captured_event.is_set()
+    assert manager.cancel_events[graph_exec_id] is captured_event
 
 
 def test_execution_credit_balance_uses_organization_aware_lookup():

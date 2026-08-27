@@ -216,6 +216,7 @@ async function expandTeamMembers(teamName: string) {
 describe("TeamsSection", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     seedActiveOrg();
   });
 
@@ -268,7 +269,9 @@ describe("TeamsSection", () => {
 
   it("joins an open non-default team from its kebab menu", async () => {
     const joinSpy = vi.fn();
-    mockOrg();
+    mockOrg({
+      teams: [DEFAULT_TEAM, { ...OPEN_TEAM, is_member: false }, PRIVATE_TEAM],
+    });
     server.use(
       getPostV2SelfJoinOpenWorkspaceMockHandler(() => {
         joinSpy();
@@ -355,7 +358,7 @@ describe("TeamsSection", () => {
     expect(
       within(panel).getByRole("combobox", { name: "Add a member" }),
     ).toBeDefined();
-    expect(within(panel).queryByTestId("team-leave-button")).toBeNull();
+    expect(within(panel).getByTestId("team-leave-button")).toBeDefined();
   });
 
   it("collapses the manage panel from its Done button", async () => {

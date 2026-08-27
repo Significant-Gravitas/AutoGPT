@@ -715,21 +715,13 @@ async def test_get_user_chat_sessions_orders_pinned_first():
     assert 'ORDER BY "isPinned" DESC, "updatedAt" DESC' in query
 
 
-# ---------- expert-session org-scope carve-out ----------
-#
-# Expert sessions are pinned to the owner's personal org at creation
-# (copilot/model.py::create_chat_session), so scoping them to the caller's
-# ACTIVE org would make them invisible/undeletable whenever a shared org is
-# active. The owner's expert sessions must stay listable, loadable, and
-# deletable regardless of the active organization.
+# ---------- exact org-home session scope ----------
 
-_EXPERT_CARVEOUT_SQL = (
-    '"organizationId" = $2 OR "organizationId" IS NULL' ' OR "expertId" IS NOT NULL'
-)
+_EXACT_ORG_HOME_SCOPE_SQL = '"organizationId" = $2 AND "teamId" IS NULL'
 
 
 @pytest.mark.asyncio
-async def test_get_session_org_scope_exempts_expert_sessions(
+async def test_get_session_uses_exact_org_home_scope(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     find_first, _ = mock_db
@@ -742,18 +734,13 @@ async def test_get_session_org_scope_exempts_expert_sessions(
     where = find_first.call_args.kwargs["where"]
     assert where["userId"] == "user-abc"
     assert where["AND"] == [
-        {
-            "OR": [
-                {"organizationId": "shared-org"},
-                {"organizationId": None},
-                {"expertId": {"not": None}},
-            ]
-        }
+        {"organizationId": "shared-org"},
+        {"teamId": None},
     ]
 
 
 @pytest.mark.asyncio
-async def test_delete_org_scope_exempts_expert_sessions():
+async def test_delete_uses_exact_org_home_scope():
     from backend.copilot.db import delete_chat_session
 
     delete_many = AsyncMock(return_value=1)
@@ -768,18 +755,13 @@ async def test_delete_org_scope_exempts_expert_sessions():
     where = delete_many.call_args.kwargs["where"]
     assert where["userId"] == "user-abc"
     assert where["AND"] == [
-        {
-            "OR": [
-                {"organizationId": "shared-org"},
-                {"organizationId": None},
-                {"expertId": {"not": None}},
-            ]
-        }
+        {"organizationId": "shared-org"},
+        {"teamId": None},
     ]
 
 
 @pytest.mark.asyncio
-async def test_list_org_scope_exempts_expert_sessions():
+async def test_list_uses_exact_org_home_scope():
     raw = AsyncMock(return_value=[])
     with patch("backend.copilot.db.db.query_raw_with_schema", raw):
         await get_user_chat_sessions(
@@ -787,11 +769,11 @@ async def test_list_org_scope_exempts_expert_sessions():
         )
 
     query = raw.call_args.args[0]
-    assert _EXPERT_CARVEOUT_SQL in query
+    assert _EXACT_ORG_HOME_SCOPE_SQL in query
 
 
 @pytest.mark.asyncio
-async def test_session_count_org_scope_matches_list_carveout():
+async def test_session_count_matches_exact_org_home_scope():
     from backend.copilot.db import get_user_session_count
 
     raw = AsyncMock(return_value=[{"count": 0}])
@@ -799,7 +781,7 @@ async def test_session_count_org_scope_matches_list_carveout():
         await get_user_session_count("user-abc", organization_id="shared-org")
 
     query = raw.call_args.args[0]
-    assert _EXPERT_CARVEOUT_SQL in query
+    assert _EXACT_ORG_HOME_SCOPE_SQL in query
 
 
 @pytest.mark.asyncio

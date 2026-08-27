@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { normalizeOrg } from "@/services/org-team/normalize";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "@/services/org-team/headers";
 import { useEffect, useRef } from "react";
 
 interface Props {
@@ -18,6 +19,7 @@ interface TeamApiShape {
   is_default: boolean;
   join_policy: string;
   org_id: string;
+  is_member: boolean;
 }
 
 function mapTeam(team: TeamApiShape) {
@@ -84,18 +86,15 @@ export default function OrgTeamProvider({ children }: Props) {
         const rawOrgs: OrgResponse[] = data.data || data;
         const orgs = rawOrgs.map(normalizeOrg);
         setOrgs(orgs);
-
-        // If no active org, set the personal org as default
-        if (!activeOrgID && orgs.length > 0) {
-          const personal = orgs.find((o) => o.isPersonal);
-          if (personal) {
-            setActiveOrg(personal.id);
-          } else {
-            setActiveOrg(orgs[0].id);
-          }
+        if (orgs.length === 0) {
+          setLoaded(true);
+          return;
         }
 
-        setLoaded(true);
+        if (!activeOrgID || !orgs.some((org) => org.id === activeOrgID)) {
+          const personal = orgs.find((o) => o.isPersonal);
+          setActiveOrg(personal?.id ?? orgs[0].id);
+        }
       } catch {
         setLoaded(true);
       }
@@ -113,22 +112,31 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     let cancelled = false;
+    setTeams([]);
+    setLoaded(false);
 
     async function loadTeams(orgID: string) {
       try {
         const res = await fetch(`/api/proxy/api/orgs/${orgID}/workspaces`, {
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            [ORG_HEADER_NAME]: orgID,
+            [TEAM_HEADER_NAME]: "",
+          },
         });
-        if (!res.ok) {
-          return;
-        }
-        const data = await res.json();
-        const teams: TeamApiShape[] = data.data || data;
-        if (!cancelled) {
-          setTeams(teams.map(mapTeam));
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          const teams: TeamApiShape[] = data.data || data;
+          setTeams(teams.filter((team) => team.is_member).map(mapTeam));
         }
       } catch {
-        // Teams are non-blocking; leave the list empty on failure.
+        if (!cancelled) {
+          setTeams([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoaded(true);
+        }
       }
     }
 

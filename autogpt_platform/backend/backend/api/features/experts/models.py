@@ -139,6 +139,8 @@ class Expert(BaseModel):
     schedules_paused_at: datetime | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 # Membership is deliberately not embedded: clients already hold the expert

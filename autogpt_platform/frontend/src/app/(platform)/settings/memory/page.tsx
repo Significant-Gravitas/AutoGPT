@@ -2,7 +2,8 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { notFound } from "next/navigation";
 import { useEffect } from "react";
 
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
@@ -13,7 +14,7 @@ import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { useMemoryPage } from "./useMemoryPage";
 
-function SettingsMemoryPage() {
+function SettingsMemoryPageContent() {
   useEffect(() => {
     document.title = "Memory – AutoGPT Platform";
   }, []);
@@ -102,4 +103,19 @@ function SettingsMemoryPage() {
   );
 }
 
-export default withFeatureFlag(SettingsMemoryPage, "graphiti-memory");
+export default function SettingsMemoryPage() {
+  const { enabled, ready } = useFlagStatus(Flag.GRAPHITI_MEMORY);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+  if (!enabled) {
+    notFound();
+  }
+
+  return <SettingsMemoryPageContent />;
+}

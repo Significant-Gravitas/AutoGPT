@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
+from backend.data.tenancy import has_live_resource_access, live_resource_access_barrier
 from backend.util import json
 from backend.util.exceptions import (
     DatabaseError,
@@ -1414,6 +1415,7 @@ async def get_or_create_expert_kickoff_session(
         user_id,
         limit=1,
         organization_id=organization_id,
+        team_id=team_id,
         expert_id=expert_id,
         pinned_first=False,
     )
@@ -1445,6 +1447,30 @@ async def get_or_create_expert_kickoff_session(
         raise
 
 
+def _library_agent_matches_scope(
+    library_agent: Any,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    return library_agent is not None and (
+        library_agent.organization_id,
+        library_agent.team_id,
+    ) == (organization_id, team_id)
+
+
+def _builder_session_matches(
+    session: ChatSession | None,
+    graph_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    return session is not None and (
+        session.organization_id,
+        session.team_id,
+        session.metadata.builder_graph_id,
+    ) == (organization_id, team_id, graph_id)
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
@@ -1459,46 +1485,73 @@ async def get_or_create_builder_session(
     raises :class:`NotFoundError` (HTTP 404), which also blocks graph-id
     probing by unauthorized callers.
     """
+    if not await has_live_resource_access(user_id, organization_id, team_id, "execute"):
+        raise NotFoundError(f"Graph {graph_id} not found")
+
     library_agent = await library_db().get_library_agent_by_graph_id(
-        user_id=user_id, graph_id=graph_id
+        user_id=user_id,
+        graph_id=graph_id,
+        organization_id=organization_id,
+        team_id_restriction=team_id,
     )
-    if library_agent is None:
+    if library_agent is None or not _library_agent_matches_scope(
+        library_agent, organization_id, team_id
+    ):
         raise NotFoundError(f"Graph {graph_id} not found")
 
     existing_sid = library_agent.settings.builder_chat_session_id
     if existing_sid:
         session = await get_chat_session(existing_sid, user_id)
-        if session is not None:
+        if session is not None and _builder_session_matches(
+            session, graph_id, organization_id, team_id
+        ):
             return session
 
     # Serialise create-and-claim so concurrent callers for the same
     # (user_id, graph_id) don't each mint a session and orphan one
     # (double-click / two-tab race — sentry 13632535).
-    async with _get_session_lock(f"builder:{user_id}:{graph_id}"):
-        library_agent = await library_db().get_library_agent_by_graph_id(
-            user_id=user_id, graph_id=graph_id
-        )
-        if library_agent is None:
-            raise NotFoundError(f"Graph {graph_id} not found")
-        existing_sid = library_agent.settings.builder_chat_session_id
-        if existing_sid:
-            session = await get_chat_session(existing_sid, user_id)
-            if session is not None:
-                return session
+    lock_scope = f"{organization_id or 'personal'}:{team_id or 'none'}"
+    async with _get_session_lock(f"builder:{user_id}:{lock_scope}:{graph_id}"):
+        async with live_resource_access_barrier(
+            user_id, organization_id, team_id, "create"
+        ) as allowed:
+            if not allowed:
+                raise NotFoundError(f"Graph {graph_id} not found")
+            library_agent = await library_db().get_library_agent_by_graph_id(
+                user_id=user_id,
+                graph_id=graph_id,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
+            )
+            if library_agent is None or not _library_agent_matches_scope(
+                library_agent, organization_id, team_id
+            ):
+                raise NotFoundError(f"Graph {graph_id} not found")
+            existing_sid = library_agent.settings.builder_chat_session_id
+            if existing_sid:
+                session = await get_chat_session(existing_sid, user_id)
+                if session is not None and _builder_session_matches(
+                    session, graph_id, organization_id, team_id
+                ):
+                    return session
 
-        session = await create_chat_session(
-            user_id,
-            dry_run=False,
-            builder_graph_id=graph_id,
-            organization_id=organization_id,
-            team_id=team_id,
-        )
-        await library_db().update_library_agent(
-            library_agent_id=library_agent.id,
-            user_id=user_id,
-            settings=GraphSettings(builder_chat_session_id=session.session_id),
-        )
-        return session
+            session = await create_chat_session(
+                user_id,
+                dry_run=False,
+                builder_graph_id=graph_id,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
+            if not _builder_session_matches(
+                session, graph_id, organization_id, team_id
+            ):
+                raise NotFoundError(f"Graph {graph_id} not found")
+            await library_db().update_library_agent(
+                library_agent_id=library_agent.id,
+                user_id=user_id,
+                settings=GraphSettings(builder_chat_session_id=session.session_id),
+            )
+            return session
 
 
 async def get_user_sessions(
@@ -1506,6 +1559,8 @@ async def get_user_sessions(
     limit: int = 50,
     offset: int = 0,
     organization_id: str | None = None,
+    team_id: str | None = None,
+    team_ids: list[str] | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
     pinned_first: bool = True,
@@ -1528,12 +1583,18 @@ async def get_user_sessions(
         limit,
         offset,
         organization_id=organization_id,
+        team_id=team_id,
+        team_ids=team_ids,
         title_contains=title_contains,
         expert_id=expert_id,
         pinned_first=pinned_first,
     )
     total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id, expert_id=expert_id
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
+        team_ids=team_ids,
+        expert_id=expert_id,
     )
 
     return sessions, total_count
@@ -1543,6 +1604,7 @@ async def delete_chat_session(
     session_id: str,
     user_id: str | None = None,
     organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> bool:
     """Delete a chat session from both cache and database.
 
@@ -1556,10 +1618,25 @@ async def delete_chat_session(
     Returns:
         True if deleted successfully, False otherwise.
     """
-    # Delete from database first (with optional user_id validation)
-    # This confirms ownership before invalidating cache
+    if user_id:
+        cleanup_session = await chat_db().get_chat_session_metadata(session_id)
+        if cleanup_session is not None and (
+            cleanup_session.user_id,
+            cleanup_session.organization_id,
+            cleanup_session.team_id,
+        ) == (user_id, organization_id, team_id):
+            try:
+                from .tools.agent_browser import close_browser_session
+
+                await close_browser_session(session_id, user_id=user_id)
+            except Exception as e:
+                logger.debug(f"Browser state cleanup for session {session_id}: {e}")
+
     deleted = await chat_db().delete_chat_session(
-        session_id, user_id, organization_id=organization_id
+        session_id,
+        user_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     if not deleted:
@@ -1593,7 +1670,7 @@ async def delete_chat_session(
     try:
         from .tools.agent_browser import close_browser_session
 
-        await close_browser_session(session_id, user_id=user_id)
+        await close_browser_session(session_id)
     except Exception as e:
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
 
@@ -1641,20 +1718,6 @@ async def update_session_title(
         except Exception as e:
             logger.warning(
                 f"Cache title update failed for session {session_id} (non-critical): {e}"
-            )
-
-        # Fire-and-forget: index the new title so /search/global can find
-        # this session. Local import keeps the heavy embedding deps
-        # (OpenAI client, prisma raw SQL) off the model import path.
-        try:
-            from backend.copilot.chat_session_embeddings import (
-                schedule_chat_session_embedding,
-            )
-
-            schedule_chat_session_embedding(session_id, user_id, title)
-        except Exception as e:
-            logger.warning(
-                f"Failed to schedule session title embedding for {session_id}: {e}"
             )
 
         return True

@@ -11,7 +11,6 @@ from prisma.enums import ContentType
 from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
     BlockHandler,
-    ChatSessionHandler,
     DocumentationHandler,
     LibraryAgentHandler,
     StoreAgentHandler,
@@ -611,6 +610,8 @@ async def test_content_handlers_registry():
     assert ContentType.BLOCK in CONTENT_HANDLERS
     assert ContentType.DOCUMENTATION in CONTENT_HANDLERS
     assert ContentType.LIBRARY_AGENT in CONTENT_HANDLERS
+    assert ContentType.WORKSPACE_FILE not in CONTENT_HANDLERS
+    assert ContentType.CHAT_SESSION not in CONTENT_HANDLERS
 
     assert isinstance(CONTENT_HANDLERS[ContentType.STORE_AGENT], StoreAgentHandler)
     assert isinstance(CONTENT_HANDLERS[ContentType.BLOCK], BlockHandler)
@@ -627,6 +628,10 @@ async def test_library_agent_handler_emits_user_scoped_items():
         {
             "id": "la-1",
             "userId": "user-a",
+            "organizationId": "org-a",
+            "teamId": "team-a",
+            "agentGraphId": "graph-a",
+            "agentGraphVersion": 1,
             "name": "Email Bot",
             "description": "Summarises emails",
             "instructions": "Run nightly",
@@ -634,6 +639,10 @@ async def test_library_agent_handler_emits_user_scoped_items():
         {
             "id": "la-2",
             "userId": "user-b",
+            "organizationId": "org-b",
+            "teamId": None,
+            "agentGraphId": "graph-b",
+            "agentGraphVersion": 2,
             "name": "Inbox Triage",
             "description": "",
             "instructions": None,
@@ -649,6 +658,10 @@ async def test_library_agent_handler_emits_user_scoped_items():
     assert len(items) == 2
     assert items[0].content_id == "la-1"
     assert items[0].user_id == "user-a"
+    assert items[0].organization_id == "org-a"
+    assert items[0].team_id == "team-a"
+    assert items[0].source_graph_id == "graph-a"
+    assert items[0].source_graph_version == 1
     assert items[0].content_type == ContentType.LIBRARY_AGENT
     assert "Email Bot" in items[0].searchable_text
     assert "Summarises emails" in items[0].searchable_text
@@ -677,34 +690,6 @@ async def test_library_agent_handler_stats():
     assert stats["total"] == 10
     assert stats["with_embeddings"] == 4
     assert stats["without_embeddings"] == 6
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_chat_session_handler_excludes_dream_sessions_in_every_query():
-    """Dream-pass sessions are titled pipeline artifacts — every
-    ChatSessionHandler query (backfill, stats, cleanup validity) must carry
-    the null-safe dream exclusion so nightly dream sessions are neither
-    embedded nor treated as valid embedding owners."""
-    captured: list[str] = []
-
-    async def fake_query_raw(sql: str, *args, **kwargs):
-        captured.append(sql)
-        if "COUNT" in sql.upper():
-            return [{"count": 0}]
-        return []
-
-    with patch(
-        "backend.api.features.search.content_handlers.query_raw_with_schema",
-        side_effect=fake_query_raw,
-    ):
-        handler = ChatSessionHandler()
-        await handler.get_missing_items(batch_size=10)
-        await handler.get_stats()
-        await handler.get_valid_content_ids()
-
-    assert len(captured) == 4
-    for sql in captured:
-        assert "IS DISTINCT FROM 'dream'" in sql, f"missing dream filter in: {sql}"
 
 
 @pytest.mark.asyncio

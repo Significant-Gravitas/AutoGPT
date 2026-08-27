@@ -20,7 +20,12 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.alerts import MaturedAlertPage
-from backend.data.notifications import AlertData, AlertPrimary, NotificationEventModel
+from backend.data.notifications import (
+    AlertData,
+    AlertPrimary,
+    NotificationEventModel,
+    NotificationScope,
+)
 from backend.notifications.alert_causes import SEVERITY, BaseCause, parse_cause
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -41,7 +46,14 @@ def _db():
     return get_database_manager_async_client()
 
 
-async def raise_alert(user_id: str, cause_key: str, cause: BaseCause) -> None:
+async def raise_alert(
+    user_id: str,
+    cause_key: str,
+    cause: BaseCause,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    source_graph_execution_id: str | None = None,
+) -> None:
     """Record that the platform is blocked on this user for `cause_key`.
 
     Emitters call this instead of sending anything: whether it becomes an
@@ -53,6 +65,9 @@ async def raise_alert(user_id: str, cause_key: str, cause: BaseCause) -> None:
         cause=cause.cause,
         cause_key=cause_key,
         data=cause.model_dump(mode="json"),
+        organization_id=organization_id,
+        team_id=team_id,
+        source_graph_execution_id=source_graph_execution_id,
     )
 
 
@@ -78,20 +93,25 @@ async def matured_alert_user_ids(
 
 class BuiltAlert(BaseModel):
     """The email plus the conditions it covers, so the caller can mark them
-    sent only once the message is safely on the queue."""
+    sent only after the provider accepts the message."""
 
     data: AlertData
     condition_ids: list[str]
+    authorization_scopes: list[NotificationScope]
 
 
-async def build_alert_email(user_id: str, alerts_enabled: bool) -> BuiltAlert | None:
+async def build_alert_email(
+    user_id: str,
+    alerts_enabled: bool,
+    authorization_scopes: list[NotificationScope] | None = None,
+) -> BuiltAlert | None:
     """Assemble one coalesced Alert for a user, or defer everything into the
     Briefing when the cap is hit or alerts are switched off.
 
     Returns None when nothing should be emailed; in that case the conditions
     have already been marked deferred, so the Briefing will carry them.
     """
-    pending = await _db().get_pending_alert_conditions(user_id)
+    pending = await _db().get_pending_alert_conditions(user_id, authorization_scopes)
     if not pending:
         return None
 
@@ -132,19 +152,31 @@ async def build_alert_email(user_id: str, alerts_enabled: bool) -> BuiltAlert | 
         also=[c.also_item(base_url) for c in rest],
         also_label="Also waiting" if rest else None,
     )
-    return BuiltAlert(data=data, condition_ids=condition_ids)
+    scopes = {(condition.organization_id, condition.team_id) for condition in pending}
+    return BuiltAlert(
+        data=data,
+        condition_ids=condition_ids,
+        authorization_scopes=[
+            NotificationScope(organization_id=organization_id, team_id=team_id)
+            for organization_id, team_id in sorted(
+                scopes, key=lambda scope: tuple(part or "" for part in scope)
+            )
+        ],
+    )
 
 
-async def mark_alert_sent(condition_ids: list[str]) -> None:
-    """Called once the email is on the queue. Marking earlier would lose the
-    conditions if the publish failed; marking later is the reason the same
-    cause can't re-alert for 24 hours."""
-    await _db().mark_alert_conditions_sent(condition_ids)
-
-
-def alert_event(user_id: str, data: AlertData) -> NotificationEventModel[AlertData]:
+def alert_event(
+    user_id: str,
+    data: AlertData,
+    authorization_scopes: list[NotificationScope],
+    event_id: str,
+) -> NotificationEventModel[AlertData]:
     return NotificationEventModel[AlertData](
-        user_id=user_id, type=NotificationType.ALERT, data=data
+        id=event_id,
+        user_id=user_id,
+        type=NotificationType.ALERT,
+        data=data,
+        authorization_scopes=authorization_scopes,
     )
 
 

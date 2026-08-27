@@ -183,6 +183,8 @@ async def unified_hybrid_search(
     weights: UnifiedSearchWeights | None = None,
     min_score: float | None = None,
     user_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     lexical_query: str | None = None,
     prefix_match: bool = False,
 ) -> tuple[list[HybridSearchRow], int]:
@@ -201,6 +203,8 @@ async def unified_hybrid_search(
         weights: Custom weights for search signals
         min_score: Minimum relevance score threshold (0-1)
         user_id: User ID for searching private content (library agents)
+        organization_id: Exact organization scope for library-agent content.
+        team_id: Exact team scope for library-agent content.
         lexical_query: Optional override for the tsvector ``@@`` candidate
             selection and ``ts_rank_cd`` scoring. Use when the natural-
             language query is too long for ``plainto_tsquery``'s
@@ -326,7 +330,33 @@ async def unified_hybrid_search(
         "'CHAT_SESSION'::{schema_prefix}\"ContentType\")"
     )
     user_filter = ""
-    if user_id is not None:
+    if user_id is not None and organization_id is not None:
+        params.append(user_id)
+        user_id_param = f"${param_idx}"
+        param_idx += 1
+        params.append(organization_id)
+        organization_id_param = f"${param_idx}"
+        param_idx += 1
+        params.append(team_id)
+        team_id_param = f"${param_idx}"
+        user_filter = (
+            "AND ("
+            '(uce."contentType" = '
+            "'LIBRARY_AGENT'::{schema_prefix}\"ContentType\" "
+            "AND EXISTS ("
+            'SELECT 1 FROM {schema_prefix}"LibraryAgent" la '
+            'WHERE la.id = uce."contentId" '
+            f'AND la."organizationId" = {organization_id_param} '
+            f'AND la."teamId" IS NOT DISTINCT FROM {team_id_param} '
+            'AND la."isDeleted" = false AND la."isHidden" = false)) '
+            'OR (uce."contentType" <> '
+            "'LIBRARY_AGENT'::{schema_prefix}\"ContentType\" "
+            f'AND (uce."userId" = {user_id_param} OR uce."userId" IS NULL) '
+            f'AND NOT (uce."contentType" IN {_USER_SCOPED_TYPES_SQL} '
+            'AND uce."userId" IS NULL)))'
+        )
+        param_idx += 1
+    elif user_id is not None:
         params.append(user_id)
         user_filter = (
             f'AND (uce."userId" = ${param_idx} OR uce."userId" IS NULL) '

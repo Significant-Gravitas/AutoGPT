@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -20,7 +21,11 @@ logger = logging.getLogger(__name__)
 def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
-    return job.expert_id == session.expert_id
+    return (
+        (job.organization_id or None) == session.organization_id
+        and job.team_id == session.team_id
+        and job.expert_id == session.expert_id
+    )
 
 
 class ScheduleSummary(BaseModel):
@@ -98,6 +103,10 @@ class ListSchedulesTool(BaseTool):
         return "list_schedules"
 
     @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
+
+    @property
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
@@ -147,8 +156,16 @@ class ListSchedulesTool(BaseTool):
         if library_agent_id:
             try:
                 lib_agent = await get_library_agent(
-                    id=library_agent_id, user_id=user_id
+                    id=library_agent_id,
+                    user_id=user_id,
+                    organization_id=session.organization_id,
+                    team_id_restriction=session.team_id,
                 )
+                if (lib_agent.organization_id, lib_agent.team_id) != (
+                    session.organization_id,
+                    session.team_id,
+                ):
+                    raise NotFoundError("not found")
             except NotFoundError as e:
                 return ErrorResponse(
                     message=f"Library agent not found: {e}",
@@ -160,6 +177,8 @@ class ListSchedulesTool(BaseTool):
         jobs = await get_scheduler_client().get_execution_schedules(
             graph_id=graph_id,
             user_id=user_id,
+            organization_id=session.organization_id,
+            team_ids=[session.team_id] if session.team_id else [],
         )
 
         schedules = [
@@ -201,6 +220,10 @@ class DeleteScheduleTool(BaseTool):
         return True
 
     @property
+    def resource_access(self) -> ResourceAccess:
+        return "delete"
+
+    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
@@ -239,7 +262,10 @@ class DeleteScheduleTool(BaseTool):
         # include_paused: a paused expert schedule or fired one-shot must
         # still be deletable — the default listing hides them.
         jobs = await scheduler.get_execution_schedules(
-            user_id=user_id, include_paused=True
+            user_id=user_id,
+            organization_id=session.organization_id,
+            team_ids=[session.team_id] if session.team_id else [],
+            include_paused=True,
         )
         current = next(
             (
@@ -260,6 +286,8 @@ class DeleteScheduleTool(BaseTool):
             await scheduler.delete_schedule(
                 schedule_id=schedule_id,
                 user_id=user_id,
+                organization_id=session.organization_id,
+                team_ids=[session.team_id] if session.team_id else [],
             )
         except NotFoundError as e:
             return ErrorResponse(

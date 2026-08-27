@@ -98,7 +98,7 @@ configure_environment() {
   if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
     fatal "email verification is not supported by the single-container distribution"
   fi
-  normalize_integer DB_CONNECTION_LIMIT 5 1 5
+  normalize_integer DB_CONNECTION_LIMIT 5 2 5
   normalize_integer DB_CONNECT_TIMEOUT 60 1 600
   normalize_integer DB_POOL_TIMEOUT 300 1 3600
 

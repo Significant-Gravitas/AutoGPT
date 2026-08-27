@@ -34,11 +34,18 @@ def _make_webhook_preset():
     preset.is_active = True
     preset.webhook_id = "wh-1"
     preset.webhook.url = (
-        "https://backend.agpt.co/api/integrations/generic_webhook"
-        "/webhooks/wh-1/ingress"
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress"
     )
     preset.webhook.provider = "generic_webhook"
     return preset
+
+
+def _scoped_library_agent(session, graph_id: str = "graph-1"):
+    return MagicMock(
+        graph_id=graph_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
 
 
 @pytest.mark.asyncio
@@ -54,7 +61,7 @@ async def test_list_triggers_exposes_webhook_url(tool, session):
     preset_response.presets = [_make_webhook_preset()]
 
     mock_ldb = MagicMock()
-    mock_ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    mock_ldb.get_library_agent = AsyncMock(return_value=_scoped_library_agent(session))
     mock_ldb.list_trigger_agents = AsyncMock(return_value=[])
     mock_ldb.list_presets = AsyncMock(return_value=preset_response)
 
@@ -85,7 +92,7 @@ async def test_list_triggers_scopes_presets_to_session_expert(tool, session_expe
     preset_response.presets = []
 
     mock_ldb = MagicMock()
-    mock_ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    mock_ldb.get_library_agent = AsyncMock(return_value=_scoped_library_agent(session))
     mock_ldb.list_trigger_agents = AsyncMock(return_value=[])
     mock_ldb.list_presets = AsyncMock(return_value=preset_response)
 
@@ -99,6 +106,9 @@ async def test_list_triggers_scopes_presets_to_session_expert(tool, session_expe
         graph_id="graph-1",
         expert_id=session_expert_id,
         filter_by_expert=True,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        enforce_team_scope=True,
     )
 
 
@@ -117,7 +127,7 @@ async def test_list_triggers_includes_trigger_agents(tool, session):
     preset_response.presets = []
 
     mock_ldb = MagicMock()
-    mock_ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    mock_ldb.get_library_agent = AsyncMock(return_value=_scoped_library_agent(session))
     mock_ldb.list_trigger_agents = AsyncMock(return_value=[trigger_agent])
     mock_ldb.list_presets = AsyncMock(return_value=preset_response)
 
@@ -133,3 +143,25 @@ async def test_list_triggers_includes_trigger_agents(tool, session):
     assert trigger.id == "lib-ta"
     assert trigger.is_scheduled is True
     assert trigger.graph_id == "graph-ta"
+
+
+@pytest.mark.asyncio
+async def test_list_triggers_rejects_cross_team_library_agent(tool, session):
+    mock_ldb = MagicMock()
+    mock_ldb.get_library_agent = AsyncMock(
+        return_value=MagicMock(
+            graph_id="graph-1",
+            organization_id=session.organization_id,
+            team_id="another-team",
+        )
+    )
+    mock_ldb.list_presets = AsyncMock()
+
+    with patch(f"{_PATH}.library_db", return_value=mock_ldb):
+        result = await tool._execute(
+            user_id=_USER, session=session, library_agent_id="lib-1"
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "library_agent_not_found"
+    mock_ldb.list_presets.assert_not_awaited()

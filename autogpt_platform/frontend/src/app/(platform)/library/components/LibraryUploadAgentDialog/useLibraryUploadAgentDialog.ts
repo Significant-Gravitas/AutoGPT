@@ -17,9 +17,8 @@ export function useLibraryUploadAgentDialog(options?: {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const [agentObject, setAgentObject] = useState<Graph | null>(null);
-  const { teamId, setTeamId, teamRequestInit } = useCreateTeamSelection(
-    CreateSurface.LibraryUpload,
-  );
+  const { teamId, setTeamId, teamRequestInit, isReady } =
+    useCreateTeamSelection(CreateSurface.LibraryUpload);
 
   const { mutateAsync: createGraph, isPending: isUploading } =
     usePostV1CreateNewGraph({
@@ -153,5 +152,6 @@ export function useLibraryUploadAgentDialog(options?: {
     agentObject,
     teamId,
     setTeamId,
+    isReady,
   };
 }

@@ -42,10 +42,12 @@ from backend.copilot.model import (
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .expert_delegation import (
     chain_refusal,
+    expert_matches_session_workspace,
     resolve_target_expert,
     safe_caller_name,
     unknown_target_message,
@@ -71,6 +73,13 @@ class DelegateToExpertTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
+    def additional_resource_accesses(self, **kwargs) -> tuple[ResourceAccess, ...]:
+        return ("execute",)
 
     @property
     def description(self) -> str:
@@ -181,7 +190,7 @@ class DelegateToExpertTool(BaseTool):
         if isinstance(inner_session_id, ErrorResponse):
             return inner_session_id
 
-        caller = await self._caller_name(user_id, session.expert_id)
+        caller = await self._caller_name(user_id, session.expert_id, session)
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -227,7 +236,7 @@ class DelegateToExpertTool(BaseTool):
     ) -> Expert | ErrorResponse:
         """Resolve the teammate, refusing anyone who can't safely take work."""
         try:
-            target = await resolve_target_expert(user_id, target_id)
+            target = await resolve_target_expert(user_id, target_id, session)
         except Exception as e:
             logger.warning(f"Delegate target lookup failed for {target_id}: {e}")
             return self._error(
@@ -235,7 +244,15 @@ class DelegateToExpertTool(BaseTool):
             )
         if target is None or target.is_archived:
             return self._error(
-                await unknown_target_message(user_id, target_id, session.expert_id),
+                await unknown_target_message(
+                    user_id, target_id, session.expert_id, session
+                ),
+                session,
+            )
+        if not await expert_matches_session_workspace(user_id, target, session):
+            return self._error(
+                f"No active expert with id {target_id} on this team. Pick one "
+                "of the teammates listed in your team context.",
                 session,
             )
         if target.schedules_paused_at is not None:
@@ -264,6 +281,8 @@ class DelegateToExpertTool(BaseTool):
             new_session = await create_chat_session(
                 user_id,
                 dry_run=session.dry_run,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=target.id,
@@ -277,6 +296,8 @@ class DelegateToExpertTool(BaseTool):
         if (
             prior is None
             or prior.user_id != user_id
+            or prior.organization_id != session.organization_id
+            or prior.team_id != session.team_id
             or prior.expert_id != target.id
             or prior.metadata.delegated_by_session_id != session.session_id
             or prior.metadata.handed_off_from_expert_id is not None
@@ -300,7 +321,12 @@ class DelegateToExpertTool(BaseTool):
             )
         return delegated_session_id
 
-    async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
+    async def _caller_name(
+        self,
+        user_id: str,
+        caller_expert_id: str | None,
+        session: ChatSession,
+    ) -> str:
         """Who to introduce the hand-off as. Plain sessions are AutoPilot."""
         if caller_expert_id is None:
             return "AutoPilot"
@@ -311,7 +337,11 @@ class DelegateToExpertTool(BaseTool):
         except Exception as e:
             logger.warning(f"Delegating expert lookup failed: {e}")
             return "a teammate"
-        return caller.name if caller else "a teammate"
+        if caller is None or not await expert_matches_session_workspace(
+            user_id, caller, session
+        ):
+            return "a teammate"
+        return caller.name
 
 
 def _handoff_message(caller: str, system_context: str, prompt: str) -> str:

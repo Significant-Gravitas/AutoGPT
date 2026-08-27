@@ -16,6 +16,8 @@ from __future__ import annotations
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security
 
+from backend.api.live_auth import requires_live_resource_permission
+
 from . import service
 from .model import GlobalSearchResponse
 from .rate_limit import enforce_global_search_rate_limit
@@ -59,6 +61,10 @@ async def global_search_endpoint(
         ),
     ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> GlobalSearchResponse:
     # Skip rate-limit on the empty-query branch — it hits the per-user
     # cache, not OpenAI. Only the non-empty path triggers paid embedding
@@ -66,5 +72,9 @@ async def global_search_endpoint(
     if q.strip():
         await enforce_global_search_rate_limit(user_id)
     return await service.global_search(
-        query=q, user_id=user_id, per_type_limit=per_type_limit
+        query=q,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+        per_type_limit=per_type_limit,
     )

@@ -91,6 +91,10 @@ const userMessage: UIMessage<unknown, UIDataTypes, UITools> = {
 };
 
 const baseProps = {
+  createTeamId: null,
+  onCreateTeamChange: vi.fn(),
+  isTeamContextReady: true,
+  canSelectCreateTeam: false,
   messages: [userMessage],
   status: "error",
   error: new Error("boom"),

@@ -11,6 +11,7 @@
     "last_run_at": null,
     "last_run_status": null,
     "name": "Nova",
+    "organization_id": null,
     "pod_id": null,
     "protected_soul_rules": [
       "The expert discloses that it is AI when acting externally.",
@@ -21,6 +22,7 @@
     "skills": [],
     "source_template_id": null,
     "tagline": null,
+    "team_id": null,
     "voice_preferences": "",
     "voice_samples": [],
     "weekly_budget": null,

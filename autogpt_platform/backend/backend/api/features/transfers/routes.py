@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from autogpt_libs.auth import requires_org_permission
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
-from fastapi import APIRouter, Security
+from fastapi import APIRouter
+
+from backend.api.live_auth import requires_live_org_permission
 
 from . import db as transfer_db
 from .model import CreateTransferRequest, TransferResponse
@@ -22,7 +23,7 @@ async def create_transfer(
     request: CreateTransferRequest,
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.TRANSFER_RESOURCES)),
+        requires_live_org_permission(OrgAction.TRANSFER_RESOURCES),
     ],
 ) -> TransferResponse:
     return await transfer_db.create_transfer(
@@ -43,7 +44,7 @@ async def create_transfer(
 async def list_transfers(
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.TRANSFER_RESOURCES)),
+        requires_live_org_permission(OrgAction.TRANSFER_RESOURCES),
     ],
 ) -> list[TransferResponse]:
     return await transfer_db.list_transfers(ctx.org_id)
@@ -58,7 +59,7 @@ async def approve_transfer(
     transfer_id: str,
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.TRANSFER_RESOURCES)),
+        requires_live_org_permission(OrgAction.TRANSFER_RESOURCES),
     ],
 ) -> TransferResponse:
     return await transfer_db.approve_transfer(
@@ -77,7 +78,7 @@ async def reject_transfer(
     transfer_id: str,
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.TRANSFER_RESOURCES)),
+        requires_live_org_permission(OrgAction.TRANSFER_RESOURCES),
     ],
 ) -> TransferResponse:
     return await transfer_db.reject_transfer(
@@ -96,7 +97,7 @@ async def execute_transfer(
     transfer_id: str,
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.TRANSFER_RESOURCES)),
+        requires_live_org_permission(OrgAction.TRANSFER_RESOURCES),
     ],
 ) -> TransferResponse:
     return await transfer_db.execute_transfer(

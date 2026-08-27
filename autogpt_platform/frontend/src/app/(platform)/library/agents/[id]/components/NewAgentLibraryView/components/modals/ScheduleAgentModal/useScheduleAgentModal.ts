@@ -27,7 +27,7 @@ export function useScheduleAgentModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
-  const { teamId, setTeamId, hasTeams, teamRequestInit } =
+  const { teamId, setTeamId, hasTeams, teamRequestInit, isReady } =
     useCreateTeamSelection(CreateSurface.ScheduleAgent);
 
   const createScheduleMutation = useCreateSchedule({
@@ -66,6 +66,9 @@ export function useScheduleAgentModal(
         });
         return Promise.reject(new Error("Schedule name required"));
       }
+      if (!isReady) {
+        return Promise.reject(new Error("Organization context is loading"));
+      }
 
       return new Promise<void>((resolve, reject) => {
         createScheduleMutation.mutate(
@@ -93,6 +96,7 @@ export function useScheduleAgentModal(
       inputCredentials,
       createScheduleMutation,
       toast,
+      isReady,
     ],
   );
 
@@ -121,6 +125,7 @@ export function useScheduleAgentModal(
     teamId,
     setTeamId,
     hasTeams,
+    isReady,
 
     // Actions
     handleSchedule,

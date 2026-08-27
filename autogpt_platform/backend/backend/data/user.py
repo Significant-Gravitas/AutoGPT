@@ -355,8 +355,8 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
 
     Source of truth post blob→table migration (the UserIntegrations blob
     is retained only as a rollback artifact). Returns USER-scoped active
-    rows; TEAM/ORG-scoped credentials are resolved separately via
-    ``backend.integrations.scoped_credentials``.
+    rows. Team and organization credentials are not part of the current
+    execution credential contract.
     """
     rows = await prisma.integrationcredential.find_many(
         where={"ownerType": "USER", "ownerId": user_id, "status": "active"},
@@ -864,18 +864,6 @@ async def get_briefing_candidate(user_id: str) -> BriefingCandidate | None:
         )
     except Exception as e:
         raise DatabaseError(f"Failed to load briefing candidate {user_id}: {e}") from e
-
-
-async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
-    """Advance the cadence clock, once the briefing is safely on the queue."""
-    try:
-        await prisma.user.update(
-            where={"id": user_id}, data={"lastBriefingAt": sent_at}
-        )
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to record briefing time for user {user_id}: {e}"
-        ) from e
 
 
 class BillingEmailRecipient(BaseModel):

@@ -17,6 +17,7 @@ from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.lifecycle import (
     active_shared_search_filter,
     filter_active_shared_edges,
+    filter_edges_by_scope,
 )
 from backend.copilot.graphiti.tiers import (
     MemoryTier,
@@ -25,6 +26,7 @@ from backend.copilot.graphiti.tiers import (
     resolve_search_targets,
 )
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import ErrorResponse, MemorySearchResponse, ToolResponseBase
@@ -82,8 +84,8 @@ class MemorySearchTool(BaseTool):
                     "type": "string",
                     "enum": ["all", "personal", "team", "org"],
                     "description": (
-                        "Tiers to search: 'all' (default: personal + org + your "
-                        "teams), or 'personal'/'team'/'org'. Shared results are "
+                        "Tiers to search: 'all' (default: personal + org + the "
+                        "current workspace), or 'personal'/'team'/'org'. Shared results are "
                         "labelled with their source (e.g. 'org memory')."
                     ),
                     "default": "all",
@@ -95,6 +97,10 @@ class MemorySearchTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
 
     async def _execute(
         self,
@@ -135,6 +141,7 @@ class MemorySearchTool(BaseTool):
                 user_id,
                 session.organization_id,
                 tier,
+                session_team_id=session.team_id,
                 expert_id=session.expert_id,
             )
         except TierError as exc:
@@ -158,6 +165,9 @@ class MemorySearchTool(BaseTool):
 
         async def _search_one(target):
             client = await get_graphiti_client(target.group_id)
+            driver = getattr(client, "graph_driver", None) or getattr(
+                client, "driver", None
+            )
             if target.tier == MemoryTier.personal:
                 edge_results, episodes = await asyncio.gather(
                     client.search_(
@@ -172,6 +182,10 @@ class MemorySearchTool(BaseTool):
                     ),
                 )
                 edges = edge_results.edges if edge_results is not None else []
+                if scope:
+                    edges = await filter_edges_by_scope(
+                        target.group_id, edges, scope, driver=driver
+                    )
                 return edges, episodes
             edge_results = await client.search_(
                 query=query,
@@ -183,9 +197,12 @@ class MemorySearchTool(BaseTool):
             active_edges = await filter_active_shared_edges(
                 target.group_id,
                 edges,
-                driver=getattr(client, "graph_driver", None)
-                or getattr(client, "driver", None),
+                driver=driver,
             )
+            if scope:
+                active_edges = await filter_edges_by_scope(
+                    target.group_id, active_edges, scope, driver=driver
+                )
             return active_edges, []
 
         # Per-tier failures are non-fatal — a flaky shared graph must not

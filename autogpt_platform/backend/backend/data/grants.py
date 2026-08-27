@@ -21,16 +21,19 @@ class OwnerGrantConsentError(ValueError):
 async def _is_active_org_member(user_id: str, organization_id: str | None) -> bool:
     if organization_id is None:
         return False
-    return (
-        await prisma.orgmember.find_first(
-            where={
-                "userId": user_id,
-                "orgId": organization_id,
-                "status": "ACTIVE",
-                "Org": {"is": {"deletedAt": None}},
-            }
+    membership = await prisma.orgmember.find_first(
+        where={
+            "userId": user_id,
+            "orgId": organization_id,
+            "status": "ACTIVE",
+            "Org": {"is": {"deletedAt": None}},
+        }
+    )
+    return bool(
+        membership
+        and (
+            membership.isOwner or membership.isAdmin or not membership.isBillingManager
         )
-        is not None
     )
 
 
@@ -40,11 +43,15 @@ async def resolve_graph_grant(
     *,
     capability: GrantCapability,
     graph_version: int | None = None,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> AgentGraphGrant | None:
     grants = await resolve_graph_grants(
         user_id,
         graph_id,
         capability=capability,
+        organization_id=organization_id,
+        team_id_restriction=team_id_restriction,
     )
     if graph_version is not None:
         grants = [
@@ -54,11 +61,19 @@ async def resolve_graph_grant(
 
 
 async def resolve_graph_grants(
-    user_id: str, graph_id: str, *, capability: GrantCapability
+    user_id: str,
+    graph_id: str,
+    *,
+    capability: GrantCapability,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> list[AgentGraphGrant]:
-    grant_rows = await prisma.agentgraphgrant.find_many(
-        where={"agentGraphId": graph_id}
-    )
+    where: dict = {"agentGraphId": graph_id}
+    if organization_id is not None:
+        where["organizationId"] = organization_id
+    if team_id_restriction is not None:
+        where["principalId"] = team_id_restriction
+    grant_rows = await prisma.agentgraphgrant.find_many(where=where)
     if not grant_rows:
         return []
 
@@ -95,11 +110,16 @@ async def resolve_graph_grants(
             "Org": {"is": {"deletedAt": None}},
         }
     )
-    active_org_ids = {membership.orgId for membership in org_memberships}
+    active_org_ids = {
+        membership.orgId
+        for membership in org_memberships
+        if membership.isOwner or membership.isAdmin or not membership.isBillingManager
+    }
     active_team_orgs = {
         membership.teamId: membership.Team.orgId
         for membership in memberships
         if membership.Team is not None
+        and (membership.isAdmin or not membership.isBillingManager)
     }
     matched = [
         row
@@ -122,7 +142,10 @@ def grant_covers_version(grant: AgentGraphGrant, version: int) -> bool:
 
 
 async def resolve_execution_credentials_owner(
-    user_id: str, graph_id: str, graph_version: int | None = None
+    user_id: str,
+    graph_id: str,
+    graph_version: int | None = None,
+    team_id_restriction: str | None = None,
 ) -> tuple[str, str] | None:
     if graph_version is not None:
         graph = await prisma.agentgraph.find_unique(
@@ -137,7 +160,10 @@ async def resolve_execution_credentials_owner(
     resolved_version: int = graph.version
 
     grants = await resolve_graph_grants(
-        user_id, graph_id, capability=GrantCapability.EXECUTE
+        user_id,
+        graph_id,
+        capability=GrantCapability.EXECUTE,
+        team_id_restriction=team_id_restriction,
     )
     covering_grants = [
         grant

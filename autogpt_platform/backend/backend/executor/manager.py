@@ -8,7 +8,7 @@ from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -21,9 +21,17 @@ from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.autopilot import AutoPilotBlock
 from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.time_blocks import CountdownTimerBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.db_accessors import (
+    AgentGraphAttachmentLeaseGuard,
+    LiveResourceAccessRevoked,
+    LiveResourceLeaseGuard,
+    run_with_live_resource_lease_guard,
+)
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -31,6 +39,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEntry,
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
@@ -48,7 +57,10 @@ from backend.executor.cost_tracking import (
     log_system_credential_cost,
 )
 from backend.integrations.codex.access import enforce_codex_access
-from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    iterate_with_credential_lease_guard,
+)
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
@@ -116,6 +128,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
+T = TypeVar("T")
 
 
 def _get_execution_credit_balance(
@@ -127,6 +140,141 @@ def _get_execution_credit_balance(
     if organization_id:
         return db_client.get_org_credits(org_id=organization_id)
     return db_client.get_credits(graph_exec.user_id)
+
+
+def _has_live_execution_access(
+    db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
+) -> bool:
+    return db_client.has_live_resource_access(
+        graph_exec.user_id,
+        graph_exec.execution_context.organization_id,
+        graph_exec.execution_context.team_id,
+        "execute",
+    )
+
+
+def _bind_persisted_execution_scope(
+    graph_exec: GraphExecutionEntry,
+    exec_meta: GraphExecutionMeta,
+) -> bool:
+    if (
+        graph_exec.graph_exec_id != exec_meta.id
+        or graph_exec.user_id != exec_meta.user_id
+        or graph_exec.graph_id != exec_meta.graph_id
+        or graph_exec.graph_version != exec_meta.graph_version
+    ):
+        return False
+
+    graph_exec.execution_context = graph_exec.execution_context.model_copy(
+        update={
+            "user_id": exec_meta.user_id,
+            "graph_id": exec_meta.graph_id,
+            "graph_exec_id": exec_meta.id,
+            "graph_version": exec_meta.graph_version,
+            "organization_id": exec_meta.organization_id,
+            "team_id": exec_meta.team_id,
+        }
+    )
+    return True
+
+
+async def _run_with_execution_lease(
+    graph_exec: GraphExecutionEntry,
+    action: Callable[["DatabaseManagerAsyncClient"], Awaitable[T]],
+) -> T:
+    db_client = get_db_async_client()
+    lease_id = await db_client.acquire_live_resource_lease(
+        graph_exec.user_id,
+        graph_exec.execution_context.organization_id,
+        graph_exec.execution_context.team_id,
+        "execute",
+    )
+    if lease_id is None:
+        raise LiveResourceAccessRevoked("execution_access_revoked")
+    guard = LiveResourceLeaseGuard(db_client, lease_id)
+    try:
+        return await run_with_live_resource_lease_guard(
+            guard,
+            user_id=graph_exec.user_id,
+            organization_id=graph_exec.execution_context.organization_id,
+            team_id=graph_exec.execution_context.team_id,
+            access="execute",
+            action=action(db_client),
+        )
+    finally:
+        released = await db_client.release_live_resource_lease(lease_id)
+        if not released:
+            raise LiveResourceAccessRevoked("execution_lease_lost")
+
+
+async def _moderate_execution_inputs(
+    graph_exec: GraphExecutionEntry,
+) -> Exception | None:
+    return await _run_with_execution_lease(
+        graph_exec,
+        lambda db_client: automod_manager.moderate_graph_execution_inputs(
+            db_client=db_client,
+            graph_exec=graph_exec,
+        ),
+    )
+
+
+async def _moderate_execution_outputs(
+    graph_exec: GraphExecutionEntry,
+) -> Exception | None:
+    return await _run_with_execution_lease(
+        graph_exec,
+        lambda db_client: automod_manager.moderate_graph_execution_outputs(
+            db_client=db_client,
+            graph_exec_id=graph_exec.graph_exec_id,
+            user_id=graph_exec.user_id,
+            graph_id=graph_exec.graph_id,
+        ),
+    )
+
+
+async def _generate_execution_activity(
+    graph_exec: GraphExecutionEntry,
+    execution_stats: GraphExecutionStats,
+    execution_status: ExecutionStatus,
+):
+    return await _run_with_execution_lease(
+        graph_exec,
+        lambda db_client: generate_activity_status_for_execution(
+            graph_exec_id=graph_exec.graph_exec_id,
+            graph_id=graph_exec.graph_id,
+            graph_version=graph_exec.graph_version,
+            execution_stats=execution_stats,
+            db_client=db_client,
+            user_id=graph_exec.user_id,
+            execution_status=execution_status,
+        ),
+    )
+
+
+def _handle_completion_communications(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    execution_status: ExecutionStatus,
+    execution_stats: GraphExecutionStats,
+) -> bool:
+    lease_id = db_client.acquire_live_resource_lease(
+        graph_exec.user_id,
+        graph_exec.execution_context.organization_id,
+        graph_exec.execution_context.team_id,
+        "execute",
+    )
+    if lease_id is None:
+        return False
+    try:
+        expert_posts.handle_expert_run_post(
+            db_client, graph_exec, execution_status, execution_stats
+        )
+    finally:
+        released = db_client.release_live_resource_lease(lease_id)
+        if not released:
+            raise LiveResourceAccessRevoked("execution_lease_lost")
+    return True
 
 
 def _record_execution_failure(
@@ -210,9 +358,6 @@ def execute_graph(
     return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
 
 
-T = TypeVar("T")
-
-
 async def _revalidate_owner_credentials(
     execution_context: ExecutionContext,
     *,
@@ -266,6 +411,61 @@ async def execute_node(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     nodes_to_skip: Optional[set[str]] = None,
 ) -> BlockOutput:
+    grant_id = data.execution_context.credentials_grant_id
+    lease_id: str | None = None
+    attachment_guard: AgentGraphAttachmentLeaseGuard | None = None
+    db_client = get_db_async_client()
+    try:
+        if grant_id is not None:
+            lease_id = await db_client.acquire_agent_graph_attachment_lease(
+                [data.graph_id]
+            )
+            attachment_guard = AgentGraphAttachmentLeaseGuard(db_client, lease_id)
+        await _revalidate_owner_credentials(
+            data.execution_context,
+            user_id=data.user_id,
+            graph_id=data.graph_id,
+            graph_version=data.graph_version,
+        )
+        iterator = _execute_node_authorized(
+            node,
+            data,
+            execution_processor,
+            execution_stats,
+            nodes_input_masks,
+            nodes_to_skip,
+        )
+        try:
+            while True:
+                action = anext(iterator)
+                try:
+                    output = (
+                        await attachment_guard.run(action)
+                        if attachment_guard is not None
+                        else await action
+                    )
+                except StopAsyncIteration:
+                    break
+                yield output
+        finally:
+            await iterator.aclose()
+    finally:
+        if lease_id is not None:
+            released = await db_client.release_agent_graph_attachment_lease(lease_id)
+            if not released:
+                raise RuntimeError(
+                    "OWNER grant authorization lease expired during execution"
+                )
+
+
+async def _execute_node_authorized(
+    node: Node,
+    data: NodeExecutionEntry,
+    execution_processor: "ExecutionProcessor",
+    execution_stats: NodeExecutionStats | None = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_to_skip: Optional[set[str]] = None,
+) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
     persist the execution result, and return the subsequent node to be executed.
@@ -301,13 +501,6 @@ async def execute_node(
 
     if node_block.disabled:
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
-
-    await _revalidate_owner_credentials(
-        execution_context,
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph_version,
-    )
 
     input_model = cast(type[BlockSchema], node_block.input_schema)
     credential_fields_info = input_model.get_credentials_fields_info()
@@ -400,7 +593,6 @@ async def execute_node(
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    creds_locks: list[AsyncRedisLock] = []
     credential_leases: dict[str, CredentialLease] = {}
     runtime_credential_leases: dict[str, CredentialLease] = {}
 
@@ -414,6 +606,11 @@ async def execute_node(
     # must never be able to redirect the lookup to an arbitrary id in the
     # owner's store; each allowed reference stays bound to its baked field.
     credentials_owner_id = execution_context.credentials_owner_id
+    if credentials_owner_id and not node_block.allow_owner_credentials:
+        raise ValueError(
+            "OWNER credential mode is not allowed for blocks that execute "
+            "user-controlled code"
+        )
     owner_references: dict[str, str] = (
         owner_referenced_credentials(node.input_default, input_model)
         if credentials_owner_id
@@ -572,7 +769,7 @@ async def execute_node(
                 runtime_credential_leases[field_name] = lease
 
         # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-        auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+        auto_extra_kwargs, auto_leases = await acquire_auto_credentials(
             input_model=input_model,
             input_data=input_data,
             creds_manager=creds_manager,
@@ -581,7 +778,6 @@ async def execute_node(
             owner_field_values=owner_field_values,
         )
         extra_exec_kwargs.update(auto_extra_kwargs)
-        creds_locks.extend(auto_locks)
     except BaseException:
         await _release_credential_leases(list(credential_leases.values()), log_metadata)
         raise
@@ -613,7 +809,10 @@ async def execute_node(
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 
-        async for output_name, output_data in block_iter:
+        async for output_name, output_data in iterate_with_credential_lease_guard(
+            block_iter,
+            [*credential_leases.values(), *auto_leases],
+        ):
             output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
@@ -634,16 +833,7 @@ async def execute_node(
     finally:
         # Ensure all credentials are released even if execution fails
         await _release_credential_leases(list(credential_leases.values()), log_metadata)
-        for creds_lock in creds_locks:
-            if (
-                creds_lock
-                and (await creds_lock.locked())
-                and (await creds_lock.owned())
-            ):
-                try:
-                    await creds_lock.release()
-                except Exception as e:
-                    log_metadata.error(f"Failed to release credentials lock: {e}")
+        await _release_credential_leases(auto_leases, log_metadata)
 
         # Update execution stats
         if execution_stats is not None:
@@ -870,6 +1060,7 @@ class ExecutionProcessor:
         nodes_input_masks: Optional[NodesInputMasks],
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
         nodes_to_skip: Optional[set[str]] = None,
+        live_lease_id: str | None = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
@@ -881,97 +1072,127 @@ class ExecutionProcessor:
             block_name=b.name if (b := get_block(node_exec.block_id)) else "-",
         )
         db_client = get_db_async_client()
-        node = await db_client.get_node(node_exec.node_id)
-        execution_stats = NodeExecutionStats()
+        organization_id = node_exec.execution_context.organization_id
+        if organization_id and live_lease_id is None:
+            live_lease_id = await db_client.acquire_live_resource_lease(
+                node_exec.user_id,
+                organization_id,
+                node_exec.execution_context.team_id,
+                "execute",
+            )
+            if live_lease_id is None:
+                raise LiveResourceAccessRevoked("execution_access_revoked")
 
-        timing_info, status = await self._on_node_execution(
-            node=node,
-            node_exec=node_exec,
-            node_exec_progress=node_exec_progress,
-            stats=execution_stats,
-            db_client=db_client,
-            log_metadata=log_metadata,
-            nodes_input_masks=nodes_input_masks,
-            nodes_to_skip=nodes_to_skip,
-        )
-        if isinstance(status, BaseException):
-            raise status
+        async def execute_and_persist(node: Node) -> NodeExecutionStats:
+            execution_stats = NodeExecutionStats()
 
-        execution_stats.walltime = timing_info.wall_time
-        execution_stats.cputime = timing_info.cpu_time
-
-        # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
-        # are aggregated and persisted — otherwise the reconciled delta never
-        # lands in `graph_stats.cost` or the persisted node stats. RUN-only
-        # blocks produce a zero delta; dynamic types (SECOND/ITEMS/COST_USD/
-        # TOKENS) settle their post-flight charge or refund here. Dry runs
-        # skip reconciliation so simulation never touches the user's wallet.
-        # Reconcile on FAILED / TERMINATED too — partial work consumed real
-        # provider tokens, and the pre-flight charge should be refunded down
-        # to the actually-tracked usage rather than being absorbed wholesale
-        # by the user.
-        if status in (
-            ExecutionStatus.COMPLETED,
-            ExecutionStatus.FAILED,
-            ExecutionStatus.TERMINATED,
-        ):
-            await log_system_credential_cost(
+            timing_info, status = await self._on_node_execution(
+                node=node,
                 node_exec=node_exec,
-                block=node.block,
+                node_exec_progress=node_exec_progress,
                 stats=execution_stats,
                 db_client=db_client,
+                log_metadata=log_metadata,
+                nodes_input_masks=nodes_input_masks,
+                nodes_to_skip=nodes_to_skip,
             )
-            if not node_exec.execution_context.dry_run:
-                reconciled_delta, _ = await billing.charge_reconciled_usage(
+            if isinstance(status, BaseException):
+                raise status
+
+            execution_stats.walltime = timing_info.wall_time
+            execution_stats.cputime = timing_info.cpu_time
+
+            if status in (
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.TERMINATED,
+            ):
+                await log_system_credential_cost(
                     node_exec=node_exec,
+                    block=node.block,
                     stats=execution_stats,
-                    pre_flight_charge=node_exec.pre_flight_charge,
+                    db_client=db_client,
                 )
-                if reconciled_delta != 0:
-                    execution_stats.reconciled_cost_delta += reconciled_delta
+                if not node_exec.execution_context.dry_run:
+                    reconciled_delta, _ = await billing.charge_reconciled_usage(
+                        node_exec=node_exec,
+                        stats=execution_stats,
+                        pre_flight_charge=node_exec.pre_flight_charge,
+                    )
+                    if reconciled_delta != 0:
+                        execution_stats.reconciled_cost_delta += reconciled_delta
 
-        graph_stats, graph_stats_lock = graph_stats_pair
-        with graph_stats_lock:
-            graph_stats.node_count += 1 + execution_stats.extra_steps
-            graph_stats.nodes_cputime += execution_stats.cputime
-            graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += (
-                execution_stats.cost + execution_stats.reconciled_cost_delta
+            graph_stats, graph_stats_lock = graph_stats_pair
+            with graph_stats_lock:
+                graph_stats.node_count += 1 + execution_stats.extra_steps
+                graph_stats.nodes_cputime += execution_stats.cputime
+                graph_stats.nodes_walltime += execution_stats.walltime
+                graph_stats.cost += (
+                    execution_stats.cost + execution_stats.reconciled_cost_delta
+                )
+                if isinstance(execution_stats.error, Exception):
+                    graph_stats.node_error_count += 1
+                    _propagate_node_failure(graph_stats, execution_stats.error)
+
+            node_error = execution_stats.error
+            node_stats = execution_stats.model_dump()
+            if node_error and not isinstance(node_error, str):
+                node_stats["error"] = str(node_error) or node_stats.__class__.__name__
+
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=node_exec.node_exec_id,
+                status=status,
+                stats=node_stats,
             )
-            if isinstance(execution_stats.error, Exception):
-                graph_stats.node_error_count += 1
-                _propagate_node_failure(graph_stats, execution_stats.error)
-
-        node_error = execution_stats.error
-        node_stats = execution_stats.model_dump()
-        if node_error and not isinstance(node_error, str):
-            node_stats["error"] = str(node_error) or node_stats.__class__.__name__
-
-        await async_update_node_execution_status(
-            db_client=db_client,
-            exec_id=node_exec.node_exec_id,
-            status=status,
-            stats=node_stats,
-        )
-        await async_update_graph_execution_state(
-            db_client=db_client,
-            graph_exec_id=node_exec.graph_exec_id,
-            stats=graph_stats,
-        )
-
-        # If the node failed because a nested tool charge raised IBE,
-        # send the user notification so they understand why the run stopped.
-        if status == ExecutionStatus.FAILED and isinstance(
-            execution_stats.error, InsufficientBalanceError
-        ):
-            await billing.try_send_insufficient_funds_notif(
-                node_exec.user_id,
-                node_exec.graph_id,
-                execution_stats.error,
-                log_metadata,
+            await async_update_graph_execution_state(
+                db_client=db_client,
+                graph_exec_id=node_exec.graph_exec_id,
+                stats=graph_stats,
             )
 
-        return execution_stats
+            if status == ExecutionStatus.FAILED and isinstance(
+                execution_stats.error, InsufficientBalanceError
+            ):
+                await billing.try_send_insufficient_funds_notif(
+                    node_exec.user_id,
+                    node_exec.graph_id,
+                    execution_stats.error,
+                    log_metadata,
+                    organization_id=node_exec.execution_context.organization_id,
+                    team_id=node_exec.execution_context.team_id,
+                    source_graph_execution_id=node_exec.graph_exec_id,
+                )
+
+            return execution_stats
+
+        try:
+            node = await db_client.get_node(node_exec.node_id)
+            is_coordinator = isinstance(
+                node.block,
+                (CountdownTimerBlock, AgentExecutorBlock, AutoPilotBlock),
+            )
+            if live_lease_id is not None and not is_coordinator:
+                guard = LiveResourceLeaseGuard(db_client, live_lease_id)
+                return await run_with_live_resource_lease_guard(
+                    guard,
+                    user_id=node_exec.user_id,
+                    organization_id=organization_id,
+                    team_id=node_exec.execution_context.team_id,
+                    access="execute",
+                    action=execute_and_persist(node),
+                )
+            if live_lease_id is not None:
+                released = await db_client.release_live_resource_lease(live_lease_id)
+                live_lease_id = None
+                if not released:
+                    raise LiveResourceAccessRevoked("execution_lease_lost")
+            return await execute_and_persist(node)
+        finally:
+            if live_lease_id is not None:
+                released = await db_client.release_live_resource_lease(live_lease_id)
+                if not released:
+                    raise LiveResourceAccessRevoked("execution_lease_lost")
 
     @async_time_measured
     async def _on_node_execution(
@@ -1031,10 +1252,11 @@ class ExecutionProcessor:
             # sub-graphs and inner LLM calls have their own bounds, so the
             # outer cap would false-positive on legitimately long runs.
             block_timeout = node.block.execution_timeout_seconds
+            action = _drive_execution()
             if block_timeout is None:
-                await _drive_execution()
+                await action
             else:
-                await asyncio.wait_for(_drive_execution(), timeout=block_timeout)
+                await asyncio.wait_for(action, timeout=block_timeout)
 
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
             status = ExecutionStatus.COMPLETED
@@ -1125,25 +1347,38 @@ class ExecutionProcessor:
             )
             return
 
-        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
-            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
-            exec_meta.status = ExecutionStatus.RUNNING
-            send_execution_update(
-                db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+        if not _bind_persisted_execution_scope(graph_exec, exec_meta):
+            log_metadata.warning(
+                "Skipped graph execution because its queued identity did not match the persisted execution."
             )
-        elif exec_meta.status == ExecutionStatus.RUNNING:
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
-            )
-        elif exec_meta.status == ExecutionStatus.REVIEW:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
+            return
+
+        if not _has_live_execution_access(db_client, graph_exec):
+            log_metadata.warning(
+                "Skipped graph execution because its organization access was revoked."
             )
             update_graph_execution_state(
                 db_client=db_client,
                 graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
+                status=ExecutionStatus.TERMINATED,
+            )
+            return
+
+        if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
+            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
+            started = db_client.update_graph_execution_start_time(
+                graph_exec.graph_exec_id
+            )
+            if started is None:
+                log_metadata.warning(
+                    "Skipped graph execution because its queued state changed before start."
+                )
+                return
+            exec_meta.status = ExecutionStatus.RUNNING
+            send_execution_update(started)
+        elif exec_meta.status == ExecutionStatus.RUNNING:
+            log_metadata.info(
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
         else:
             log_metadata.warning(
@@ -1182,18 +1417,16 @@ class ExecutionProcessor:
             exec_meta.status = status
 
             if status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
-                activity_response = asyncio.run_coroutine_threadsafe(
-                    generate_activity_status_for_execution(
-                        graph_exec_id=graph_exec.graph_exec_id,
-                        graph_id=graph_exec.graph_id,
-                        graph_version=graph_exec.graph_version,
-                        execution_stats=exec_stats,
-                        db_client=get_db_async_client(),
-                        user_id=graph_exec.user_id,
-                        execution_status=status,
-                    ),
-                    self.node_execution_loop,
-                ).result(timeout=60.0)
+                try:
+                    activity_response = asyncio.run_coroutine_threadsafe(
+                        _generate_execution_activity(graph_exec, exec_stats, status),
+                        self.node_execution_loop,
+                    ).result(timeout=60.0)
+                except LiveResourceAccessRevoked:
+                    log_metadata.warning(
+                        "Skipped activity generation because execution access was revoked."
+                    )
+                    activity_response = None
             else:
                 activity_response = None
             if activity_response is not None:
@@ -1208,20 +1441,24 @@ class ExecutionProcessor:
                     "Activity status generation disabled, not setting fields"
                 )
         finally:
-            # No per-run email: a successful run is the system working as
-            # designed, and its evidence belongs in the Briefing's highlights
-            # or behind a deep link. The run is scored for the Briefing when
-            # its terminal stats are written, just below.
-            expert_posts.handle_expert_run_post(
-                db_client, graph_exec, exec_meta.status, exec_stats
-            )
-
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=exec_meta.status,
-                stats=exec_stats,
-            )
+            try:
+                if not _handle_completion_communications(
+                    db_client, graph_exec, exec_meta.status, exec_stats
+                ):
+                    log_metadata.warning(
+                        "Skipped the expert run post because access was revoked."
+                    )
+            except LiveResourceAccessRevoked:
+                log_metadata.warning(
+                    "Stopped the expert run post because its live lease was lost."
+                )
+            finally:
+                update_graph_execution_state(
+                    db_client=db_client,
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    status=exec_meta.status,
+                    stats=exec_stats,
+                )
 
     async def charge_node_usage(
         self,
@@ -1283,18 +1520,23 @@ class ExecutionProcessor:
             # Input moderation
             try:
                 if moderation_error := asyncio.run_coroutine_threadsafe(
-                    automod_manager.moderate_graph_execution_inputs(
-                        db_client=get_db_async_client(),
-                        graph_exec=graph_exec,
-                    ),
+                    _moderate_execution_inputs(graph_exec),
                     self.node_evaluation_loop,
                 ).result(timeout=30.0):
                     raise moderation_error
+            except LiveResourceAccessRevoked:
+                log_metadata.warning(
+                    "Terminating before input moderation because execution access was revoked."
+                )
+                cancel.set()
             except asyncio.TimeoutError:
                 log_metadata.warning(
                     f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
                 )
                 # Continue execution without moderation
+
+            if cancel.is_set():
+                return ExecutionStatus.TERMINATED
 
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
@@ -1321,6 +1563,13 @@ class ExecutionProcessor:
                 if cancel.is_set():
                     break
 
+                if not _has_live_execution_access(db_client, graph_exec):
+                    log_metadata.warning(
+                        "Terminating graph execution because organization access was revoked."
+                    )
+                    cancel.set()
+                    break
+
                 queued_node_exec = execution_queue.get()
 
                 # Check if this node should be skipped due to optional credentials
@@ -1343,8 +1592,29 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) — skipped for dry runs
+                dispatch_lease_id: str | None = None
                 try:
+                    organization_id = queued_node_exec.execution_context.organization_id
+                    if organization_id:
+                        dispatch_lease_id = db_client.acquire_live_resource_lease(
+                            queued_node_exec.user_id,
+                            organization_id,
+                            queued_node_exec.execution_context.team_id,
+                            "execute",
+                        )
+                        if dispatch_lease_id is None:
+                            log_metadata.warning(
+                                "Terminating before node billing because organization "
+                                "access was revoked."
+                            )
+                            update_node_execution_status(
+                                db_client=db_client,
+                                exec_id=queued_node_exec.node_exec_id,
+                                status=ExecutionStatus.TERMINATED,
+                            )
+                            cancel.set()
+                            break
+
                     if not graph_exec.execution_context.dry_run:
                         (
                             cost,
@@ -1363,14 +1633,45 @@ class ExecutionProcessor:
                         with execution_stats_lock:
                             execution_stats.cost += cost
                         # Check if we crossed the low balance threshold
-                        billing.handle_low_balance(
-                            db_client=db_client,
-                            user_id=graph_exec.user_id,
-                            current_balance=remaining_balance,
-                            transaction_cost=cost,
+                        billing_org_id = graph_exec.execution_context.organization_id
+                        user_ledger = not billing_org_id or (
+                            db_client.get_personal_org_owner(billing_org_id) is not None
                         )
+                        if user_ledger:
+                            billing.handle_low_balance(
+                                db_client=db_client,
+                                user_id=graph_exec.user_id,
+                                current_balance=remaining_balance,
+                                transaction_cost=cost,
+                            )
+
+                    node_id = queued_node_exec.node_id
+                    if (nodes_input_masks := graph_exec.nodes_input_masks) and (
+                        node_input_mask := nodes_input_masks.get(node_id)
+                    ):
+                        queued_node_exec.inputs.update(node_input_mask)
+
+                    node_execution_task = asyncio.run_coroutine_threadsafe(
+                        self.on_node_execution(
+                            node_exec=queued_node_exec,
+                            node_exec_progress=running_node_execution[node_id],
+                            nodes_input_masks=nodes_input_masks,
+                            graph_stats_pair=(
+                                execution_stats,
+                                execution_stats_lock,
+                            ),
+                            nodes_to_skip=graph_exec.nodes_to_skip,
+                            live_lease_id=dispatch_lease_id,
+                        ),
+                        self.node_execution_loop,
+                    )
+                    running_node_execution[node_id].add_task(
+                        node_exec_id=queued_node_exec.node_exec_id,
+                        task=node_execution_task,
+                    )
+                    dispatch_lease_id = None
                 except InsufficientBalanceError as balance_error:
-                    error = balance_error  # Set error to trigger FAILED status
+                    error = balance_error
                     node_exec_id = queued_node_exec.node_exec_id
                     db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
@@ -1388,35 +1689,18 @@ class ExecutionProcessor:
                         graph_exec.user_id,
                         graph_exec.graph_id,
                         error,
+                        organization_id=graph_exec.execution_context.organization_id,
+                        team_id=graph_exec.execution_context.team_id,
+                        source_graph_execution_id=graph_exec.graph_exec_id,
                     )
-                    # Gracefully stop the execution loop
                     break
-
-                # Add input overrides -----------------------------
-                node_id = queued_node_exec.node_id
-                if (nodes_input_masks := graph_exec.nodes_input_masks) and (
-                    node_input_mask := nodes_input_masks.get(node_id)
-                ):
-                    queued_node_exec.inputs.update(node_input_mask)
-
-                # Kick off async node execution -------------------------
-                node_execution_task = asyncio.run_coroutine_threadsafe(
-                    self.on_node_execution(
-                        node_exec=queued_node_exec,
-                        node_exec_progress=running_node_execution[node_id],
-                        nodes_input_masks=nodes_input_masks,
-                        graph_stats_pair=(
-                            execution_stats,
-                            execution_stats_lock,
-                        ),
-                        nodes_to_skip=graph_exec.nodes_to_skip,
-                    ),
-                    self.node_execution_loop,
-                )
-                running_node_execution[node_id].add_task(
-                    node_exec_id=queued_node_exec.node_exec_id,
-                    task=node_execution_task,
-                )
+                finally:
+                    if dispatch_lease_id is not None:
+                        released = db_client.release_live_resource_lease(
+                            dispatch_lease_id
+                        )
+                        if not released:
+                            raise LiveResourceAccessRevoked("execution_lease_lost")
 
                 # Poll until queue refills or all inflight work done ----
                 while execution_queue.empty() and (
@@ -1474,22 +1758,23 @@ class ExecutionProcessor:
             # loop done --------------------------------------------------
 
             # Output moderation
-            try:
-                if moderation_error := asyncio.run_coroutine_threadsafe(
-                    automod_manager.moderate_graph_execution_outputs(
-                        db_client=get_db_async_client(),
-                        graph_exec_id=graph_exec.graph_exec_id,
-                        user_id=graph_exec.user_id,
-                        graph_id=graph_exec.graph_id,
-                    ),
-                    self.node_evaluation_loop,
-                ).result(timeout=30.0):
-                    raise moderation_error
-            except asyncio.TimeoutError:
-                log_metadata.warning(
-                    f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
-                )
-                # Continue execution without moderation
+            if not cancel.is_set():
+                try:
+                    if moderation_error := asyncio.run_coroutine_threadsafe(
+                        _moderate_execution_outputs(graph_exec),
+                        self.node_evaluation_loop,
+                    ).result(timeout=30.0):
+                        raise moderation_error
+                except LiveResourceAccessRevoked:
+                    log_metadata.warning(
+                        "Terminating before output moderation because execution access was revoked."
+                    )
+                    cancel.set()
+                except asyncio.TimeoutError:
+                    log_metadata.warning(
+                        f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
+                    )
+                    # Continue execution without moderation
 
             # Determine final execution status based on whether there was an error or termination
             if cancel.is_set():
@@ -1656,6 +1941,7 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        self.cancel_events: dict[str, threading.Event] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -1820,13 +2106,13 @@ class ExecutionManager(AppProcess):
                 f"[{self.service_name}] Cancel message missing 'graph_exec_id'"
             )
             return
-        if graph_exec_id not in self.active_graph_runs:
+        cancel_event = self.cancel_events.get(graph_exec_id)
+        if cancel_event is None:
             logger.debug(
                 f"[{self.service_name}] Cancel received for {graph_exec_id} but not active."
             )
             return
 
-        _, cancel_event = self.active_graph_runs[graph_exec_id]
         logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
         if not cancel_event.is_set():
             cancel_event.set()
@@ -2007,6 +2293,7 @@ class ExecutionManager(AppProcess):
             )
 
             cancel_event = threading.Event()
+            self.cancel_events[graph_exec_id] = cancel_event
             future = self.executor.submit(
                 execute_graph, graph_exec_entry, cancel_event, cluster_lock
             )
@@ -2019,6 +2306,7 @@ class ExecutionManager(AppProcess):
             cluster_lock.release()
             if graph_exec_id in self._execution_locks:
                 del self._execution_locks[graph_exec_id]
+            self.cancel_events.pop(graph_exec_id, None)
             _ack_message(reject=True, requeue=True)
             return
         self._update_prompt_metrics()
@@ -2059,6 +2347,7 @@ class ExecutionManager(AppProcess):
         for geid in completed_runs:
             logger.info(f"[{self.service_name}] ✅ Cleaned up completed run {geid}")
             self.active_graph_runs.pop(geid, None)
+            self.cancel_events.pop(geid, None)
 
         self._update_prompt_metrics()
         return completed_runs

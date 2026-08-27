@@ -18,8 +18,10 @@ interface Args {
 export function useCreateAPIKeyForm({ onClose }: Args) {
   const [view, setView] = useState<View>("form");
   const [plainTextKey, setPlainTextKey] = useState("");
-  const { teamId, setTeamId } = useCreateTeamSelection(CreateSurface.ApiKey);
-  const { createKey, isPending } = useCreateAPIKey(teamId);
+  const { teamId, setTeamId, isReady } = useCreateTeamSelection(
+    CreateSurface.ApiKey,
+  );
+  const { createKey, isPending } = useCreateAPIKey(teamId, isReady);
 
   const form = useForm<CreateAPIKeyFormValues>({
     resolver: zodResolver(createAPIKeySchema),
@@ -57,5 +59,6 @@ export function useCreateAPIKeyForm({ onClose }: Args) {
     handleClose,
     teamId,
     setTeamId,
+    isReady,
   };
 }

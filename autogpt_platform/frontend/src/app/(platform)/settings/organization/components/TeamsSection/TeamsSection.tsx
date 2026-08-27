@@ -139,7 +139,9 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {!team.is_default && team.join_policy === "OPEN" ? (
+                      {!team.is_default &&
+                      team.join_policy === "OPEN" &&
+                      !team.is_member ? (
                         <DropdownMenuItem
                           onClick={() => handleJoin(team)}
                           data-testid="team-join-item"
@@ -214,8 +216,9 @@ export function TeamsSection({ orgId, orgMembers, currentMember }: Props) {
       >
         <Dialog.Content>
           <Text variant="body">
-            Delete {teamToDelete?.name}? This removes the team and its members
-            from the organization. This can’t be undone.
+            Delete {teamToDelete?.name}? The team will disappear from active
+            workspaces and its members will lose team access. Its resources and
+            history stay preserved, and members remain in the organization.
           </Text>
           <div className="flex justify-end gap-2 pt-4">
             <Button

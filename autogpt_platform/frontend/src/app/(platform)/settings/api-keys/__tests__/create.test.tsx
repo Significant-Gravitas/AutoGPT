@@ -14,6 +14,7 @@ import {
   getPostV1CreateNewApiKeyMockHandler422,
   getPostV1CreateNewApiKeyResponseMock200,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 import SettingsApiKeysPage from "../page";
 
@@ -40,6 +41,14 @@ function openCreateDialog() {
 describe("SettingsApiKeysPage - create flow", () => {
   beforeEach(() => {
     toastSpy.mockClear();
+    window.localStorage.clear();
+    useOrgTeamStore.setState({
+      activeOrgID: "org-1",
+      activeTeamID: null,
+      orgs: [],
+      teams: [],
+      isLoaded: true,
+    });
   });
 
   test("opens the create dialog with a form when Create Key is clicked", async () => {

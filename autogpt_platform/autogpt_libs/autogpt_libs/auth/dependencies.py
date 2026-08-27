@@ -227,8 +227,10 @@ async def get_request_context(
       2. Read X-Org-Id header; fall back to the user's personal org; fail if none.
       3. Validate that the user has an ACTIVE OrgMember row for that org.
       4. Read X-Team-Id header (optional). If set, validate that the
-         workspace belongs to the org AND the user has an TeamMember
-         row. On failure, silently fall back to None (org-home).
+         workspace belongs to the org AND the user has an active TeamMember
+         row. Fail closed when the requested workspace is unusable; silently
+         widening an explicit team scope to org-home would make create calls
+         land in a broader tenancy than the caller selected.
       5. Populate all role flags and return a RequestContext.
     """
     from backend.data.db import prisma  # deferred -- only needed at runtime
@@ -351,16 +353,16 @@ async def get_request_context(
             or ws_member.status != "ACTIVE"
             or ws_member.Team is None
             or ws_member.Team.orgId != org_id
+            or ws_member.Team.archivedAt is not None
         ):
-            # Warn, not debug: the caller asked for a team and silently gets
-            # org-home instead, which widens the scope of anything they
-            # create in this request (e.g. an org-wide API key). A mistyped
-            # or expired team header should be visible to operators.
             logger.warning(
                 f"Workspace {team_id} not valid in org {org_id} for the "
-                "requesting user (user:<redacted>); falling back to org-home"
+                "requesting user (user:<redacted>); rejecting explicit team scope"
             )
-            team_id = None
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail="User is not an active member of this workspace",
+            )
         else:
             is_team_admin = ws_member.isAdmin
             is_team_billing_manager = ws_member.isBillingManager
@@ -442,6 +444,30 @@ def requires_team_permission(
                     status_code=403,
                     detail=f"Missing workspace permission: {action.value}",
                 )
+        return ctx
+
+    return _dependency
+
+
+def requires_resource_permission(
+    org_action: OrgAction,
+    team_action: TeamAction,
+):
+    """Enforce the appropriate permission for org-home or team resources."""
+
+    async def _dependency(
+        ctx: RequestContext = fastapi.Security(get_request_context),
+    ) -> RequestContext:
+        allowed = check_org_permission(ctx, org_action)
+        if ctx.team_id is not None:
+            allowed = allowed and check_team_permission(ctx, team_action)
+        if not allowed:
+            scope = "workspace" if ctx.team_id is not None else "org"
+            action = team_action.value if ctx.team_id is not None else org_action.value
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail=f"Missing {scope} permission: {action}",
+            )
         return ctx
 
     return _dependency

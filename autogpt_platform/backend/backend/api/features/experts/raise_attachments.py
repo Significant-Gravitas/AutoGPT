@@ -22,6 +22,7 @@ from backend.copilot.tools.skills import (
     read_user_skill_with_body,
 )
 from backend.data.db import transaction
+from backend.data.tenancy import agent_graph_attachment_barrier
 from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,24 @@ async def install_marketplace_workflow(
 
 
 async def _install_marketplace_workflow_once(
+    user_id: str,
+    expert_id: str,
+    store_listing_version_id: str,
+) -> None:
+    version = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
+    )
+    if version is None:
+        raise RaiseAttachmentUnavailableError(
+            "workflow", "marketplace", store_listing_version_id
+        )
+    async with agent_graph_attachment_barrier(version.agentGraphId):
+        await _install_marketplace_workflow_once_locked(
+            user_id, expert_id, store_listing_version_id
+        )
+
+
+async def _install_marketplace_workflow_once_locked(
     user_id: str,
     expert_id: str,
     store_listing_version_id: str,
@@ -227,6 +246,29 @@ async def _install_resolved_workflow(
 
 
 async def _link_library_workflow(
+    expert_id: str,
+    library_agent_id: str,
+    store_listing_version_id: str | None,
+) -> None:
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"id": library_agent_id, "isDeleted": False}
+    )
+    if library_agent is None:
+        raise RaiseAttachmentUnavailableError("workflow", "library", library_agent_id)
+    async with agent_graph_attachment_barrier(library_agent.agentGraphId):
+        current = await prisma.models.LibraryAgent.prisma().find_first(
+            where={"id": library_agent_id, "isDeleted": False}
+        )
+        if current is None:
+            raise RaiseAttachmentUnavailableError(
+                "workflow", "library", library_agent_id
+            )
+        await _link_library_workflow_locked(
+            expert_id, library_agent_id, store_listing_version_id
+        )
+
+
+async def _link_library_workflow_locked(
     expert_id: str,
     library_agent_id: str,
     store_listing_version_id: str | None,

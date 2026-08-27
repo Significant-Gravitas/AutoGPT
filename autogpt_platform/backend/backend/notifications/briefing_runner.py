@@ -16,16 +16,27 @@ at-least-once and the service can run more than one replica.
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from zoneinfo import available_timezones
 
-from backend.data.notifications import PassWorkEvent, PassWorkKind
+from backend.data.db_accessors import (
+    agent_graph_attachment_lease,
+    alert_condition_delivery_lease,
+)
+from backend.data.notifications import (
+    NotificationEventModel,
+    NotificationScope,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.user import BriefingCandidate
 from backend.notifications import alerts, briefing, lifecycle
 from backend.notifications.briefing_period import (
     BRIEFING_HOUR,
     is_briefing_due,
+    period_window,
     resolve_zone,
 )
 from backend.notifications.dedupe import (
@@ -33,7 +44,13 @@ from backend.notifications.dedupe import (
     claim_once,
     release_claim,
 )
-from backend.notifications.queue import queue_notification_async, queue_pass_work
+from backend.notifications.queue import queue_pass_work
+from backend.notifications.tenancy import (
+    authorized_notification_scopes,
+    normalize_scopes,
+    run_with_notification_guards,
+    scope_keys,
+)
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 
@@ -48,6 +65,7 @@ def _db():
 # Page size for the candidate walk. Bounds how many users are held in memory
 # at once; it does not bound how many are considered.
 CANDIDATE_PAGE_SIZE = 5000
+DeliverNotification = Callable[[NotificationEventModel], Awaitable[bool]]
 
 
 async def flush_matured_alerts() -> None:
@@ -101,7 +119,9 @@ async def send_due_briefings() -> None:
 # ── the work itself, run by the queue consumer ──────────────────────────
 
 
-async def run_pass_work(event: PassWorkEvent) -> None:
+async def run_pass_work(
+    event: PassWorkEvent, deliver_notification: DeliverNotification
+) -> None:
     """Do one user's share of a scheduled pass.
 
     Claimed first: delivery is at-least-once and there may be several
@@ -115,11 +135,13 @@ async def run_pass_work(event: PassWorkEvent) -> None:
 
     try:
         if event.kind is PassWorkKind.ALERT_FLUSH:
-            await _flush_user_alerts(event.user_id)
+            await _flush_user_alerts(event.user_id, key, deliver_notification)
         elif event.kind is PassWorkKind.WELCOME:
             await lifecycle.send_welcome_for_session(event.context["session_id"])
         else:
-            await _build_and_queue_briefing(event.user_id, event.scheduled_for)
+            await _build_and_send_briefing(
+                event.user_id, event.scheduled_for, key, deliver_notification
+            )
     except Exception:
         # The consumer retries this message. Holding the claim would make the
         # retry find its own claim, return early, and drop the work for the
@@ -146,49 +168,164 @@ def _claim_key(event: PassWorkEvent) -> str:
     return f"{event.kind.value}:{event.user_id}:{slot.isoformat()}"
 
 
-async def _flush_user_alerts(user_id: str) -> None:
+async def _flush_user_alerts(
+    user_id: str, delivery_id: str, deliver_notification: DeliverNotification
+) -> None:
     # Raises for an unknown user rather than returning None, and that is left
     # to propagate — a transient database failure is what the retry is for.
     preference = await _db().get_user_notification_preference(user_id)
-    built = await alerts.build_alert_email(user_id, preference.alerts_enabled)
-    if built is None:
-        # Deferred into the next briefing, or nothing left to say.
-        return
-    result = await queue_notification_async(alerts.alert_event(user_id, built.data))
-    if not result.success:
-        raise RuntimeError(f"Could not queue the alert for user {user_id}")
-    await alerts.mark_alert_sent(built.condition_ids)
+    candidates = await _db().get_pending_alert_condition_scopes(user_id)
+    async with authorized_notification_scopes(user_id, candidates) as (
+        authorized,
+        guards,
+    ):
+        denied_keys = scope_keys(candidates) - scope_keys(authorized)
+        if denied_keys:
+            await _db().resolve_alert_conditions_for_scopes(
+                user_id,
+                [
+                    NotificationScope(organization_id=org_id, team_id=team_id)
+                    for org_id, team_id in denied_keys
+                ],
+            )
+        built = await alerts.build_alert_email(
+            user_id, preference.alerts_enabled, authorized
+        )
+        if built is None:
+            return
+        source_graph_ids = await _db().get_alert_condition_source_graph_ids(
+            user_id, built.condition_ids
+        )
+        delivered = False
+        stale_ids: list[str] = []
+        async with AsyncExitStack() as stack:
+            source_guard = None
+            if source_graph_ids:
+                source_guard = await stack.enter_async_context(
+                    agent_graph_attachment_lease(source_graph_ids)
+                )
+            condition_guard = await stack.enter_async_context(
+                alert_condition_delivery_lease(built.condition_ids)
+            )
+            stale_ids = await _db().get_stale_alert_condition_ids(
+                user_id,
+                built.condition_ids,
+                built.authorization_scopes,
+                False,
+            )
+            if stale_ids:
+                logger.info("Dropping alert whose source condition changed")
+            else:
+                delivery = condition_guard.run(
+                    deliver_notification(
+                        alerts.alert_event(
+                            user_id,
+                            built.data,
+                            built.authorization_scopes,
+                            delivery_id,
+                        )
+                    )
+                )
+                if source_guard is not None:
+                    delivery = source_guard.run(delivery)
+                delivered = await run_with_notification_guards(delivery, guards)
+                if delivered:
+                    await _db().finalize_alert_delivery(
+                        user_id,
+                        built.condition_ids,
+                        built.authorization_scopes,
+                        datetime.now(tz=timezone.utc),
+                    )
 
 
-async def _build_and_queue_briefing(user_id: str, now: datetime) -> None:
+async def _build_and_send_briefing(
+    user_id: str,
+    now: datetime,
+    delivery_id: str,
+    deliver_notification: DeliverNotification,
+) -> None:
     # No preference read here: `send_due_briefings` already gated on frequency
     # via `is_briefing_due`, and a user who has since vanished falls out on the
     # candidate lookup below rather than raising.
     user = await _db().get_briefing_candidate(user_id)
     if user is None:
         return
-
-    built = await briefing.build_briefing(
-        user_id, user.briefing_frequency, user.timezone, now
+    window = period_window(user.briefing_frequency, user.timezone, now)
+    resource_scopes = await _db().get_briefing_resource_scopes(
+        user_id, window.start, window.end
     )
-    if built is None:
-        # Never sent empty: a period with nothing to say produces no email.
-        logger.debug(f"Nothing to brief for user {user_id}")
-        return
+    alert_scopes = await _db().get_briefing_alert_condition_scopes(user_id)
+    candidates = normalize_scopes([*resource_scopes, *alert_scopes])
 
-    result = await queue_notification_async(
-        briefing.briefing_event(user_id, built.data)
-    )
-    if not result.success:
-        # Raise so the consumer retries; the claim is period-scoped, so a
-        # redelivery inside the same period is still suppressed and only a
-        # genuine retry of *this* message gets through.
-        raise RuntimeError(f"Could not queue the briefing for user {user_id}")
-
-    # Only the conditions this briefing actually reported are marked, so one
-    # raised while it was being built still gets its turn next period.
-    await briefing.mark_attention_reported(built.attention_condition_ids)
-    await _db().set_last_briefing_at(user_id, now)
+    async with authorized_notification_scopes(user_id, candidates) as (
+        authorized,
+        guards,
+    ):
+        denied_alert_keys = scope_keys(alert_scopes) - scope_keys(authorized)
+        if denied_alert_keys:
+            await _db().resolve_alert_conditions_for_scopes(
+                user_id,
+                [
+                    NotificationScope(organization_id=org_id, team_id=team_id)
+                    for org_id, team_id in denied_alert_keys
+                ],
+            )
+        built = await briefing.build_briefing(
+            user_id,
+            user.briefing_frequency,
+            user.timezone,
+            now,
+            authorized,
+        )
+        if built is None:
+            logger.debug(f"Nothing to brief for user {user_id}")
+            return
+        source_graph_ids = await _db().get_alert_condition_source_graph_ids(
+            user_id, built.attention_condition_ids
+        )
+        delivered = False
+        stale_ids: list[str] = []
+        async with AsyncExitStack() as stack:
+            source_guard = None
+            if source_graph_ids:
+                source_guard = await stack.enter_async_context(
+                    agent_graph_attachment_lease(source_graph_ids)
+                )
+            condition_guard = None
+            if built.attention_condition_ids:
+                condition_guard = await stack.enter_async_context(
+                    alert_condition_delivery_lease(built.attention_condition_ids)
+                )
+                stale_ids = await _db().get_stale_alert_condition_ids(
+                    user_id,
+                    built.attention_condition_ids,
+                    built.authorization_scopes,
+                    True,
+                )
+            if stale_ids:
+                logger.info("Dropping briefing whose attention condition changed")
+            else:
+                delivery = deliver_notification(
+                    briefing.briefing_event(
+                        user_id,
+                        built.data,
+                        built.authorization_scopes,
+                        delivery_id,
+                    )
+                )
+                if condition_guard is not None:
+                    delivery = condition_guard.run(delivery)
+                if source_guard is not None:
+                    delivery = source_guard.run(delivery)
+                delivered = await run_with_notification_guards(delivery, guards)
+                if delivered:
+                    await _db().finalize_briefing_delivery(
+                        user_id,
+                        built.attention_condition_ids,
+                        built.authorization_scopes,
+                        datetime.now(tz=timezone.utc),
+                        now,
+                    )
 
 
 async def _matured_alert_user_ids() -> AsyncIterator[str]:

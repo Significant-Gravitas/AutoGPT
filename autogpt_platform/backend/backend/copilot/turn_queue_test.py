@@ -7,6 +7,7 @@ RPC into ``DatabaseManager``. Patching the accessor avoids reaching
 for Prisma directly while still exercising the queue's branching.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,6 +16,7 @@ from prisma.errors import UniqueViolationError
 
 from backend.copilot import turn_queue
 from backend.copilot.model import ChatMessage as PydanticChatMessage
+from backend.data.db_accessors import LiveResourceAccessRevoked
 
 
 class _NoopAsyncCM:
@@ -25,6 +27,16 @@ class _NoopAsyncCM:
 
     async def __aexit__(self, *exc):
         return None
+
+
+@pytest.fixture(autouse=True)
+def allow_live_resource_lease(monkeypatch: pytest.MonkeyPatch) -> None:
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(turn_queue, "live_resource_lease", allowed)
+    monkeypatch.setattr(turn_queue, "require_exact_chat_session_scope", AsyncMock())
 
 
 def _pyd_message(**overrides) -> PydanticChatMessage:
@@ -74,6 +86,8 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
         await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="hello",
             message_id="msg-1",
             message_metadata={"hidden": True, "kind": "expert_kickoff"},
@@ -117,7 +131,13 @@ async def test_enqueue_turn_only_includes_default_transport_without_extra_params
         patch.object(turn_queue, "_get_session_lock", return_value=_NoopAsyncCM()),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
     ):
-        await turn_queue.enqueue_turn(user_id="u1", session_id="s1", message="hello")
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            organization_id=None,
+            team_id=None,
+            message="hello",
+        )
     assert db.add_chat_message.call_args.kwargs["metadata"] == {
         "llm_auth_provider": "platform"
     }
@@ -142,6 +162,8 @@ async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> N
         result = await turn_queue.enqueue_turn(
             user_id="u1",
             session_id="s1",
+            organization_id=None,
+            team_id=None,
             message="kickoff",
             message_id="same-id",
         )
@@ -149,6 +171,133 @@ async def test_enqueue_turn_treats_duplicate_message_pk_as_already_queued() -> N
     assert result is None
     db.update_chat_session_status.assert_not_awaited()
     invalidate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_turn_rejects_revoked_workspace_before_any_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def denied(*_args, **_kwargs):
+        yield False
+
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock()
+    db.add_chat_message = AsyncMock()
+    db.update_chat_session_status = AsyncMock()
+    lock = MagicMock(return_value=_NoopAsyncCM())
+    monkeypatch.setattr(turn_queue, "live_resource_lease", denied)
+    monkeypatch.setattr(turn_queue, "chat_db", lambda: db)
+    monkeypatch.setattr(turn_queue, "_get_session_lock", lock)
+
+    with pytest.raises(LiveResourceAccessRevoked):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            organization_id="org-1",
+            team_id="team-1",
+            message="blocked",
+        )
+
+    lock.assert_not_called()
+    db.get_next_sequence.assert_not_awaited()
+    db.add_chat_message.assert_not_awaited()
+    db.update_chat_session_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_turn_holds_workspace_lease_through_final_status_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"active": False}
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        assert (user_id, organization_id, team_id, access) == (
+            "u1",
+            "org-1",
+            "team-1",
+            "execute",
+        )
+        state["active"] = True
+        try:
+            yield True
+        finally:
+            state["active"] = False
+
+    async def add_message(**_kwargs):
+        assert state["active"] is True
+        return _pyd_message()
+
+    async def update_status(**_kwargs):
+        assert state["active"] is True
+        return True
+
+    async def invalidate(_session_id):
+        assert state["active"] is True
+
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(side_effect=add_message)
+    db.update_chat_session_status = AsyncMock(side_effect=update_status)
+    monkeypatch.setattr(turn_queue, "live_resource_lease", lease)
+    monkeypatch.setattr(
+        turn_queue,
+        "require_exact_chat_session_scope",
+        AsyncMock(side_effect=lambda *_args: assert_lease_active(state)),
+    )
+    monkeypatch.setattr(turn_queue, "chat_db", lambda: db)
+    monkeypatch.setattr(
+        turn_queue, "_get_session_lock", lambda _session_id: _NoopAsyncCM()
+    )
+    monkeypatch.setattr(
+        turn_queue, "invalidate_session_cache", AsyncMock(side_effect=invalidate)
+    )
+
+    await turn_queue.enqueue_turn(
+        user_id="u1",
+        session_id="s1",
+        organization_id="org-1",
+        team_id="team-1",
+        message="allowed",
+    )
+
+    assert state["active"] is False
+
+
+def assert_lease_active(state: dict[str, bool]) -> None:
+    assert state["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_enqueue_turn_rejects_scope_mismatch_before_any_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock()
+    db.add_chat_message = AsyncMock()
+    db.update_chat_session_status = AsyncMock()
+    lock = MagicMock(return_value=_NoopAsyncCM())
+    monkeypatch.setattr(
+        turn_queue,
+        "require_exact_chat_session_scope",
+        AsyncMock(side_effect=LiveResourceAccessRevoked("workspace_access_revoked")),
+    )
+    monkeypatch.setattr(turn_queue, "chat_db", lambda: db)
+    monkeypatch.setattr(turn_queue, "_get_session_lock", lock)
+
+    with pytest.raises(LiveResourceAccessRevoked):
+        await turn_queue.enqueue_turn(
+            user_id="u1",
+            session_id="s1",
+            organization_id=None,
+            team_id=None,
+            message="wrong scope",
+        )
+
+    lock.assert_not_called()
+    db.add_chat_message.assert_not_awaited()
+    db.update_chat_session_status.assert_not_awaited()
 
 
 # ── cancel_queued_turn ─────────────────────────────────────────────────
@@ -203,6 +352,8 @@ async def test_try_enqueue_turn_raises_when_at_inflight_cap() -> None:
                 user_id="u1",
                 inflight_cap=15,
                 session_id="s1",
+                organization_id=None,
+                team_id=None,
                 message="hi",
             )
     db.add_chat_message.assert_not_awaited()

@@ -36,6 +36,7 @@ from typing import Any
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
+from backend.util.background import spawn_background_task
 from backend.util.request import validate_url_host
 
 from .base import BaseTool
@@ -147,10 +148,6 @@ _RESTORE_CONCURRENCY = 10
 # thousands of cookies; restoring them all would be slow and is rarely useful.
 _MAX_RESTORE_COOKIES = 100
 
-# Background tasks for fire-and-forget state persistence.
-# Prevents GC from collecting tasks before they complete.
-_background_tasks: set[asyncio.Task] = set()
-
 
 def _fire_and_forget_save(
     session_name: str, user_id: str, session: ChatSession
@@ -160,9 +157,10 @@ def _fire_and_forget_save(
     State save is already best-effort (errors are swallowed), so running it
     in the background avoids adding latency to tool responses.
     """
-    task = asyncio.create_task(_save_browser_state(session_name, user_id, session))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    spawn_background_task(
+        _save_browser_state(session_name, user_id, session),
+        name=f"agent-browser-save:{session_name}",
+    )
 
 
 async def _has_local_session(session_name: str) -> bool:

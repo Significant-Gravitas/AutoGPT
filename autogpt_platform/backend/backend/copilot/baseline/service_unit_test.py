@@ -106,6 +106,8 @@ async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
         "user-1",
         "first prompt",
         expert_id="expert-1",
+        organization_id=None,
+        team_id=None,
     )
 
 
@@ -1430,6 +1432,8 @@ class TestBuilderContextSplit:
 
         session = MagicMock(spec=ChatSession)
         session.session_id = "s"
+        session.organization_id = None
+        session.team_id = None
         session.metadata = MagicMock()
         session.metadata.builder_graph_id = "graph-1"
 

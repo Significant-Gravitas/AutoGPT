@@ -16,6 +16,7 @@ from backend.copilot.graphiti.rollout import (
     shared_memory_enabled,
 )
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import (
@@ -120,6 +121,10 @@ class MemoryForgetSearchTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
 
     async def _execute(
         self,
@@ -264,6 +269,10 @@ class MemoryForgetConfirmTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "delete"
 
     async def _execute(
         self,

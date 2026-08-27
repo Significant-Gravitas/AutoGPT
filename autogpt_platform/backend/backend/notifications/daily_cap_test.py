@@ -10,22 +10,35 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from redis.cluster import key_slot
 
-from backend.notifications.dedupe import claim_daily_send
+from backend.notifications.dedupe import claim_daily_send, release_daily_send
 
 DAY = date(2026, 8, 3)
 
 
-def _redis(counts=None):
-    """A Redis stand-in whose INCR actually counts."""
-    state = {"n": 0}
-    counts = counts if counts is not None else state
+def _redis():
+    counts: dict[str, int] = {}
+    reservations: dict[str, int] = {}
 
-    async def incr(_key):
-        counts["n"] += 1
-        return counts["n"]
+    async def eval_script(script, _key_count, counter_key, reservation_key, *args):
+        if "local existing" in script:
+            if reservation_key in reservations:
+                return reservations[reservation_key]
+            limit = int(args[0])
+            counts[counter_key] = counts.get(counter_key, 0) + 1
+            allowed = int(counts[counter_key] <= limit)
+            reservations[reservation_key] = allowed
+            return allowed
+        if reservations.pop(reservation_key, 0) == 1:
+            counts[counter_key] = max(counts.get(counter_key, 0) - 1, 0)
+        return 1
 
-    return SimpleNamespace(incr=incr, expire=AsyncMock())
+    return SimpleNamespace(
+        eval=AsyncMock(side_effect=eval_script),
+        counts=counts,
+        reservations=reservations,
+    )
 
 
 @pytest.mark.asyncio
@@ -34,7 +47,10 @@ async def test_sends_are_allowed_up_to_the_limit_then_refused():
     with patch(
         "backend.notifications.dedupe.get_redis_async", AsyncMock(return_value=client)
     ):
-        allowed = [await claim_daily_send("u1", 3, DAY) for _ in range(5)]
+        allowed = [
+            await claim_daily_send("u1", 3, DAY, f"delivery-{index}")
+            for index in range(5)
+        ]
 
     assert allowed == [True, True, True, False, False]
 
@@ -51,20 +67,14 @@ async def test_a_limit_of_zero_sends_nothing():
 
 @pytest.mark.asyncio
 async def test_each_day_gets_its_own_allowance():
-    keys = []
-
-    async def incr(key):
-        keys.append(key)
-        return 1
-
-    client = SimpleNamespace(incr=incr, expire=AsyncMock())
+    client = _redis()
     with patch(
         "backend.notifications.dedupe.get_redis_async", AsyncMock(return_value=client)
     ):
-        await claim_daily_send("u1", 3, DAY)
-        await claim_daily_send("u1", 3, date(2026, 8, 4))
+        await claim_daily_send("u1", 3, DAY, "delivery-1")
+        await claim_daily_send("u1", 3, date(2026, 8, 4), "delivery-2")
 
-    assert len(set(keys)) == 2
+    assert len(client.counts) == 2
 
 
 @pytest.mark.asyncio
@@ -75,7 +85,41 @@ async def test_the_counter_expires_so_it_never_needs_resetting():
     ):
         await claim_daily_send("u1", 3, DAY)
 
-    client.expire.assert_awaited_once()
+    assert client.eval.await_args.args[-1] == str(60 * 60 * 48)
+
+
+@pytest.mark.asyncio
+async def test_daily_counter_keys_share_a_redis_cluster_slot():
+    client = _redis()
+    with patch(
+        "backend.notifications.dedupe.get_redis_async", AsyncMock(return_value=client)
+    ):
+        await claim_daily_send("u1", 3, DAY, "delivery-1")
+
+    counter_key, reservation_key = client.eval.await_args.args[2:4]
+    assert key_slot(counter_key.encode()) == key_slot(reservation_key.encode())
+
+
+@pytest.mark.asyncio
+async def test_retry_reuses_the_same_daily_slot():
+    client = _redis()
+    with patch(
+        "backend.notifications.dedupe.get_redis_async", AsyncMock(return_value=client)
+    ):
+        assert await claim_daily_send("u1", 1, DAY, "same-delivery") is True
+        assert await claim_daily_send("u1", 1, DAY, "same-delivery") is True
+        assert await claim_daily_send("u1", 1, DAY, "other-delivery") is False
+
+
+@pytest.mark.asyncio
+async def test_failed_delivery_releases_its_daily_slot():
+    client = _redis()
+    with patch(
+        "backend.notifications.dedupe.get_redis_async", AsyncMock(return_value=client)
+    ):
+        assert await claim_daily_send("u1", 1, DAY, "failed") is True
+        await release_daily_send("u1", DAY, "failed")
+        assert await claim_daily_send("u1", 1, DAY, "retry") is True
 
 
 @pytest.mark.asyncio

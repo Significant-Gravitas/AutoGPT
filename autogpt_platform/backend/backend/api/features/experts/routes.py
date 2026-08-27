@@ -147,6 +147,7 @@ async def hire_expert(
     responses={
         404: {"description": "Attachment not found or unavailable"},
         409: {"description": "Active expert limit reached"},
+        503: {"description": "Expert workspace unavailable"},
     },
 )
 async def create_raised_expert(
@@ -185,6 +186,11 @@ async def create_raised_expert(
             status_code=409,
             detail={"code": "raised_expert_lifetime_limit", "limit": e.limit},
         )
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Your expert workspace is still being set up. Try again shortly.",
+        ) from e
 
 
 @router.get("", operation_id="list_experts")

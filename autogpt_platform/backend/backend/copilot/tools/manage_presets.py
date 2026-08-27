@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
+from backend.data.tenancy import ResourceAccess
 from backend.util.exceptions import (
     InvalidInputError,
     MissingConfigError,
@@ -32,14 +33,24 @@ _MAX_PAGE_SIZE = 100
 
 
 def _is_in_session_scope(preset: LibraryAgentPreset, session: ChatSession) -> bool:
-    return preset.expert_id == session.expert_id
+    return (
+        preset.expert_id == session.expert_id
+        and preset.organization_id == session.organization_id
+        and preset.team_id == session.team_id
+    )
 
 
 async def _get_scoped_preset(
     user_id: str, preset_id: str, session: ChatSession
 ) -> LibraryAgentPreset | None:
     try:
-        preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
+        preset = await library_db().get_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            enforce_team_scope=True,
+        )
     except NotFoundError:
         return None
     if preset is None or not _is_in_session_scope(preset, session):
@@ -61,6 +72,9 @@ async def _list_scoped_presets(
         graph_id=graph_id,
         expert_id=session.expert_id,
         filter_by_expert=True,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        enforce_team_scope=True,
     )
     scoped = [
         preset for preset in response.presets if _is_in_session_scope(preset, session)
@@ -122,6 +136,10 @@ class ListPresetsTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_presets"
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
 
     @property
     def description(self) -> str:
@@ -201,8 +219,16 @@ class ListPresetsTool(BaseTool):
         if library_agent_id:
             try:
                 lib_agent = await ldb.get_library_agent(
-                    id=library_agent_id, user_id=user_id
+                    id=library_agent_id,
+                    user_id=user_id,
+                    organization_id=session.organization_id,
+                    team_id_restriction=session.team_id,
                 )
+                if (lib_agent.organization_id, lib_agent.team_id) != (
+                    session.organization_id,
+                    session.team_id,
+                ):
+                    raise NotFoundError("not found")
             except NotFoundError as e:
                 return ErrorResponse(
                     message=f"Library agent not found: {e}",
@@ -238,8 +264,7 @@ class ListPresetsTool(BaseTool):
             )
         elif start > 0 or start + len(presets) < total_count:
             message = (
-                f"Showing presets {start + 1}-{start + len(presets)} "
-                f"of {total_count}."
+                f"Showing presets {start + 1}-{start + len(presets)} of {total_count}."
             )
         else:
             message = f"Found {total_count} preset(s)."
@@ -259,6 +284,10 @@ class UpdatePresetTool(BaseTool):
     @property
     def name(self) -> str:
         return "update_preset"
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def description(self) -> str:
@@ -354,6 +383,9 @@ class UpdatePresetTool(BaseTool):
                 name=kwargs.get("name"),
                 description=kwargs.get("description"),
                 is_active=kwargs.get("is_active"),
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                enforce_team_scope=True,
             )
         except NotFoundError:
             return ErrorResponse(
@@ -395,6 +427,10 @@ class DeletePresetTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "delete"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -441,7 +477,11 @@ class DeletePresetTool(BaseTool):
             )
 
         await triggers_db().delete_preset_with_webhook_cleanup(
-            user_id=user_id, preset_id=preset_id
+            user_id=user_id,
+            preset_id=preset_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            enforce_team_scope=True,
         )
 
         return PresetDeletedResponse(

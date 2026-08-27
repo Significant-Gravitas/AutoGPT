@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from prisma import Prisma
 from prisma.enums import APIKeyPermission as APIPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
@@ -24,6 +25,8 @@ from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
+
+from backend.data.db import transaction
 
 from .base import APIAuthorizationInfo
 
@@ -103,6 +106,8 @@ class OAuthApplicationInfo(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    organization_id: Optional[str] = None
+    team_id_restriction: Optional[str] = None
 
     @staticmethod
     def from_db(app: PrismaOAuthApplication):
@@ -119,6 +124,8 @@ class OAuthApplicationInfo(BaseModel):
             is_active=app.isActive,
             created_at=app.createdAt,
             updated_at=app.updatedAt,
+            organization_id=app.organizationId,
+            team_id_restriction=app.teamIdRestriction,
         )
 
 
@@ -394,51 +401,49 @@ async def consume_authorization_code(
     Raises:
         InvalidGrantError: If code is invalid, expired, used, or PKCE fails
     """
-    auth_code = await PrismaOAuthAuthorizationCode.prisma().find_unique(
-        where={"code": code}
-    )
+    async with transaction() as tx:
+        delegate = PrismaOAuthAuthorizationCode.prisma(tx)
+        auth_code = await delegate.find_unique(where={"code": code})
+        if not auth_code:
+            raise InvalidGrantError("authorization code not found")
 
-    if not auth_code:
-        raise InvalidGrantError("authorization code not found")
+        if auth_code.applicationId != application_id:
+            raise InvalidGrantError(
+                "authorization code does not belong to this application"
+            )
+        if auth_code.usedAt is not None:
+            raise InvalidGrantError(
+                f"authorization code already used at {auth_code.usedAt}"
+            )
 
-    # Validate application
-    if auth_code.applicationId != application_id:
-        raise InvalidGrantError(
-            "authorization code does not belong to this application"
+        now = datetime.now(timezone.utc)
+        if auth_code.expiresAt < now:
+            raise InvalidGrantError("authorization code expired")
+        if auth_code.redirectUri != redirect_uri:
+            raise InvalidGrantError("redirect_uri mismatch")
+        if auth_code.codeChallenge:
+            if not code_verifier:
+                raise InvalidGrantError("code_verifier required but not provided")
+            if not _verify_pkce(
+                code_verifier,
+                auth_code.codeChallenge,
+                auth_code.codeChallengeMethod,
+            ):
+                raise InvalidGrantError("PKCE verification failed")
+
+        consumed = await delegate.update_many(
+            where={
+                "code": code,
+                "applicationId": application_id,
+                "redirectUri": redirect_uri,
+                "usedAt": None,
+                "expiresAt": {"gte": now},
+            },
+            data={"usedAt": now},
         )
-
-    # Check if already used
-    if auth_code.usedAt is not None:
-        raise InvalidGrantError(
-            f"authorization code already used at {auth_code.usedAt}"
-        )
-
-    # Check expiration
-    now = datetime.now(timezone.utc)
-    if auth_code.expiresAt < now:
-        raise InvalidGrantError("authorization code expired")
-
-    # Validate redirect URI
-    if auth_code.redirectUri != redirect_uri:
-        raise InvalidGrantError("redirect_uri mismatch")
-
-    # Validate PKCE if code challenge was provided
-    if auth_code.codeChallenge:
-        if not code_verifier:
-            raise InvalidGrantError("code_verifier required but not provided")
-
-        if not _verify_pkce(
-            code_verifier, auth_code.codeChallenge, auth_code.codeChallengeMethod
-        ):
-            raise InvalidGrantError("PKCE verification failed")
-
-    # Mark code as used
-    await PrismaOAuthAuthorizationCode.prisma().update(
-        where={"code": code},
-        data={"usedAt": now},
-    )
-
-    return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
+        if consumed != 1:
+            raise InvalidGrantError("authorization code was already consumed")
+        return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 
 
 def _verify_pkce(
@@ -478,7 +483,11 @@ def _verify_pkce(
 
 
 async def create_access_token(
-    application_id: str, user_id: str, scopes: list[APIPermission]
+    application_id: str,
+    user_id: str,
+    scopes: list[APIPermission],
+    *,
+    tx: Prisma | None = None,
 ) -> OAuthAccessToken:
     """
     Create a new access token.
@@ -489,7 +498,12 @@ async def create_access_token(
     now = datetime.now(timezone.utc)
     expires_at = now + ACCESS_TOKEN_TTL
 
-    saved_token = await PrismaOAuthAccessToken.prisma().create(
+    delegate = (
+        PrismaOAuthAccessToken.prisma(tx)
+        if tx is not None
+        else PrismaOAuthAccessToken.prisma()
+    )
+    saved_token = await delegate.create(
         data={
             "id": str(uuid.uuid4()),
             "token": token_hash,  # SHA256 hash for direct lookup
@@ -595,7 +609,11 @@ async def revoke_access_token(
 
 
 async def create_refresh_token(
-    application_id: str, user_id: str, scopes: list[APIPermission]
+    application_id: str,
+    user_id: str,
+    scopes: list[APIPermission],
+    *,
+    tx: Prisma | None = None,
 ) -> OAuthRefreshToken:
     """
     Create a new refresh token.
@@ -606,7 +624,12 @@ async def create_refresh_token(
     now = datetime.now(timezone.utc)
     expires_at = now + REFRESH_TOKEN_TTL
 
-    saved_token = await PrismaOAuthRefreshToken.prisma().create(
+    delegate = (
+        PrismaOAuthRefreshToken.prisma(tx)
+        if tx is not None
+        else PrismaOAuthRefreshToken.prisma()
+    )
+    saved_token = await delegate.create(
         data={
             "id": str(uuid.uuid4()),
             "token": token_hash,  # SHA256 hash for direct lookup
@@ -632,46 +655,41 @@ async def refresh_tokens(
     """
     token_hash = _hash_token(refresh_token)
 
-    # Direct lookup by hash
-    rt = await PrismaOAuthRefreshToken.prisma().find_unique(where={"token": token_hash})
+    async with transaction() as tx:
+        delegate = PrismaOAuthRefreshToken.prisma(tx)
+        rt = await delegate.find_unique(where={"token": token_hash})
+        if not rt:
+            raise InvalidGrantError("refresh token not found")
 
-    if not rt:
-        raise InvalidGrantError("refresh token not found")
+        if rt.revokedAt is not None:
+            raise InvalidGrantError("refresh token has been revoked")
+        if rt.applicationId != application_id:
+            raise InvalidGrantError("refresh token does not belong to this application")
 
-    # NOTE: no need to check Application.isActive, this is checked by the token endpoint
+        now = datetime.now(timezone.utc)
+        if rt.expiresAt < now:
+            raise InvalidGrantError("refresh token expired")
 
-    if rt.revokedAt is not None:
-        raise InvalidGrantError("refresh token has been revoked")
+        consumed = await delegate.update_many(
+            where={
+                "token": token_hash,
+                "applicationId": application_id,
+                "revokedAt": None,
+                "expiresAt": {"gte": now},
+            },
+            data={"revokedAt": now},
+        )
+        if consumed != 1:
+            raise InvalidGrantError("refresh token was already consumed")
 
-    # Validate application
-    if rt.applicationId != application_id:
-        raise InvalidGrantError("refresh token does not belong to this application")
-
-    # Check expiration
-    now = datetime.now(timezone.utc)
-    if rt.expiresAt < now:
-        raise InvalidGrantError("refresh token expired")
-
-    # Revoke old refresh token
-    await PrismaOAuthRefreshToken.prisma().update(
-        where={"token": token_hash},
-        data={"revokedAt": now},
-    )
-
-    # Create new access and refresh tokens with same scopes
-    scopes = [APIPermission(s) for s in rt.scopes]
-    new_access_token = await create_access_token(
-        rt.applicationId,
-        rt.userId,
-        scopes,
-    )
-    new_refresh_token = await create_refresh_token(
-        rt.applicationId,
-        rt.userId,
-        scopes,
-    )
-
-    return new_access_token, new_refresh_token
+        scopes = [APIPermission(s) for s in rt.scopes]
+        new_access_token = await create_access_token(
+            rt.applicationId, rt.userId, scopes, tx=tx
+        )
+        new_refresh_token = await create_refresh_token(
+            rt.applicationId, rt.userId, scopes, tx=tx
+        )
+        return new_access_token, new_refresh_token
 
 
 async def revoke_refresh_token(

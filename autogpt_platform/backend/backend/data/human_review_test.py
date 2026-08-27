@@ -1,4 +1,5 @@
 import datetime
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -12,6 +13,26 @@ from backend.data.human_review import (
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
+
+
+@pytest.fixture(autouse=True)
+def _mock_review_side_effects(mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.data.human_review._sync_awaiting_review_safely",
+        new=AsyncMock(),
+    )
+
+
+def _mock_transaction(mocker: pytest_mock.MockFixture) -> Mock:
+    tx = Mock()
+    tx.query_raw = AsyncMock()
+
+    @asynccontextmanager
+    async def transaction():
+        yield tx
+
+    mocker.patch("backend.data.human_review.transaction", transaction)
+    return tx
 
 
 @pytest.fixture
@@ -30,6 +51,8 @@ def sample_db_review():
     mock_review.reviewMessage = None
     mock_review.wasEdited = False
     mock_review.processed = False
+    mock_review.organizationId = None
+    mock_review.teamId = None
     mock_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     mock_review.updatedAt = None
     mock_review.reviewedAt = None
@@ -202,7 +225,9 @@ async def test_process_all_reviews_for_execution_success(
     """Test successful processing of reviews for an execution"""
     # Mock finding reviews
     mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_prisma.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    mock_prisma.return_value.find_many = AsyncMock(
+        side_effect=[[sample_db_review], [sample_db_review]]
+    )
 
     # Mock updating reviews
     updated_review = Mock()
@@ -218,16 +243,14 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.reviewMessage = "Approved"
     updated_review.wasEdited = True
     updated_review.processed = False
+    updated_review.organizationId = None
+    updated_review.teamId = None
     updated_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     updated_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
     updated_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
     mock_prisma.return_value.update = AsyncMock(return_value=updated_review)
-
-    # Mock gather to simulate parallel updates
-    mocker.patch(
-        "backend.data.human_review.asyncio.gather",
-        new=AsyncMock(return_value=[updated_review]),
-    )
+    mock_prisma.return_value.count = AsyncMock(return_value=0)
+    tx = _mock_transaction(mocker)
 
     # Mock get_node_execution to return node with node_id (async function)
     mock_node_exec = Mock()
@@ -248,6 +271,12 @@ async def test_process_all_reviews_for_execution_success(
     assert "test_node_123" in result
     assert result["test_node_123"].status == ReviewStatus.APPROVED
     assert result["test_node_123"].node_id == "test_node_def_789"
+    assert result.should_resume is True
+    tx.query_raw.assert_awaited_once_with(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        "human-review:test_graph_exec_456",
+    )
+    assert mock_prisma.call_args_list[-1].args == (tx,)
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -281,7 +310,10 @@ async def test_process_all_reviews_edit_permission_error(
 
     # Mock finding reviews
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    mock_find_many.return_value.find_many = AsyncMock(
+        side_effect=[[sample_db_review], [sample_db_review]]
+    )
+    _mock_transaction(mocker)
 
     with pytest.raises(ValueError, match="not editable"):
         await process_all_reviews_for_execution(
@@ -316,6 +348,8 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.reviewMessage = None
     second_review.wasEdited = False
     second_review.processed = False
+    second_review.organizationId = None
+    second_review.teamId = None
     second_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     second_review.updatedAt = None
     second_review.reviewedAt = None
@@ -323,7 +357,10 @@ async def test_process_all_reviews_mixed_approval_rejection(
     # Mock finding reviews
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
     mock_find_many.return_value.find_many = AsyncMock(
-        return_value=[sample_db_review, second_review]
+        side_effect=[
+            [sample_db_review, second_review],
+            [sample_db_review, second_review],
+        ]
     )
 
     # Mock updating reviews
@@ -340,6 +377,8 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.reviewMessage = "Approved"
     approved_review.wasEdited = True
     approved_review.processed = False
+    approved_review.organizationId = None
+    approved_review.teamId = None
     approved_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     approved_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
     approved_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
@@ -357,14 +396,17 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.reviewMessage = "Rejected"
     rejected_review.wasEdited = False
     rejected_review.processed = False
+    rejected_review.organizationId = None
+    rejected_review.teamId = None
     rejected_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     rejected_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
     rejected_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
 
-    mocker.patch(
-        "backend.data.human_review.asyncio.gather",
-        new=AsyncMock(return_value=[approved_review, rejected_review]),
+    mock_find_many.return_value.update = AsyncMock(
+        side_effect=[approved_review, rejected_review]
     )
+    mock_find_many.return_value.count = AsyncMock(return_value=0)
+    _mock_transaction(mocker)
 
     # Mock get_node_execution to return node with node_id (async function)
     mock_node_exec = Mock()
@@ -387,3 +429,4 @@ async def test_process_all_reviews_mixed_approval_rejection(
     assert "test_node_456" in result
     assert result["test_node_123"].node_id == "test_node_def_789"
     assert result["test_node_456"].node_id == "test_node_def_789"
+    assert result.should_resume is True

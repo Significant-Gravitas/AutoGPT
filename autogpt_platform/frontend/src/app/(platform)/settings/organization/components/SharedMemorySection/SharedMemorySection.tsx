@@ -5,6 +5,7 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { HeldMemoryReviewQueue } from "./components/HeldMemoryReviewQueue/HeldMemoryReviewQueue";
+import { ActiveMemoryList } from "./components/ActiveMemoryList/ActiveMemoryList";
 import { useSharedMemorySection } from "./useSharedMemorySection";
 
 interface Props {
@@ -57,6 +58,7 @@ export function SharedMemorySection({ org, isAdmin, onSaved }: Props) {
       </div>
 
       <HeldMemoryReviewQueue orgId={org.id} />
+      <ActiveMemoryList orgId={org.id} />
     </section>
   );
 }

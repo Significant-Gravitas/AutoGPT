@@ -17,6 +17,7 @@ from backend.data.execution import (
     GraphExecutionMeta,
     GraphExecutionWithNodes,
 )
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .execution_utils import (
@@ -175,12 +176,18 @@ class AgentOutputTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
+
     async def _resolve_agent(
         self,
         user_id: str,
         agent_name: str | None,
         library_agent_id: str | None,
         store_slug: str | None,
+        organization_id: str | None,
+        team_id: str | None,
     ) -> tuple[LibraryAgent | None, str | None]:
         """
         Resolve agent from provided identifiers.
@@ -191,8 +198,18 @@ class AgentOutputTool(BaseTool):
         # Priority 1: Exact library agent ID
         if library_agent_id:
             try:
-                agent = await lib_db.get_library_agent(library_agent_id, user_id)
-                return agent, None
+                agent = await lib_db.get_library_agent(
+                    library_agent_id,
+                    user_id,
+                    organization_id=organization_id,
+                    team_id_restriction=team_id,
+                )
+                if (agent.organization_id, agent.team_id) == (
+                    organization_id,
+                    team_id,
+                ):
+                    return agent, None
+                return None, f"Library agent '{library_agent_id}' not found"
             except Exception as e:
                 logger.warning(f"Failed to get library agent by ID: {e}")
                 return None, f"Library agent '{library_agent_id}' not found"
@@ -205,8 +222,16 @@ class AgentOutputTool(BaseTool):
                 return None, f"Agent '{store_slug}' not found in marketplace"
 
             # Find in user's library by graph_id
-            agent = await lib_db.get_library_agent_by_graph_id(user_id, graph.id)
-            if not agent:
+            agent = await lib_db.get_library_agent_by_graph_id(
+                user_id,
+                graph.id,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
+            )
+            if not agent or (agent.organization_id, agent.team_id) != (
+                organization_id,
+                team_id,
+            ):
                 return (
                     None,
                     f"Agent '{store_slug}' is not in your library. "
@@ -221,15 +246,23 @@ class AgentOutputTool(BaseTool):
                     user_id=user_id,
                     search_term=agent_name,
                     page_size=5,
+                    organization_id=organization_id,
+                    team_id_restriction=team_id,
                 )
-                if not response.agents:
+                agents = [
+                    agent
+                    for agent in response.agents
+                    if (agent.organization_id, agent.team_id)
+                    == (organization_id, team_id)
+                ]
+                if not agents:
                     return (
                         None,
                         f"No agents matching '{agent_name}' found in your library",
                     )
 
                 # Return best match (first result from search)
-                return response.agents[0], None
+                return agents[0], None
             except Exception as e:
                 logger.error(f"Error searching library agents: {e}")
                 return None, f"Error searching for agent: {e}"
@@ -248,6 +281,8 @@ class AgentOutputTool(BaseTool):
         time_end: datetime | None,
         include_running: bool = False,
         include_node_executions: bool = False,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> tuple[
         GraphExecution | GraphExecutionWithNodes | None,
         list[GraphExecutionMeta],
@@ -269,8 +304,13 @@ class AgentOutputTool(BaseTool):
                 user_id=user_id,
                 execution_id=execution_id,
                 include_node_executions=include_node_executions,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
             )
-            if not execution:
+            if not execution or (
+                execution.organization_id,
+                execution.team_id,
+            ) != (organization_id, team_id):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
 
@@ -296,7 +336,15 @@ class AgentOutputTool(BaseTool):
             created_time_gte=time_start,
             created_time_lte=time_end,
             limit=10,
+            organization_id=organization_id,
+            team_id=team_id,
         )
+        executions = [
+            execution
+            for execution in executions
+            if (execution.organization_id, execution.team_id)
+            == (organization_id, team_id)
+        ]
 
         if not executions:
             return None, [], None  # No error, just no executions
@@ -307,6 +355,8 @@ class AgentOutputTool(BaseTool):
                 user_id=user_id,
                 execution_id=executions[0].id,
                 include_node_executions=include_node_executions,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
             )
             return full_execution, [], None
 
@@ -315,6 +365,8 @@ class AgentOutputTool(BaseTool):
             user_id=user_id,
             execution_id=executions[0].id,
             include_node_executions=include_node_executions,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
         )
         return full_execution, executions, None
 
@@ -488,8 +540,13 @@ class AgentOutputTool(BaseTool):
                 user_id=user_id,
                 execution_id=input_data.execution_id,
                 include_node_executions=input_data.show_execution_details,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
-            if not execution:
+            if not execution or (
+                execution.organization_id,
+                execution.team_id,
+            ) != (session.organization_id, session.team_id):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
                     session_id=session_id,
@@ -497,9 +554,16 @@ class AgentOutputTool(BaseTool):
 
             # Find library agent by graph_id
             agent = await library_db().get_library_agent_by_graph_id(
-                user_id, execution.graph_id
+                user_id,
+                execution.graph_id,
+                execution.graph_version,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
-            if not agent:
+            if not agent or (agent.organization_id, agent.team_id) != (
+                session.organization_id,
+                session.team_id,
+            ):
                 return NoResultsResponse(
                     message=(
                         f"Execution found but agent not in your library. "
@@ -517,6 +581,8 @@ class AgentOutputTool(BaseTool):
             agent_name=input_data.agent_name or None,
             library_agent_id=input_data.library_agent_id or None,
             store_slug=input_data.store_slug or None,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
         if error or not agent:
@@ -544,6 +610,8 @@ class AgentOutputTool(BaseTool):
             time_end=time_end,
             include_running=wait_timeout > 0,
             include_node_executions=input_data.show_execution_details,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
         if exec_error:
@@ -563,6 +631,8 @@ class AgentOutputTool(BaseTool):
                 graph_id=agent.graph_id,
                 execution_id=execution.id,
                 timeout_seconds=wait_timeout,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
 
         return self._build_response(agent, execution, available_executions, session_id)

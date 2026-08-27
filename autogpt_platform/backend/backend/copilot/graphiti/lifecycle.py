@@ -11,6 +11,14 @@ WHERE e.group_id = $group_id
 RETURN e.uuid AS uuid
 """
 
+_SCOPE_EDGE_QUERY = """
+UNWIND $edge_ids AS edge_id
+MATCH ()-[e:RELATES_TO {uuid: edge_id}]->()
+WHERE e.group_id = $group_id
+  AND e.scope = $scope
+RETURN e.uuid AS uuid
+"""
+
 
 def active_shared_search_filter():
     from graphiti_core.search.search_filters import (
@@ -61,12 +69,44 @@ async def filter_active_shared_edges(
     if driver is None:
         driver = _open_driver(group_id)
     try:
-        rows, _, _ = await driver.execute_query(
+        result = await driver.execute_query(
             _ACTIVE_EDGE_QUERY, group_id=group_id, edge_ids=edge_ids
         )
-        active_edge_ids = {str(row["uuid"]) for row in rows}
+        if result is not None:
+            active_edge_ids = {str(row["uuid"]) for row in result[0]}
     finally:
         if owns_driver:
             await driver.close()
 
     return [edge for edge in edges if _uuid(edge) in active_edge_ids]
+
+
+async def filter_edges_by_scope(
+    group_id: str,
+    edges: list,
+    scope: str,
+    *,
+    driver=None,
+) -> list:
+    edge_ids = [uuid for edge in edges if (uuid := _uuid(edge))]
+    if not edge_ids:
+        return []
+    matching_ids: set[str] = set()
+
+    owns_driver = driver is None
+    if driver is None:
+        driver = _open_driver(group_id)
+    try:
+        result = await driver.execute_query(
+            _SCOPE_EDGE_QUERY,
+            group_id=group_id,
+            edge_ids=edge_ids,
+            scope=scope,
+        )
+        if result is not None:
+            matching_ids = {str(row["uuid"]) for row in result[0]}
+    finally:
+        if owns_driver:
+            await driver.close()
+
+    return [edge for edge in edges if _uuid(edge) in matching_ids]

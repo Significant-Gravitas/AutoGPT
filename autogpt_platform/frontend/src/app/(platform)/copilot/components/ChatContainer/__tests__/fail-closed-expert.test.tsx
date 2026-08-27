@@ -49,6 +49,10 @@ vi.mock(
 );
 
 const baseProps = {
+  createTeamId: null,
+  onCreateTeamChange: vi.fn(),
+  isTeamContextReady: true,
+  canSelectCreateTeam: false,
   messages: [],
   status: "ready",
   error: undefined,

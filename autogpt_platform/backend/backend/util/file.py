@@ -160,7 +160,17 @@ async def store_media_file(
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
         workspace_manager = WorkspaceManager(
-            user_id, execution_context.workspace_id, execution_context.session_id
+            user_id,
+            execution_context.workspace_id,
+            execution_context.session_id,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
+            execution_id=(
+                None
+                if execution_context.session_id
+                else execution_context.graph_exec_id
+            ),
+            access="execute",
         )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))

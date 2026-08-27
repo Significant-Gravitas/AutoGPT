@@ -2,8 +2,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.errors
 import pytest
+import pytest_asyncio
 
 from ._add_to_library import _marketplace_metadata, add_graph_to_library
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def server():
+    yield None
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def graph_cleanup():
+    yield
 
 
 def _make_slv(
@@ -74,6 +85,44 @@ async def test_add_graph_to_library_create_new_agent() -> None:
     # Born tenanted: stamped with the user's default org/team
     assert create_data["organizationId"] == "org-lib"
     assert create_data["Team"] == {"connect": {"id": "team-lib"}}
+
+
+@pytest.mark.asyncio
+async def test_add_graph_to_library_uses_explicit_tenancy() -> None:
+    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
+    created_agent = MagicMock(name="CreatedLibraryAgent")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models.LibraryAgent.prisma"
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.library_model.LibraryAgent.from_db",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_schedule_info",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "backend.api.features.library._add_to_library.resolve_default_tenancy",
+            new=AsyncMock(),
+        ) as mock_default_tenancy,
+    ):
+        mock_prisma.return_value.create = AsyncMock(return_value=created_agent)
+
+        await add_graph_to_library(
+            graph_model,
+            "user-id",
+            _make_slv(),
+            organization_id="org-selected",
+            team_id="team-selected",
+        )
+
+    mock_default_tenancy.assert_not_awaited()
+    create_data = mock_prisma.return_value.create.call_args.kwargs["data"]
+    assert create_data["organizationId"] == "org-selected"
+    assert create_data["Team"] == {"connect": {"id": "team-selected"}}
 
 
 @pytest.mark.asyncio
@@ -190,10 +239,11 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     # Verify update was called with correct where and data
     update_call = mock_prisma.return_value.update.call_args
     assert update_call.kwargs["where"] == {
-        "userId_agentGraphId_agentGraphVersion": {
+        "userId_agentGraphId_agentGraphVersion_scopeKey": {
             "userId": "user-id",
             "agentGraphId": "graph-id",
             "agentGraphVersion": 2,
+            "scopeKey": "org-lib:team-lib",
         }
     }
     update_data = update_call.kwargs["data"]
@@ -209,6 +259,44 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     # existing team when no default team resolves.
     assert "organizationId" not in update_data
     assert "Team" not in update_data
+
+
+@pytest.mark.asyncio
+async def test_explicit_readd_moves_existing_agent_to_org_home() -> None:
+    graph_model = MagicMock(id="graph-id", version=2, nodes=[])
+    updated_agent = MagicMock(name="UpdatedLibraryAgent")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models.LibraryAgent.prisma"
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.library_model.LibraryAgent.from_db",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.api.features.library._add_to_library._fetch_schedule_info",
+            new=AsyncMock(return_value={}),
+        ),
+    ):
+        mock_prisma.return_value.create = AsyncMock(
+            side_effect=prisma.errors.UniqueViolationError(
+                MagicMock(), message="unique constraint"
+            )
+        )
+        mock_prisma.return_value.update = AsyncMock(return_value=updated_agent)
+
+        await add_graph_to_library(
+            graph_model,
+            "user-id",
+            _make_slv(),
+            organization_id="org-selected",
+            team_id=None,
+        )
+
+    update_data = mock_prisma.return_value.update.call_args.kwargs["data"]
+    assert update_data["organizationId"] == "org-selected"
+    assert update_data["teamId"] is None
 
 
 def test_marketplace_metadata_returns_first_image() -> None:

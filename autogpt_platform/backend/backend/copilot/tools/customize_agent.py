@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .agent_json_input import (
@@ -34,6 +35,10 @@ class CustomizeAgentTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -106,7 +111,12 @@ class CustomizeAgentTool(BaseTool):
         agent_json.setdefault("is_active", True)
 
         # Fetch library agents for AgentExecutorBlock validation
-        library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        library_agents = await fetch_library_agents(
+            user_id,
+            library_agent_ids,
+            session.organization_id,
+            session.team_id,
+        )
 
         return await fix_validate_and_save(
             agent_json,
@@ -115,6 +125,8 @@ class CustomizeAgentTool(BaseTool):
             save=save,
             is_update=False,
             default_name="Customized Agent",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
             library_agents=library_agents,
             folder_id=folder_id,
         )

@@ -24,6 +24,7 @@ from backend.copilot.config import CopilotMode
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
+    _guard_stream_with_live_resource_lease,
     _normalize_private_expert_session_tenancy,
     resolve_effective_mode,
     resolve_use_sdk_for_mode,
@@ -292,6 +293,13 @@ def _make_log() -> CoPilotLogMetadata:
     return CoPilotLogMetadata(logger=logging.getLogger("test-copilot"))
 
 
+def _make_credit_store() -> MagicMock:
+    store = MagicMock()
+    store.acquire_live_resource_lease = AsyncMock(return_value="lease-1")
+    store.release_live_resource_lease = AsyncMock(return_value=True)
+    return store
+
+
 class TestExecuteAsyncAclose:
     """``_execute_async`` must call ``aclose`` on the published stream both
     when the loop exits naturally and when ``cancel`` is set mid-stream —
@@ -383,10 +391,11 @@ class TestExecuteAsyncAclose:
             return value
 
         upsert = AsyncMock(side_effect=persist)
+        credit_store = _make_credit_store()
         entry = _make_entry().model_copy(
             update={
-                "organization_id": "forged-org",
-                "team_id": "forged-team",
+                "organization_id": "current-personal-org",
+                "team_id": "current-personal-team",
             }
         )
         with (
@@ -403,6 +412,10 @@ class TestExecuteAsyncAclose:
                 return_value=published,
             ),
             patch(
+                "backend.copilot.executor.processor.stream_registry.publish_chunk",
+                new=AsyncMock(),
+            ),
+            patch(
                 "backend.copilot.executor.processor.stream_registry.mark_session_completed",
                 new=AsyncMock(),
             ),
@@ -415,6 +428,10 @@ class TestExecuteAsyncAclose:
                 return_value=expert_store,
             ),
             patch("backend.copilot.model.upsert_chat_session", new=upsert),
+            patch(
+                "backend.copilot.executor.processor.credit_db",
+                return_value=credit_store,
+            ),
         ):
             await CoPilotProcessor()._execute_async(
                 entry,
@@ -436,6 +453,47 @@ class TestExecuteAsyncAclose:
         assert session.credentials == {}
         assert stream_fn.call_args.kwargs["organization_id"] == "current-personal-org"
         assert stream_fn.call_args.kwargs["team_id"] == "current-personal-team"
+
+
+@pytest.mark.asyncio
+async def test_guarded_driver_stream_rechecks_before_advancing_provider() -> None:
+    lease_attempts = 0
+    provider_advanced_after_first_yield = False
+    provider_closed = False
+
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        nonlocal lease_attempts
+        lease_attempts += 1
+        yield lease_attempts == 1
+
+    async def provider_stream():
+        nonlocal provider_advanced_after_first_yield, provider_closed
+        try:
+            yield MagicMock()
+            provider_advanced_after_first_yield = True
+            yield MagicMock()
+        finally:
+            provider_closed = True
+
+    guarded = _guard_stream_with_live_resource_lease(
+        provider_stream(),
+        "user-1",
+        "org-1",
+        "team-1",
+    )
+
+    with patch(
+        "backend.copilot.executor.processor.live_resource_lease",
+        lease,
+    ):
+        await anext(guarded)
+        with pytest.raises(RuntimeError, match="workspace_access_revoked"):
+            await anext(guarded)
+
+    assert lease_attempts == 2
+    assert provider_advanced_after_first_yield is False
+    assert provider_closed is True
 
 
 @pytest.mark.asyncio
@@ -499,6 +557,7 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
     )
     session_db = MagicMock()
     session_db.get_next_sequence = AsyncMock(return_value=1)
+    credit_store = _make_credit_store()
     published = _TrackedStream(events=[])
 
     with (
@@ -513,6 +572,10 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
         patch(
             "backend.copilot.executor.processor.stream_registry.stream_and_publish",
             return_value=published,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
         ),
         patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
@@ -532,10 +595,22 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
             "backend.copilot.model.invalidate_session_cache",
             new=invalidate_cache,
         ),
+        patch(
+            "backend.copilot.executor.processor.credit_db",
+            return_value=credit_store,
+        ),
     ):
         with pytest.raises(DatabaseError, match="Failed to persist chat session"):
             await CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
+                _make_entry().model_copy(
+                    update={
+                        "organization_id": "current-personal-org",
+                        "team_id": "current-personal-team",
+                    }
+                ),
+                threading.Event(),
+                MagicMock(),
+                _make_log(),
             )
 
         stream_fn.assert_not_called()
@@ -543,7 +618,15 @@ async def test_failed_expert_rehome_reloads_db_before_retrying_engine() -> None:
         assert lifecycle == ["evict"]
 
         await CoPilotProcessor()._execute_async(
-            _make_entry(), threading.Event(), MagicMock(), _make_log()
+            _make_entry().model_copy(
+                update={
+                    "organization_id": "current-personal-org",
+                    "team_id": "current-personal-team",
+                }
+            ),
+            threading.Event(),
+            MagicMock(),
+            _make_log(),
         )
 
     assert reads == ["cache", "db"]
@@ -604,9 +687,10 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     expert_store = MagicMock()
     expert_store.resolve_private_expert_tenancy = AsyncMock()
     upsert = AsyncMock()
+    credit_store = _make_credit_store()
     stream_fn = MagicMock(return_value=MagicMock())
     entry = _make_entry().model_copy(
-        update={"organization_id": "entry-org", "team_id": "entry-team"}
+        update={"organization_id": "session-org", "team_id": "session-team"}
     )
 
     with (
@@ -623,6 +707,10 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
             return_value=published,
         ),
         patch(
+            "backend.copilot.executor.processor.stream_registry.publish_chunk",
+            new=AsyncMock(),
+        ),
+        patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
             new=AsyncMock(),
         ),
@@ -635,6 +723,10 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
             return_value=expert_store,
         ),
         patch("backend.copilot.model.upsert_chat_session", new=upsert),
+        patch(
+            "backend.copilot.executor.processor.credit_db",
+            return_value=credit_store,
+        ),
     ):
         await CoPilotProcessor()._execute_async(
             entry,
@@ -651,8 +743,8 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
     expert_store.resolve_private_expert_tenancy.assert_not_awaited()
     upsert.assert_not_awaited()
     assert stream_fn.call_args.kwargs["session"] is session
-    assert stream_fn.call_args.kwargs["organization_id"] == "entry-org"
-    assert stream_fn.call_args.kwargs["team_id"] == "entry-team"
+    assert stream_fn.call_args.kwargs["organization_id"] == "session-org"
+    assert stream_fn.call_args.kwargs["team_id"] == "session-team"
 
 
 @pytest.mark.asyncio

@@ -1,13 +1,31 @@
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.autopilot import AutoPilotBlock
+from backend.blocks.autopilot import AutoPilotBlock, _enqueue_for_recovery
 from backend.copilot.model import ChatSessionMetadata
 from backend.data.execution import ExecutionContext
 from backend.data.graph import NodeModel
 from backend.integrations.providers import ProviderName
+
+
+class _PassthroughLeaseGuard:
+    async def run(self, action):
+        return await action
+
+
+@asynccontextmanager
+async def _allow_live_resource_lease(*_args, **_kwargs):
+    yield _PassthroughLeaseGuard()
+
+
+@pytest.fixture(autouse=True)
+def _allow_live_scope(mocker):
+    client = MagicMock()
+    client.has_live_resource_access = AsyncMock(return_value=True)
+    mocker.patch("backend.blocks.autopilot.credit_db", return_value=client)
 
 
 def test_codex_connection_is_a_top_level_reference_only_credential_field():
@@ -97,6 +115,7 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         dry_run=False,
         organization_id=None,
         team_id=None,
+        expert_id=None,
         llm_auth_provider="codex",
         llm_credential_id="cred-1",
     )
@@ -110,11 +129,14 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         (None, "session was not found"),
         (
             SimpleNamespace(
+                organization_id=None,
+                team_id=None,
+                expert_id=None,
                 metadata=SimpleNamespace(
                     origin="automation",
                     llm_auth_provider="codex",
                     llm_credential_id="different-credential",
-                )
+                ),
             ),
             "different transport or connection",
         ),
@@ -123,11 +145,14 @@ async def test_autopilot_block_routes_new_session_to_selected_codex_connection()
         # accepts — `create_session` stamps "automation" precisely to stop that.
         (
             SimpleNamespace(
+                organization_id=None,
+                team_id=None,
+                expert_id=None,
                 metadata=SimpleNamespace(
                     origin="interactive",
                     llm_auth_provider="codex",
                     llm_credential_id="cred-1",
-                )
+                ),
             ),
             "started by a person",
         ),
@@ -223,7 +248,12 @@ async def test_autopilot_block_resumes_every_session_a_person_did_not_start(
             {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         )
     )
-    existing = SimpleNamespace(metadata=_persisted_metadata(raw_metadata))
+    existing = SimpleNamespace(
+        organization_id=None,
+        team_id=None,
+        expert_id=None,
+        metadata=_persisted_metadata(raw_metadata),
+    )
     input_data = AutoPilotBlock.Input(
         prompt="continue",
         session_id="session-1",
@@ -428,6 +458,9 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
     block = AutoPilotBlock()
     execute_copilot = AsyncMock()
     session = MagicMock()
+    session.organization_id = None
+    session.team_id = None
+    session.expert_id = None
     session.metadata.origin = "automation"
     session.metadata.llm_auth_provider = "codex"
     session.metadata.llm_credential_id = "cred-1"
@@ -453,3 +486,147 @@ async def test_run_rejects_resuming_a_codex_session_on_platform():
 
     assert "different transport or connection" in outputs["error"]
     execute_copilot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_rejects_resuming_session_from_another_team():
+    block = AutoPilotBlock()
+    execute_copilot = AsyncMock()
+    session = SimpleNamespace(
+        organization_id="org-1",
+        team_id="team-2",
+        expert_id=None,
+        metadata=SimpleNamespace(
+            origin="automation",
+            llm_auth_provider="platform",
+            llm_credential_id=None,
+        ),
+    )
+    context = _context()
+    context.organization_id = "org-1"
+    context.team_id = "team-1"
+
+    with (
+        patch.object(block, "execute_copilot", execute_copilot),
+        patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        outputs = {
+            name: value
+            async for name, value in block.run(
+                AutoPilotBlock.Input(prompt="continue", session_id="session-1"),
+                execution_context=context,
+            )
+        }
+
+    assert "different workspace" in outputs["error"]
+    execute_copilot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_rejects_revoked_scope_before_execute():
+    block = AutoPilotBlock()
+    execute_copilot = AsyncMock()
+    session = SimpleNamespace(
+        organization_id="org-1",
+        team_id="team-1",
+        expert_id=None,
+        metadata=SimpleNamespace(
+            origin="automation",
+            llm_auth_provider="platform",
+            llm_credential_id=None,
+        ),
+    )
+    context = _context()
+    context.organization_id = "org-1"
+    context.team_id = "team-1"
+    credit_client = SimpleNamespace(
+        has_live_resource_access=AsyncMock(return_value=False)
+    )
+
+    with (
+        patch.object(block, "execute_copilot", execute_copilot),
+        patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.blocks.autopilot.credit_db",
+            return_value=credit_client,
+        ),
+    ):
+        outputs = {
+            name: value
+            async for name, value in block.run(
+                AutoPilotBlock.Input(prompt="continue", session_id="session-1"),
+                execution_context=context,
+            )
+        }
+
+    assert "no longer available" in outputs["error"]
+    execute_copilot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recovery_rejects_session_from_another_team():
+    session = SimpleNamespace(
+        organization_id="org-1",
+        team_id="team-2",
+        expert_id=None,
+        metadata=SimpleNamespace(llm_auth_provider="platform", llm_credential_id=None),
+    )
+    enqueue = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", new=enqueue),
+    ):
+        await _enqueue_for_recovery(
+            "session-1",
+            "user-1",
+            "retry",
+            False,
+            "org-1",
+            "team-1",
+            None,
+        )
+
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recovery_enqueues_with_authoritative_scope():
+    session = SimpleNamespace(
+        organization_id="org-1",
+        team_id="team-1",
+        expert_id=None,
+        metadata=SimpleNamespace(llm_auth_provider="platform", llm_credential_id=None),
+    )
+    enqueue = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", new=enqueue),
+        patch(
+            "backend.blocks.autopilot.live_resource_lease",
+            _allow_live_resource_lease,
+        ),
+    ):
+        await _enqueue_for_recovery(
+            "session-1",
+            "user-1",
+            "retry",
+            False,
+            "org-1",
+            "team-1",
+            None,
+        )
+
+    assert enqueue.await_args.kwargs["organization_id"] == "org-1"
+    assert enqueue.await_args.kwargs["team_id"] == "team-1"

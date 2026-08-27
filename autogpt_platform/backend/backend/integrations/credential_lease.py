@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterable
+from typing import TypeVar
 
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
@@ -7,6 +8,7 @@ from backend.data.model import Credentials
 
 CheckpointCallback = Callable[[Credentials, AsyncRedisLock], Awaitable[None]]
 DeleteCallback = Callable[[Credentials, AsyncRedisLock], Awaitable[None]]
+T = TypeVar("T")
 
 
 class CredentialLease:
@@ -27,10 +29,6 @@ class CredentialLease:
         self._heartbeat_failed = asyncio.Event()
 
     def start_heartbeat(self) -> None:
-        if self.credentials.type != "oauth2":
-            return
-        if self.credentials.refresh_strategy != "provider_runtime":
-            return
         if self._heartbeat_task is None:
             self._heartbeat_task = asyncio.create_task(self._heartbeat())
 
@@ -100,3 +98,54 @@ class CredentialLease:
         except BaseException as error:
             self._heartbeat_error = error
             self._heartbeat_failed.set()
+
+
+async def run_with_credential_lease_guard(
+    action: Awaitable[T],
+    leases: Iterable[CredentialLease],
+) -> T:
+    active_leases = tuple(leases)
+    if not active_leases:
+        return await action
+
+    action_task = asyncio.ensure_future(action)
+    failure_tasks = [
+        asyncio.create_task(lease.wait_for_failure()) for lease in active_leases
+    ]
+    try:
+        done, _ = await asyncio.wait(
+            [action_task, *failure_tasks],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        failed = next((task for task in failure_tasks if task in done), None)
+        if failed is not None:
+            action_task.cancel()
+            await asyncio.gather(action_task, return_exceptions=True)
+            await failed
+        result = await action_task
+        for lease in active_leases:
+            await lease.validate()
+        return result
+    finally:
+        for task in failure_tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*failure_tasks, return_exceptions=True)
+
+
+async def iterate_with_credential_lease_guard(
+    iterator: AsyncGenerator[T, None],
+    leases: Iterable[CredentialLease],
+) -> AsyncIterator[T]:
+    try:
+        while True:
+            try:
+                item = await run_with_credential_lease_guard(
+                    anext(iterator),
+                    leases,
+                )
+            except StopAsyncIteration:
+                break
+            yield item
+    finally:
+        await iterator.aclose()
