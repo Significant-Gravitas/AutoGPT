@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -18,7 +18,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
-    StoreListingVersionWhereInput,
+    LibraryAgentWhereInput,
 )
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
@@ -1341,14 +1341,29 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
+    A caller may read a graph version when either:
+
+    1. it is theirs — owned by ``user_id``, or visible to them through the
+       org/team rules below, or
+    2. they have that exact version in their library AND that version has been
+       submitted to the marketplace.
+
+    Being in the library is *not* enough on its own, and neither is a
+    marketplace submission the caller never added to their library.
+
     With ``organization_id`` (from a membership-verified RequestContext),
     org/team visibility rules apply — a member can open any graph the
     list endpoints show them (own + org-home + member-team graphs).
 
+    ``skip_access_check=True`` drops all of that and fetches the row directly;
+    it is for callers that have already authorized the read themselves (the
+    executor, and the marketplace install/download paths, which validate the
+    StoreListingVersion instead).
+
     See also: `get_graph_as_admin()` which bypasses ownership and marketplace
     checks for admin-only routes.
 
-    Returns `None` if the record is not found.
+    Returns `None` if the record is not found or not accessible.
     """
     graph = None
 
@@ -1381,38 +1396,12 @@ async def get_graph(
             order={"version": "desc"},
         )
 
-    # Use store listed graph to find not owned graph
-    if graph is None:
-        store_where_clause: StoreListingVersionWhereInput = {
-            "agentGraphId": graph_id,
-            "submissionStatus": SubmissionStatus.APPROVED,
-            "isDeleted": False,
-        }
-        if version is not None:
-            store_where_clause["agentGraphVersion"] = version
-
-        if store_listing := await StoreListingVersion.prisma().find_first(
-            where=store_where_clause,
-            order={"agentGraphVersion": "desc"},
-            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
-        ):
-            graph = store_listing.AgentGraph
-
-    # Fall back to library membership: if the user has the agent in their
-    # library (non-deleted, non-archived), grant access even if the agent is
-    # no longer published. "You added it, you keep it."
-    if graph is None and user_id is not None:
-        library_where: dict[str, object] = {
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-        if version is not None:
-            library_where["agentGraphVersion"] = version
-
+    # Non-owner access: the user must have this exact graph version in their
+    # library AND that version must have been submitted to the marketplace.
+    # Neither half grants access on its own — see `graph_in_library_filter()`.
+    if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
-            where=library_where,
+            where=graph_in_library_filter(user_id, graph_id, version),
             include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             order={"agentGraphVersion": "desc"},
         )
@@ -1431,6 +1420,58 @@ async def get_graph(
         )
 
     return GraphModel.from_db(graph, for_export)
+
+
+# A graph version counts as "submitted to the marketplace" once its listing
+# version leaves DRAFT: PENDING, APPROVED and REJECTED all mean the creator
+# actually pushed it to the store at some point. Deleted or unavailable
+# listings still count — taking a listing down does not retroactively
+# un-submit the version, and users who downloaded it while it was live keep
+# their copy ("you added it, you keep it").
+SUBMITTED_TO_MARKETPLACE: Final = (
+    SubmissionStatus.PENDING,
+    SubmissionStatus.APPROVED,
+    SubmissionStatus.REJECTED,
+)
+
+
+def graph_in_library_filter(
+    user_id: str, graph_id: str, version: int | None
+) -> LibraryAgentWhereInput:
+    """Predicate for non-owner read access to a graph version.
+
+    A user who does not own a graph may read a version of it only when both:
+
+    1. the version is in their library (not deleted, not archived), and
+    2. that same version has been submitted to the marketplace.
+
+    Expressed as one joined query on purpose: `AgentGraph` on a `LibraryAgent`
+    row is the exact `(id, version)` pair, so the `StoreListingVersions.some`
+    clause can only match a submission of *that* version. Checking the two
+    halves in separate queries would let them resolve to different versions
+    when `version is None`.
+    """
+    where: LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        "isDeleted": False,
+        "isArchived": False,
+        "AgentGraph": {
+            "is": {
+                "StoreListingVersions": {
+                    "some": {
+                        "OR": [
+                            {"submissionStatus": status}
+                            for status in SUBMITTED_TO_MARKETPLACE
+                        ]
+                    }
+                }
+            }
+        },
+    }
+    if version is not None:
+        where["agentGraphVersion"] = version
+    return where
 
 
 async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
