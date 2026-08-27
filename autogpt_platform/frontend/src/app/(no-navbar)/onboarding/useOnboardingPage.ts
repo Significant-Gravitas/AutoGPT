@@ -171,11 +171,15 @@ export function useOnboardingPage() {
   // step below the ceiling and is likewise ignored; the per-step guard in
   // `trackOnboardingStep` covers coming forward again.
   useEffect(() => {
-    if (!isReady) return;
+    // Gated on exactly what the page renders on. While `isOnboardingStateLoading`
+    // is true the wizard is still `null`, and that window contains the
+    // ONBOARDING_COMPLETE check that redirects finished users to /copilot — so
+    // reporting on `isReady` alone counted people the UI never showed a step to.
+    if (!isReady || isOnboardingStateLoading) return;
     if (currentStep < readHighestStep()) return;
     const key = onboardingStepKey(steps, currentStep);
     if (key) trackOnboardingStep(key);
-  }, [isReady, currentStep, steps]);
+  }, [isReady, isOnboardingStateLoading, currentStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
