@@ -11,9 +11,14 @@ import pytest
 
 from backend.integrations.providers import ProviderName
 from backend.integrations.subscription_access import (
+    enforce_subscription_access,
+    has_subscription_access,
     hidden_subscription_providers,
     visible_subscription_providers,
 )
+from backend.util.entitlements import EntitlementRequiredError
+from prisma.enums import SubscriptionTier
+from backend.util.exceptions import UserPaywalledError
 
 
 @pytest.fixture
@@ -97,3 +102,75 @@ async def test_hidden_and_visible_are_complements(entitled) -> None:
     # show a *subscription*, and a set that quietly swept up every provider
     # would empty the connections list for everyone.
     assert ProviderName.GITHUB not in visible | hidden
+
+
+class TestRunningOnASubscription:
+    """The gate on dispatching a queued turn, which is not the paywall.
+
+    A run on a linked subscription is paid for by the user's own plan. Asking
+    "has this user paid AutoGPT" there blocks someone for owing us nothing --
+    which is what happened to every provider but the first, because the check
+    was written as `== "codex"` with the paywall in the else.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_entitled_user_may_run(self, entitled) -> None:
+        assert await has_subscription_access("user-1", "codex")
+
+    @pytest.mark.asyncio
+    async def test_an_unentitled_user_may_not(self, unentitled) -> None:
+        assert not await has_subscription_access("user-1", "codex")
+
+    @pytest.mark.asyncio
+    async def test_a_provider_the_operator_disabled_may_not(
+        self, entitled, monkeypatch
+    ) -> None:
+        monkeypatch.delenv("CHAT_ENABLE_GROK_SUBSCRIPTION", raising=False)
+        assert not await has_subscription_access("user-1", "grok")
+
+    @pytest.mark.asyncio
+    async def test_enforcement_says_what_would_change_it(self, monkeypatch) -> None:
+        """The message reaches a user mid-run, so it has to be the one the
+        offer would have shown -- not a bare "forbidden".
+
+        Enforcement asks `require_entitlement`, not the discovery helper: it
+        must raise rather than answer False, so that a lookup failure stops a
+        run instead of quietly allowing one.
+        """
+
+        async def _refuse(user_id: str, entitlement) -> None:
+            raise EntitlementRequiredError(entitlement, SubscriptionTier.MAX)
+
+        monkeypatch.setattr(
+            "backend.integrations.subscription_access.require_entitlement", _refuse
+        )
+        with pytest.raises(UserPaywalledError) as raised:
+            await enforce_subscription_access("user-1", "codex")
+        assert "Max plan" in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_enforcement_lets_an_entitled_user_through(self, monkeypatch) -> None:
+        async def _allow(user_id: str, entitlement) -> None:
+            return None
+
+        monkeypatch.setattr(
+            "backend.integrations.subscription_access.require_entitlement", _allow
+        )
+        await enforce_subscription_access("user-1", "codex")
+
+    @pytest.mark.asyncio
+    async def test_enforcement_refuses_a_provider_the_operator_disabled(
+        self, monkeypatch
+    ) -> None:
+        """Entitlement is not the only gate: an operator who has not opted in
+        has not agreed to run against that vendor at all."""
+
+        async def _allow(user_id: str, entitlement) -> None:
+            return None
+
+        monkeypatch.setattr(
+            "backend.integrations.subscription_access.require_entitlement", _allow
+        )
+        monkeypatch.delenv("CHAT_ENABLE_GROK_SUBSCRIPTION", raising=False)
+        with pytest.raises(UserPaywalledError):
+            await enforce_subscription_access("user-1", "grok")

@@ -299,3 +299,30 @@ def linked_profiles() -> tuple[SubscriptionProviderProfile, ...]:
         for p in _PROFILES.values()
         if p.credential_strategy != "platform" and is_enabled(p)
     )
+
+
+def profile_for_credential_provider(
+    credential_provider: str,
+) -> SubscriptionProviderProfile | None:
+    """The profile that owns a credential provider, or ``None``.
+
+    ``profile_for`` is keyed by the chat route ("codex"); this is keyed by the
+    credential row's provider, which is what code holding a credential has.
+    They happen to be the same string today for every provider, and nothing
+    guarantees they stay that way -- so the lookup is explicit rather than a
+    cast.
+    """
+    for profile in _PROFILES.values():
+        if profile.credential_provider == credential_provider:
+            return profile
+    return None
+
+
+def is_subscription_credential(credential_provider: str) -> bool:
+    """Whether a credential is a linked subscription rather than a key.
+
+    The distinction matters wherever money does: a run on one of these is
+    paid for by the user's own plan, so it is neither charged to AutoGPT
+    credits nor blocked by AutoGPT's paywall.
+    """
+    return profile_for_credential_provider(credential_provider) is not None

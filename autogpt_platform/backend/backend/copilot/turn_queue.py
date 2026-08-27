@@ -53,7 +53,7 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.data.db_accessors import chat_db
-from backend.integrations.codex.access import has_codex_access
+from backend.integrations.subscription_access import has_subscription_access
 from backend.copilot.offers import (
     EntitlementUnavailable,
     advanced_tier_entitled,
@@ -271,12 +271,19 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if head.metadata.llm_auth_provider == "codex":
-        if not await has_codex_access(user_id):
+    # A run on a linked subscription is paid for by the user's own plan, so
+    # the gate is that provider's entitlement -- not AutoGPT's paywall, which
+    # would block a user for owing us nothing. Read as "is it codex" until a
+    # second provider existed, at which point that provider's turns were
+    # silently held behind a bill they were not generating.
+    linked_provider = head.metadata.llm_auth_provider
+    if linked_provider and linked_provider != "platform":
+        if not await has_subscription_access(user_id, linked_provider):
             logger.info(
-                "dispatch_next_for_user: user=%s lacks Codex entitlement, "
+                "dispatch_next_for_user: user=%s lacks %s entitlement, "
                 "leaving session=%s queued",
                 user_id,
+                linked_provider,
                 head.session_id,
             )
             return False

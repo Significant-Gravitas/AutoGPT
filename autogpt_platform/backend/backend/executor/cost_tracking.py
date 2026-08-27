@@ -16,6 +16,7 @@ from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.providers import ProviderName
+from backend.copilot.subscription_providers import is_subscription_credential
 
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient
@@ -230,8 +231,14 @@ async def log_system_credential_cost(
                 continue
             cred_id = cred_data.get("id", "")
             provider_name = cred_data.get("provider", "unknown")
+            # A linked subscription is billed to the user's own plan, so its
+            # usage is recorded rather than charged. Asked of the provider
+            # table rather than of codex by name: a second subscription
+            # matched neither this nor the system-credential branch, so its
+            # runs fell out of cost tracking entirely and simply did not
+            # appear.
             is_subscription = (
-                provider_name == ProviderName.CODEX.value
+                is_subscription_credential(provider_name)
                 and cred_data.get("type") == "oauth2"
             )
             if not cred_id or not (is_system_credential(cred_id) or is_subscription):

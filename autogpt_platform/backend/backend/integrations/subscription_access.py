@@ -14,9 +14,19 @@ asks a different question, and lives with the route that spends.
 
 import logging
 
-from backend.copilot.subscription_providers import known_profiles, linked_profiles
+from backend.copilot.subscription_providers import (
+    is_enabled,
+    known_profiles,
+    linked_profiles,
+    profile_for,
+)
 from backend.integrations.providers import ProviderName
-from backend.util.entitlements import has_entitlement_for_discovery
+from backend.util.entitlements import (
+    EntitlementRequiredError,
+    has_entitlement_for_discovery,
+    require_entitlement,
+)
+from backend.util.exceptions import UserPaywalledError
 
 logger = logging.getLogger(__name__)
 
@@ -61,3 +71,51 @@ def _all_subscription_providers() -> set[ProviderName]:
         if profile.credential_strategy != "platform"
         and profile.credential_provider is not None
     }
+
+
+async def enforce_subscription_access(user_id: str, auth_provider: str) -> None:
+    """Refuse a run on a subscription the user is not entitled to.
+
+    Enforcement, not discovery: this raises. The distinction is the same one
+    ``has_entitlement_for_discovery`` documents -- hiding an offer on a bad
+    lookup is polite, letting a run through on one is not.
+    """
+    profile = profile_for(auth_provider)
+    if profile.entitlement is None:
+        return
+    if not is_enabled(profile):
+        raise UserPaywalledError(
+            f"{profile.display_name} is not enabled on this deployment."
+        )
+    try:
+        await require_entitlement(user_id, profile.entitlement)
+    except EntitlementRequiredError:
+        raise UserPaywalledError(
+            profile.lock_reason or f"Your plan does not include {profile.display_name}."
+        ) from None
+
+
+async def has_subscription_access(user_id: str, auth_provider: str) -> bool:
+    """Whether a queued run on this provider may be dispatched.
+
+    Fails closed so a lookup that errors leaves the turn queued rather than
+    running it on an entitlement nobody could confirm.
+
+    A provider this build does not know is refused rather than raised on: the
+    caller is the queue dispatcher, and a session that names a provider we
+    have since removed must not take down the dispatch loop for every other
+    turn that user has waiting.
+    """
+    try:
+        profile = profile_for(auth_provider)
+    except ValueError:
+        logger.warning(
+            "Queued turn names unknown chat provider %r; leaving it queued",
+            auth_provider,
+        )
+        return False
+    if not is_enabled(profile):
+        return False
+    if profile.entitlement is None:
+        return True
+    return await has_entitlement_for_discovery(user_id, profile.entitlement)

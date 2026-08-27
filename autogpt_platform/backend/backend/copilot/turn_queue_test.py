@@ -8,6 +8,7 @@ for Prisma directly while still exercising the queue's branching.
 """
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,6 +51,12 @@ def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
     s.session_id = session_id
     s.title = title
     s.updated_at = datetime.now(timezone.utc)
+    # Stated rather than left as a MagicMock attribute. The dispatcher now
+    # reads this to choose between the subscription gate and the paywall, and
+    # a mock that answers "some object" to both is a test that asserts on
+    # whichever branch it happened to fall into.
+    s.metadata.llm_auth_provider = "platform"
+    s.metadata.llm_credential_id = None
     return s
 
 
@@ -276,7 +283,7 @@ async def test_codex_dispatch_skips_platform_billing_gates() -> None:
         ),
         patch.object(
             turn_queue,
-            "has_codex_access",
+            "has_subscription_access",
             new=AsyncMock(return_value=True),
         ),
         patch(
@@ -437,7 +444,7 @@ async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
     with (
         _patch_queued_list([head]),
         patch.object(turn_queue, "chat_db", return_value=db),
-        patch.object(turn_queue, "has_codex_access", new=access),
+        patch.object(turn_queue, "has_subscription_access", new=access),
         patch(
             "backend.copilot.executor.utils.dispatch_turn",
             new=dispatch_turn_mock,
@@ -446,9 +453,53 @@ async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
 
     assert promoted is False
-    access.assert_awaited_once_with("u1")
+    access.assert_awaited_once_with("u1", "codex")
     db.update_chat_session_status.assert_not_awaited()
     dispatch_turn_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_second_subscription_is_not_held_behind_the_autogpt_paywall() -> None:
+    """The gate on a linked run is that provider's entitlement, not our bill.
+
+    This read `llm_auth_provider == "codex"` with `is_user_paywalled` in the
+    else, so every other subscription took the paywall branch: a user running
+    on a plan they pay someone else for, held because they owe *us* money.
+    Nothing raised, and the turn just sat in the queue.
+    """
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "github_copilot"
+    head.metadata.llm_credential_id = "cred-9"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock()
+    dispatch_turn_mock = AsyncMock()
+    paywalled = AsyncMock(return_value=True)
+    access = AsyncMock(return_value=True)
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_subscription_access", new=access),
+        patch.object(turn_queue, "is_user_paywalled", new=paywalled),
+        patch(
+            "backend.copilot.turn_queue.check_rate_limit",
+            new=AsyncMock(return_value=SimpleNamespace(allowed=True)),
+        ),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=dispatch_turn_mock,
+        ),
+        # Stops the run right after the gate: this test is about which gate
+        # was consulted, not about what happens once a turn is claimed.
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=False)
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.dispatch_next_for_user("u1")
+
+    access.assert_awaited_once_with("u1", "github_copilot")
+    paywalled.assert_not_awaited()
 
 
 @pytest.mark.asyncio
