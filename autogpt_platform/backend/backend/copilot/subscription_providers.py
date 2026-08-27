@@ -267,29 +267,53 @@ GROK = SubscriptionProviderProfile(
     display_name="Grok",
     provider_family="xai",
     auth_method="grok_oauth",
-    backed_by_label="Your SuperGrok subscription",
+    # Deliberately "account", not "subscription". On xAI the subscription
+    # raises a limit rather than unlocking access, so a linked free account
+    # is a working connection with a small quota -- the opposite of Codex,
+    # where no plan means no route at all.
+    backed_by_label="Your xAI account",
     description=(
-        "New chats are backed by your SuperGrok or X Premium+ subscription, "
-        "and spend no AutoGPT credits."
+        "New chats are backed by your xAI account, and spend no AutoGPT "
+        "credits. A SuperGrok or X Premium+ subscription raises the limits."
     ),
     limitations=(
         "The agent builder's chat panel always runs on AutoGPT.",
-        "xAI has been observed refusing inference on lower SuperGrok tiers.",
+        # Not "lower tiers are refused", which is what this used to say and
+        # is wrong: a free xAI account can run chats, it just has a small
+        # quota and gets a specific "free usage exhausted" refusal when it
+        # runs out. Saying otherwise turns a supported state into an
+        # onboarding error.
+        "A free xAI account works, with a much smaller usage limit.",
     ),
     entitlement=Entitlement.GROK_SUBSCRIPTION_TRANSPORT,
     lock_reason="A Max plan or higher is required to use Grok.",
     unlock_href="/settings/billing",
-    # Off unless an operator turns it on, and the only provider here that is.
+    # Off unless an operator turns it on.
     #
-    # xAI ships a working device-code flow, and several editors use it, but
-    # they publish no way to register a client of our own -- the only route
-    # is xAI's first-party client id, which their own source obfuscates. That
-    # makes every third-party sign-in an impersonation of their CLI, against
-    # an AUP that forbids "bypassing our systems or protective measures", and
-    # xAI can revoke it for everyone with one allowlist change.
+    # xAI ships a working device-code flow and several editors use it, but
+    # they publish no way to register a client of our own. Research into how
+    # those editors actually get through made this sharper than "no
+    # registration exists": there are two separate client-identity checks in
+    # front of the chat endpoint, and clearing them means claiming to be
+    # xAI's own CLI.
     #
-    # It is a real capability and some deployments will want it. It is not a
-    # default we can make on an operator's behalf.
+    #   - Without an `x-grok-client-version` header the endpoint answers 426,
+    #     and the version floor is published so a client can match it.
+    #   - With that header and a valid token it *still* answers
+    #     403 permission-denied until the request also carries a Grok CLI
+    #     `User-Agent`.
+    #
+    # The second one is the problem. It is an access control whose only
+    # function is to admit their client, and the way past it is to pretend to
+    # be their client -- which is what "bypassing our systems or protective
+    # measures" describes. Compare GitHub Copilot, where a third-party editor
+    # sends its own name in `Editor-Version` and is admitted: there the
+    # header identifies, here it gates.
+    #
+    # It is a real capability and some deployments will want it, and xAI can
+    # revoke it for everyone with one allowlist change. Either way it is a
+    # decision about a deployment's own relationship with a vendor, not a
+    # default we can pick on an operator's behalf.
     opt_in_env="CHAT_ENABLE_GROK_SUBSCRIPTION",
     runtime_ready=False,
     credential_strategy="runtime_device_code",
@@ -298,7 +322,7 @@ GROK = SubscriptionProviderProfile(
     connect_button_label="Sign in with Grok",
     terms_company="xAI",
     display_alias="xai",
-    connection_summary="your SuperGrok subscription",
+    connection_summary="your xAI account",
     route_surface="copilot_grok",
     catalog_vendor="xai",
 )
