@@ -21,6 +21,7 @@ class ProviderName(str, Enum):
     D_ID = "d_id"
     E2B = "e2b"
     GITHUB_COPILOT = "github_copilot"
+    GROK = "grok"
     ELEVENLABS = "elevenlabs"
     FAL = "fal"
     GITHUB = "github"

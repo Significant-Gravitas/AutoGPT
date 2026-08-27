@@ -27,6 +27,8 @@ without touching Redis or the database.
 
 from __future__ import annotations
 
+import os
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -93,6 +95,17 @@ class SubscriptionProviderProfile(BaseModel):
     # A provider whose sign-in hands control to a browser and a device code
     # needs far longer than a normal API call before the proxy gives up.
     login_timeout_seconds: int | None = None
+
+    # --- availability ---------------------------------------------------
+    # Environment variable an operator must set truthy before this provider
+    # is offered at all. ``None`` means "always available".
+    #
+    # This exists for a provider whose sign-in works but is not ours to use:
+    # where the vendor publishes no third-party client registration and the
+    # only route is a first-party client id, running it is a decision about
+    # the deployment's own relationship with that vendor. That belongs to
+    # whoever operates the deployment, not to a default in this file.
+    opt_in_env: str | None = None
 
     # --- connect flow copy ----------------------------------------------
     # What the button that starts the sign-in says. The provider's own name
@@ -185,8 +198,47 @@ GITHUB_COPILOT = SubscriptionProviderProfile(
     catalog_vendor=None,
 )
 
+GROK = SubscriptionProviderProfile(
+    key="grok",
+    display_name="Grok",
+    provider_family="xai",
+    auth_method="grok_oauth",
+    backed_by_label="Your SuperGrok subscription",
+    description=(
+        "New chats are backed by your SuperGrok or X Premium+ subscription, "
+        "and spend no AutoGPT credits."
+    ),
+    limitations=(
+        "The agent builder's chat panel always runs on AutoGPT.",
+        "xAI has been observed refusing inference on lower SuperGrok tiers.",
+    ),
+    entitlement=Entitlement.GROK_SUBSCRIPTION_TRANSPORT,
+    lock_reason="A Max plan or higher is required to use Grok.",
+    unlock_href="/settings/billing",
+    # Off unless an operator turns it on, and the only provider here that is.
+    #
+    # xAI ships a working device-code flow, and several editors use it, but
+    # they publish no way to register a client of our own -- the only route
+    # is xAI's first-party client id, which their own source obfuscates. That
+    # makes every third-party sign-in an impersonation of their CLI, against
+    # an AUP that forbids "bypassing our systems or protective measures", and
+    # xAI can revoke it for everyone with one allowlist change.
+    #
+    # It is a real capability and some deployments will want it. It is not a
+    # default we can make on an operator's behalf.
+    opt_in_env="CHAT_ENABLE_GROK_SUBSCRIPTION",
+    credential_strategy="runtime_device_code",
+    credential_provider=ProviderName.GROK,
+    login_timeout_seconds=15 * 60,
+    connect_button_label="Sign in with Grok",
+    terms_company="xAI",
+    display_alias="xai",
+    route_surface="copilot_grok",
+    catalog_vendor="xai",
+)
+
 _PROFILES: dict[str, SubscriptionProviderProfile] = {
-    profile.key: profile for profile in (PLATFORM, CODEX, GITHUB_COPILOT)
+    profile.key: profile for profile in (PLATFORM, CODEX, GITHUB_COPILOT, GROK)
 }
 
 
@@ -208,6 +260,30 @@ def known_profiles() -> tuple[SubscriptionProviderProfile, ...]:
     return tuple(_PROFILES.values())
 
 
+def is_enabled(profile: SubscriptionProviderProfile) -> bool:
+    """Whether this deployment offers the provider at all.
+
+    Read at call time rather than at import so an operator's choice takes
+    effect on restart without the table caching a stale answer.
+    """
+    if profile.opt_in_env is None:
+        return True
+    return os.getenv(profile.opt_in_env, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def linked_profiles() -> tuple[SubscriptionProviderProfile, ...]:
-    """Providers a user links an account to -- everything but the platform."""
-    return tuple(p for p in _PROFILES.values() if p.credential_strategy != "platform")
+    """Providers a user can link an account to, on this deployment.
+
+    Excludes the platform route, which has no account to link, and anything
+    the operator has not opted into.
+    """
+    return tuple(
+        p
+        for p in _PROFILES.values()
+        if p.credential_strategy != "platform" and is_enabled(p)
+    )

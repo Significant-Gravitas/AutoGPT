@@ -56,7 +56,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
-CopilotLlmAuthProvider = Literal["platform", "codex", "github_copilot"]
+CopilotLlmAuthProvider = Literal["platform", "codex", "github_copilot", "grok"]
 
 
 class TransportProfile(BaseModel):
