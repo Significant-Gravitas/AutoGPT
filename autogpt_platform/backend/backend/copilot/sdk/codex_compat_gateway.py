@@ -12,8 +12,6 @@ from typing import Protocol, cast
 from uuid import uuid4
 
 from aiohttp import web
-from openai_codex.generated.v2_all import AgentMessageDeltaNotification
-from openai_codex.models import Notification
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.provider_failure import ProviderFailure
@@ -26,6 +24,7 @@ from backend.integrations.codex.models import (
     CodexInvocationRequest,
     CodexInvocationResult,
     CodexReasoningEffort,
+    CodexStreamEvent,
     CodexTokenUsage,
 )
 from backend.integrations.codex.transport import (
@@ -73,7 +72,7 @@ class _AgentSession(Protocol):
         tool_handler: Callable[
             [CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]
         ],
-        event_handler: Callable[[Notification], Awaitable[None]] | None = None,
+        event_handler: Callable[[CodexStreamEvent], Awaitable[None]] | None = None,
     ) -> CodexInvocationResult: ...
 
 
@@ -435,10 +434,9 @@ class CodexAnthropicGateway:
         tools: list[CodexDynamicToolSpec],
         original_names: dict[str, str],
     ) -> None:
-        async def handle_event(notification: Notification) -> None:
-            payload = notification.payload
-            if isinstance(payload, AgentMessageDeltaNotification) and payload.delta:
-                await conversation.queue.put(_TextDelta(text=payload.delta))
+        async def handle_event(event: CodexStreamEvent) -> None:
+            if event.type == "text_delta" and event.delta:
+                await conversation.queue.put(_TextDelta(text=event.delta))
 
         async def handle_tool(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
             future: asyncio.Future[CodexDynamicToolResult] = (
