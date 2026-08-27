@@ -292,9 +292,11 @@ def _upsell(
     entitled: bool = False,
     flag: bool = True,
 ) -> None:
+    # Patched where offers calls it: the upsell asks about the entitlement
+    # named on each provider's row rather than about codex specifically.
     mocker.patch.object(
         offers,
-        "has_codex_access_for_discovery",
+        "has_entitlement_for_discovery",
         new=AsyncMock(return_value=entitled),
     )
     mocker.patch.object(offers, "is_feature_enabled", new=AsyncMock(return_value=flag))
@@ -313,10 +315,12 @@ async def test_a_plan_that_excludes_chatgpt_says_so_instead_of_hiding_it(
 
     locked = _locked(await get_connection_offers("user"))
 
-    assert len(locked) == 1
-    assert locked[0].display_name == "ChatGPT"
-    assert locked[0].lock_reason
-    assert locked[0].unlock_href == "/settings/billing"
+    # Asserted by name rather than by count: every gated provider the user
+    # has not connected earns an upsell, so counting them would only ever
+    # measure how many providers exist.
+    chatgpt = next(o for o in locked if o.display_name == "ChatGPT")
+    assert chatgpt.lock_reason
+    assert chatgpt.unlock_href == "/settings/billing"
 
 
 @pytest.mark.asyncio

@@ -27,12 +27,15 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     settings,
 )
-from backend.integrations.codex.access import (
-    CODEX_MINIMUM_PLAN_ERROR,
-    has_codex_access_for_discovery,
+from backend.copilot.subscription_providers import (
+    linked_profiles,
+    profile_for,
 )
-from backend.copilot.subscription_providers import profile_for
-from backend.util.entitlements import Entitlement, has_entitlement
+from backend.util.entitlements import (
+    Entitlement,
+    has_entitlement,
+    has_entitlement_for_discovery,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
@@ -79,6 +82,11 @@ class AIConnectionOffer(BaseModel):
     limitations: list[str]
     lock_reason: str | None = None
     unlock_href: str | None = None
+    # What the sign-in button says, and whose terms it sends the user to.
+    # Server-owned so a new provider does not need a matching branch in the
+    # dialog that renders it.
+    connect_button_label: str | None = None
+    terms_company: str | None = None
 
 
 class AIConnectionOffersResponse(BaseModel):
@@ -96,74 +104,88 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     mode = await resolve_engine_mode(user_id, config)
     models = await platform_tier_models(mode, user_id, config)
     codex_models = codex_tier_models(mode)
+    # What each linked provider's tiers resolve to, for the rows that name
+    # models without offering them.
+    tier_models = {"codex": codex_models}
     advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
         for transport in await get_chat_transports(user_id)
     ]
-    locked = await _locked_codex_offer(user_id, offers, codex_models)
-    return offers + ([locked] if locked else [])
+    return offers + await _locked_offers(user_id, offers, tier_models)
 
 
-async def _locked_codex_offer(
+async def _locked_offers(
     user_id: str,
     offers: list[AIConnectionOffer],
-    codex_models: dict[CopilotLLMModel, str | None],
-) -> AIConnectionOffer | None:
-    """The ChatGPT connection a plan does not include, shown rather than hidden.
+    tier_models: dict[str, dict[CopilotLLMModel, str | None]],
+) -> list[AIConnectionOffer]:
+    """Connections a plan does not include, shown rather than hidden.
 
-    ``get_chat_transports`` answers what may run, and it is right to omit a
+    ``get_chat_transports`` answers what may *run*, and it is right to omit a
     transport the entitlement forbids -- anything that routes a turn reads
     that list, and an unroutable entry there would be a bug waiting to
-    happen. What it cannot say is *why* the connection is missing, so a user
+    happen. What it cannot say is *why* a connection is missing, so a user
     below the plan sees no ChatGPT at all and no way to learn one exists.
 
-    This offer says so, in the one place that exists to describe rather than
-    route. It is never selectable and carries no credential, so nothing can
-    accidentally send a turn down it.
+    These offers say so, in the one place that exists to describe rather than
+    route. They are never selectable and carry no credential, so nothing can
+    accidentally send a turn down one.
     """
-    if any(offer.provider_family == "openai" for offer in offers):
-        return None
     if not _is_hosted():
-        # Self-host grants the entitlement outright; there is nothing to sell.
-        return None
-    if await has_codex_access_for_discovery(user_id):
-        # Entitled but unconnected: the settings page owns that invitation.
-        return None
+        # Self-host grants these entitlements outright; there is nothing
+        # to sell.
+        return []
     if not await is_feature_enabled(Flag.CHAT_CONNECTION_UPSELL, user_id):
-        return None
+        return []
 
-    return AIConnectionOffer(
-        offer_id="codex:locked",
-        provider_family="openai",
-        display_name="ChatGPT",
-        auth_method="chatgpt_oauth",
-        credential_id=None,
-        backed_by_label="Your ChatGPT plan",
-        description=(
-            "Run chats on a ChatGPT plan you already pay for, spending no "
-            "AutoGPT credits."
-        ),
-        state="locked",
-        selectable=False,
-        is_default=False,
-        # Named even though nothing here can be picked: "what you get" is the
-        # whole argument for connecting, and a surface that cannot say which
-        # models is asking the user to take it on faith. Not selectable, so
-        # naming them cannot be mistaken for offering them.
-        tiers=[
-            ConnectionTier(
-                tier=tier,
-                label=label,
+    connected = {offer.provider_family for offer in offers}
+    locked: list[AIConnectionOffer] = []
+    for profile in linked_profiles():
+        if profile.provider_family in connected:
+            continue
+        if profile.entitlement is None:
+            # Nothing gates it, so its absence means "not connected yet",
+            # which the settings page owns rather than an upsell.
+            continue
+        if await has_entitlement_for_discovery(user_id, profile.entitlement):
+            # Entitled but unconnected: the settings page owns that
+            # invitation too.
+            continue
+        locked.append(
+            AIConnectionOffer(
+                offer_id=f"{profile.key}:locked",
+                provider_family=profile.provider_family,
+                display_name=profile.display_name,
+                auth_method=profile.auth_method,
+                credential_id=None,
+                backed_by_label=profile.backed_by_label,
+                description=profile.description,
+                state="locked",
                 selectable=False,
-                display_model=codex_models.get(tier),
+                is_default=False,
+                # Named even though nothing here can be picked: "what you
+                # get" is the whole argument for connecting, and a surface
+                # that cannot say which models is asking the user to take it
+                # on faith. Not selectable, so naming them cannot be mistaken
+                # for offering them.
+                tiers=[
+                    ConnectionTier(
+                        tier=tier,
+                        label=label,
+                        selectable=False,
+                        display_model=tier_models.get(profile.key, {}).get(tier),
+                    )
+                    for tier, label in TIER_LABELS.items()
+                ],
+                limitations=[],
+                lock_reason=profile.lock_reason,
+                unlock_href=profile.unlock_href,
+                connect_button_label=profile.connect_button_label,
+                terms_company=profile.terms_company,
             )
-            for tier, label in TIER_LABELS.items()
-        ],
-        limitations=[],
-        lock_reason=CODEX_MINIMUM_PLAN_ERROR,
-        unlock_href="/settings/billing",
-    )
+        )
+    return locked
 
 
 def offer_id_for(transport: ChatTransportResponse) -> str:
@@ -235,6 +257,8 @@ def _offer(
         credential_id=transport.credential_id,
         backed_by_label=_backed_by_label(transport),
         description=_description(transport),
+        connect_button_label=profile_for(transport.auth_provider).connect_button_label,
+        terms_company=profile_for(transport.auth_provider).terms_company,
         state="ready" if transport.available else "unavailable",
         selectable=transport.available,
         is_default=transport.default,

@@ -94,6 +94,20 @@ class SubscriptionProviderProfile(BaseModel):
     # needs far longer than a normal API call before the proxy gives up.
     login_timeout_seconds: int | None = None
 
+    # --- connect flow copy ----------------------------------------------
+    # What the button that starts the sign-in says. The provider's own name
+    # for the act, so "Sign in with ChatGPT" rather than a generic "Connect".
+    connect_button_label: str | None = None
+    # Whose terms the user is agreeing to when they press it. Named because
+    # sending someone to a third party's login without saying whose is the
+    # kind of thing that erodes trust quietly.
+    terms_company: str | None = None
+    # The provider slug the integrations UI groups this credential under. A
+    # ChatGPT subscription files under "openai" beside an OpenAI API key,
+    # because that is where a person looks for it -- even though the two are
+    # entirely different credentials to the server.
+    display_alias: str | None = None
+
     # --- routing --------------------------------------------------------
     # Registry surface that resolves (mode, tier) -> model for this provider.
     # ``None`` means the platform router decides.
@@ -131,6 +145,9 @@ CODEX = SubscriptionProviderProfile(
     credential_strategy="runtime_device_code",
     credential_provider=ProviderName.CODEX,
     login_timeout_seconds=15 * 60,
+    connect_button_label="Sign in with ChatGPT",
+    terms_company="OpenAI",
+    display_alias="openai",
     route_surface="copilot_codex",
     catalog_vendor="openai",
 )
@@ -161,6 +178,9 @@ GITHUB_COPILOT = SubscriptionProviderProfile(
     credential_strategy="oauth_app",
     credential_provider=ProviderName.GITHUB_COPILOT,
     login_timeout_seconds=15 * 60,
+    connect_button_label="Sign in with GitHub",
+    terms_company="GitHub",
+    display_alias="github",
     route_surface="copilot_github",
     catalog_vendor=None,
 )
