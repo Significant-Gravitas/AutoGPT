@@ -39,6 +39,7 @@ from backend.util.retry import func_retry
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
+from backend.copilot.subscription_providers import runtime_is_available
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
@@ -522,6 +523,22 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+
+            # Whether a turn can actually be run on this connection here.
+            # A session can outlive the deployment that created it -- an
+            # operator turning a provider off, or a build that no longer
+            # ships its runtime -- so this is re-asked at dispatch rather
+            # than trusted from when the session was routed. Refused by name,
+            # because falling through to the platform route would bill the
+            # wrong account.
+            if (
+                entry.llm_auth_provider
+                and entry.llm_auth_provider != "platform"
+                and not runtime_is_available(entry.llm_auth_provider)
+            ):
+                raise RuntimeError(
+                    f"chat_provider_runtime_unavailable:{entry.llm_auth_provider}"
+                )
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access

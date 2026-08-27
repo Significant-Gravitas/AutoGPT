@@ -32,7 +32,8 @@ from backend.executor.auto_credentials import (
 )
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
-from backend.integrations.codex.access import enforce_codex_access
+from backend.copilot.subscription_providers import profile_for_credential_provider
+from backend.integrations.subscription_access import enforce_subscription_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -311,7 +312,15 @@ async def execute_block(
                 credential_field_name = field_name
                 if field_name not in input_data:
                     input_data[field_name] = cred_meta.model_dump()
-                if cred_meta.provider == ProviderName.CODEX:
+                # A subscription credential is leased rather than copied: the
+                # runtime behind it is exclusive, and the entitlement is
+                # re-checked here because a plan can lapse between picking
+                # the connection and running on it. Asked of the provider
+                # table rather than of codex by name, so a second
+                # subscription is leased and re-checked the same way instead
+                # of falling through to the plain-credential path.
+                subscription = profile_for_credential_provider(cred_meta.provider)
+                if subscription is not None:
                     lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
                     credential_leases[field_name] = lease
                     credentials = lease.credentials
@@ -320,7 +329,7 @@ async def execute_block(
                         and credentials.type == cred_meta.type
                     ):
                         raise ValueError
-                    await enforce_codex_access(user_id)
+                    await enforce_subscription_access(user_id, subscription.key)
                     exec_kwargs[field_name] = credentials
                     continue
 

@@ -63,9 +63,15 @@ async def test_an_entitled_user_is_offered_what_the_deployment_enables(
 
 
 @pytest.mark.asyncio
-async def test_the_operator_opt_in_is_the_outer_gate(entitled, monkeypatch) -> None:
+async def test_an_opt_in_does_not_conjure_a_runtime(entitled, monkeypatch) -> None:
+    """Grok is described in the table but not built here, so the operator
+    flag grants permission for something that still cannot run. Both gates
+    have to pass before anyone is offered it -- otherwise turning the flag on
+    produces a connect button that opens a login route with nothing behind
+    it."""
     monkeypatch.setenv("CHAT_ENABLE_GROK_SUBSCRIPTION", "true")
-    assert ProviderName.GROK in await visible_subscription_providers("user-1")
+    assert ProviderName.GROK not in await visible_subscription_providers("user-1")
+    assert not await has_subscription_access("user-1", "grok")
 
 
 @pytest.mark.asyncio
@@ -127,6 +133,15 @@ class TestRunningOnASubscription:
     ) -> None:
         monkeypatch.delenv("CHAT_ENABLE_GROK_SUBSCRIPTION", raising=False)
         assert not await has_subscription_access("user-1", "grok")
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_provider_leaves_the_turn_queued_rather_than_raising(
+        self, entitled
+    ) -> None:
+        """The caller is the dispatch loop. One session naming a provider
+        this build no longer ships must not stop every other turn that user
+        has waiting."""
+        assert not await has_subscription_access("user-1", "not-a-provider")
 
     @pytest.mark.asyncio
     async def test_enforcement_says_what_would_change_it(self, monkeypatch) -> None:

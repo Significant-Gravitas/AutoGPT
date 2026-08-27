@@ -106,6 +106,17 @@ class SubscriptionProviderProfile(BaseModel):
     # the deployment's own relationship with that vendor. That belongs to
     # whoever operates the deployment, not to a default in this file.
     opt_in_env: str | None = None
+    # Whether this build can actually complete the round trip: acquire a
+    # credential and run a turn on it. Both halves, because a provider with
+    # only one is useless -- a sign-in that leads to chats that all fail is
+    # worse than no sign-in.
+    #
+    # Separate from ``opt_in_env``, which is the operator declining something
+    # that works. This is us not having built it yet, and it is a row in the
+    # table rather than an unwritten row so that everything downstream --
+    # the offers, the gates, the connect copy, the tests -- is already
+    # written and exercised when the runtime lands. What flips is this flag.
+    runtime_ready: bool = True
 
     # --- connect flow copy ----------------------------------------------
     # What the button that starts the sign-in says. The provider's own name
@@ -194,6 +205,10 @@ GITHUB_COPILOT = SubscriptionProviderProfile(
     # GitHub gives us a real OAuth application of our own, so unlike Codex we
     # hold and refresh the token ourselves rather than driving a CLI's login
     # and reading what it wrote.
+    # No OAuth handler and no runtime yet, so it is described and tested but
+    # not offered: the connect button would open a login route that does not
+    # exist.
+    runtime_ready=False,
     credential_strategy="oauth_app",
     credential_provider=ProviderName.GITHUB_COPILOT,
     login_timeout_seconds=15 * 60,
@@ -238,6 +253,7 @@ GROK = SubscriptionProviderProfile(
     # It is a real capability and some deployments will want it. It is not a
     # default we can make on an operator's behalf.
     opt_in_env="CHAT_ENABLE_GROK_SUBSCRIPTION",
+    runtime_ready=False,
     credential_strategy="runtime_device_code",
     credential_provider=ProviderName.GROK,
     login_timeout_seconds=15 * 60,
@@ -275,9 +291,16 @@ def known_profiles() -> tuple[SubscriptionProviderProfile, ...]:
 def is_enabled(profile: SubscriptionProviderProfile) -> bool:
     """Whether this deployment offers the provider at all.
 
+    Two reasons it may not: this build cannot do it yet, or the operator has
+    declined something it can. Both end in the same place -- the provider is
+    absent from every list -- so both are answered here rather than at each
+    of the dozen call sites that would otherwise have to remember.
+
     Read at call time rather than at import so an operator's choice takes
     effect on restart without the table caching a stale answer.
     """
+    if not profile.runtime_ready:
+        return False
     if profile.opt_in_env is None:
         return True
     return os.getenv(profile.opt_in_env, "").strip().lower() in (
@@ -326,3 +349,21 @@ def is_subscription_credential(credential_provider: str) -> bool:
     credits nor blocked by AutoGPT's paywall.
     """
     return profile_for_credential_provider(credential_provider) is not None
+
+
+def runtime_is_available(auth_provider: str) -> bool:
+    """Whether a turn can be run on this connection in this build.
+
+    Asked at dispatch, not only when a session is routed: a session outlives
+    the deployment that created it, so an operator turning a provider off --
+    or a build that no longer ships its runtime -- must stop the turn rather
+    than let it fall through to whichever path is next.
+
+    The platform route is always available; it is the deployment itself.
+    """
+    if auth_provider == "platform":
+        return True
+    try:
+        return is_enabled(profile_for(auth_provider))
+    except ValueError:
+        return False
