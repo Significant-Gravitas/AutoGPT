@@ -18,6 +18,8 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
+import { getGetV2ListProviderModelTiersMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 
 import SettingsIntegrationsPage from "../page";
 
@@ -344,17 +346,34 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
     server.use(
       getGetV1ListCredentialsMockHandler([]),
       getGetV1ListProvidersMockHandler([
+        // `display_alias` and the merged description are the server's, not
+        // this client's -- it used to decide both from the name "codex".
         makeProvider({
           name: "codex",
           description: "Use your ChatGPT plan",
+          display_alias: "openai",
           supported_auth_types: ["oauth2"],
         }),
         makeProvider({
           name: "openai",
-          description: "GPT models",
+          description: "GPT models or your ChatGPT subscription",
           supported_auth_types: ["api_key"],
         }),
       ]),
+      // The sign-in button and the tab name are the provider's own words for
+      // the act, and this is where the client learns them.
+      getGetV2ListProviderModelTiersMockHandler200({
+        providers: [
+          {
+            provider_family: "openai",
+            display_name: "ChatGPT",
+            auth_provider: "codex",
+            connect_button_label: "Sign in with ChatGPT",
+            terms_company: "OpenAI",
+            tiers: [],
+          } as ProviderTiers,
+        ],
+      }),
     );
 
     render(<SettingsIntegrationsPage />);
@@ -366,7 +385,7 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
 
     const dialog = await screen.findByRole("dialog");
     const description = await within(dialog).findByText(
-      /openai models via api key or your chatgpt subscription/i,
+      /gpt models or your chatgpt subscription/i,
     );
     expect(within(dialog).getAllByText("OpenAI")).toHaveLength(1);
     fireEvent.click(description);
@@ -377,7 +396,9 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
     expect(within(dialog).getByRole("tab", { name: "ChatGPT" })).toBeDefined();
     expect(within(dialog).getByRole("tab", { name: /api key/i })).toBeDefined();
     expect(
-      within(dialog).getByRole("button", { name: "Sign in with ChatGPT" }),
+      await within(dialog).findByRole("button", {
+        name: "Sign in with ChatGPT",
+      }),
     ).toBeDefined();
     expect(
       within(dialog).getByAltText("OpenAI logo").getAttribute("src"),

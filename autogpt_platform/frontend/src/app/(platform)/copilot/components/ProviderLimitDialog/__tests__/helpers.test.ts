@@ -80,8 +80,11 @@ describe("alternativeConnection", () => {
     const found = alternativeConnection(
       [
         chatgpt(),
-        chatgpt({ offer_id: "codex:cred-2",
- auth_provider: "codex", credential_id: "cred-2" }),
+        chatgpt({
+          offer_id: "codex:cred-2",
+          auth_provider: "codex",
+          credential_id: "cred-2",
+        }),
       ],
       limitOn("codex", "cred-1"),
     );

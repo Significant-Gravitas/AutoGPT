@@ -1,14 +1,13 @@
 "use client";
 
-import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 
+import { ConnectOptionButton } from "./ConnectOptionButton";
 import { useConnectStep } from "./useConnectStep";
 
 /**
@@ -20,12 +19,15 @@ import { useConnectStep } from "./useConnectStep";
  * can do the work. So the zero-config path leads and API keys become the
  * advanced one.
  *
+ * Which subscriptions appear is the deployment's answer, not this file's:
+ * the copy names whatever the server offers rather than one provider it was
+ * written around.
+ *
  * Deliberately skippable. A user who wants API keys, or who has already
  * configured them, should not have to link an account to get past a wizard.
  */
 export function ConnectStep() {
-  const { connect, isConnecting, skip, isAlreadyLinked, models } =
-    useConnectStep();
+  const { skip, isAlreadyLinked, options } = useConnectStep();
 
   return (
     <FadeIn>
@@ -38,31 +40,29 @@ export function ConnectStep() {
           <Text variant="h3">Power your agents in one sign-in</Text>
           <Text variant="lead" as="span" className="!text-zinc-500">
             {isAlreadyLinked
-              ? "Your ChatGPT plan is connected. Agents will run on it instead of spending AutoGPT credits."
-              : "Connect the ChatGPT plan you already have and AutoGPT runs with no API keys and no billing setup."}
-            {models && !isAlreadyLinked ? ` You get ${models}.` : ""}
+              ? "Your subscription is connected. Agents will run on it instead of spending AutoGPT credits."
+              : `Connect ${namesOf(options)} and AutoGPT runs with no API keys and no billing setup.`}
+            {!isAlreadyLinked && options.length === 1 && options[0].models
+              ? ` You get ${options[0].models}.`
+              : ""}
           </Text>
         </div>
 
         <div className="flex w-full flex-col items-center gap-4">
-          {isAlreadyLinked ? (
+          {isAlreadyLinked || options.length === 0 ? (
             <Button variant="primary" size="large" onClick={skip}>
               Continue
             </Button>
           ) : (
-            <Button
-              variant="primary"
-              size="large"
-              onClick={connect}
-              loading={isConnecting}
-              rightIcon={<Icon icon={LinkSquare01Icon} size={18} />}
-            >
-              Sign in with ChatGPT
-            </Button>
-          )}
-
-          {!isAlreadyLinked && (
             <>
+              {options.map((option, index) => (
+                <ConnectOptionButton
+                  key={option.authProvider}
+                  option={option}
+                  variant={index === 0 ? "primary" : "secondary"}
+                  onConnected={skip}
+                />
+              ))}
               <Text
                 variant="small"
                 as="span"
@@ -98,4 +98,14 @@ export function ConnectStep() {
       </div>
     </FadeIn>
   );
+}
+
+/** "the ChatGPT plan you already have", or "a ChatGPT or Grok plan you
+ *  already have" — the promise names what is actually on offer. */
+function namesOf(options: { displayName: string }[]): string {
+  const names = options.map((option) => option.displayName);
+  if (names.length === 0) return "a subscription you already have";
+  if (names.length === 1) return `the ${names[0]} plan you already have`;
+  const list = `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `a ${list} plan you already have`;
 }

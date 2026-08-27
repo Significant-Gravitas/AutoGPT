@@ -11,13 +11,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useOnboardingWizardStore } from "../../../store";
 import { ConnectStep } from "../ConnectStep";
-import { hasLinkedSubscription, linkedModelsSentence } from "../helpers";
+import { hasLinkedSubscription, subscriptionOptions } from "../helpers";
 
 const connect = vi.fn();
+const oauthProviders: string[] = [];
 vi.mock(
   "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect",
   () => ({
-    useOAuthConnect: () => ({ connect, isPending: false }),
+    useOAuthConnect: ({ provider }: { provider: string }) => {
+      oauthProviders.push(provider);
+      return { connect, isPending: false };
+    },
   }),
 );
 
@@ -73,10 +77,31 @@ function chatgptTiers(): ProviderTiers {
   return {
     provider_family: "openai",
     display_name: "ChatGPT",
+    auth_provider: "codex",
+    connect_button_label: "Sign in with ChatGPT",
     tiers: [
       { tier: "standard", label: "Balanced", display_model: "GPT-5.6 Terra" },
       { tier: "advanced", label: "Advanced", display_model: "GPT-5.6 Sol" },
     ],
+  } as ProviderTiers;
+}
+
+function grokTiers(): ProviderTiers {
+  return {
+    provider_family: "xai",
+    display_name: "Grok",
+    auth_provider: "grok",
+    connect_button_label: "Sign in with Grok",
+    tiers: [],
+  } as ProviderTiers;
+}
+
+function platformTiers(): ProviderTiers {
+  return {
+    provider_family: "autogpt",
+    display_name: "AutoGPT Platform",
+    auth_provider: "platform",
+    tiers: [],
   } as ProviderTiers;
 }
 
@@ -93,11 +118,12 @@ function mockOffers(
 describe("ConnectStep", () => {
   beforeEach(() => {
     connect.mockClear();
+    oauthProviders.length = 0;
     useOnboardingWizardStore.setState({ currentStep: 1 });
   });
 
   it("leads with the zero-config path", async () => {
-    mockOffers([offer()]);
+    mockOffers([offer()], [platformTiers(), chatgptTiers()]);
 
     render(<ConnectStep />);
 
@@ -112,7 +138,7 @@ describe("ConnectStep", () => {
     // the advanced path a dead end rather than an alternative. The control
     // is named for what it does -- it skips the step; it cannot add a key --
     // and the line beside it says where keys actually live.
-    mockOffers([offer()]);
+    mockOffers([offer()], [chatgptTiers()]);
 
     render(<ConnectStep />);
     await userEvent.click(
@@ -124,12 +150,12 @@ describe("ConnectStep", () => {
   });
 
   it("stops asking once a subscription is linked", async () => {
-    mockOffers([offer(), chatgpt()]);
+    mockOffers([offer(), chatgpt()], [chatgptTiers()]);
 
     render(<ConnectStep />);
 
     expect(
-      await screen.findByText(/Your ChatGPT plan is connected/),
+      await screen.findByText(/Your subscription is connected/),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /Sign in with ChatGPT/ })).toBe(
       null,
@@ -137,13 +163,35 @@ describe("ConnectStep", () => {
   });
 
   it("says a Claude subscription cannot be linked, rather than leaving it to be discovered", async () => {
-    mockOffers([offer()]);
+    mockOffers([offer()], [chatgptTiers()]);
 
     render(<ConnectStep />);
 
     expect(
       await screen.findByText(/Claude subscriptions can't be linked/),
     ).toBeDefined();
+  });
+
+  it("offers every subscription the deployment enables", async () => {
+    // The step used to offer exactly one, named in the copy and hardcoded in
+    // the OAuth call. A deployment that turns on a second would have kept
+    // sending everyone to the first, with nothing on screen to say the other
+    // existed -- so nobody would have reported it.
+    mockOffers([offer()], [platformTiers(), chatgptTiers(), grokTiers()]);
+
+    render(<ConnectStep />);
+
+    expect(
+      await screen.findByRole("button", { name: /Sign in with ChatGPT/ }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Sign in with Grok/ }),
+    ).toBeDefined();
+    expect(screen.getByText(/a ChatGPT or Grok plan/)).toBeDefined();
+    // Each button signs into its own provider. The step used to pass "codex"
+    // for whatever was clicked, so a second button would have opened the
+    // first provider's sign-in.
+    expect(new Set(oauthProviders)).toEqual(new Set(["codex", "grok"]));
   });
 
   it("names what you get, from the catalog", async () => {
@@ -168,7 +216,7 @@ describe("ConnectStep helpers", () => {
   });
 
   it("names the models from the catalog rather than hardcoding them", () => {
-    expect(linkedModelsSentence([chatgptTiers()])).toBe(
+    expect(subscriptionOptions([chatgptTiers()])[0].models).toBe(
       "GPT-5.6 Terra (Balanced) and GPT-5.6 Sol (Advanced)",
     );
   });
@@ -177,13 +225,25 @@ describe("ConnectStep helpers", () => {
     // The whole point of this screen is that the user has not connected yet,
     // so ChatGPT is absent from their offers and this sentence would always
     // have come out empty if it read them.
-    expect(linkedModelsSentence([])).toBe("");
+    expect(subscriptionOptions([])).toEqual([]);
   });
 
   it("says nothing when the server named no models", () => {
     expect(
-      linkedModelsSentence([{ ...chatgptTiers(), tiers: [] } as ProviderTiers]),
+      subscriptionOptions([
+        { ...chatgptTiers(), tiers: [] } as ProviderTiers,
+      ])[0].models,
     ).toBe("");
-    expect(linkedModelsSentence(undefined)).toBe("");
+    expect(subscriptionOptions(undefined)).toEqual([]);
+  });
+
+  it("does not offer the platform route as something to link", () => {
+    // It has no account to sign into; offering it would be a button that
+    // opens an OAuth window for a provider that has none.
+    expect(
+      subscriptionOptions([platformTiers(), chatgptTiers()]).map(
+        (option) => option.authProvider,
+      ),
+    ).toEqual(["codex"]);
   });
 });
