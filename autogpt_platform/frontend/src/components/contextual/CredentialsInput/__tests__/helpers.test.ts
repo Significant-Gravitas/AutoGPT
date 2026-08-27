@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { deriveAuthMethods } from "@/hooks/useCredentials";
 import {
   countSupportedTypes,
   getSupportedTypes,
@@ -508,6 +509,39 @@ describe("resolveActionTarget", () => {
     expect(resolveActionTarget(false, false, false, false, true)).toBe(
       "host_scoped",
     );
+  });
+
+  // `resolveActionTarget` checks OAuth *before* device code, so a provider
+  // reporting both resolves to "oauth". That is load-bearing: the entire
+  // device-code connect flow depends on `deriveAuthMethods` having already
+  // shadowed `oauth2` out before this function ever sees the flags. Pinning
+  // it here makes the dependency explicit rather than incidental.
+  it("prefers oauth when both oauth2 and device code are reported", () => {
+    expect(resolveActionTarget(false, true, false, false, false, true)).toBe(
+      "oauth",
+    );
+  });
+
+  // The end-to-end guard for that dependency. A device-code provider
+  // advertises BOTH types — a device-code grant yields an oauth2-shaped
+  // credential, so the block must keep accepting `oauth2` for saved
+  // credentials to match. If the shadowing in `deriveAuthMethods` regresses,
+  // this resolves to "oauth" and the connect attempt dies on
+  // "Provider 'stripe_link' does not support OAuth" — a public client has no
+  // client secret, so the authorization-code redirect can only 404.
+  it("routes a provider advertising both types to device auth, not oauth", () => {
+    const methods = deriveAuthMethods(["oauth2", "device_code"]);
+
+    expect(
+      resolveActionTarget(
+        false,
+        methods.supportsOAuth2,
+        methods.supportsApiKey,
+        methods.supportsUserPassword,
+        methods.supportsHostScoped,
+        methods.supportsDeviceCode,
+      ),
+    ).toBe("device_code");
   });
 
   it("returns null when nothing is supported", () => {
