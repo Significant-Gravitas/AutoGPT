@@ -966,10 +966,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "build the t.me add-to-group link on the Bots settings page.",
     )
     microsoft_client_id: str = Field(
-        default="",
+        default="ce01a4d6-be71-42a0-86b1-6540838eb17c",
         description="Entra application (client) ID, shared by Microsoft "
-        "integrations. Set together with the client secret and tenant ID to "
-        "mount the Teams bot adapter on the main API.",
+        "integrations. It is a public identifier used without a secret for "
+        "Microsoft 365 Copilot device auth. Set the server-only client secret "
+        "and tenant ID as well to mount the Teams bot adapter.",
     )
     microsoft_client_secret: str = Field(
         default="",

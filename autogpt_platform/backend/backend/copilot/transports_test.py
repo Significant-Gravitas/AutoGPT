@@ -48,6 +48,22 @@ def _codex_credentials(credential_id: str = "cred-codex") -> OAuth2Credentials:
     )
 
 
+def _microsoft_credentials(
+    credential_id: str = "cred-microsoft",
+) -> OAuth2Credentials:
+    from backend.integrations.oauth.microsoft_365_copilot import (
+        Microsoft365CopilotDeviceAuthHandler,
+    )
+
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="microsoft_365_copilot",
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+
+
 @pytest.fixture(autouse=True)
 def transport_env(mocker: pytest_mock.MockerFixture):
     """Hosted deployment, entitled user, no connections, nothing saved."""
@@ -113,6 +129,27 @@ async def test_saved_choice_beats_the_server_pick() -> None:
     _saved("codex", "cred-codex")
 
     assert _default_of(await get_chat_transports(USER_ID)) == ("codex", "cred-codex")
+
+
+@pytest.mark.asyncio
+async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    microsoft = next(
+        transport
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    )
+    assert microsoft.credential_id == "cred-microsoft"
+    assert microsoft.label == "Microsoft 365 Copilot"
+    assert microsoft.default is True
 
 
 @pytest.mark.asyncio
@@ -266,6 +303,18 @@ async def test_chatgpt_without_an_account_is_rejected() -> None:
         await save_default_chat_route(USER_ID, DefaultChatRoute(auth_provider="codex"))
 
     assert error.value.detail == "codex_credential_required"
+    transports.set_user_default_chat_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_microsoft_copilot_without_an_account_is_rejected() -> None:
+    with pytest.raises(InvalidDefaultChatRoute) as error:
+        await save_default_chat_route(
+            USER_ID,
+            DefaultChatRoute(auth_provider="microsoft_365_copilot"),
+        )
+
+    assert error.value.detail == "microsoft_365_copilot_credential_required"
     transports.set_user_default_chat_route.assert_not_awaited()
 
 

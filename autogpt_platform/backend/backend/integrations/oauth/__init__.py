@@ -10,6 +10,7 @@ from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .microsoft_365_copilot import Microsoft365CopilotDeviceAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
@@ -234,6 +235,7 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 # ------------------------------------------------------------------ #
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
     CodexDeviceAuthHandler,
+    Microsoft365CopilotDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]
 

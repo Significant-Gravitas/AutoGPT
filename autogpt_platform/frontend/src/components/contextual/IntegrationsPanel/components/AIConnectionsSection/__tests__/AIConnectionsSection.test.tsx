@@ -91,9 +91,36 @@ function lockedChatgpt(): AIConnectionOffer {
   };
 }
 
+function microsoft(isDefault: boolean, id = "cred-msft"): AIConnectionOffer {
+  return {
+    offer_id: `microsoft_365_copilot:${id}`,
+    auth_provider: "microsoft_365_copilot",
+    provider_family: "microsoft",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "device_oauth",
+    credential_id: id,
+    backed_by_label: "Your Microsoft Copilot plan",
+    description:
+      "New chats are backed by your Microsoft Copilot subscription and work context.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+interface MockCredential {
+  id: string;
+  username?: string;
+  provider?: string;
+  title?: string;
+  scopes?: string[];
+}
+
 function mockTransports(
   offers: AIConnectionOffer[],
-  credentials: { id: string; username: string }[] = [],
+  credentials: MockCredential[] = [],
 ) {
   server.use(
     getGetV2ListChatConnectionsMockHandler200({ offers }),
@@ -101,11 +128,11 @@ function mockTransports(
     getGetV1ListCredentialsMockHandler200(
       credentials.map((credential) => ({
         id: credential.id,
-        provider: "codex",
+        provider: credential.provider ?? "codex",
         type: "oauth2" as const,
-        title: "ChatGPT for Codex",
-        scopes: [],
-        username: credential.username,
+        title: credential.title ?? "ChatGPT for Codex",
+        scopes: credential.scopes ?? [],
+        username: credential.username ?? null,
       })),
     ),
   );
@@ -226,6 +253,32 @@ describe("AIConnectionsSection", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
     );
+  });
+
+  it("shows the Microsoft account and its granted access", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+          title: "Nick Example",
+          scopes: ["User.Read", "Mail.Read", "Chat.Read"],
+        },
+      ],
+    );
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("nick@example.com")).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+
+    expect(await screen.findByText("Nick Example")).toBeDefined();
+    expect(screen.getByText("Basic account profile")).toBeDefined();
+    expect(screen.getByText("Outlook mail")).toBeDefined();
+    expect(screen.getByText("Teams chats")).toBeDefined();
   });
 
   it("marks the saved default, and only that one", async () => {

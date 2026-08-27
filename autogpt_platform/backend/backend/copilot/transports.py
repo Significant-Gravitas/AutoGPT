@@ -17,12 +17,16 @@ from typing import Optional, get_args
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
-from backend.data.model import Credentials
+from backend.data.model import Credentials, OAuth2Credentials
 from backend.data.user import get_user_default_chat_route, set_user_default_chat_route
 from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
@@ -97,6 +101,16 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
         )
         for credentials in await _valid_codex_credentials(user_id)
     )
+    transports.extend(
+        ChatTransportResponse(
+            auth_provider="microsoft_365_copilot",
+            credential_id=credentials.id,
+            label="Microsoft 365 Copilot",
+            available=True,
+            default=False,
+        )
+        for credentials in await _valid_microsoft_365_copilot_credentials(user_id)
+    )
 
     saved_provider, saved_credential_id = await get_user_default_chat_route(user_id)
     _mark_default(transports, saved_provider, saved_credential_id)
@@ -141,8 +155,8 @@ async def save_default_chat_route(
 
     if route.auth_provider == "platform" and route.credential_id is not None:
         raise InvalidDefaultChatRoute("codex_credential_not_allowed")
-    if route.auth_provider == "codex" and route.credential_id is None:
-        raise InvalidDefaultChatRoute("codex_credential_required")
+    if route.auth_provider != "platform" and route.credential_id is None:
+        raise InvalidDefaultChatRoute(f"{route.auth_provider}_credential_required")
 
     transports = await get_chat_transports(user_id)
     if _find_transport(transports, route.auth_provider, route.credential_id) is None:
@@ -150,8 +164,8 @@ async def save_default_chat_route(
         # is indistinguishable from one that doesn't exist — deliberately, so
         # this never confirms another user's credential id.
         raise InvalidDefaultChatRoute(
-            "codex_credential_not_found"
-            if route.auth_provider == "codex"
+            f"{route.auth_provider}_credential_not_found"
+            if route.auth_provider != "platform"
             else "chat_transport_not_configured"
         )
 
@@ -205,8 +219,10 @@ def _automatic_default(
     )
     if platform is not None:
         return platform
-    codex = [transport for transport in available if transport.auth_provider == "codex"]
-    return codex[0] if len(codex) == 1 else None
+    user_connections = [
+        transport for transport in available if transport.auth_provider != "platform"
+    ]
+    return user_connections[0] if len(user_connections) == 1 else None
 
 
 def _find_transport(
@@ -247,3 +263,28 @@ def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
     except CodexAuthBundleError:
         return False
     return True
+
+
+async def _valid_microsoft_365_copilot_credentials(
+    user_id: str,
+) -> list[Credentials]:
+    credentials = await credentials_manager.store.get_creds_by_provider(
+        user_id, ProviderName.MICROSOFT_365_COPILOT
+    )
+    return [
+        credential
+        for credential in credentials
+        if _is_valid_microsoft_365_copilot_credentials(credential)
+    ]
+
+
+def _is_valid_microsoft_365_copilot_credentials(
+    credentials: Credentials | None,
+) -> bool:
+    return (
+        isinstance(credentials, OAuth2Credentials)
+        and credentials.provider == ProviderName.MICROSOFT_365_COPILOT
+        and set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES).issubset(
+            credentials.scopes
+        )
+    )

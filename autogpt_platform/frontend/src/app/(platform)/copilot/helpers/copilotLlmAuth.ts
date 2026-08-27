@@ -20,7 +20,7 @@ export function getChatTransportSelection(
   }
   if (transport.credential_id === null) return null;
   return {
-    authProvider: "codex",
+    authProvider: transport.auth_provider,
     credentialId: transport.credential_id,
   };
 }

@@ -14,6 +14,7 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -23,6 +24,10 @@ from backend.integrations.codex.auth_bundle import (
     CodexAuthTokensV1,
     encode_provider_state,
 )
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import BehaveAs
 
@@ -1135,6 +1140,18 @@ def _codex_credentials(
     )
 
 
+def _microsoft_365_copilot_credentials(
+    credential_id: str = "cred-microsoft",
+) -> OAuth2Credentials:
+    return OAuth2Credentials(
+        id=credential_id,
+        provider=ProviderName.MICROSOFT_365_COPILOT,
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.DEFAULT_SCOPES,
+    )
+
+
 def _set_self_hosted_chat_config(
     mocker: pytest_mock.MockerFixture,
     *,
@@ -1201,6 +1218,36 @@ def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
     }
 
 
+def test_list_chat_transports_includes_microsoft_365_copilot(
+    test_user_id: str,
+) -> None:
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
+    credential = _microsoft_365_copilot_credentials()
+    lookup.side_effect = lambda _user_id, provider: (
+        [credential] if provider == ProviderName.MICROSOFT_365_COPILOT else []
+    )
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    assert response.json()["transports"] == [
+        {
+            "auth_provider": "platform",
+            "credential_id": None,
+            "label": "AutoGPT Platform",
+            "available": True,
+            "default": True,
+        },
+        {
+            "auth_provider": "microsoft_365_copilot",
+            "credential_id": "cred-microsoft",
+            "label": "Microsoft 365 Copilot",
+            "available": True,
+            "default": False,
+        },
+    ]
+
+
 def test_list_chat_transports_hosted_omits_codex_without_required_plan(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -1228,7 +1275,7 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
         ]
     }
     access.assert_awaited_once_with(test_user_id)
-    lookup.assert_not_awaited()
+    lookup.assert_awaited_once_with(test_user_id, ProviderName.MICROSOFT_365_COPILOT)
 
 
 def test_list_chat_transports_omits_invalid_codex_credentials(
@@ -1569,7 +1616,7 @@ def test_create_session_codex_route_rejects_unowned_credential(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "codex_credential_not_found"
-    lookup.assert_awaited_once_with(test_user_id, "codex")
+    lookup.assert_any_await(test_user_id, "codex")
 
 
 def test_create_session_codex_route_rejects_user_without_required_plan(
@@ -1637,6 +1684,44 @@ def test_create_session_codex_route_persists_owned_credential(
     mock_paywall.assert_not_awaited()
 
 
+def test_create_session_microsoft_route_persists_owned_credential(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    codex_gate = mocker.patch.object(
+        chat_routes,
+        "enforce_codex_access_http",
+        new=AsyncMock(),
+    )
+    credential = _microsoft_365_copilot_credentials("cred-msft")
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
+    lookup.side_effect = lambda _user_id, provider: (
+        [credential] if provider == ProviderName.MICROSOFT_365_COPILOT else []
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "llm_auth_provider": "microsoft_365_copilot",
+            "llm_credential_id": "cred-msft",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["llm_auth_provider"] == ("microsoft_365_copilot")
+    assert response.json()["metadata"]["llm_credential_id"] == "cred-msft"
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == (
+        "microsoft_365_copilot"
+    )
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-msft"
+    mock_paywall.assert_not_awaited()
+    codex_gate.assert_not_awaited()
+
+
 def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
@@ -1657,7 +1742,7 @@ def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     assert response.json()["metadata"]["llm_credential_id"] is None
     assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
     assert mock_create.call_args.kwargs["llm_credential_id"] is None
-    lookup.assert_awaited_once_with(test_user_id, "codex")
+    lookup.assert_any_await(test_user_id, "codex")
     mock_paywall.assert_awaited_once_with(test_user_id)
 
 
@@ -1788,7 +1873,8 @@ def test_create_session_respects_explicit_platform_route(
     assert response.status_code == 200
     assert response.json()["metadata"]["llm_auth_provider"] == "platform"
     assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
-    lookup.assert_awaited_once()
+    lookup.assert_any_await(TEST_USER_ID, "codex")
+    lookup.assert_any_await(TEST_USER_ID, ProviderName.MICROSOFT_365_COPILOT)
 
 
 def test_create_session_platform_route_still_enforces_paywall(
@@ -3962,6 +4048,7 @@ def test_advanced_tier_is_refused_without_the_entitlement(
     validate = mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_writable_session",
         new_callable=AsyncMock,
+        return_value=ChatSession.new(TEST_USER_ID, dry_run=False),
     )
 
     response = client.post(
@@ -3971,8 +4058,7 @@ def test_advanced_tier_is_refused_without_the_entitlement(
 
     assert response.status_code == 403
     assert response.json()["detail"] == "advanced_tier_not_entitled"
-    # Refused before the session is even loaded, so nothing is left behind.
-    validate.assert_not_called()
+    validate.assert_awaited_once_with("sess-1", TEST_USER_ID)
 
 
 def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
@@ -3995,6 +4081,7 @@ def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
     validate = mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_writable_session",
         new_callable=AsyncMock,
+        return_value=ChatSession.new(TEST_USER_ID, dry_run=False),
     )
 
     response = client.post(
@@ -4007,7 +4094,47 @@ def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
     assert detail == "advanced_tier_unavailable"
     # The underlying failure is not handed to the client.
     assert "billing down" not in str(detail)
-    validate.assert_not_called()
+    validate.assert_awaited_once_with("sess-1", TEST_USER_ID)
+
+
+def test_advanced_tier_is_not_applied_to_microsoft_365_copilot(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    entitled = mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    session = ChatSession.new(
+        TEST_USER_ID,
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="cred-msft",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new=AsyncMock(return_value=session),
+    )
+    mocker.patch(
+        "backend.copilot.briefing.scheduling.ensure_morning_briefing_scheduled",
+        return_value=None,
+    )
+    mocker.patch.object(chat_routes, "spawn_background_task")
+    mocker.patch.object(
+        chat_routes,
+        "is_turn_in_flight",
+        new=AsyncMock(
+            side_effect=fastapi.HTTPException(status_code=418, detail="stop here")
+        ),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 418
+    entitled.assert_not_awaited()
 
 
 def test_standard_tier_is_not_gated(

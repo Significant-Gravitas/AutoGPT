@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useGetV1CodexAccount } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -10,10 +11,11 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useOAuthConnect } from "../ConnectServiceDialog/components/DetailView/useOAuthConnect";
 import { DeleteConfirmDialog } from "../DeleteConfirmDialog/DeleteConfirmDialog";
 import { useDeleteIntegration } from "../hooks/useDeleteIntegration";
+import { microsoftAccessLabels } from "./helpers";
 
 interface Props {
   connection: AIConnectionOffer | null;
-  account?: string;
+  credential?: CredentialsMetaResponse;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -25,11 +27,36 @@ interface Props {
  */
 export function ManageConnectionDialog({
   connection,
-  account,
+  credential,
+  onOpenChange,
+}: Props) {
+  if (connection?.auth_provider === "microsoft_365_copilot") {
+    return (
+      <Microsoft365CopilotConnectionDialog
+        connection={connection}
+        credential={credential}
+        onOpenChange={onOpenChange}
+      />
+    );
+  }
+
+  return (
+    <ChatGPTConnectionDialog
+      connection={connection}
+      credential={credential}
+      onOpenChange={onOpenChange}
+    />
+  );
+}
+
+function ChatGPTConnectionDialog({
+  connection,
+  credential,
   onOpenChange,
 }: Props) {
   const credentialId = connection?.credential_id ?? null;
   const [forceMessage, setForceMessage] = useState<string | null>(null);
+  const account = credential?.username ?? undefined;
 
   // Asked for only while this dialog is open. Reading it leases a runtime
   // against the provider, so it must never run on the list behind — and it
@@ -183,5 +210,113 @@ export function ManageConnectionDialog({
         notice={forceMessage ?? undefined}
       />
     </>
+  );
+}
+
+interface MicrosoftProps {
+  connection: AIConnectionOffer;
+  credential?: CredentialsMetaResponse;
+  onOpenChange: (open: boolean) => void;
+}
+
+function Microsoft365CopilotConnectionDialog({
+  connection,
+  credential,
+  onOpenChange,
+}: MicrosoftProps) {
+  const { remove, isPending: isDisconnecting } = useDeleteIntegration();
+  const credentialId = connection.credential_id;
+  const accessLabels = microsoftAccessLabels(credential?.scopes);
+  const displayName =
+    credential?.title && credential.title !== "Microsoft 365 Copilot"
+      ? credential.title
+      : undefined;
+
+  async function disconnect() {
+    if (!credentialId) return;
+    await remove([
+      {
+        id: credentialId,
+        provider: "microsoft_365_copilot",
+        name: credential?.username ?? "Microsoft 365 Copilot",
+      },
+    ]);
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog
+      title="Microsoft 365 Copilot"
+      styling={{ maxWidth: "32rem" }}
+      controlled={{ isOpen: true, set: onOpenChange }}
+    >
+      <Dialog.Content>
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <Text variant="small" className="text-[#8A8A90]">
+              Connected work account
+            </Text>
+            <Text variant="body-medium" className="text-black">
+              {displayName ??
+                credential?.username ??
+                "Microsoft 365 Copilot account"}
+            </Text>
+            {displayName && credential?.username && (
+              <Text variant="small" className="text-[#505057]">
+                {credential.username}
+              </Text>
+            )}
+            {!credential?.username && (
+              <Text variant="small" className="text-[#8A8A90]">
+                Reconnect once to show the signed-in account here.
+              </Text>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Text variant="small-medium" className="text-[#505057]">
+              Access granted
+            </Text>
+            {accessLabels.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {accessLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <Text variant="small" className="text-[#8A8A90]">
+                Reconnect once to refresh the access shown here.
+              </Text>
+            )}
+          </div>
+
+          <Text variant="small" className="text-[#505057]">
+            Microsoft still limits every answer to content this work account can
+            already access in Microsoft 365.
+          </Text>
+
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="destructive"
+              size="small"
+              onClick={disconnect}
+              loading={isDisconnecting}
+            >
+              Disconnect
+            </Button>
+          </div>
+
+          <Text variant="small" className="text-[#8A8A90]">
+            Disconnecting stops new chats using this Copilot subscription. Your
+            chat history is kept, and your other integrations are unaffected.
+          </Text>
+        </div>
+      </Dialog.Content>
+    </Dialog>
   );
 }
