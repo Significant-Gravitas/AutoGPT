@@ -14,11 +14,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
-from .models import (
-    DelegatedWorkReportedResponse,
-    ErrorResponse,
-    ToolResponseBase,
-)
+from .models import DelegatedWorkReportedResponse, ErrorResponse, ToolResponseBase
 from .run_sub_session import list_sub_workspace_files
 
 logger = logging.getLogger(__name__)
