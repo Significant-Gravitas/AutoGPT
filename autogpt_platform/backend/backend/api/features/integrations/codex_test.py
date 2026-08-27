@@ -22,6 +22,7 @@ from backend.integrations.codex.models import (
     CodexRateLimitsSnapshot,
     CodexRateLimitWindow,
 )
+from backend.integrations.subscription_access import hidden_subscription_providers
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -41,8 +42,8 @@ def setup_auth(mocker):
     }
     app.dependency_overrides[get_optional_user_id] = lambda: TEST_USER_ID
     mocker.patch(
-        "backend.api.features.integrations.router.has_codex_access_for_discovery",
-        new=AsyncMock(return_value=True),
+        "backend.api.features.integrations.router.hidden_subscription_providers",
+        new=AsyncMock(return_value=set()),
     )
     mocker.patch(
         "backend.api.features.integrations.router.enforce_codex_access_http",
@@ -427,11 +428,11 @@ def test_provider_discovery_includes_codex_when_user_has_access():
 
 
 def test_provider_discovery_omits_codex_when_user_lacks_access():
-    access = AsyncMock(return_value=False)
+    access = AsyncMock(return_value={"codex"})
     with (
         patch("backend.blocks.load_all_blocks"),
         patch(
-            "backend.api.features.integrations.router.has_codex_access_for_discovery",
+            "backend.api.features.integrations.router.hidden_subscription_providers",
             new=access,
         ),
         patch(
@@ -455,13 +456,21 @@ def test_provider_discovery_omits_codex_when_user_lacks_access():
 
 
 def test_provider_discovery_remains_public_and_omits_codex_anonymously():
-    access = AsyncMock(return_value=True)
+    """Anonymous callers still get the list, minus anything they could not use.
+
+    The real gate runs here rather than a mock of it: this used to pass
+    because the route short-circuited before asking, so a mock would only
+    prove the route still calls something, not that an anonymous caller is
+    actually refused a subscription provider.
+    """
     app.dependency_overrides[get_optional_user_id] = lambda: None
     with (
         patch("backend.blocks.load_all_blocks"),
+        # Undo the module-wide fixture that opens the gate for every test
+        # here: this is the one case where the gate itself is the subject.
         patch(
-            "backend.api.features.integrations.router.has_codex_access_for_discovery",
-            new=access,
+            "backend.api.features.integrations.router.hidden_subscription_providers",
+            new=hidden_subscription_providers,
         ),
         patch(
             "backend.api.features.integrations.router.get_all_provider_names",
@@ -480,7 +489,6 @@ def test_provider_discovery_remains_public_and_omits_codex_anonymously():
 
     assert response.status_code == 200
     assert [provider["name"] for provider in response.json()] == ["github"]
-    access.assert_not_awaited()
 
 
 def test_device_login_page_has_no_store_and_restrictive_browser_headers():
