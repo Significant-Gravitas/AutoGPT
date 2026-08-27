@@ -1,0 +1,49 @@
+{#- Plain-text part of the internal ops mail. No unsubscribe line: this is not
+    opt-in mail, and it must not carry List-Unsubscribe headers either. -#}
+{%- set is_request = (kind == 'request') -%}
+{%- set amount_str = '$' ~ '{:,.2f}'.format(amount_cents / 100) -%}
+{%- set balance_str = '$' ~ '{:,.2f}'.format(balance_cents / 100) -%}
+{{ 'REFUND REQUEST' if is_request else 'REFUND PROCESSED' }}{% if age_label %} - RAISED {{ age_label }}{% endif %}
+
+
+{{ amount_str }}
+{{ subject }}
+
+{% if is_request %}
+{{ user_name }} asked for {{ amount_str }} back on {{ requested_at_label }}.
+Their balance right now is {{ balance_str }}.
+{% else %}
+{{ amount_str }} was refunded to {{ user_name }} on {{ processed_at_label }} and the
+credits have been deducted. Their balance is now {{ balance_str }}.
+{% endif %}
+{% if reason and reason | trim | length > 0 %}
+
+IN THEIR WORDS
+{{ reason }}
+{% else %}
+
+No reason was given with this request{{ ', so ask before deciding.' if is_request else '.' }}
+{% endif %}
+
+THE RECORD
+Customer:   {{ user_name }}
+Email:      {{ user_email }}
+User ID:    {{ user_id }}
+Transaction:{{ ' ' }}{{ transaction_id }}
+Request ID: {{ refund_request_id }}
+Balance {{ 'now' if is_request else 'after refund' }}: {{ balance_str }}
+{% if is_request %}
+
+TO APPROVE
+Refund {{ amount_str }} in Stripe: {{ stripe_url }}
+
+TO REJECT
+Open in the admin panel: {{ admin_url }}
+{% else %}
+
+View the transaction in Stripe: {{ stripe_url }}
+{% endif %}
+
+--
+Internal notification for the AutoGPT refunds team - sent to {{ recipient }}.
+Not customer-facing.

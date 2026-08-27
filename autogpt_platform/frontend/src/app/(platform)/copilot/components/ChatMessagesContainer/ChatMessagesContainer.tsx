@@ -41,6 +41,7 @@ import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
+import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
@@ -328,6 +329,8 @@ export function ChatMessagesContainer({
   const hideForScroll = messagesReady && !settled;
 
   const lastMessage = messages[messages.length - 1];
+  const lastUserMessageID =
+    messages.findLast((message) => message.role === "user")?.id ?? null;
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
@@ -784,6 +787,10 @@ export function ChatMessagesContainer({
               </pre>
             </details>
           )}
+          <TailSpacer
+            messageID={lastUserMessageID}
+            bottomInset={bottomContentPadding ?? 0}
+          />
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
