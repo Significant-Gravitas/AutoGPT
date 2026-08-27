@@ -24,6 +24,7 @@ import {
   processCredentialDeletion,
   resolveActionTarget,
 } from "./helpers";
+import { useOAuthLoginTimeout } from "@/lib/oauth/useOAuthLoginTimeout";
 
 export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
 
@@ -77,6 +78,9 @@ export function useCredentialsInput({
     siblingInputs,
     selectedCredential?.provider,
   );
+  // Read before the loading guard below: a hook cannot be called after an
+  // early return, and the value is only used at click time anyway.
+  const loginTimeout = useOAuthLoginTimeout(credentials?.provider);
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
   const oauthFlowIdRef = useRef(0);
@@ -276,7 +280,7 @@ export function useCredentialsInput({
           stateToken: state_token,
           cancelUrl: cancel_url,
           preOpenedWindow,
-          timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          timeout: loginTimeout,
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).

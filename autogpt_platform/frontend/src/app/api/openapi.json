@@ -14998,6 +14998,14 @@
           "unlock_href": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Unlock Href"
+          },
+          "connect_button_label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Connect Button Label"
+          },
+          "terms_company": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Company"
           }
         },
         "type": "object",
@@ -16926,7 +16934,7 @@
         "properties": {
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "github_copilot", "grok"],
             "title": "Llm Auth Provider"
           },
           "llm_credential_id": {
@@ -16984,7 +16992,7 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "github_copilot", "grok"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -17075,7 +17083,7 @@
         "properties": {
           "auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "github_copilot", "grok"],
             "title": "Auth Provider"
           },
           "credential_id": {
@@ -17937,7 +17945,7 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "github_copilot", "grok"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -24275,6 +24283,22 @@
             "items": { "$ref": "#/components/schemas/ProviderTier" },
             "type": "array",
             "title": "Tiers"
+          },
+          "auth_provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth Provider"
+          },
+          "connect_button_label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Connect Button Label"
+          },
+          "terms_company": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Company"
+          },
+          "login_timeout_seconds": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Login Timeout Seconds"
           }
         },
         "type": "object",
@@ -25416,7 +25440,10 @@
         "properties": {
           "auth_provider": {
             "anyOf": [
-              { "type": "string", "enum": ["platform", "codex"] },
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "github_copilot", "grok"]
+              },
               { "type": "null" }
             ],
             "title": "Auth Provider"

@@ -58,16 +58,23 @@ export function getOAuthErrorMessage(error: unknown): string {
 /**
  * "5.6 Terra (Balanced) and 5.6 Sol (Advanced)", from the catalog.
  *
+ * Matched on the auth provider rather than the vendor family: a ChatGPT
+ * subscription and an OpenAI API key are one family and two entirely
+ * different connections, and only one of them is what this dialog is about
+ * to link.
+ *
  * Empty when the server named nothing, so the sentence falls back to the
  * general one rather than rendering half of a promise.
  */
-export function chatgptModelsSentence(
+export function subscriptionModelsSentence(
   providers: ProviderTiers[] | undefined,
+  authProvider: string | undefined,
 ): string {
-  const chatgpt = (providers ?? []).find(
-    (provider) => provider.provider_family === "openai",
+  if (!authProvider) return "";
+  const match = (providers ?? []).find(
+    (provider) => provider.auth_provider === authProvider,
   );
-  const named = (chatgpt?.tiers ?? [])
+  const named = (match?.tiers ?? [])
     .filter((tier) => tier.display_model)
     .map((tier) => `${tier.display_model} (${tier.label})`);
   if (named.length === 0) return "";

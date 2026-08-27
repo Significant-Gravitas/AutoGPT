@@ -19,6 +19,10 @@ import logging
 
 from pydantic import BaseModel
 
+from backend.copilot.subscription_providers import (
+    is_enabled,
+    known_profiles,
+)
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model_router import (
@@ -55,6 +59,21 @@ class ProviderTiers(BaseModel):
     provider_family: str
     display_name: str
     tiers: list[ProviderTier]
+    # The provider key, so a client can tie this record to a connection
+    # without matching on the display name.
+    auth_provider: str | None = None
+    # What the sign-in button says and whose terms it sends the user to.
+    # Here rather than in the client so adding a provider does not mean
+    # adding a branch to whatever renders the button.
+    connect_button_label: str | None = None
+    terms_company: str | None = None
+    # How long the client should wait on the sign-in window before giving up.
+    # A subscription sign-in hands the user to a third party and, for the
+    # device-code providers, to a CLI that polls -- far longer than a plain
+    # redirect, and long enough that the client's default cuts it off partway
+    # through. The server owns the number because the server knows which
+    # strategy the provider uses.
+    login_timeout_seconds: int | None = None
 
 
 class ProviderTiersResponse(BaseModel):
@@ -71,19 +90,32 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     config = ChatConfig()
     mode = await resolve_engine_mode(user_id, config)
     platform = await platform_tier_models(mode, user_id, config)
-    codex = codex_tier_models(mode)
-    return [
-        ProviderTiers(
-            provider_family="autogpt",
-            display_name="AutoGPT Platform",
-            tiers=_as_tiers(platform),
-        ),
-        ProviderTiers(
-            provider_family="openai",
-            display_name="ChatGPT",
-            tiers=_as_tiers(codex),
-        ),
-    ]
+    # Only codex can name its models today; the others resolve through
+    # surfaces the catalog does not carry yet, and an empty tier list is the
+    # honest answer rather than a guess.
+    per_provider = {"codex": codex_tier_models(mode)}
+
+    described: list[ProviderTiers] = []
+    for profile in known_profiles():
+        if profile.key == "platform":
+            models = platform
+        elif is_enabled(profile):
+            models = per_provider.get(profile.key, {})
+        else:
+            # Not offered on this deployment, so not described either.
+            continue
+        described.append(
+            ProviderTiers(
+                provider_family=profile.provider_family,
+                display_name=profile.display_name,
+                auth_provider=profile.key,
+                connect_button_label=profile.connect_button_label,
+                terms_company=profile.terms_company,
+                login_timeout_seconds=profile.login_timeout_seconds,
+                tiers=_as_tiers(models),
+            )
+        )
+    return described
 
 
 async def resolve_engine_mode(user_id: str, config: ChatConfig) -> str:

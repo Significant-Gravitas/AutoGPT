@@ -281,7 +281,12 @@ export function useChatSession({
       // user actually picks, and null means "use whatever the server says".
       if (copilotLlmAuth !== null) {
         sessionData.llm_auth_provider = resolvedLLMAuth.authProvider;
-        if (resolvedLLMAuth.authProvider === "codex") {
+        // Every linked route carries a credential and the platform route has
+        // none -- which is what the selection type encodes, so send whatever
+        // it holds rather than re-deriving it from the provider's name. Asked
+        // the old way, a second linked provider would have been sent as a
+        // route with no credential to run it on.
+        if (resolvedLLMAuth.credentialId !== null) {
           sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
         }
       }
@@ -353,11 +358,14 @@ export function useChatSession({
     freshSessionData as { chat_status?: string } | undefined
   )?.chat_status;
 
-  const sessionLlmAuthProvider: "platform" | "codex" | null =
+  // What the session is actually running on, verbatim from the server. Read
+  // as "is it codex, else platform" until a second linked provider existed,
+  // at which point that reads a ChatGPT-or-nothing answer onto a chat running
+  // on something else -- the wrong connection named on screen, and no error
+  // anywhere to say so. An absent value still means the platform route.
+  const sessionLlmAuthProvider: string | null =
     sessionId && sessionQuery.data?.status === 200
-      ? sessionQuery.data.data.metadata?.llm_auth_provider === "codex"
-        ? "codex"
-        : "platform"
+      ? (sessionQuery.data.data.metadata?.llm_auth_provider ?? "platform")
       : null;
 
   // The expert this session actually belongs to, straight off the session
