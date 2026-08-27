@@ -8,7 +8,17 @@ export function offerToSelection(
     return { authProvider: "platform", credentialId: null };
   }
   if (!offer.credential_id) return null;
-  return { authProvider: "codex", credentialId: offer.credential_id };
+  // The offer id is "<provider>:<credential>", which is where the provider
+  // comes from -- not a literal that has to be remembered per provider.
+  const authProvider = offer.offer_id.split(":")[0];
+  if (!authProvider || authProvider === "platform") return null;
+  return {
+    authProvider: authProvider as Exclude<
+      CopilotLlmAuthSelection["authProvider"],
+      "platform"
+    >,
+    credentialId: offer.credential_id,
+  };
 }
 
 export function matchesSelection(

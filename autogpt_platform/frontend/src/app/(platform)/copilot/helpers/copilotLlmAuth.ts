@@ -19,8 +19,11 @@ export function getChatTransportSelection(
     return { authProvider: "platform", credentialId: null };
   }
   if (transport.credential_id === null) return null;
+  // Carry the transport's own provider rather than naming one. The server
+  // already said which it is; repeating a literal here is how a third
+  // provider ends up mislabelled as the second.
   return {
-    authProvider: "codex",
+    authProvider: transport.auth_provider,
     credentialId: transport.credential_id,
   };
 }

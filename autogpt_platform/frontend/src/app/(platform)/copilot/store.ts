@@ -2,6 +2,7 @@ import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
 import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
+import type { ChatTransportResponseAuthProvider } from "@/app/api/__generated__/models/chatTransportResponseAuthProvider";
 
 export interface DeleteTarget {
   id: string;
@@ -59,9 +60,27 @@ export const PANEL_RESERVED_WIDTH = 440;
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
+/**
+ * Which connection a chat runs on.
+ *
+ * The provider half is derived from the server's own list rather than spelled
+ * out here. Naming a provider in this union meant every new one had to be
+ * added in several hand-written places that the type checker could not point
+ * at -- and until it was, a third provider silently read as "platform",
+ * because the code that narrowed this treated "not codex" as "the platform".
+ *
+ * The shape of the pair is the part worth stating: the platform route is the
+ * deployment's own key and never carries a credential; any other provider is
+ * a linked account and always does.
+ */
+export type CopilotLlmAuthProvider = ChatTransportResponseAuthProvider;
+
 export type CopilotLlmAuthSelection =
   | { authProvider: "platform"; credentialId: null }
-  | { authProvider: "codex"; credentialId: string };
+  | {
+      authProvider: Exclude<CopilotLlmAuthProvider, "platform">;
+      credentialId: string;
+    };
 
 /** Context panel tab: "files" is the inline workspace-files card, "artifacts"
  *  the docked artifacts library. */
