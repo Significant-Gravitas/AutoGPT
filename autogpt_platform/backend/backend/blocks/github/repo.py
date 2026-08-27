@@ -32,7 +32,7 @@ class GithubListTagsBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of tags to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )
@@ -309,7 +309,7 @@ class GithubListReleasesBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of releases to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )
@@ -581,7 +581,7 @@ class GithubListStargazersBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of stargazers to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )

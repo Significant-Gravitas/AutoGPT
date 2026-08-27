@@ -61,7 +61,7 @@ class GithubListNotificationsBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of notifications to fetch",
-            default=50,
+            default=100,
             ge=1,
             le=1000,
         )
@@ -144,8 +144,9 @@ class GithubListNotificationsBlock(Block):
             url,
             limit=input_data.limit,
             params=params,
-            # The notifications endpoint accepts a page size of at most 50
-            max_page_size=50,
+            # GET /notifications caps per_page at 50;
+            # the repo-scoped endpoint allows the usual 100
+            max_page_size=100 if input_data.repo else 50,
         )
         return [_to_notification_item(thread) for thread in threads]
 

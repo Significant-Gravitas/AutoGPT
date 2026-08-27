@@ -233,7 +233,7 @@ class GithubListPRReviewsBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of reviews to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )

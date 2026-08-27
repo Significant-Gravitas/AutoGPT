@@ -234,7 +234,7 @@ class GithubListCommentsBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of comments to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )
@@ -529,7 +529,7 @@ class GithubListIssuesBlock(Block):
         )
         limit: int = SchemaField(
             description="Maximum number of issues to fetch",
-            default=30,
+            default=100,
             ge=1,
             le=1000,
         )
