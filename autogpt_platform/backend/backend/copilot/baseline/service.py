@@ -108,6 +108,11 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.subscription_endpoint import (
+    SubscriptionEndpoint,
+    build_subscription_client,
+    resolve_subscription_endpoint,
+)
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
@@ -453,6 +458,16 @@ class _BaselineStreamState:
     # what already ran; see backend/copilot/segments.py.
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
+    # Where this turn's requests go and whose token pays, when it runs on a
+    # linked subscription. ``None`` is the deployment's own key, which is the
+    # process-wide client.
+    #
+    # On the state rather than resolved at each call site because the two are
+    # not interchangeable: the deployment client is a cached singleton and a
+    # subscription client must never be. Reading a shared client for a turn
+    # that carries a user's token is how one person's subscription would end
+    # up paying for the next person's chat.
+    subscription: SubscriptionEndpoint | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -773,6 +788,24 @@ def _mark_system_message_with_cache_control(
     return cached_messages
 
 
+def _client_for(subscription: SubscriptionEndpoint | None):
+    """The OpenAI-compatible client this turn should use.
+
+    Two cases that must not be confused. The deployment's own key is a
+    process-wide singleton, which is correct: it is the same key for every
+    turn and building one client per request would throw away connection
+    pooling for nothing. A user's subscription token is the opposite -- it
+    is theirs, it is short-lived, and a client cached anywhere would carry
+    it into whichever turn came next in the same worker.
+
+    So the branch is not an optimisation to tidy away later. It is the thing
+    that keeps one person's subscription from paying for another's chat.
+    """
+    if subscription is None:
+        return _get_main_client()
+    return build_subscription_client(subscription)
+
+
 async def _baseline_llm_caller(
     messages: list[dict[str, Any]],
     tools: Sequence[Any],
@@ -790,7 +823,7 @@ async def _baseline_llm_caller(
 
     round_text = ""
     try:
-        client = _get_main_client()
+        client = _client_for(state.subscription)
         supports_cache = _supports_prompt_cache_markers(state.model)
         if supports_cache:
             # Build cached system message once; splice on each round to avoid O(n) list copy.
@@ -1298,6 +1331,7 @@ def _baseline_conversation_updater(
 async def _compress_session_messages(
     messages: list[ChatMessage],
     model: str,
+    subscription: SubscriptionEndpoint | None = None,
 ) -> list[ChatMessage]:
     """Compress session messages if they exceed the model's token limit.
 
@@ -1330,7 +1364,7 @@ async def _compress_session_messages(
             messages=messages_dict,
             target_tokens=target_tokens,
             model=model,
-            client=_get_main_client(),
+            client=_client_for(subscription),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
@@ -1884,9 +1918,25 @@ async def stream_chat_completion_baseline(
     prior_context = await extract_context_messages(
         transcript_download, session.messages, session_id=session.session_id
     )
+    # Where this turn's model calls go. Resolved once, before anything is
+    # sent, so a route that cannot be reached fails the turn rather than
+    # falling through to the deployment's key partway through -- which would
+    # bill us for a turn the user routed to their own account, and tell them
+    # their subscription ran it.
+    subscription = await resolve_subscription_endpoint(
+        session.metadata.llm_auth_provider if session is not None else None,
+        session.metadata.llm_credential_id if session is not None else None,
+        user_id=user_id,
+        model=active_model,
+    )
+
     messages_for_context = await _compress_session_messages(
         prior_context + ([session.messages[-1]] if session.messages else []),
         model=active_model,
+        # Summarising a transcript is a model call like any other, so a turn
+        # on a linked subscription pays for its own compaction rather than
+        # quietly spending the deployment's key on it.
+        subscription=subscription,
     )
 
     # Build OpenAI message list from session history.
@@ -2170,6 +2220,7 @@ async def stream_chat_completion_baseline(
         llm_credential_id=(
             session.metadata.llm_credential_id if session is not None else None
         ),
+        subscription=subscription,
     )
 
     # Bind extracted module-level callbacks to this request's state/session
