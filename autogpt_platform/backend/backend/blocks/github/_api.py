@@ -1,4 +1,4 @@
-from typing import overload
+from typing import Callable, Optional, overload
 from urllib.parse import urlparse
 
 from backend.blocks.github._auth import (
@@ -109,3 +109,33 @@ def get_api(
         extra_url_validator=_convert_to_api_url if convert_urls else None,
         extra_headers=_get_headers(credentials),
     )
+
+
+async def get_paginated(
+    api: Requests,
+    url: str,
+    *,
+    limit: int,
+    params: Optional[dict[str, str]] = None,
+    keep: Optional[Callable[[dict], bool]] = None,
+    max_page_size: int = 100,
+) -> list[dict]:
+    """
+    Fetches items from a paginated GitHub list endpoint until `limit` items
+    are collected or no pages are left. Items are filtered by `keep` (if given)
+    before counting towards `limit`.
+    """
+    items: list[dict] = []
+    page_size = max_page_size if keep else min(limit, max_page_size)
+    page = 1
+    while len(items) < limit:
+        response = await api.get(
+            url,
+            params={**(params or {}), "per_page": str(page_size), "page": str(page)},
+        )
+        batch = response.json()
+        items.extend(item for item in batch if keep is None or keep(item))
+        if len(batch) < page_size:
+            break
+        page += 1
+    return items[:limit]
