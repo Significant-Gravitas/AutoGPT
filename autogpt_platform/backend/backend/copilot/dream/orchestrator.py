@@ -664,8 +664,7 @@ async def _read_last_completed_marker(
         raw = await redis.get(_last_completed_key(user_id, expert_id))
     except Exception:
         logger.warning(
-            "Failed to read dream last-completed marker for user %s — "
-            "running the pass",
+            "Failed to read dream last-completed marker for user %s — running the pass",
             user_id[:12],
             exc_info=True,
         )

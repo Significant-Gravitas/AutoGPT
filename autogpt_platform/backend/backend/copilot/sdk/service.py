@@ -5405,17 +5405,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
-                state.query_message, state.compaction_stats = (
-                    await _build_query_message(
-                        current_message,
-                        session,
-                        state.use_resume,
-                        state.transcript_msg_count,
-                        session_id,
-                        session_msg_ceiling=_pre_drain_msg_count,
-                        target_tokens=state.target_tokens,
-                        expect_compaction=True,
-                    )
+                (
+                    state.query_message,
+                    state.compaction_stats,
+                ) = await _build_query_message(
+                    current_message,
+                    session,
+                    state.use_resume,
+                    state.transcript_msg_count,
+                    session_id,
+                    session_msg_ceiling=_pre_drain_msg_count,
+                    target_tokens=state.target_tokens,
+                    expect_compaction=True,
                 )
                 if _retry_reduced_context(
                     reduced=ctx,

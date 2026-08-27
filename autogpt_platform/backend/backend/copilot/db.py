@@ -1001,7 +1001,8 @@ async def get_sessions_with_pending_question(
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).
-        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC " "LIMIT $2",
+        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC "
+        "LIMIT $2",
         user_id,
         limit,
         model=PrismaChatSession,
@@ -1508,9 +1509,7 @@ async def append_plain_session_message(
         created = await create_chat_session(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            metadata=await _default_route_metadata(
-                user_id, origin="interactive"
-            ),
+            metadata=await _default_route_metadata(user_id, origin="interactive"),
         )
         session_id = created.session_id
 

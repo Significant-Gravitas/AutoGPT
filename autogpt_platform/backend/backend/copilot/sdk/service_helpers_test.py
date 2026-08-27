@@ -1682,12 +1682,12 @@ class TestStampTurnMessages:
         assign_at = src.index("pre_turn_message_count = len(session.messages)")
         prune_at = src.index("prune_orphan_tool_calls(session.messages")
         marker_pop_at = src.index("Removing stale error marker")
-        assert (
-            assign_at > prune_at
-        ), "pre_turn_message_count must be captured AFTER prune_orphan_tool_calls"
-        assert (
-            assign_at > marker_pop_at
-        ), "pre_turn_message_count must be captured AFTER error-marker cleanup"
+        assert assign_at > prune_at, (
+            "pre_turn_message_count must be captured AFTER prune_orphan_tool_calls"
+        )
+        assert assign_at > marker_pop_at, (
+            "pre_turn_message_count must be captured AFTER error-marker cleanup"
+        )
 
 
 class TestChatMessageStampRoundTrip:

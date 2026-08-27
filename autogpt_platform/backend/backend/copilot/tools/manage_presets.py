@@ -238,8 +238,7 @@ class ListPresetsTool(BaseTool):
             )
         elif start > 0 or start + len(presets) < total_count:
             message = (
-                f"Showing presets {start + 1}-{start + len(presets)} "
-                f"of {total_count}."
+                f"Showing presets {start + 1}-{start + len(presets)} of {total_count}."
             )
         else:
             message = f"Found {total_count} preset(s)."

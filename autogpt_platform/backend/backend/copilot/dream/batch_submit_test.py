@@ -79,9 +79,11 @@ async def test_enqueue_failure_cancels_orphaned_batch_and_reraises(fake_redis):
     enqueue = AsyncMock(side_effect=RuntimeError("redis down"))
     cancel = AsyncMock(return_value=True)
 
-    with patch("backend.copilot.dream.batch_submit.call_provider", call), patch(
-        "backend.copilot.dream.batch_submit.enqueue_pending", enqueue
-    ), patch("backend.copilot.dream.batch_submit.cancel_batch", cancel):
+    with (
+        patch("backend.copilot.dream.batch_submit.call_provider", call),
+        patch("backend.copilot.dream.batch_submit.enqueue_pending", enqueue),
+        patch("backend.copilot.dream.batch_submit.cancel_batch", cancel),
+    ):
         with pytest.raises(RuntimeError, match="redis down"):
             await submit_phase(
                 user_id="u1",
@@ -111,9 +113,11 @@ async def test_successful_enqueue_does_not_cancel(fake_redis):
     enqueue = AsyncMock(return_value=None)
     cancel = AsyncMock()
 
-    with patch("backend.copilot.dream.batch_submit.call_provider", call), patch(
-        "backend.copilot.dream.batch_submit.enqueue_pending", enqueue
-    ), patch("backend.copilot.dream.batch_submit.cancel_batch", cancel):
+    with (
+        patch("backend.copilot.dream.batch_submit.call_provider", call),
+        patch("backend.copilot.dream.batch_submit.enqueue_pending", enqueue),
+        patch("backend.copilot.dream.batch_submit.cancel_batch", cancel),
+    ):
         ref = await submit_phase(
             user_id="u1",
             pass_id="p1",
@@ -143,12 +147,15 @@ async def test_submit_phase_refreshes_input_bundle_ttl(fake_redis):
         custom_id="p1_recombine",
         submitted_at=datetime.now(timezone.utc),
     )
-    with patch(
-        "backend.copilot.dream.batch_submit.call_provider",
-        AsyncMock(return_value=submitted),
-    ), patch(
-        "backend.copilot.dream.batch_submit.enqueue_pending",
-        AsyncMock(return_value=None),
+    with (
+        patch(
+            "backend.copilot.dream.batch_submit.call_provider",
+            AsyncMock(return_value=submitted),
+        ),
+        patch(
+            "backend.copilot.dream.batch_submit.enqueue_pending",
+            AsyncMock(return_value=None),
+        ),
     ):
         await submit_phase(
             user_id="u1",

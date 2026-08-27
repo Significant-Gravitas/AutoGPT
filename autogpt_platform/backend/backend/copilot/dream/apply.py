@@ -471,8 +471,7 @@ async def _create_dream_session(
         )
     except Exception:
         logger.warning(
-            f"Failed to title dream session {session_id[:12]} "
-            f"for user {user_id[:12]}",
+            f"Failed to title dream session {session_id[:12]} for user {user_id[:12]}",
             exc_info=True,
         )
     return session_id

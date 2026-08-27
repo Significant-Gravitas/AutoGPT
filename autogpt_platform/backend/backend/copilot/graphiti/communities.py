@@ -88,9 +88,9 @@ def _bounded_label_propagation(projection):
 
             community_candidates: dict[int, int] = defaultdict(int)
             for neighbor in neighbors:
-                community_candidates[
-                    community_map[neighbor.node_uuid]
-                ] += neighbor.edge_count
+                community_candidates[community_map[neighbor.node_uuid]] += (
+                    neighbor.edge_count
+                )
             community_lst = [
                 (count, community) for community, count in community_candidates.items()
             ]

@@ -181,9 +181,9 @@ async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
         ):
             events.append(event)
 
-    assert any(
-        isinstance(e, StreamStart) for e in events
-    ), f"Turn did not complete far enough to reach tool registration: {events}"
+    assert any(isinstance(e, StreamStart) for e in events), (
+        f"Turn did not complete far enough to reach tool registration: {events}"
+    )
     return mcp_server_mock, is_feature_enabled_mock
 
 

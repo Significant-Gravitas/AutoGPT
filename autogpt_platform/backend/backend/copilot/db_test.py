@@ -724,7 +724,7 @@ async def test_get_user_chat_sessions_orders_pinned_first():
 # deletable regardless of the active organization.
 
 _EXPERT_CARVEOUT_SQL = (
-    '"organizationId" = $2 OR "organizationId" IS NULL' ' OR "expertId" IS NOT NULL'
+    '"organizationId" = $2 OR "organizationId" IS NULL OR "expertId" IS NOT NULL'
 )
 
 

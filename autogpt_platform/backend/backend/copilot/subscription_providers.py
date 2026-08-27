@@ -135,8 +135,38 @@ CODEX = SubscriptionProviderProfile(
     catalog_vendor="openai",
 )
 
+GITHUB_COPILOT = SubscriptionProviderProfile(
+    key="github_copilot",
+    display_name="GitHub Copilot",
+    provider_family="github",
+    auth_method="github_oauth",
+    backed_by_label="Your GitHub Copilot subscription",
+    description=(
+        "New chats are backed by your GitHub Copilot subscription, and spend "
+        "no AutoGPT credits."
+    ),
+    # Copilot meters premium requests against the user's own allowance, so a
+    # long agent run costs them something even though it costs us nothing.
+    # Said plainly here rather than discovered on a bill.
+    limitations=(
+        "The agent builder's chat panel always runs on AutoGPT.",
+        "Runs count against your Copilot premium request allowance.",
+    ),
+    entitlement=Entitlement.GITHUB_COPILOT_SUBSCRIPTION_TRANSPORT,
+    lock_reason="A Max plan or higher is required to use GitHub Copilot.",
+    unlock_href="/settings/billing",
+    # GitHub gives us a real OAuth application of our own, so unlike Codex we
+    # hold and refresh the token ourselves rather than driving a CLI's login
+    # and reading what it wrote.
+    credential_strategy="oauth_app",
+    credential_provider=ProviderName.GITHUB_COPILOT,
+    login_timeout_seconds=15 * 60,
+    route_surface="copilot_github",
+    catalog_vendor=None,
+)
+
 _PROFILES: dict[str, SubscriptionProviderProfile] = {
-    profile.key: profile for profile in (PLATFORM, CODEX)
+    profile.key: profile for profile in (PLATFORM, CODEX, GITHUB_COPILOT)
 }
 
 

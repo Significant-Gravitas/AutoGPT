@@ -91,7 +91,7 @@ _ERROR_MESSAGES: dict[str, str] = {
         "them by DMing the bot and running its setup command."
     ),
     "dm_unavailable": (
-        "The bot couldn't open a DM with the user's linked account on that " "platform."
+        "The bot couldn't open a DM with the user's linked account on that platform."
     ),
 }
 

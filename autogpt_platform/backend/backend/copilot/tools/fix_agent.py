@@ -189,6 +189,6 @@ def _build_fix_diff(
         return None
     if len(diff) > _MAX_DIFF_CHARS:
         diff = diff[:_MAX_DIFF_CHARS] + (
-            "\n... [diff truncated — re-read the file before making " "targeted edits]"
+            "\n... [diff truncated — re-read the file before making targeted edits]"
         )
     return diff

@@ -520,8 +520,7 @@ def _raise_failure_response(error: Exception, session_id: str) -> ErrorResponse:
         )
     if isinstance(error, RaisedExpertLifetimeLimitExceededError):
         return _limit_error(
-            f"This account has raised its lifetime maximum of {error.limit} "
-            "experts.",
+            f"This account has raised its lifetime maximum of {error.limit} experts.",
             session_id,
         )
     return _unexpected_failure(error, session_id, "raise_expert")

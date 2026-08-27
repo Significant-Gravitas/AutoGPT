@@ -374,9 +374,9 @@ async def test_warm_context_hit_promotes_the_tentative_edge(dream_graph) -> None
     assert edge["scope"] == PROPOSAL.scope
     assert edge["confidence"] == pytest.approx(PROPOSAL.confidence)
 
-    assert (
-        await try_ratify_on_hit(user_id, [edge_uuid]) == 0
-    ), "the status='tentative' guard makes repeat hits no-ops"
+    assert await try_ratify_on_hit(user_id, [edge_uuid]) == 0, (
+        "the status='tentative' guard makes repeat hits no-ops"
+    )
 
 
 @pytest.mark.integration

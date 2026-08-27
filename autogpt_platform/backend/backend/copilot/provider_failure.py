@@ -138,7 +138,7 @@ _CODEX_MESSAGES: dict[type[BaseException], str] = {
     # So this is rarer than "you have two chats open", and wording it that
     # way would send the user to close a chat that is not the problem.
     CodexCredentialBusyError: (
-        "This ChatGPT connection is briefly unavailable. " "Try again in a moment."
+        "This ChatGPT connection is briefly unavailable. Try again in a moment."
     ),
     CodexCredentialIntegrityError: (
         "This ChatGPT connection can't be used. Reconnect the account in "

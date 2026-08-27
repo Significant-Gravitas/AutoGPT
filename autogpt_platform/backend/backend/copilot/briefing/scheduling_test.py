@@ -86,9 +86,11 @@ async def test_empty_user_id_no_op():
 async def test_flag_off_no_op():
     client = _mock_scheduler_client()
     tz_mock = AsyncMock(return_value="UTC")
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=False)), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_CLIENT, return_value=client):
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=False)),
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_CLIENT, return_value=client),
+    ):
         await ensure_morning_briefing_scheduled("abc")
 
     tz_mock.assert_not_called()
@@ -104,12 +106,12 @@ async def test_flag_off_no_op():
 async def test_timezone_lookup_failure_skips_registration():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=True)),
+        patch(_PATH_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -126,12 +128,12 @@ async def test_timezone_lookup_failure_skips_registration():
 async def test_first_call_registers_and_writes_marker():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=True)),
+        patch(_PATH_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -150,10 +152,11 @@ async def test_first_call_registers_and_writes_marker():
 async def test_existing_marker_skips_timezone_lookup_and_registration():
     client = _mock_scheduler_client()
     tz_mock = AsyncMock(return_value="America/New_York")
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=True)),
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -170,12 +173,12 @@ async def test_existing_marker_skips_timezone_lookup_and_registration():
 async def test_cleared_marker_reregisters_on_current_timezone():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="Europe/Paris")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=True)),
+        patch(_PATH_TZ, new=AsyncMock(return_value="Europe/Paris")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -193,14 +196,13 @@ async def test_cleared_marker_reregisters_on_current_timezone():
 @pytest.mark.asyncio
 async def test_scheduler_rpc_failure_is_swallowed_and_logged(caplog):
     client = _mock_scheduler_client(fail=True)
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
-    ), caplog.at_level(
-        logging.WARNING, logger=scheduling.logger.name
+    with (
+        patch(_PATH_FLAG, new=AsyncMock(return_value=True)),
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
+        caplog.at_level(logging.WARNING, logger=scheduling.logger.name),
     ):
         await ensure_morning_briefing_scheduled("abc")  # must not raise
 
@@ -266,10 +268,13 @@ async def test_clear_marker_deletes_the_registration_key():
 
 @pytest.mark.asyncio
 async def test_clear_marker_swallows_redis_failure(caplog):
-    with patch(
-        "backend.copilot.briefing.scheduling.get_redis_async",
-        new=AsyncMock(side_effect=ConnectionError("redis down")),
-    ), caplog.at_level(logging.WARNING, logger=scheduling.logger.name):
+    with (
+        patch(
+            "backend.copilot.briefing.scheduling.get_redis_async",
+            new=AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+        caplog.at_level(logging.WARNING, logger=scheduling.logger.name),
+    ):
         await clear_briefing_registration_marker("abc")  # must not raise
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]

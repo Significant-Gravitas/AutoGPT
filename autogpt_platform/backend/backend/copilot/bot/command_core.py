@@ -64,8 +64,7 @@ async def setup_reply(
         logger.exception("%s /setup link token creation failed", platform)
         return CommandReply(
             text=(
-                "Something went wrong creating the setup link. Try again in a "
-                "moment."
+                "Something went wrong creating the setup link. Try again in a moment."
             )
         )
 

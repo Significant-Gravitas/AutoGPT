@@ -63,7 +63,7 @@ def transport_env(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(
         transports.credentials_manager.store,
         "get_creds_by_provider",
-        new=AsyncMock(return_value=[]),
+        new=AsyncMock(side_effect=lambda *_args, **_kwargs: []),
     )
     mocker.patch.object(
         transports,
@@ -74,9 +74,21 @@ def transport_env(mocker: pytest_mock.MockerFixture):
 
 
 def _connect(*credential_ids: str) -> None:
-    transports.credentials_manager.store.get_creds_by_provider.return_value = [
-        _codex_credentials(credential_id) for credential_id in credential_ids
-    ]
+    """Give the user these codex credentials, and none for anything else.
+
+    Answering per provider rather than with one fixed list: the store is
+    asked once per linked provider now, and a mock that ignores which one it
+    was asked about hands the same credential to every provider -- which
+    reads downstream as the user having linked all of them.
+    """
+    credentials = [_codex_credentials(cid) for cid in credential_ids]
+
+    async def _by_provider(_user_id: str, provider: str) -> list:
+        return credentials if provider == "codex" else []
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        _by_provider
+    )
 
 
 def _saved(auth_provider: str | None, credential_id: str | None = None) -> None:

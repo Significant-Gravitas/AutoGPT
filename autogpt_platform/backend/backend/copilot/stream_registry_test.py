@@ -609,6 +609,7 @@ def test_every_response_type_survives_the_relay():
         "they would be dropped on the executor → Redis → rest_server relay"
     )
 
+
 class TestEveryPartSurvivesReplay:
     """A part the registry cannot reconstruct never reaches the client.
 
