@@ -56,6 +56,7 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     tier,
     setTier,
     showTiers,
+    hasConnectionChoice,
     isLoading,
     isError,
   } = useConnectionPicker();
@@ -105,7 +106,16 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     disabled: !isSelectable(offer),
   }));
   const runsOnOwnPlan = active ? isLinkedAccount(active) : false;
-  const showsTier = connectionLocked && Boolean(active);
+  // With no connection to choose between, naming it says nothing — a hosted
+  // user would read "AutoGPT Platform" on every chat and learn only that there
+  // is one. The tier is the live choice, so that is what the chip carries.
+  // A second connection makes the route itself a decision, and the label
+  // switches to it.
+  // A tier only names a route that can actually run. With a locked-only offer
+  // there is no active connection, so the chip remains a connection prompt.
+  const showsTier =
+    (connectionLocked && Boolean(active)) ||
+    (!hasConnectionChoice && Boolean(active));
   const label = showsTier
     ? tierName(active, tier)
     : (active?.display_name ?? "Choose connection");
@@ -132,7 +142,9 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          <Icon icon={KeyIcon} size={14} />
+          {/* The key stands for a credential. Against a tier name it would be
+              labelling reasoning depth as an account, so it is dropped. */}
+          {!showsTier && <Icon icon={KeyIcon} size={14} />}
           <span className="hidden sm:inline">{triggerLabel}</span>
           <Icon
             icon={ArrowDown01Icon}
@@ -146,7 +158,11 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
         align="start"
         className="w-[26rem] max-w-[calc(100vw-2rem)] border-border bg-popover p-0 text-popover-foreground"
       >
-        {(!connectionLocked || onlyOfferIsLocked) && (
+        {/* One runnable row is nothing to choose between. A locked-only row is
+            different: the explanation and unlock link are the entire reason
+            the chip remains visible. */}
+        {(!connectionLocked || onlyOfferIsLocked) &&
+          (offers.length > 1 || onlyOfferIsLocked) && (
           <>
             <SectionLabel>Runs on</SectionLabel>
             <div

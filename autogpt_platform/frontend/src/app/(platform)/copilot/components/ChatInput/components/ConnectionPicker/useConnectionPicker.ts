@@ -58,6 +58,10 @@ export function useConnectionPicker() {
     tier: copilotLlmModel,
     setTier: setCopilotLlmModel,
     showTiers: tiersAreDistinct(active),
+    // Whether there is a connection to choose *between*. Counts only what can
+    // actually run: a locked offer is listed to explain an absence, so it adds
+    // a row to the popover without adding a decision.
+    hasConnectionChoice: choosable.length > 1,
     isLoading: query.isLoading,
     // React Query can retain the last successful offers while a background
     // refetch fails. Keep that usable snapshot visible; the error state is

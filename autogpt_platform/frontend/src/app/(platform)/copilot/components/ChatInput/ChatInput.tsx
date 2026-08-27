@@ -68,7 +68,7 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
-  /** Session id for the dev-only token badge in the tray. */
+  /** Session id for the dev-only token badge in the composer footer. */
   sessionId?: string | null;
   /** When true, the submit button is hidden until there is something to send. */
   hideSubmitWhenEmpty?: boolean;
@@ -399,7 +399,6 @@ export function ChatInput({
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
       </InputGroup>
-
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
           isOpen={isPickerOpen}
