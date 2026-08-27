@@ -37,13 +37,13 @@ from .fetch import (
     is_dream_authored_episode,
     parse_episode_timestamp,
 )
+from .learned_notes import promote_pass_learned_notes
 from .llm import (
     CompletionUsage,
     DreamLLMError,
     StructuredCompletion,
     structured_completion,
 )
-from .learned_notes import promote_pass_learned_notes
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,

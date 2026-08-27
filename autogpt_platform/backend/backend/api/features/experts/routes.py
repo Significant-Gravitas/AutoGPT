@@ -354,9 +354,7 @@ async def archive_expert_learned_note(
 ) -> fastapi.Response:
     await _require_expert_learning(user_id, expert_id)
     try:
-        note = await learned_notes_db.archive_learned_note(
-            user_id, note_id, expert_id
-        )
+        note = await learned_notes_db.archive_learned_note(user_id, note_id, expert_id)
     except experts_db.ExpertNotFoundError:
         raise fastapi.HTTPException(status_code=404, detail="Learned note not found")
     await invalidate_learned_rule(user_id, expert_id, note.source_rule_id)

@@ -57,7 +57,9 @@ def test_equivalent_learning_is_not_duplicated():
         None,
     )
 
-    assert dedupe_candidates(candidates, ["Send drafts before publishing, always."]) == []
+    assert (
+        dedupe_candidates(candidates, ["Send drafts before publishing, always."]) == []
+    )
 
 
 def _notes_db(existing=None):

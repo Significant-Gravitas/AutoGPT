@@ -7,12 +7,34 @@ from backend.api.features.experts.models import (
     EXPERT_IDENTITY_MAX_LENGTH,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
+    ExpertWorkflowRef,
     RaiseAttachment,
     VoiceSample,
     decode_voice_preferences,
     encode_voice_preferences,
     validate_avatar_url,
 )
+
+
+def test_expert_workflow_contract_is_serialized():
+    workflow = ExpertWorkflowRef(
+        id="workflow-1",
+        store_listing_version_id=None,
+        library_agent_id="library-1",
+        graph_id="graph-1",
+        name="Lead Research",
+        description="Researches qualified leads.",
+    ).with_contract(
+        purpose="Build a repeatable lead pipeline.",
+        expected_inputs="ICP and target market",
+        expected_outputs="Verified leads",
+        cadence="0 9 * * 1",
+    )
+
+    assert workflow.model_dump()["purpose"] == "Build a repeatable lead pipeline."
+    assert workflow.model_dump()["expected_inputs"] == "ICP and target market"
+    assert workflow.model_dump()["expected_outputs"] == "Verified leads"
+    assert workflow.model_dump()["cadence"] == "0 9 * * 1"
 
 
 def test_soul_update_strips_optional_fields():

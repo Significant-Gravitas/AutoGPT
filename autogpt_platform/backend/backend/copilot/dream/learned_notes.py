@@ -78,18 +78,14 @@ async def promote_pass_learned_notes(
     if expert_id is None:
         return
     try:
-        if not await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        ):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
         raw_snapshot = apply_stats.get("snapshot")
         snapshot = (
             raw_snapshot if isinstance(raw_snapshot, DreamOperationsSnapshot) else None
         )
         raw_session_id = apply_stats.get("session_id")
-        source_session_id = (
-            raw_session_id if isinstance(raw_session_id, str) else None
-        )
+        source_session_id = raw_session_id if isinstance(raw_session_id, str) else None
 
         notes_db = expert_learned_notes_db()
         await notes_db.archive_notes_for_rules(
@@ -106,9 +102,7 @@ async def promote_pass_learned_notes(
             user_id,
             expert_id,
             [
-                candidate.model_copy(
-                    update={"source_session_id": source_session_id}
-                )
+                candidate.model_copy(update={"source_session_id": source_session_id})
                 for candidate in candidates
             ],
         )

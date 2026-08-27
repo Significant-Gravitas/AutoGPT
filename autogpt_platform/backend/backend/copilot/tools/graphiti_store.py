@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from backend.api.features.experts.learned_notes_db import LearnedNoteCandidate
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
 from backend.copilot.graphiti.memory_model import (
@@ -15,7 +16,6 @@ from backend.copilot.graphiti.memory_model import (
     SourceKind,
 )
 from backend.copilot.model import ChatSession
-from backend.api.features.experts.learned_notes_db import LearnedNoteCandidate
 from backend.data.db_accessors import expert_learned_notes_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -274,7 +274,10 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if resolved_kind == MemoryKind.rule and resolved_source == SourceKind.user_asserted:
+        if (
+            resolved_kind == MemoryKind.rule
+            and resolved_source == SourceKind.user_asserted
+        ):
             await _promote_explicit_expert_correction(
                 user_id=user_id,
                 session=session,
@@ -294,9 +297,7 @@ async def _promote_explicit_expert_correction(
     if not session.expert_id:
         return
     try:
-        if not await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        ):
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
         await expert_learned_notes_db().promote_learned_notes(
             user_id,

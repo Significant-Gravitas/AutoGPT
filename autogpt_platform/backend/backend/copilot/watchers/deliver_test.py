@@ -32,7 +32,9 @@ def _wire(monkeypatch, *, enabled=True, count=1, posted="session-1"):
     monkeypatch.setattr(
         f"{_MODULE}.is_feature_enabled", AsyncMock(return_value=enabled)
     )
-    monkeypatch.setattr(f"{_MODULE}.get_redis_async", AsyncMock(return_value=_redis(count)))
+    monkeypatch.setattr(
+        f"{_MODULE}.get_redis_async", AsyncMock(return_value=_redis(count))
+    )
     monkeypatch.setattr(f"{_MODULE}.chat_db", chat)
     monkeypatch.setattr(f"{_MODULE}.library_db", lambda: library)
     return chat

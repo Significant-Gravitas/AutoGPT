@@ -16,7 +16,7 @@ from .models import (
     ExpertWorkflowInstalledResponse,
     ToolResponseBase,
 )
-from .run_agent import RunAgentTool, SCHEDULED_STATUS
+from .run_agent import SCHEDULED_STATUS, RunAgentTool
 
 logger = logging.getLogger(__name__)
 

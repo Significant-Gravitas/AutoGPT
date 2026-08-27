@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
 
@@ -105,26 +105,10 @@ class ExpertWorkflowRef(BaseModel):
     # created yet (e.g. missing credentials) — the workflow needs setup.
     schedule_cron: str | None = None
     schedule_id: str | None = None
-    _purpose: str | None = PrivateAttr(default=None)
-    _expected_inputs: str | None = PrivateAttr(default=None)
-    _expected_outputs: str | None = PrivateAttr(default=None)
-    _cadence: str | None = PrivateAttr(default=None)
-
-    @property
-    def purpose(self) -> str | None:
-        return self._purpose
-
-    @property
-    def expected_inputs(self) -> str | None:
-        return self._expected_inputs
-
-    @property
-    def expected_outputs(self) -> str | None:
-        return self._expected_outputs
-
-    @property
-    def cadence(self) -> str | None:
-        return self._cadence
+    purpose: str | None = None
+    expected_inputs: str | None = None
+    expected_outputs: str | None = None
+    cadence: str | None = None
 
     def with_contract(
         self,
@@ -134,10 +118,10 @@ class ExpertWorkflowRef(BaseModel):
         expected_outputs: str | None,
         cadence: str | None,
     ) -> "ExpertWorkflowRef":
-        self._purpose = purpose
-        self._expected_inputs = expected_inputs
-        self._expected_outputs = expected_outputs
-        self._cadence = cadence
+        self.purpose = purpose
+        self.expected_inputs = expected_inputs
+        self.expected_outputs = expected_outputs
+        self.cadence = cadence
         return self
 
 

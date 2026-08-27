@@ -8,7 +8,11 @@ from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 
 from . import expert_tool_disabled_groups, get_available_tools
 from .install_expert_workflow import InstallExpertWorkflowTool
-from .models import ErrorResponse, ExecutionStartedResponse, ExpertWorkflowInstalledResponse
+from .models import (
+    ErrorResponse,
+    ExecutionStartedResponse,
+    ExpertWorkflowInstalledResponse,
+)
 
 _MODULE = "backend.copilot.tools.install_expert_workflow"
 
@@ -16,7 +20,8 @@ _MODULE = "backend.copilot.tools.install_expert_workflow"
 def test_flag_off_hides_workflow_management_tool():
     disabled = expert_tool_disabled_groups(experts_enabled=False, expert_id=None)
     names = {
-        tool["function"]["name"] for tool in get_available_tools(disabled_groups=disabled)
+        tool["function"]["name"]
+        for tool in get_available_tools(disabled_groups=disabled)
     }
 
     assert "install_expert_workflow" not in names
@@ -160,7 +165,9 @@ async def test_expert_defaults_to_self_for_private_workflow(monkeypatch):
     db = _db()
     _wire(monkeypatch, db)
 
-    response = await _execute(_session("expert-1", tested=True), library_agent_id="library-1")
+    response = await _execute(
+        _session("expert-1", tested=True), library_agent_id="library-1"
+    )
 
     assert isinstance(response, ExpertWorkflowInstalledResponse)
     db.install_library_workflow.assert_awaited_once()

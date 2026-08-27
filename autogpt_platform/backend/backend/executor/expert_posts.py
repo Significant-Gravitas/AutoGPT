@@ -143,14 +143,17 @@ def _watcher_took_failure(
     exec_stats: GraphExecutionStats,
 ) -> bool:
     try:
-        return db_client.deliver_run_failed_watcher(
-            user_id=graph_exec.user_id,
-            expert_id=expert_id,
-            graph_exec_id=graph_exec.graph_exec_id,
-            graph_id=graph_exec.graph_id,
-            trigger_source="workflow",
-            error=str(exec_stats.error) if exec_stats.error else None,
-        ) is True
+        return (
+            db_client.deliver_run_failed_watcher(
+                user_id=graph_exec.user_id,
+                expert_id=expert_id,
+                graph_exec_id=graph_exec.graph_exec_id,
+                graph_id=graph_exec.graph_id,
+                trigger_source="workflow",
+                error=str(exec_stats.error) if exec_stats.error else None,
+            )
+            is True
+        )
     except Exception as error_value:
         logger.warning(
             "Expert failure watcher unavailable for run #%s: %s",
