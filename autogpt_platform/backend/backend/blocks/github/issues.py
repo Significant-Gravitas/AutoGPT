@@ -518,6 +518,11 @@ class GithubListIssuesBlock(Block):
             description="Only include issues in this state",
             default="open",
         )
+        include_pull_requests: bool = SchemaField(
+            description="Whether to also include pull requests in the results. "
+            "The GitHub API considers every pull request an issue.",
+            default=False,
+        )
         labels: list[str] = SchemaField(
             description="Only include issues that have all of these labels",
             default_factory=list,
@@ -649,8 +654,13 @@ class GithubListIssuesBlock(Block):
             input_data.repo_url + "/issues",
             limit=input_data.limit,
             params=params,
-            # The issues endpoint also returns pull requests; filter those out
-            keep=lambda issue: "pull_request" not in issue,
+            # The issues endpoint also returns pull requests, marked by the
+            # presence of a "pull_request" key
+            keep=(
+                None
+                if input_data.include_pull_requests
+                else (lambda issue: "pull_request" not in issue)
+            ),
         )
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
