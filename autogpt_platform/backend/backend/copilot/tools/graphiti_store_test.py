@@ -449,13 +449,14 @@ class TestMemoryStoreTierGovernance:
         self,
         *,
         is_org_admin=None,
-        is_org_member=None,
+        can_write_org_memory=None,
         hold_buffer=None,
         resolve_store_team=None,
     ):
         from contextlib import ExitStack
 
         stack = ExitStack()
+
         stack.enter_context(
             patch(
                 "backend.copilot.tools.graphiti_store.is_enabled_for_user",
@@ -470,12 +471,12 @@ class TestMemoryStoreTierGovernance:
                 return_value=True,
             )
         )
-        if is_org_member is not None:
+        if can_write_org_memory is not None:
             stack.enter_context(
                 patch(
-                    "backend.copilot.tools.graphiti_store.is_org_member",
+                    "backend.copilot.tools.graphiti_store.can_write_org_memory",
                     new_callable=AsyncMock,
-                    return_value=is_org_member,
+                    return_value=can_write_org_memory,
                 )
             )
         if is_org_admin is not None:
@@ -507,7 +508,7 @@ class TestMemoryStoreTierGovernance:
     async def test_org_store_as_admin_lands_active(self) -> None:
         tool = MemoryStoreTool()
         stack, enqueue = self._patches(
-            is_org_admin=True, is_org_member=True, hold_buffer=True
+            is_org_admin=True, can_write_org_memory=True, hold_buffer=True
         )
         with stack:
             result = await tool._execute(
@@ -530,7 +531,7 @@ class TestMemoryStoreTierGovernance:
     async def test_org_store_non_member_rejected(self) -> None:
         # A revoked/stale org membership must be blocked at the write path.
         tool = MemoryStoreTool()
-        stack, enqueue = self._patches(is_org_member=False, hold_buffer=True)
+        stack, enqueue = self._patches(can_write_org_memory=False, hold_buffer=True)
         with stack:
             result = await tool._execute(
                 user_id="user-1",
@@ -541,14 +542,14 @@ class TestMemoryStoreTierGovernance:
             )
 
         assert isinstance(result, ErrorResponse)
-        assert "not an active member" in result.message
+        assert "resource access" in result.message
         enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_org_store_as_member_lands_tentative(self) -> None:
         tool = MemoryStoreTool()
         stack, enqueue = self._patches(
-            is_org_admin=False, is_org_member=True, hold_buffer=True
+            is_org_admin=False, can_write_org_memory=True, hold_buffer=True
         )
         with stack:
             result = await tool._execute(
@@ -571,7 +572,7 @@ class TestMemoryStoreTierGovernance:
     async def test_org_store_member_active_when_hold_buffer_disabled(self) -> None:
         tool = MemoryStoreTool()
         stack, enqueue = self._patches(
-            is_org_admin=False, is_org_member=True, hold_buffer=False
+            is_org_admin=False, can_write_org_memory=True, hold_buffer=False
         )
         with stack:
             result = await tool._execute(
@@ -608,7 +609,9 @@ class TestMemoryStoreTierGovernance:
         tool = MemoryStoreTool()
         from types import SimpleNamespace
 
-        resolve = AsyncMock(return_value=SimpleNamespace(teamId="team-1", isAdmin=True))
+        resolve = AsyncMock(
+            return_value=SimpleNamespace(team_id="team-1", is_admin=True)
+        )
         stack, enqueue = self._patches(hold_buffer=True, resolve_store_team=resolve)
         with stack:
             result = await tool._execute(
@@ -631,7 +634,7 @@ class TestMemoryStoreTierGovernance:
         from types import SimpleNamespace
 
         resolve = AsyncMock(
-            return_value=SimpleNamespace(teamId="team-1", isAdmin=False)
+            return_value=SimpleNamespace(team_id="team-1", is_admin=False)
         )
         stack, enqueue = self._patches(hold_buffer=True, resolve_store_team=resolve)
         with stack:
@@ -673,9 +676,7 @@ class TestMemoryStoreTierGovernance:
         enqueue.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_personal_tier_default_unchanged(self) -> None:
-        """Default personal store must not route to a shared group or stamp
-        edge metadata — the pre-existing path is untouched."""
+    async def test_personal_tier_stamps_scope_metadata(self) -> None:
         tool = MemoryStoreTool()
         stack, enqueue = self._patches()
         with stack:
@@ -689,5 +690,7 @@ class TestMemoryStoreTierGovernance:
         assert isinstance(result, MemoryStoreResponse)
         kwargs = enqueue.await_args.kwargs
         assert kwargs["group_id"] is None  # personal path
-        assert kwargs["edge_metadata"] is None
+        assert kwargs["edge_metadata"]["status"] == "active"
+        assert kwargs["edge_metadata"]["scope"] == "real:global"
+        assert kwargs["edge_metadata"]["source_kind"] == "user_asserted"
         assert "queued for storage" in result.message

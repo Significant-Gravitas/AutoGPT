@@ -43,6 +43,7 @@ def mock_prisma(mocker):
     mock.agentgraphgrant.find_first = AsyncMock(return_value=_grant_row())
     mock.agentgraphgrant.find_many = AsyncMock(return_value=[])
     mock.agentgraphgrant.delete = AsyncMock()
+    mock.agentgraphgrant.delete_many = AsyncMock(return_value=1)
     mock.teammember.find_many = AsyncMock(return_value=[])
     mocker.patch("backend.api.features.orgs.grant_db.prisma", mock)
     return mock
@@ -246,7 +247,7 @@ class TestRevokeGrant:
                 revoked_by_user_id="owner-1",
                 revoker_is_org_admin=False,
             )
-        mock_prisma.agentgraphgrant.delete.assert_not_called()
+        mock_prisma.agentgraphgrant.delete_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_non_owner_non_admin_cannot_revoke(self, mock_prisma):
@@ -269,8 +270,12 @@ class TestRevokeGrant:
             revoker_is_org_admin=False,
         )
 
-        mock_prisma.agentgraphgrant.delete.assert_called_once_with(
-            where={"id": "grant-1"}
+        mock_prisma.agentgraphgrant.delete_many.assert_awaited_once_with(
+            where={
+                "id": "grant-1",
+                "agentGraphId": "g1",
+                "organizationId": "org-1",
+            }
         )
 
 

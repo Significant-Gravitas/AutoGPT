@@ -32,6 +32,8 @@ class WorkspaceFolder(pydantic.BaseModel):
     created_at: datetime
     updated_at: datetime
     file_count: int = 0
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -45,21 +47,42 @@ class WorkspaceFolder(pydantic.BaseModel):
             created_at=folder.createdAt,
             updated_at=folder.updatedAt,
             file_count=file_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
-async def _file_count(workspace_id: str, folder_id: str) -> int:
+def _scope_where(organization_id: str | None, team_id: str | None) -> dict:
+    return {
+        "organizationId": organization_id,
+        "teamId": team_id,
+        "scopeResolved": True,
+    }
+
+
+async def _file_count(
+    workspace_id: str,
+    folder_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> int:
     """Live (non-deleted) file count for a single folder."""
     return await UserWorkspaceFile.prisma().count(
         where={
             "folderId": folder_id,
             "workspaceId": workspace_id,
             "isDeleted": False,
+            **_scope_where(organization_id, team_id),
         },
     )
 
 
-async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, int]:
+async def _file_counts(
+    workspace_id: str,
+    folder_ids: list[str],
+    organization_id: str | None,
+    team_id: str | None,
+) -> dict[str, int]:
     """Live file counts per folder in a single batched query.
 
     Counts in SQL instead of hydrating every file row just to ``len()`` it, so
@@ -73,6 +96,7 @@ async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, in
             "workspaceId": workspace_id,
             "folderId": {"in": folder_ids},
             "isDeleted": False,
+            **_scope_where(organization_id, team_id),
         },
         count=True,
     )
@@ -86,6 +110,8 @@ async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, in
 async def _get_folder_record(
     folder_id: str,
     workspace_id: str,
+    organization_id: str | None,
+    team_id: str | None,
 ) -> "UserWorkspaceFolder":
     """Fetch a workspace-scoped folder record or raise NotFoundError."""
     folder = await UserWorkspaceFolder.prisma().find_first(
@@ -93,6 +119,7 @@ async def _get_folder_record(
             "id": folder_id,
             "workspaceId": workspace_id,
             "isDeleted": False,
+            **_scope_where(organization_id, team_id),
         },
     )
     if not folder:
@@ -100,26 +127,46 @@ async def _get_folder_record(
     return folder
 
 
-async def list_folders(workspace_id: str) -> list[WorkspaceFolder]:
+async def list_folders(
+    workspace_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> list[WorkspaceFolder]:
     """List non-deleted folders for a workspace (flat; v1 has no nesting)."""
     folders = await UserWorkspaceFolder.prisma().find_many(
-        where={"workspaceId": workspace_id, "isDeleted": False},
+        where={
+            "workspaceId": workspace_id,
+            "isDeleted": False,
+            **_scope_where(organization_id, team_id),
+        },
         order={"name": "asc"},
     )
-    counts = await _file_counts(workspace_id, [f.id for f in folders])
+    counts = await _file_counts(
+        workspace_id,
+        [f.id for f in folders],
+        organization_id,
+        team_id,
+    )
     return [WorkspaceFolder.from_db(f, file_count=counts.get(f.id, 0)) for f in folders]
 
 
-async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
+async def get_folder(
+    folder_id: str,
+    workspace_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> WorkspaceFolder:
     """Get a single folder by ID, scoped to the workspace."""
-    folder = await _get_folder_record(folder_id, workspace_id)
-    count = await _file_count(workspace_id, folder_id)
+    folder = await _get_folder_record(folder_id, workspace_id, organization_id, team_id)
+    count = await _file_count(workspace_id, folder_id, organization_id, team_id)
     return WorkspaceFolder.from_db(folder, file_count=count)
 
 
 async def _root_name_taken(
     workspace_id: str,
     name: str,
+    organization_id: str | None,
+    team_id: str | None,
     exclude_folder_id: Optional[str] = None,
 ) -> bool:
     """Whether a live root-level folder with this name already exists.
@@ -134,6 +181,7 @@ async def _root_name_taken(
         "name": name,
         "parentId": None,
         "isDeleted": False,
+        **_scope_where(organization_id, team_id),
     }
     if exclude_folder_id is not None:
         where["id"] = {"not": exclude_folder_id}
@@ -144,14 +192,19 @@ async def create_folder(
     workspace_id: str,
     name: str,
     icon: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> WorkspaceFolder:
     """Create a new root-level folder for the workspace."""
-    if await _root_name_taken(workspace_id, name):
+    if await _root_name_taken(workspace_id, name, organization_id, team_id):
         raise FolderAlreadyExistsError("A folder with this name already exists")
 
     create_data: dict = {
         "name": name,
         "Workspace": {"connect": {"id": workspace_id}},
+        "organizationId": organization_id,
+        "teamId": team_id,
+        "scopeResolved": True,
     }
     if icon is not None:
         create_data["icon"] = icon
@@ -170,13 +223,19 @@ async def update_folder(
     workspace_id: str,
     name: Optional[str] = None,
     icon: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> WorkspaceFolder:
     """Update a folder's name/icon."""
     # update() uses where={"id": ...} without workspaceId — verify ownership first.
-    await _get_folder_record(folder_id, workspace_id)
+    await _get_folder_record(folder_id, workspace_id, organization_id, team_id)
 
     if name is not None and await _root_name_taken(
-        workspace_id, name, exclude_folder_id=folder_id
+        workspace_id,
+        name,
+        organization_id,
+        team_id,
+        exclude_folder_id=folder_id,
     ):
         raise FolderAlreadyExistsError("A folder with this name already exists")
 
@@ -187,14 +246,19 @@ async def update_folder(
         update_data["icon"] = icon
 
     if not update_data:
-        return await get_folder(folder_id, workspace_id)
+        return await get_folder(folder_id, workspace_id, organization_id, team_id)
 
     # update_many (not update) so the write itself is guarded by isDeleted: a
     # folder soft-deleted concurrently after the ownership check above must not
     # be silently updated (and reported as a 200).
     try:
         updated_count = await UserWorkspaceFolder.prisma().update_many(
-            where={"id": folder_id, "isDeleted": False},
+            where={
+                "id": folder_id,
+                "workspaceId": workspace_id,
+                "isDeleted": False,
+                **_scope_where(organization_id, team_id),
+            },
             data=update_data,
         )
     except UniqueViolationError:
@@ -206,33 +270,51 @@ async def update_folder(
     # Re-read without an isDeleted filter so a delete racing in *after* a
     # successful update doesn't turn it into a spurious 404.
     refreshed = await UserWorkspaceFolder.prisma().find_first(
-        where={"id": folder_id},
+        where={
+            "id": folder_id,
+            "workspaceId": workspace_id,
+            **_scope_where(organization_id, team_id),
+        },
     )
     if refreshed is None:
         raise NotFoundError(f"Folder #{folder_id} not found")
-    count = await _file_count(workspace_id, folder_id)
+    count = await _file_count(workspace_id, folder_id, organization_id, team_id)
     return WorkspaceFolder.from_db(refreshed, file_count=count)
 
 
-async def delete_folder(folder_id: str, workspace_id: str) -> None:
+async def delete_folder(
+    folder_id: str,
+    workspace_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> None:
     """
     Soft-delete a folder and return its files to root.
 
     Files are reparented to root (``folderId = null``) in the same transaction
     so they remain visible and are never orphaned behind a hidden folder.
     """
-    await _get_folder_record(folder_id, workspace_id)
+    await _get_folder_record(folder_id, workspace_id, organization_id, team_id)
 
     async with transaction() as tx:
         await UserWorkspaceFile.prisma(tx).update_many(
-            where={"folderId": folder_id, "workspaceId": workspace_id},
+            where={
+                "folderId": folder_id,
+                "workspaceId": workspace_id,
+                **_scope_where(organization_id, team_id),
+            },
             data={"folderId": None},
         )
         # update_many with an isDeleted guard so a concurrent delete that slips
         # past the ownership check above is a no-op rather than re-deleting a
         # logically-deleted row (TOCTOU-safe, idempotent).
         await UserWorkspaceFolder.prisma(tx).update_many(
-            where={"id": folder_id, "isDeleted": False},
+            where={
+                "id": folder_id,
+                "workspaceId": workspace_id,
+                "isDeleted": False,
+                **_scope_where(organization_id, team_id),
+            },
             data={"isDeleted": True},
         )
 
@@ -243,6 +325,8 @@ async def bulk_move_files_to_folder(
     workspace_id: str,
     file_ids: list[str],
     folder_id: Optional[str],
+    organization_id: str | None,
+    team_id: str | None,
 ) -> list[WorkspaceFile]:
     """
     Move multiple files into a folder (or to root when ``folder_id`` is None).
@@ -252,7 +336,7 @@ async def bulk_move_files_to_folder(
     """
     # folderId is set directly; the FK only checks existence, not ownership.
     if folder_id:
-        await _get_folder_record(folder_id, workspace_id)
+        await _get_folder_record(folder_id, workspace_id, organization_id, team_id)
 
     if not file_ids:
         return []
@@ -263,6 +347,7 @@ async def bulk_move_files_to_folder(
         "id": {"in": file_ids},
         "workspaceId": workspace_id,
         "isDeleted": False,
+        **_scope_where(organization_id, team_id),
     }
     async with transaction() as tx:
         await UserWorkspaceFile.prisma(tx).update_many(

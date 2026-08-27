@@ -35,6 +35,16 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   };
 });
 
+vi.mock("@/components/contextual/TeamPicker/useCreateTeamSelection", () => ({
+  useCreateTeamSelection: () => ({
+    teamId: null,
+    setTeamId: vi.fn(),
+    hasTeams: false,
+    teamRequestInit: undefined,
+    isReady: true,
+  }),
+}));
+
 afterEach(() => {
   toastMock.mockClear();
   server.resetHandlers();

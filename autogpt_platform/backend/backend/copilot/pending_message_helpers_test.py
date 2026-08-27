@@ -1,5 +1,6 @@
 """Unit tests for pending_message_helpers."""
 
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,8 +19,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
+    queue_user_message,
 )
 from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
+from backend.data.db_accessors import LiveResourceAccessRevoked
 
 # ── check_pending_call_rate ────────────────────────────────────────────
 
@@ -168,6 +171,116 @@ async def test_is_turn_in_flight_raises_when_chat_status_lookup_fails(
 
 
 @pytest.mark.asyncio
+async def test_queue_user_message_rejects_revoked_workspace_before_redis_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def denied(*_args, **_kwargs):
+        yield False
+
+    push = AsyncMock()
+    monkeypatch.setattr(helpers_module, "live_resource_lease", denied)
+    monkeypatch.setattr(helpers_module, "push_pending_message", push)
+
+    with pytest.raises(LiveResourceAccessRevoked):
+        await queue_user_message(
+            session_id="sess-1",
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            message="blocked",
+        )
+
+    push.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_holds_workspace_lease_through_redis_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"active": False}
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        assert (user_id, organization_id, team_id, access) == (
+            "user-1",
+            "org-1",
+            "team-1",
+            "execute",
+        )
+        state["active"] = True
+        try:
+            yield True
+        finally:
+            state["active"] = False
+
+    async def push(_session_id, _pending):
+        assert state["active"] is True
+        return 1
+
+    async def in_flight(_session_id):
+        assert state["active"] is True
+        return True
+
+    monkeypatch.setattr(helpers_module, "live_resource_lease", lease)
+    monkeypatch.setattr(
+        helpers_module,
+        "require_exact_chat_session_scope",
+        AsyncMock(side_effect=lambda *_args: assert_lease_active(state)),
+    )
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message", AsyncMock(side_effect=push)
+    )
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(side_effect=in_flight)
+    )
+
+    response = await queue_user_message(
+        session_id="sess-1",
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        message="allowed",
+    )
+
+    assert response.buffer_length == 1
+    assert state["active"] is False
+
+
+def assert_lease_active(state: dict[str, bool]) -> None:
+    assert state["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_rejects_scope_mismatch_before_redis_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    push = AsyncMock()
+    monkeypatch.setattr(helpers_module, "live_resource_lease", allowed)
+    monkeypatch.setattr(
+        helpers_module,
+        "require_exact_chat_session_scope",
+        AsyncMock(side_effect=LiveResourceAccessRevoked("workspace_access_revoked")),
+    )
+    monkeypatch.setattr(helpers_module, "push_pending_message", push)
+
+    with pytest.raises(LiveResourceAccessRevoked):
+        await queue_user_message(
+            session_id="sess-1",
+            user_id="user-1",
+            organization_id=None,
+            team_id=None,
+            message="wrong scope",
+        )
+
+    push.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_queue_pending_does_not_charge_rate_on_toctou_409(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -197,6 +310,8 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
         await queue_pending_for_http(
             session_id="sess-1",
             user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
             message="hi",
             context=None,
             file_ids=None,
@@ -225,6 +340,8 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
     result = await queue_pending_for_http(
         session_id="sess-1",
         user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
         message="hi",
         context=None,
         file_ids=None,
@@ -262,6 +379,8 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
         await queue_pending_for_http(
             session_id="sess-1",
             user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
             message="hi",
             context=None,
             file_ids=None,

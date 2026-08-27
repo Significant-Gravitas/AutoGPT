@@ -1,5 +1,7 @@
 import datetime
 import json
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
@@ -41,8 +43,95 @@ def _test_request_context():
     )
 
 
+@pytest.mark.asyncio
+async def test_submission_media_rechecks_live_workspace_before_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def denied(*_args, **_kwargs):
+        yield False
+
+    upload = AsyncMock()
+    monkeypatch.setattr(store_routes, "live_resource_lease", denied)
+    monkeypatch.setattr(store_routes.store_media, "upload_media", upload)
+
+    with pytest.raises(fastapi.HTTPException) as exc:
+        await store_routes.upload_submission_media(
+            file=MagicMock(),
+            user_id="test-user-id",
+            ctx=_test_request_context(),
+        )
+
+    assert exc.value.status_code == 403
+    upload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_submission_media_holds_live_workspace_through_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = False
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        nonlocal active
+        assert (user_id, organization_id, team_id, access) == (
+            "test-user-id",
+            TEST_ORG_ID,
+            None,
+            "create",
+        )
+        active = True
+        try:
+            yield True
+        finally:
+            active = False
+
+    async def upload(**_kwargs):
+        assert active is True
+        return "https://example.test/media.png"
+
+    monkeypatch.setattr(store_routes, "live_resource_lease", lease)
+    monkeypatch.setattr(
+        store_routes.store_media, "upload_media", AsyncMock(side_effect=upload)
+    )
+
+    result = await store_routes.upload_submission_media(
+        file=MagicMock(),
+        user_id="test-user-id",
+        ctx=_test_request_context(),
+    )
+
+    assert result == "https://example.test/media.png"
+    assert active is False
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        prisma.enums.ContentType.INTEGRATION,
+        prisma.enums.ContentType.LIBRARY_AGENT,
+        prisma.enums.ContentType.WORKSPACE_FILE,
+        prisma.enums.ContentType.CHAT_SESSION,
+    ],
+)
+def test_store_search_rejects_non_public_content_types(mocker, content_type):
+    search = mocker.patch(
+        "backend.api.features.store.routes.search_engine.unified_hybrid_search",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get(
+        "/search",
+        params={"query": "private", "content_types": content_type.value},
+    )
+
+    assert response.status_code == 422
+    search.assert_not_awaited()
+
+
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     """Setup auth overrides for all tests in this module.
 
     ``get_request_context`` is overridden with a deterministic context —
@@ -53,9 +142,24 @@ def setup_app_auth(mock_jwt_user):
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+    import backend.util.cache
+
+    redis = MagicMock()
+    redis.get.return_value = None
+    redis.getex.return_value = None
+    redis.scan_iter.return_value = iter(())
+    redis.delete.return_value = 0
+    redis.setex.return_value = True
+    monkeypatch.setattr(backend.util.cache, "_get_redis", lambda: redis)
     store_routes.store_cache.clear_all_caches()
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = _test_request_context
+
+    @asynccontextmanager
+    async def allow(*_args):
+        yield True
+
+    monkeypatch.setattr("backend.api.live_auth.live_resource_permission_barrier", allow)
     yield
     app.dependency_overrides.clear()
     store_routes.store_cache.clear_all_caches()
@@ -625,6 +729,7 @@ def test_get_submissions_success(
         statuses=None,
         sort_key=None,
         sort_dir="desc",
+        team_id_restriction=None,
     )
 
 
@@ -669,6 +774,7 @@ def test_get_submissions_pagination(
         statuses=None,
         sort_key=None,
         sort_dir="desc",
+        team_id_restriction=None,
     )
 
 
@@ -702,6 +808,7 @@ def test_get_submissions_forwards_search_query(
         statuses=None,
         sort_key=None,
         sort_dir="desc",
+        team_id_restriction=None,
     )
 
 
@@ -738,6 +845,7 @@ def test_get_submissions_forwards_statuses(
         ],
         sort_key=None,
         sort_dir="desc",
+        team_id_restriction=None,
     )
 
 
@@ -771,6 +879,7 @@ def test_get_submissions_forwards_sort(
         statuses=None,
         sort_key="runs",
         sort_dir="asc",
+        team_id_restriction=None,
     )
 
 
@@ -827,6 +936,8 @@ def test_get_my_unpublished_agents_forwards_search_query(
         page_size=10,
         sort_by=store_model.MyAgentsSortBy.MOST_RECENT,
         search_query="scraper",
+        organization_id=TEST_ORG_ID,
+        team_id_restriction=None,
     )
 
 

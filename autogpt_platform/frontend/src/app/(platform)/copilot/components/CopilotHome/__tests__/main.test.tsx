@@ -27,6 +27,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 });
 
 const baseProps = {
+  createTeamId: null,
+  onCreateTeamChange: vi.fn(),
+  isTeamContextReady: true,
+  canSelectCreateTeam: false,
   inputLayoutId: "test-layout",
   isCreatingSession: false,
   onCreateSession: vi.fn(),

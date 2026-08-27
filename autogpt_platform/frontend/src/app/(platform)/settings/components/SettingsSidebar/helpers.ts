@@ -37,6 +37,7 @@ export const settingsNavItems: SettingsNavItem[] = [
     label: "Organization",
     href: "/settings/organization",
     Icon: BuildingIcon,
+    flag: Flag.SHOW_ORG_SETTINGS,
   },
   {
     label: "Integrations",

@@ -1,3 +1,4 @@
+import { getGetV2ListWorkspacesMockHandler } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import { useOrgTeamStore } from "@/services/org-team/store";
@@ -45,6 +46,19 @@ const TEAM_B = {
   orgId: "org-1",
 };
 
+const WORKSPACES = [TEAM_A, TEAM_B].map((team) => ({
+  id: team.id,
+  name: team.name,
+  slug: team.slug,
+  description: null,
+  is_default: team.isDefault,
+  join_policy: team.joinPolicy,
+  org_id: team.orgId,
+  member_count: 1,
+  is_member: true,
+  created_at: new Date("2026-07-01T00:00:00Z"),
+}));
+
 const AGENT = {
   graph_id: "graph-1",
   graph_version: 3,
@@ -83,8 +97,15 @@ function renderDialog(agent: LibraryAgent = AGENT) {
   return render(<ShareAgentDialog agent={agent} isOpen setIsOpen={() => {}} />);
 }
 
+async function openTeamSelect() {
+  const select = await screen.findByRole("combobox", { name: "Team" });
+  await waitFor(() => expect(select.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(select);
+}
+
 beforeEach(() => {
   seedTeams();
+  server.use(getGetV2ListWorkspacesMockHandler(WORKSPACES));
 });
 
 describe("ShareAgentDialog", () => {
@@ -100,7 +121,7 @@ describe("ShareAgentDialog", () => {
 
     renderDialog();
 
-    fireEvent.click(await screen.findByRole("combobox", { name: "Team" }));
+    await openTeamSelect();
     fireEvent.click(await screen.findByRole("option", { name: "Growth" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
@@ -128,7 +149,7 @@ describe("ShareAgentDialog", () => {
 
     renderDialog();
 
-    fireEvent.click(await screen.findByRole("combobox", { name: "Team" }));
+    await openTeamSelect();
     fireEvent.click(await screen.findByRole("option", { name: "Platform" }));
 
     fireEvent.click(screen.getByRole("combobox", { name: "Access" }));
@@ -171,7 +192,7 @@ describe("ShareAgentDialog", () => {
 
     expect(screen.queryByRole("combobox", { name: "Credentials" })).toBeNull();
 
-    fireEvent.click(await screen.findByRole("combobox", { name: "Team" }));
+    await openTeamSelect();
     fireEvent.click(await screen.findByRole("option", { name: "Growth" }));
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
 

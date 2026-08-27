@@ -3,21 +3,18 @@ import base64
 import logging
 import time
 from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Sequence, cast, get_args
 from urllib.parse import urlparse
 
 import pydantic
 import stripe
-from autogpt_libs.auth import (
-    get_request_context,
-    get_user_id,
-    requires_org_permission,
-    requires_user,
-)
+from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from autogpt_libs.auth.models import RequestContext
-from autogpt_libs.auth.permissions import OrgAction
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import (
     APIRouter,
     Body,
@@ -33,7 +30,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import BriefingFrequency, SubscriptionTier
+from prisma.enums import BriefingFrequency, GrantCapability, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -49,6 +46,13 @@ from backend.api.features.executions.activity_gate import (
 from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
+from backend.api.live_auth import live_dependency
+from backend.api.live_auth import (
+    requires_live_org_permission as requires_org_permission,
+)
+from backend.api.live_auth import (
+    requires_live_resource_permission as requires_resource_permission,
+)
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -110,6 +114,7 @@ from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     get_user_cost_summary,
 )
+from backend.data.grants import resolve_graph_grant
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import (
@@ -132,7 +137,14 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
-from backend.data.tenancy import get_user_team_ids
+from backend.data.tenancy import (
+    agent_graph_attachment_barrier,
+    agent_graph_attachment_barriers,
+    get_user_team_ids,
+    live_agent_graph_access_barrier,
+    live_resource_access_barrier,
+    live_resource_permission_barrier,
+)
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
@@ -147,7 +159,6 @@ from backend.data.user import (
     update_user_timezone,
     verify_preference_token,
 )
-from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -193,6 +204,68 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _live_resource_action(
+    user_id: str,
+    ctx: RequestContext,
+    org_action: OrgAction,
+    team_action: TeamAction,
+) -> AsyncIterator[None]:
+    async with live_resource_permission_barrier(
+        user_id,
+        ctx.org_id,
+        ctx.team_id,
+        org_action,
+        team_action,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        yield
+
+
+@asynccontextmanager
+async def _stable_graph_view(
+    graph_id: str,
+    version: int | None,
+    user_id: str,
+    for_export: bool,
+    ctx: RequestContext,
+) -> AsyncIterator[graph_db.GraphModel | None]:
+    for _ in range(3):
+        candidate = await graph_db.get_graph(
+            graph_id,
+            version,
+            user_id=user_id,
+            for_export=for_export,
+            include_subgraphs=True,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        )
+        if candidate is None:
+            yield None
+            return
+        expected_ids = {candidate.id, *(graph.id for graph in candidate.sub_graphs)}
+        async with agent_graph_attachment_barriers(expected_ids):
+            locked = await graph_db.get_graph(
+                graph_id,
+                version,
+                user_id=user_id,
+                for_export=for_export,
+                include_subgraphs=True,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+            )
+            if locked is None:
+                yield None
+                return
+            locked_ids = {locked.id, *(graph.id for graph in locked.sub_graphs)}
+            if locked_ids != expected_ids:
+                continue
+            yield locked
+            return
+    raise HTTPException(409, detail="Graph composition changed while loading")
 
 
 # Define the API routes
@@ -583,7 +656,12 @@ async def execute_graph_block(
     block_id: str,
     data: BlockInput,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+        ),
+    ],
 ) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
@@ -595,45 +673,59 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    try:
-        await execution_utils.charge_for_direct_block_execution(
-            user_id=user_id, block=obj, input_data=data, source="internal"
-        )
-    except InsufficientBalanceError as e:
-        raise HTTPException(status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)) from e
+    async with _live_resource_action(
+        user_id,
+        ctx,
+        OrgAction.EXECUTE_RESOURCES,
+        TeamAction.EXECUTE_AGENTS,
+    ):
+        try:
+            await execution_utils.charge_for_direct_block_execution(
+                user_id=user_id, block=obj, input_data=data, source="internal"
+            )
+        except InsufficientBalanceError as e:
+            raise HTTPException(
+                status_code=HTTP_402_PAYMENT_REQUIRED, detail=str(e)
+            ) from e
 
-    # Direct block execution has no graph; build a minimal ExecutionContext
-    # carrying the caller's identity + timezone so blocks that depend on
-    # those (e.g. time blocks) get correct data.
-    execution_context = ExecutionContext(
-        user_id=user_id,
-        user_timezone=get_user_timezone_or_utc(user.timezone),
-    )
-
-    start_time = time.time()
-    try:
-        output = defaultdict(list)
-        async for name, data in obj.execute(
-            data,
+        execution_context = ExecutionContext(
             user_id=user_id,
-            execution_context=execution_context,
-        ):
-            output[name].append(data)
-
-        # Record successful block execution with duration
-        duration = time.time() - start_time
-        block_type = obj.__class__.__name__
-        record_block_execution(
-            block_type=block_type, status="success", duration=duration
+            user_timezone=get_user_timezone_or_utc(user.timezone),
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
         )
 
-        return output
-    except Exception:
-        # Record failed block execution
-        duration = time.time() - start_time
-        block_type = obj.__class__.__name__
-        record_block_execution(block_type=block_type, status="error", duration=duration)
-        raise
+        start_time = time.time()
+        try:
+            output = defaultdict(list)
+            configured_timeout = getattr(obj, "execution_timeout_seconds", None)
+            block_timeout = (
+                min(configured_timeout, 30 * 60)
+                if isinstance(configured_timeout, (int, float))
+                and configured_timeout > 0
+                else 30 * 60
+            )
+            async with asyncio.timeout(block_timeout):
+                async for name, data in obj.execute(
+                    data,
+                    user_id=user_id,
+                    execution_context=execution_context,
+                ):
+                    output[name].append(data)
+
+            duration = time.time() - start_time
+            block_type = obj.__class__.__name__
+            record_block_execution(
+                block_type=block_type, status="success", duration=duration
+            )
+            return output
+        except Exception:
+            duration = time.time() - start_time
+            block_type = obj.__class__.__name__
+            record_block_execution(
+                block_type=block_type, status="error", duration=duration
+            )
+            raise
 
 
 @v1_router.post(
@@ -644,7 +736,12 @@ async def execute_graph_block(
 )
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
     file: UploadFile = File(...),
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
@@ -736,7 +833,7 @@ async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ) -> dict[str, int]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
@@ -754,7 +851,7 @@ async def request_top_up(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
     x_datafast_visitor_id: Annotated[
         str | None, Header(include_in_schema=False)
@@ -783,7 +880,7 @@ async def refund_top_up(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
     transaction_key: str,
     metadata: dict[str, str],
@@ -802,7 +899,7 @@ async def fulfill_checkout(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ):
     credit_model = await get_credit_model(user_id, ctx.org_id)
@@ -821,7 +918,7 @@ async def configure_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
@@ -877,7 +974,7 @@ async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
@@ -1695,7 +1792,7 @@ async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ) -> dict[str, str]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
@@ -1712,7 +1809,7 @@ async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
@@ -1740,7 +1837,7 @@ async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
 ) -> list[RefundRequest]:
     credit_model = await get_credit_model(user_id, ctx.org_id)
@@ -1757,7 +1854,7 @@ async def list_invoices(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_org_permission(OrgAction.MANAGE_BILLING),
     ],
     limit: int = Query(24, ge=1, le=100),
 ) -> list[InvoiceListItem]:
@@ -1815,7 +1912,10 @@ class SetActiveGraphVersionResponse(BaseModel):
 )
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> Sequence[graph_db.GraphMeta]:
     paginated_result = await graph_db.list_graphs_paginated(
         user_id=user_id,
@@ -1823,6 +1923,7 @@ async def list_graphs(
         page_size=250,
         filter_by="active",
         organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return paginated_result.graphs
 
@@ -1842,21 +1943,17 @@ async def list_graphs(
 async def get_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
     version: int | None = None,
     for_export: bool = False,
 ) -> graph_db.GraphModel:
-    graph = await graph_db.get_graph(
-        graph_id,
-        version,
-        user_id=user_id,
-        for_export=for_export,
-        include_subgraphs=True,  # needed to construct full credentials input schema
-        organization_id=ctx.org_id,
-    )
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-    return graph
+    async with _stable_graph_view(graph_id, version, user_id, for_export, ctx) as graph:
+        if not graph:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graph
 
 
 @v1_router.get(
@@ -1868,14 +1965,21 @@ async def get_graph(
 async def get_graph_all_versions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> Sequence[graph_db.GraphModel]:
-    graphs = await graph_db.get_graph_all_versions(
-        graph_id, user_id=user_id, organization_id=ctx.org_id
-    )
-    if not graphs:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-    return graphs
+    async with agent_graph_attachment_barrier(graph_id):
+        graphs = await graph_db.get_graph_all_versions(
+            graph_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        )
+        if not graphs:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        return graphs
 
 
 async def _resolve_write_team_id(
@@ -1915,6 +2019,91 @@ async def _resolve_write_team_id(
     return team_id
 
 
+@asynccontextmanager
+async def _live_graph_mutation(
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    graph_id: str,
+    access: Literal["create", "delete"],
+) -> AsyncIterator[None]:
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, access
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        async with agent_graph_attachment_barrier(graph_id):
+            yield
+
+
+async def _live_graph_write_dependency(
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+) -> AsyncIterator[str | None]:
+    versions = await graph_db.get_graph_all_versions(
+        graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+    target = next((version for version in versions if version.is_active), versions[0])
+    target_team_id = target.team_id
+    async with _live_graph_mutation(
+        user_id, ctx.org_id, target_team_id, graph_id, "create"
+    ):
+        exact_versions = await graph_db.get_graph_all_versions(
+            graph_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=target_team_id,
+        )
+        if not exact_versions:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+        yield target_team_id
+
+
+async def _live_graph_delete_dependency(
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+        ),
+    ],
+) -> AsyncIterator[str | None]:
+    versions = await graph_db.get_graph_all_versions(
+        graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+    target = next((version for version in versions if version.is_active), versions[0])
+    target_team_id = target.team_id
+    async with _live_graph_mutation(
+        user_id, ctx.org_id, target_team_id, graph_id, "delete"
+    ):
+        exact_versions = await graph_db.get_graph_all_versions(
+            graph_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=target_team_id,
+        )
+        if not exact_versions:
+            raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found")
+        yield target_team_id
+
+
 @v1_router.post(
     path="/graphs",
     summary="Create new graph",
@@ -1924,8 +2113,22 @@ async def _resolve_write_team_id(
 async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
 ) -> graph_db.GraphModel:
+    if (
+        ctx.team_id is not None
+        and create_graph.team_id is not None
+        and create_graph.team_id != ctx.team_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The requested team must match the active workspace context.",
+        )
     # Explicit picker choice wins; otherwise fall back to the (already
     # validated) active-team context, which is org-home (None) unless a
     # legacy X-Team-Id header set it.
@@ -1940,21 +2143,22 @@ async def create_new_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    # Validate node credentials (and clear stale optional ones) BEFORE
-    # persisting, so a credential issue can't leave the graph/library agent
-    # half-saved. before_graph_activate may also mutate input_default; those
-    # edits need to be persisted, so it must run before create_graph.
-    graph = await before_graph_activate(graph, user_id=user_id)
+    async with _live_graph_mutation(user_id, ctx.org_id, team_id, graph.id, "create"):
+        # Validate node credentials (and clear stale optional ones) BEFORE
+        # persisting, so a credential issue can't leave the graph/library agent
+        # half-saved. before_graph_activate may also mutate input_default; those
+        # edits need to be persisted, so it must run before create_graph.
+        graph = await before_graph_activate(graph, user_id=user_id)
 
-    await graph_db.create_graph(
-        graph,
-        user_id=user_id,
-        organization_id=ctx.org_id,
-        team_id=team_id,
-    )
-    await library_db.create_library_agent(
-        graph, user_id, organization_id=ctx.org_id, team_id=team_id
-    )
+        await graph_db.create_graph(
+            graph,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=team_id,
+        )
+        await library_db.create_library_agent(
+            graph, user_id, organization_id=ctx.org_id, team_id=team_id
+        )
 
     return graph
 
@@ -1968,16 +2172,31 @@ async def create_new_graph(
 async def delete_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+        ),
+    ],
+    target_team_id: Annotated[
+        str | None, live_dependency(_live_graph_delete_dependency)
+    ],
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(
-        graph_id=graph_id, version=None, user_id=user_id
+        graph_id=graph_id,
+        version=None,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=target_team_id,
     ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
     return {
         "version_counts": await graph_db.delete_graph(
-            graph_id, user_id=user_id, organization_id=ctx.org_id
+            graph_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id_restriction=target_team_id,
         )
     }
 
@@ -1992,7 +2211,15 @@ async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+    target_team_id: Annotated[
+        str | None, live_dependency(_live_graph_write_dependency)
+    ],
     # Sibling create endpoints (CreateGraph, CreateAPIKeyRequest,
     # ScheduleCreationRequest) carry team_id in the body; this one cannot.
     # The PUT body is the bare `Graph` payload — an existing public-API
@@ -2013,8 +2240,18 @@ async def update_graph(
 ) -> UpdateGraphResponse:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
+    if ctx.team_id is not None and team_id is not None and team_id != ctx.team_id:
+        raise HTTPException(
+            status_code=400,
+            detail="The requested team must match the active workspace context.",
+        )
 
-    existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
+    existing_versions = await graph_db.get_graph_all_versions(
+        graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=target_team_id,
+    )
     if not existing_versions:
         raise HTTPException(404, detail=f"Graph #{graph_id} not found")
 
@@ -2073,7 +2310,11 @@ async def update_graph(
             team_id=resolved_team_id,
         )
         await graph_db.set_graph_active_version(
-            graph_id=graph_id, version=new_graph_version.version, user_id=user_id
+            graph_id=graph_id,
+            version=new_graph_version.version,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=resolved_team_id,
         )
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
@@ -2092,6 +2333,8 @@ async def update_graph(
         new_graph_version.version,
         user_id=user_id,
         include_subgraphs=True,
+        organization_id=ctx.org_id,
+        team_id=resolved_team_id,
     )
     assert new_graph_version_with_subgraphs
     return UpdateGraphResponse(
@@ -2110,11 +2353,23 @@ async def set_graph_active_version(
     graph_id: str,
     request_body: SetGraphActiveVersion,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+    target_team_id: Annotated[
+        str | None, live_dependency(_live_graph_write_dependency)
+    ],
 ) -> SetActiveGraphVersionResponse:
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
-        graph_id, new_active_version, user_id=user_id
+        graph_id,
+        new_active_version,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=target_team_id,
     )
     if not new_active_graph:
         raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
@@ -2123,6 +2378,8 @@ async def set_graph_active_version(
         graph_id=graph_id,
         version=None,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=target_team_id,
     )
 
     # Validate the new graph's credentials before flipping the active version.
@@ -2135,11 +2392,16 @@ async def set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=new_active_graph.team_id,
     )
 
     # Keep the library agent up to date with the new active version
     await library_db.update_library_agent_version_and_settings(
-        user_id, new_active_graph
+        user_id,
+        new_active_graph,
+        organization_id=ctx.org_id,
+        team_id=new_active_graph.team_id,
     )
 
     if current_active_graph and current_active_graph.version != new_active_version:
@@ -2171,11 +2433,22 @@ async def update_graph_settings(
     graph_id: str,
     settings: GraphSettings,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
+    target_team_id: Annotated[
+        str | None, live_dependency(_live_graph_write_dependency)
+    ],
 ) -> GraphSettings:
     """Update graph settings for the user's library agent."""
     library_agent = await library_db.get_library_agent_by_graph_id(
-        graph_id=graph_id, user_id=user_id
+        graph_id=graph_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=target_team_id,
     )
     if not library_agent:
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
@@ -2184,6 +2457,8 @@ async def update_graph_settings(
         library_agent_id=library_agent.id,
         user_id=user_id,
         settings=settings,
+        organization_id=ctx.org_id,
+        team_id_restriction=target_team_id,
     )
 
     return GraphSettings.model_validate(updated_agent.settings)
@@ -2210,7 +2485,12 @@ async def update_graph_settings(
 async def execute_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+        ),
+    ],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
@@ -2230,6 +2510,26 @@ async def execute_graph(
             )
 
     try:
+        library_agent = await library_db.get_library_agent_by_graph_id(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            organization_id=ctx.org_id,
+            team_id_restriction=ctx.team_id,
+        )
+        execution_team_id = library_agent.team_id if library_agent else None
+        if library_agent is None:
+            grant = await resolve_graph_grant(
+                user_id,
+                graph_id,
+                capability=GrantCapability.EXECUTE,
+                graph_version=graph_version,
+                organization_id=ctx.org_id,
+                team_id_restriction=ctx.team_id,
+            )
+            if grant is not None:
+                execution_team_id = grant.principalId
+
         result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
@@ -2239,7 +2539,7 @@ async def execute_graph(
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
             organization_id=ctx.org_id,
-            team_id=ctx.team_id,
+            team_id=execution_team_id,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
@@ -2279,12 +2579,22 @@ async def execute_graph(
     dependencies=[Security(requires_user)],
 )
 async def stop_graph_run(
-    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Security(get_user_id)]
+    graph_id: str,
+    graph_exec_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+        ),
+    ],
 ) -> execution_db.GraphExecutionMeta | None:
     res = await _stop_graph_run(
         user_id=user_id,
         graph_id=graph_id,
         graph_exec_id=graph_exec_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     if not res:
         return None
@@ -2293,25 +2603,54 @@ async def stop_graph_run(
 
 async def _stop_graph_run(
     user_id: str,
-    graph_id: Optional[str] = None,
-    graph_exec_id: Optional[str] = None,
+    graph_id: str,
+    graph_exec_id: str,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> list[execution_db.GraphExecutionMeta]:
-    graph_execs = await execution_db.get_graph_executions(
+    candidate = await execution_db.get_graph_execution(
         user_id=user_id,
-        graph_id=graph_id,
-        graph_exec_id=graph_exec_id,
-        statuses=[
-            execution_db.ExecutionStatus.INCOMPLETE,
-            execution_db.ExecutionStatus.QUEUED,
-            execution_db.ExecutionStatus.RUNNING,
-        ],
+        execution_id=graph_exec_id,
+        organization_id=organization_id,
+        team_id_restriction=team_id_restriction,
     )
-    stopped_execs = [
-        execution_utils.stop_graph_execution(graph_exec_id=exec.id, user_id=user_id)
-        for exec in graph_execs
-    ]
-    await asyncio.gather(*stopped_execs)
-    return graph_execs
+    active_statuses = {
+        execution_db.ExecutionStatus.INCOMPLETE,
+        execution_db.ExecutionStatus.QUEUED,
+        execution_db.ExecutionStatus.RUNNING,
+    }
+    if (
+        candidate is None
+        or candidate.graph_id != graph_id
+        or candidate.status not in active_statuses
+    ):
+        return []
+
+    async with live_resource_permission_barrier(
+        user_id,
+        organization_id,
+        candidate.team_id,
+        OrgAction.EXECUTE_RESOURCES,
+        TeamAction.EXECUTE_AGENTS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        execution = await execution_db.get_graph_execution_exact_scope(
+            user_id,
+            graph_exec_id,
+            organization_id,
+            candidate.team_id,
+        )
+        if (
+            execution is None
+            or execution.graph_id != graph_id
+            or execution.status not in active_statuses
+        ):
+            return []
+        await execution_utils.stop_graph_execution(
+            graph_exec_id=execution.id, user_id=user_id
+        )
+        return [execution]
 
 
 @v1_router.get(
@@ -2322,13 +2661,17 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> list[execution_db.GraphExecutionMeta]:
     paginated_result = await execution_db.get_graph_executions_paginated(
         user_id=user_id,
         page=1,
         page_size=250,
         organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
     # Apply feature flags to filter out disabled features
@@ -2346,6 +2689,10 @@ async def list_graphs_executions(
 )
 async def get_executions_cost_summary(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
     since: datetime | None = Query(
         None,
         description="Window start (UTC). Defaults to start of current calendar month.",
@@ -2372,6 +2719,8 @@ async def get_executions_cost_summary(
         since=since,
         until=until,
         top_runs_limit=top_runs_limit,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
@@ -2384,7 +2733,10 @@ async def get_executions_cost_summary(
 async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
@@ -2396,6 +2748,7 @@ async def list_graph_executions(
         page=page,
         page_size=page_size,
         organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
     # Apply feature flags to filter out disabled features
@@ -2426,13 +2779,17 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
     result = await execution_db.get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
         organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
@@ -2444,6 +2801,7 @@ async def get_graph_execution(
         version=result.graph_version,
         user_id=user_id,
         organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     ):
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
@@ -2471,11 +2829,45 @@ async def get_graph_execution(
 async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+        ),
+    ],
 ) -> None:
-    await execution_db.delete_graph_execution(
-        graph_exec_id=graph_exec_id, user_id=user_id
+    candidate = await execution_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    async with live_resource_permission_barrier(
+        user_id,
+        ctx.org_id,
+        candidate.team_id,
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.DELETE_AGENTS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        execution = await execution_db.get_graph_execution_exact_scope(
+            user_id,
+            graph_exec_id,
+            ctx.org_id,
+            candidate.team_id,
+        )
+        if execution is None:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        await execution_db.delete_graph_execution(
+            graph_exec_id=graph_exec_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id_restriction=candidate.team_id,
+            exact_scope=True,
+        )
 
 
 class ShareRequest(pydantic.BaseModel):
@@ -2499,48 +2891,56 @@ async def enable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
     _body: ShareRequest = Body(default=ShareRequest()),
 ) -> ShareResponse:
     """Enable sharing for a graph execution."""
-    # Verify the execution belongs to the user
-    execution = await execution_db.get_graph_execution(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not execution:
-        raise HTTPException(status_code=404, detail="Execution not found")
-
-    # Generate a unique share token
-    share_token = generate_share_token()
-
-    # Remove stale allowlist records before updating the token — prevents a
-    # window where old records + new token could coexist.
-    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
-
-    # Update the execution with share info — the underlying update_many
-    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
-    # between the pre-check above and this write surfaces as 404 rather
-    # than a silent no-op.
-    try:
-        await execution_db.update_graph_execution_share_status(
-            execution_id=graph_exec_id,
-            user_id=user_id,
-            is_shared=True,
-            share_token=share_token,
-            shared_at=datetime.now(timezone.utc),
-        )
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-    # Create allowlist of workspace files referenced in outputs
-    await execution_db.create_shared_execution_files(
-        execution_id=graph_exec_id,
-        share_token=share_token,
+    candidate = await execution_db.get_graph_execution(
         user_id=user_id,
-        outputs=execution.outputs,
+        execution_id=graph_exec_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
+    if not candidate or candidate.graph_id != graph_id:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    async with live_resource_permission_barrier(
+        user_id,
+        ctx.org_id,
+        candidate.team_id,
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.CREATE_AGENTS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        execution = await execution_db.get_graph_execution_exact_scope(
+            user_id,
+            graph_exec_id,
+            ctx.org_id,
+            candidate.team_id,
+        )
+        if not execution or execution.graph_id != graph_id:
+            raise HTTPException(status_code=404, detail="Execution not found")
 
-    # Return the share URL
+        share_token = generate_share_token()
+        try:
+            await execution_db.replace_execution_share(
+                execution_id=graph_exec_id,
+                user_id=user_id,
+                organization_id=ctx.org_id,
+                team_id=candidate.team_id,
+                is_shared=True,
+                share_token=share_token,
+                shared_at=datetime.now(timezone.utc),
+                outputs=execution.outputs,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
     frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
     share_url = f"{frontend_url}/share/{share_token}"
 
@@ -2556,31 +2956,53 @@ async def disable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
 ) -> None:
     """Disable sharing for a graph execution."""
-    # Verify the execution belongs to the user
-    execution = await execution_db.get_graph_execution(
-        user_id=user_id, execution_id=graph_exec_id
+    candidate = await execution_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
-    if not execution:
+    if not candidate or candidate.graph_id != graph_id:
         raise HTTPException(status_code=404, detail="Execution not found")
-
-    # Remove shared file allowlist records
-    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
-
-    # Remove share info — owner-gated at the DB layer; TOCTOU delete
-    # after the pre-check surfaces as 404.
-    try:
-        await execution_db.update_graph_execution_share_status(
-            execution_id=graph_exec_id,
-            user_id=user_id,
-            is_shared=False,
-            share_token=None,
-            shared_at=None,
+    async with live_resource_permission_barrier(
+        user_id,
+        ctx.org_id,
+        candidate.team_id,
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.CREATE_AGENTS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        execution = await execution_db.get_graph_execution_exact_scope(
+            user_id,
+            graph_exec_id,
+            ctx.org_id,
+            candidate.team_id,
         )
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        if not execution or execution.graph_id != graph_id:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        try:
+            await execution_db.replace_execution_share(
+                execution_id=graph_exec_id,
+                user_id=user_id,
+                organization_id=ctx.org_id,
+                team_id=candidate.team_id,
+                is_shared=False,
+                share_token=None,
+                shared_at=None,
+                outputs=execution.outputs,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
 
 
 @v1_router.get("/public/shared/{share_token}")
@@ -2619,20 +3041,10 @@ async def download_shared_file(
     Validates that the file was explicitly exposed when sharing was enabled.
     Returns a uniform 404 for all failure modes to prevent enumeration attacks.
     """
-    # Single-query validation against the allowlist
-    execution_id = await execution_db.get_shared_execution_file(
-        share_token=share_token, file_id=file_id
-    )
-    if not execution_id:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    # Look up the actual file (no workspace scoping needed — the allowlist
-    # already validated that this file belongs to the shared execution)
-    file = await get_workspace_file_by_id(file_id)
-    if not file:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    return await create_file_download_response(file, inline=True)
+    async with execution_db.shared_execution_file_access(share_token, file_id) as file:
+        if file is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        return await create_file_download_response(file, inline=True)
 
 
 ########################################################
@@ -2673,14 +3085,30 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        ),
+    ],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
+    if (
+        ctx.team_id is not None
+        and schedule_params.team_id is not None
+        and schedule_params.team_id != ctx.team_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The requested team must match the active workspace context.",
+        )
     graph = await graph_db.get_graph(
         graph_id=graph_id,
         version=schedule_params.graph_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
     if not graph:
         raise HTTPException(
@@ -2725,19 +3153,29 @@ async def create_graph_execution_schedule(
     else:
         expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
 
-    result = await get_scheduler_client().add_execution_schedule(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        name=schedule_params.name,
-        cron=schedule_params.cron,
-        input_data=schedule_params.inputs,
-        input_credentials=schedule_params.credentials,
-        user_timezone=user_timezone,
-        organization_id=ctx.org_id,
-        team_id=resolved_team_id,
-        expert_id=expert_id,
-    )
+    async with live_agent_graph_access_barrier(
+        user_id,
+        ctx.org_id,
+        resolved_team_id,
+        "create",
+        graph_id,
+        graph.version,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        result = await get_scheduler_client().add_execution_schedule(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            name=schedule_params.name,
+            cron=schedule_params.cron,
+            input_data=schedule_params.inputs,
+            input_credentials=schedule_params.credentials,
+            user_timezone=user_timezone,
+            organization_id=ctx.org_id,
+            team_id=resolved_team_id,
+            expert_id=expert_id,
+        )
 
     # Convert the next_run_time back to user timezone for display
     if result.next_run_time:
@@ -2750,6 +3188,12 @@ async def create_graph_execution_schedule(
     return result
 
 
+async def _schedule_team_ids(user_id: str, ctx: RequestContext) -> list[str]:
+    if ctx.team_id is not None:
+        return [ctx.team_id]
+    return await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+
+
 @v1_router.get(
     path="/graphs/{graph_id}/schedules",
     summary="List execution schedules for a graph",
@@ -2758,10 +3202,13 @@ async def create_graph_execution_schedule(
 )
 async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    team_ids = await _schedule_team_ids(user_id, ctx)
     return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
@@ -2778,9 +3225,12 @@ async def list_graph_execution_schedules(
 )
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    team_ids = await _schedule_team_ids(user_id, ctx)
     return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         organization_id=ctx.org_id,
@@ -2797,6 +3247,10 @@ async def list_all_graphs_execution_schedules(
 )
 async def list_copilot_turn_schedules(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS),
+    ],
 ) -> list[scheduler.CopilotTurnJobInfo]:
     """Return only copilot-turn schedules for the current user.
 
@@ -2804,8 +3258,12 @@ async def list_copilot_turn_schedules(
     keeps the generated frontend client typed to a single concrete return type
     instead of a discriminated union.
     """
+    team_ids = await _schedule_team_ids(user_id, ctx)
     schedules = await get_scheduler_client().get_execution_schedules(
-        user_id=user_id, kind="copilot_turn"
+        user_id=user_id,
+        kind="copilot_turn",
+        organization_id=ctx.org_id,
+        team_ids=team_ids,
     )
     # Defensive isinstance filter mirrors ``get_graph_execution_schedules``
     # (executor.scheduler.Scheduler) — the scheduler is the source of truth
@@ -2826,11 +3284,40 @@ async def list_copilot_turn_schedules(
 )
 async def delete_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+        ),
+    ],
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
-        await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+        scheduler_client = get_scheduler_client()
+        candidate = await scheduler_client.get_execution_schedule(
+            schedule_id,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_ids=await _schedule_team_ids(user_id, ctx),
+        )
+        target_team_ids = [candidate.team_id] if candidate.team_id is not None else []
+        async with live_resource_access_barrier(
+            user_id, ctx.org_id, candidate.team_id, "delete"
+        ) as allowed:
+            if not allowed:
+                raise HTTPException(403, detail="Resource scope is inactive")
+            await scheduler_client.get_execution_schedule(
+                schedule_id,
+                user_id=user_id,
+                organization_id=ctx.org_id,
+                team_ids=target_team_ids,
+            )
+            await scheduler_client.delete_schedule(
+                schedule_id,
+                user_id=user_id,
+                organization_id=ctx.org_id,
+                team_ids=target_team_ids,
+            )
     except NotFoundError:
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
@@ -3066,33 +3553,46 @@ async def delete_copilot_skill(
 async def create_api_key(
     request: CreateAPIKeyRequest,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
-    # A team-scoped key may only ever act on that team's resources, so the
-    # caller must be an active member of the team they're scoping it to.
-    # Explicit request.team_id wins; otherwise fall back to the active team
-    # carried by the X-Team-Id transport (ctx.team_id). Only `None` means
-    # "not supplied" — an explicit empty string is an invalid team and must
-    # be rejected rather than silently inheriting the context team.
-    #
-    # Unlike the graph/fork/folder writes, ctx.team_id is re-validated here
-    # even though get_request_context already checked it: this mints a
-    # long-lived credential whose blast radius is the whole team, so the
-    # extra membership lookup is worth one indexed query per key created.
-    team_id_restriction = await _resolve_write_team_id(
+    if (
+        ctx.team_id is not None
+        and request.team_id is not None
+        and request.team_id != ctx.team_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The requested team must match the active workspace context.",
+        )
+    async with live_resource_permission_barrier(
         user_id,
         ctx.org_id,
-        request.team_id if request.team_id is not None else ctx.team_id,
-    )
-    api_key_info, plain_text_key = await api_key_db.create_api_key(
-        name=request.name,
-        user_id=user_id,
-        permissions=request.permissions,
-        description=request.description,
-        organization_id=ctx.org_id,
-        team_id_restriction=team_id_restriction,
-    )
+        ctx.team_id,
+        OrgAction.MANAGE_CREDENTIALS,
+        TeamAction.MANAGE_CREDENTIALS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        team_id_restriction = await _resolve_write_team_id(
+            user_id,
+            ctx.org_id,
+            request.team_id if request.team_id is not None else ctx.team_id,
+        )
+        api_key_info, plain_text_key = await api_key_db.create_api_key(
+            name=request.name,
+            user_id=user_id,
+            permissions=request.permissions,
+            description=request.description,
+            organization_id=ctx.org_id,
+            owner_type="USER",
+            team_id_restriction=team_id_restriction,
+        )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 
 
@@ -3104,13 +3604,48 @@ async def create_api_key(
 )
 async def get_api_keys(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
     return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
+        user_id, organization_id=ctx.org_id or None
     )
+
+
+@asynccontextmanager
+async def _live_api_key_target(
+    key_id: str,
+    user_id: str,
+    ctx: RequestContext,
+) -> AsyncIterator[api_key_db.APIKeyInfo]:
+    candidate = await api_key_db.get_api_key_by_id(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
+    if candidate is None or (
+        ctx.team_id is not None and candidate.team_id_restriction != ctx.team_id
+    ):
+        raise HTTPException(status_code=404, detail="API key not found")
+    target_team_id = candidate.team_id_restriction
+    async with live_resource_permission_barrier(
+        user_id,
+        ctx.org_id,
+        target_team_id,
+        OrgAction.MANAGE_CREDENTIALS,
+        TeamAction.MANAGE_CREDENTIALS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Resource scope is inactive")
+        current = await api_key_db.get_api_key_by_id(
+            key_id, user_id, organization_id=ctx.org_id or None
+        )
+        if current is None or current.team_id_restriction != target_team_id:
+            raise HTTPException(status_code=404, detail="API key not found")
+        yield current
 
 
 @v1_router.get(
@@ -3122,15 +3657,16 @@ async def get_api_keys(
 async def get_api_key(
     key_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> api_key_db.APIKeyInfo:
     """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-    if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
-    return api_key
+    async with _live_api_key_target(key_id, user_id, ctx) as api_key:
+        return api_key
 
 
 @v1_router.delete(
@@ -3142,12 +3678,18 @@ async def get_api_key(
 async def delete_api_key(
     key_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> api_key_db.APIKeyInfo:
     """Revoke an API key"""
-    return await api_key_db.revoke_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
+    async with _live_api_key_target(key_id, user_id, ctx):
+        return await api_key_db.revoke_api_key(
+            key_id, user_id, organization_id=ctx.org_id or None
+        )
 
 
 @v1_router.post(
@@ -3159,12 +3701,18 @@ async def delete_api_key(
 async def suspend_key(
     key_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> api_key_db.APIKeyInfo:
     """Suspend an API key"""
-    return await api_key_db.suspend_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
+    async with _live_api_key_target(key_id, user_id, ctx):
+        return await api_key_db.suspend_api_key(
+            key_id, user_id, organization_id=ctx.org_id or None
+        )
 
 
 @v1_router.put(
@@ -3177,9 +3725,18 @@ async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_resource_permission(
+            OrgAction.MANAGE_CREDENTIALS, TeamAction.MANAGE_CREDENTIALS
+        ),
+    ],
 ) -> api_key_db.APIKeyInfo:
     """Update API key permissions"""
-    return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
-    )
+    async with _live_api_key_target(key_id, user_id, ctx):
+        return await api_key_db.update_api_key_permissions(
+            key_id,
+            user_id,
+            request.permissions,
+            organization_id=ctx.org_id or None,
+        )

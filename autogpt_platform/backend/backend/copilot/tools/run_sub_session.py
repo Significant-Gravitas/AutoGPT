@@ -38,6 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import (
@@ -71,6 +72,13 @@ class RunSubSessionTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
+    def additional_resource_accesses(self, **kwargs) -> tuple[ResourceAccess, ...]:
+        return ("execute",)
 
     @property
     def description(self) -> str:
@@ -152,7 +160,15 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
-            if owned.expert_id != session.expert_id:
+            if (
+                owned.organization_id,
+                owned.team_id,
+                owned.expert_id,
+            ) != (
+                session.organization_id,
+                session.team_id,
+                session.expert_id,
+            ):
                 return ErrorResponse(
                     message=(
                         f"sub_autopilot_session_id {sub_session_param} is not "

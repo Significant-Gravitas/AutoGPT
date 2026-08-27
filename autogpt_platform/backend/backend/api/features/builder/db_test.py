@@ -323,6 +323,8 @@ async def test_build_cached_search_results_merges_all_branches(mocker):
         "youtube",
         ("blocks", "integrations", "marketplace_agents", "my_agents"),
         (),
+        None,
+        None,
     )
 
     # Items are merged and ordered by descending score (170 > 100 > 80).
@@ -338,7 +340,7 @@ async def test_build_cached_search_results_merges_all_branches(mocker):
         "my_agents": 3,
     }
     # Each branch is awaited exactly once with the expected arguments.
-    mock_library.assert_awaited_once_with("user-1", "youtube", "youtube", None)
+    mock_library.assert_awaited_once_with("user-1", "youtube", "youtube", None, None)
     mock_marketplace.assert_awaited_once_with([], "youtube", "youtube")
 
 

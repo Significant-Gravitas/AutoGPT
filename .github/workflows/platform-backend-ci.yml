@@ -457,6 +457,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
           JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters" # DO NOT USE IN PRODUCTION!!
+          JWT_JWKS_URL: "http://localhost:3000/api/auth/jwks"
           REDIS_HOST: "localhost"
           REDIS_PORT: "17000"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!

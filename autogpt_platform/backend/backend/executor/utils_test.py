@@ -12,12 +12,24 @@ from backend.executor.utils import (
     CRED_ERR_INVALID_TYPE_MISMATCH,
     CRED_ERR_NOT_AVAILABLE_PREFIX,
     CRED_ERR_OWNER_REFERENCE_ONLY,
+    CRED_ERR_OWNER_UNSAFE_BLOCK,
     CRED_ERR_REQUIRED,
     CRED_ERR_UNKNOWN_PREFIX,
     add_graph_execution,
     is_credential_validation_error_message,
 )
 from backend.util.mock import MockObject
+
+
+@pytest.fixture(autouse=True)
+def stub_shared_cache(mocker: MockerFixture):
+    redis = mocker.MagicMock()
+    redis.get.return_value = None
+    redis.getex.return_value = None
+    redis.scan_iter.return_value = iter(())
+    redis.delete.return_value = 0
+    redis.setex.return_value = True
+    mocker.patch("backend.util.cache._get_redis", return_value=redis)
 
 
 def test_parse_execution_output():
@@ -384,6 +396,10 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         "backend.executor.utils.get_async_execution_event_bus"
     )
     mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mocker.patch(
+        "backend.executor.utils.onboarding_db.increment_onboarding_runs",
+        new=mocker.AsyncMock(),
+    )
     mock_workspace = mocker.MagicMock()
     mock_workspace.id = "test-workspace-id"
     mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
@@ -518,6 +534,7 @@ async def test_add_graph_execution_owner_mode_threads_owner_and_audits(
 
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = None
+    mock_graph_exec.expert_id = None
     mock_graph_exec.team_id = None
     mock_graph_exec.id = "exec-owner-1"
     mock_graph_exec.node_executions = []
@@ -748,6 +765,9 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
         return_value=mocker.MagicMock(id="ws-id")
     )
     mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+    mock_db_client.resolve_execution_credentials_owner = mocker.AsyncMock(
+        return_value=None
+    )
     # The RPC resolver (runs in the DB-manager process, which HAS prisma).
     mock_rpc_resolve = mocker.AsyncMock(return_value=("org-rpc", "team-rpc"))
     mock_db_client.resolve_default_tenancy = mock_rpc_resolve
@@ -869,6 +889,31 @@ async def test_validate_node_input_credentials_required_missing_creds_error(
     assert "credentials" in errors[mock_node.id]
     assert "required" in errors[mock_node.id]["credentials"].lower()
     assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_owner_credentials_reject_user_controlled_code_block(
+    mocker: MockerFixture,
+) -> None:
+    from backend.executor.utils import _validate_node_input_credentials
+
+    node = mocker.MagicMock()
+    node.id = "unsafe-node"
+    node.block.allow_owner_credentials = False
+    node.block.input_schema.get_credentials_fields.return_value = {
+        "anthropic_api_key": mocker.MagicMock()
+    }
+    node.block.input_schema.get_auto_credentials_fields.return_value = {}
+    graph = mocker.MagicMock(nodes=[node])
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=graph,
+        user_id="consumer",
+        credentials_owner_id="owner",
+    )
+
+    assert errors == {"unsafe-node": {"credentials": CRED_ERR_OWNER_UNSAFE_BLOCK}}
+    assert nodes_to_skip == set()
 
 
 @pytest.mark.asyncio
@@ -1438,6 +1483,8 @@ async def test_validate_node_input_credentials_auto_creds_valid(
     mock_store = mocker.MagicMock()
     mock_creds = mocker.MagicMock()
     mock_creds.id = "valid-cred-id"
+    mock_creds.provider = "google"
+    mock_creds.type = "oauth2"
     mock_store.get_creds_by_id = mocker.AsyncMock(return_value=mock_creds)
     mocker.patch(
         "backend.executor.utils.get_integration_credentials_store",
@@ -1573,6 +1620,8 @@ async def test_validate_node_input_credentials_both_regular_and_auto(
 
     mock_auto_creds = mocker.MagicMock()
     mock_auto_creds.id = "auto-cred-id"
+    mock_auto_creds.provider = "google"
+    mock_auto_creds.type = "oauth2"
 
     def get_creds_side_effect(user_id, cred_id):
         if cred_id == "regular-cred-id":
@@ -2151,6 +2200,10 @@ def _mock_add_graph_execution_create_path(
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=None),
+    )
 
     mock_user = mocker.MagicMock()
     mock_user.timezone = "UTC"
@@ -2240,6 +2293,10 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
 
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=None),
+    )
     execution_store = mocker.patch("backend.executor.utils.execution_db")
 
     persisted_parent = mocker.MagicMock(spec=GraphExecutionMeta)
@@ -2401,7 +2458,10 @@ async def test_top_level_requeue_ignores_stale_caller_parent_and_resolves_owner(
     )
 
     resolve_owner.assert_awaited_once_with(
-        user_id="consumer", graph_id="g", graph_version=1
+        user_id="consumer",
+        graph_id="g",
+        graph_version=1,
+        team_id_restriction="team",
     )
     context = captured["execution_context"]
     assert context.parent_execution_id is None
@@ -2441,6 +2501,44 @@ async def test_requeue_rejects_graph_identity_mismatch_before_owner_resolution(
             graph_version=graph_version,
             user_id="consumer",
             graph_exec_id="existing-execution",
+        )
+
+    resolve_owner.assert_not_awaited()
+    queue.publish_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("organization_id", "team_id", "error"),
+    [
+        ("different-org", None, "Organization scope does not match"),
+        (None, "different-team", "Team scope does not match"),
+    ],
+)
+async def test_requeue_rejects_caller_scope_mismatch(
+    mocker: MockerFixture,
+    organization_id: str | None,
+    team_id: str | None,
+    error: str,
+):
+    _, _, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker,
+        expert_id=None,
+        organization_id="org",
+        team_id="team",
+    )
+    resolve_owner = mocker.patch(
+        "backend.executor.utils.grants_db.resolve_execution_credentials_owner",
+        new=mocker.AsyncMock(return_value=("owner", "grant")),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="consumer",
+            graph_exec_id="existing-execution",
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
     resolve_owner.assert_not_awaited()

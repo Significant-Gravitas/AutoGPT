@@ -26,6 +26,10 @@ from ._schedule_info import _fetch_schedule_info
 logger = logging.getLogger(__name__)
 
 
+def library_scope_key(organization_id: str | None, team_id: str | None) -> str:
+    return f"{organization_id or '__personal__'}:{team_id or '__org__'}"
+
+
 def _require_graph(
     store_listing_version: prisma.models.StoreListingVersion,
 ) -> prisma.models.AgentGraph:
@@ -137,28 +141,41 @@ def _marketplace_metadata(
 async def restore_existing_library_agent(
     store_listing_version: prisma.models.StoreListingVersion,
     user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent | None:
     """Restore and return an existing library entry without loading its graph."""
     ag = _require_graph(store_listing_version)
+    if organization_id is None:
+        organization_id, team_id = await resolve_default_tenancy(user_id)
+    scope_key = library_scope_key(organization_id, team_id)
 
     client = prisma.models.LibraryAgent.prisma()
     where = {
-        "userId_agentGraphId_agentGraphVersion": {
+        "userId_agentGraphId_agentGraphVersion_scopeKey": {
             "userId": user_id,
             "agentGraphId": ag.id,
             "agentGraphVersion": ag.version,
+            "scopeKey": scope_key,
         }
     }
     existing = await client.find_unique(where=where)
     if existing is None:
         return None
 
+    tenancy_update = (
+        {"organizationId": organization_id, "teamId": team_id}
+        if organization_id is not None
+        else {}
+    )
     restored = await client.update(
         where=where,
         data={
             "isDeleted": False,
             "isArchived": False,
             **_marketplace_metadata(store_listing_version),
+            **tenancy_update,
         },
         include=library_agent_include(
             user_id, include_nodes=False, include_executions=False
@@ -181,6 +198,8 @@ async def add_graph_to_library(
     store_listing_version: prisma.models.StoreListingVersion,
     *,
     tx: prisma.Prisma | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
@@ -195,7 +214,12 @@ async def add_graph_to_library(
     )
     marketplace = _marketplace_metadata(store_listing_version)
     create_data, update_data = await _library_agent_payloads(
-        graph_model, user_id, settings_json, marketplace
+        graph_model,
+        user_id,
+        settings_json,
+        marketplace,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
     if tx is not None:
@@ -225,8 +249,13 @@ async def _library_agent_payloads(
     user_id: str,
     settings_json: SafeJson,
     marketplace: dict[str, str | None],
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple[dict, dict]:
-    organization_id, team_id = await resolve_default_tenancy(user_id)
+    explicit_tenancy = organization_id is not None
+    if not explicit_tenancy:
+        organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {
@@ -243,27 +272,32 @@ async def _library_agent_payloads(
         "name": marketplace["name"],
         "description": marketplace["description"],
         "imageUrl": marketplace["imageUrl"],
+        "scopeKey": library_scope_key(organization_id, team_id),
         **({"organizationId": organization_id} if organization_id else {}),
         **({"Team": {"connect": {"id": team_id}}} if team_id else {}),
     }
-    # Deliberately leave settings and organizationId/Team untouched on re-add:
-    # an existing entry already carries its safety/tenancy configuration.
     update_data = {
         "isDeleted": False,
         "isArchived": False,
         "name": marketplace["name"],
         "description": marketplace["description"],
         "imageUrl": marketplace["imageUrl"],
+        **(
+            {"organizationId": organization_id, "teamId": team_id}
+            if explicit_tenancy
+            else {}
+        ),
     }
     return create_data, update_data
 
 
-def _library_agent_where(graph_model: GraphModel, user_id: str) -> dict:
+def _library_agent_where(graph_model: GraphModel, user_id: str, scope_key: str) -> dict:
     return {
-        "userId_agentGraphId_agentGraphVersion": {
+        "userId_agentGraphId_agentGraphVersion_scopeKey": {
             "userId": user_id,
             "agentGraphId": graph_model.id,
             "agentGraphVersion": graph_model.version,
+            "scopeKey": scope_key,
         }
     }
 
@@ -277,7 +311,7 @@ async def _upsert_library_agent(
     include: dict,
 ) -> prisma.models.LibraryAgent:
     return await prisma.models.LibraryAgent.prisma(tx).upsert(
-        where=_library_agent_where(graph_model, user_id),
+        where=_library_agent_where(graph_model, user_id, create_data["scopeKey"]),
         data={"create": create_data, "update": update_data},
         include=include,
     )
@@ -297,7 +331,7 @@ async def _create_or_restore_library_agent(
         )
     except prisma.errors.UniqueViolationError:
         added_agent = await prisma.models.LibraryAgent.prisma().update(
-            where=_library_agent_where(graph_model, user_id),
+            where=_library_agent_where(graph_model, user_id, create_data["scopeKey"]),
             data=update_data,
             include=include,
         )

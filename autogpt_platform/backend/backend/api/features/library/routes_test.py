@@ -1,9 +1,11 @@
 import datetime
 import json
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import fastapi.testclient
 import pytest
+import pytest_asyncio
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
@@ -19,6 +21,16 @@ app.include_router(library_router)
 client = fastapi.testclient.TestClient(app)
 
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def server():
+    yield None
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def graph_cleanup():
+    yield
 
 
 def test_create_expert_preset_missing_workspace_returns_503(
@@ -57,13 +69,26 @@ def test_create_expert_preset_missing_workspace_returns_503(
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
+
+    @asynccontextmanager
+    async def allow(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(
+        "backend.api.features.library.routes.live.live_resource_permission_barrier",
+        allow,
+    )
+    monkeypatch.setattr(
+        "backend.api.live_auth.live_resource_permission_barrier",
+        allow,
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -160,6 +185,7 @@ async def test_get_library_agents_success(
         include_root_only=False,
         is_hidden=None,
         organization_id="test-org",
+        team_id_restriction="test-team",
     )
 
 
@@ -216,6 +242,8 @@ async def test_get_favorite_library_agents_success(
         user_id=test_user_id,
         page=1,
         page_size=15,
+        organization_id="test-org",
+        team_id_restriction="test-team",
     )
 
 
@@ -266,7 +294,10 @@ def test_add_agent_to_library_success(
     assert data.graph_id == "test-agent-1"
 
     mock_db_call.assert_called_once_with(
-        store_listing_version_id="test-version-id", user_id=test_user_id
+        store_listing_version_id="test-version-id",
+        user_id=test_user_id,
+        organization_id="test-org",
+        team_id="test-team",
     )
     mock_complete_onboarding.assert_awaited_once()
 
@@ -315,6 +346,9 @@ async def test_list_trigger_agents_route(
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
         library_agent_id="parent-id",
+        organization_id="test-org",
+        team_id="test-team",
+        enforce_scope=True,
     )
 
 

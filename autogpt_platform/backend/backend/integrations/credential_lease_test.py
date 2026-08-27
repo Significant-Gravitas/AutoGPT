@@ -3,7 +3,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.integrations.credential_lease import CredentialLease
+from backend.data.model import APIKeyCredentials
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    run_with_credential_lease_guard,
+)
 from backend.integrations.creds_manager_test import _provider_runtime_credentials
 
 
@@ -61,6 +65,32 @@ async def test_release_stops_heartbeat_before_unlocking():
 
 
 @pytest.mark.asyncio
+async def test_api_key_lease_heartbeat_extends_lock_until_release():
+    credentials = APIKeyCredentials(
+        id="api-key-id",
+        provider="github",
+        title="API key",
+        api_key="secret",
+    )
+    lock = AsyncMock()
+    lock.locked.return_value = True
+    lock.owned.return_value = True
+    lock.timeout = 0.03
+    lock.extend.return_value = True
+    lease = CredentialLease(credentials, lock, AsyncMock())
+
+    lease.start_heartbeat()
+    for _ in range(100):
+        if lock.extend.await_count:
+            break
+        await asyncio.sleep(0.001)
+    await lease.release()
+
+    lock.extend.assert_awaited()
+    lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_wait_for_failure_reports_heartbeat_loss_immediately():
     credentials = _provider_runtime_credentials()
     lock = AsyncMock()
@@ -78,6 +108,33 @@ async def test_wait_for_failure_reports_heartbeat_loss_immediately():
         await lease.validate()
 
     await lease.release()
+
+
+@pytest.mark.asyncio
+async def test_lease_guard_cancels_action_when_heartbeat_is_lost():
+    credentials = _provider_runtime_credentials()
+    lock = AsyncMock()
+    lock.locked.return_value = True
+    lock.owned.return_value = True
+    lease = CredentialLease(credentials, lock, AsyncMock())
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def action() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    guarded = asyncio.create_task(run_with_credential_lease_guard(action(), [lease]))
+    await started.wait()
+    lease._heartbeat_error = RuntimeError("redis lease lost")
+    lease._heartbeat_failed.set()
+
+    with pytest.raises(RuntimeError, match="heartbeat"):
+        await asyncio.wait_for(guarded, timeout=1)
+    assert cancelled.is_set()
 
 
 @pytest.mark.asyncio

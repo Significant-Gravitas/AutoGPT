@@ -22,16 +22,13 @@ that judgement to the model.
 import logging
 from enum import Enum
 from itertools import zip_longest
-from typing import TYPE_CHECKING, Iterable, TypeVar, cast
+from typing import Iterable, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.data.tenancy import get_user_team_ids
+from backend.data.db_accessors import orgs_db
 
 from .client import derive_memory_group_id, derive_org_group_id, derive_team_group_id
-
-if TYPE_CHECKING:
-    from prisma.types import OrgMemberWhereInput, TeamMemberWhereInput
 
 logger = logging.getLogger(__name__)
 
@@ -81,62 +78,64 @@ class TierTarget(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def resolve_team_name(team_id: str) -> str | None:
-    """Best-effort team display name for provenance labels."""
-    from backend.data.db import prisma
+async def get_user_team_ids(user_id: str, org_id: str) -> list[str]:
+    """Active team ids through DatabaseManager when this process has no Prisma."""
+    memberships = await orgs_db().list_shared_memory_team_access(org_id, user_id)
+    return [membership.team_id for membership in memberships if membership.can_view]
 
+
+async def resolve_team_name(user_id: str, org_id: str, team_id: str) -> str | None:
+    """Best-effort team display name for provenance labels."""
     try:
-        team = await prisma.team.find_unique(where={"id": team_id})
+        memberships = await orgs_db().list_shared_memory_team_access(org_id, user_id)
     except Exception:
         logger.debug("Failed to resolve team name for %s", team_id, exc_info=True)
         return None
-    return team.name if team else None
+    membership = next((item for item in memberships if item.team_id == team_id), None)
+    return membership.name if membership else None
 
 
-async def resolve_team_names(team_ids: list[str]) -> dict[str, str]:
+async def resolve_team_names(
+    user_id: str, org_id: str, team_ids: list[str]
+) -> dict[str, str]:
     """Batch team-id → name lookup for labelling a fan-out of teams."""
     if not team_ids:
         return {}
-    from backend.data.db import prisma
-
     try:
-        teams = await prisma.team.find_many(where={"id": {"in": team_ids}})
+        memberships = await orgs_db().list_shared_memory_team_access(org_id, user_id)
     except Exception:
         logger.debug("Failed to batch-resolve team names", exc_info=True)
         return {}
-    return {t.id: t.name for t in teams}
+    wanted = set(team_ids)
+    return {
+        membership.team_id: membership.name
+        for membership in memberships
+        if membership.team_id in wanted
+    }
 
 
 async def is_org_member(user_id: str, org_id: str) -> bool:
-    """True if *user_id* is an ACTIVE member (any role) of *org_id*.
+    """True when an ACTIVE org member may read shared resources.
 
     The org tier must re-check this per operation: ``session.organization_id``
     is membership-verified only at session creation, so a revoked or stale
     membership (or a cached session row) would otherwise reach org memory.
     Mirrors the TEAM tier, which re-verifies via ``get_team_membership``.
     """
-    from backend.data.db import prisma
+    member = await orgs_db().get_shared_memory_org_access(org_id, user_id)
+    return bool(member and member.can_view)
 
-    member = await prisma.orgmember.find_first(
-        where=cast(
-            "OrgMemberWhereInput",
-            {"userId": user_id, "orgId": org_id, "status": "ACTIVE"},
-        )
-    )
-    return member is not None
+
+async def can_write_org_memory(user_id: str, org_id: str) -> bool:
+    """True when an ACTIVE org member may write shared resources."""
+    member = await orgs_db().get_shared_memory_org_access(org_id, user_id)
+    return bool(member and member.can_write)
 
 
 async def is_org_admin(user_id: str, org_id: str) -> bool:
     """True if *user_id* is an ACTIVE admin or owner of *org_id*."""
-    from backend.data.db import prisma
-
-    member = await prisma.orgmember.find_first(
-        where=cast(
-            "OrgMemberWhereInput",
-            {"userId": user_id, "orgId": org_id, "status": "ACTIVE"},
-        )
-    )
-    return bool(member and (member.isAdmin or member.isOwner))
+    member = await orgs_db().get_shared_memory_org_access(org_id, user_id)
+    return bool(member and member.is_admin)
 
 
 async def get_team_membership(user_id: str, team_id: str, org_id: str):
@@ -145,18 +144,10 @@ async def get_team_membership(user_id: str, team_id: str, org_id: str):
     Scoped to the org so a team id from a different org can never be
     used to smuggle a write/read into the wrong tenant.
     """
-    from backend.data.db import prisma
-
-    return await prisma.teammember.find_first(
-        where=cast(
-            "TeamMemberWhereInput",
-            {
-                "userId": user_id,
-                "teamId": team_id,
-                "status": "ACTIVE",
-                "Team": {"is": {"orgId": org_id}},
-            },
-        )
+    memberships = await orgs_db().list_shared_memory_team_access(org_id, user_id)
+    return next(
+        (membership for membership in memberships if membership.team_id == team_id),
+        None,
     )
 
 
@@ -169,30 +160,11 @@ async def hold_buffer_enabled(org_id: str) -> bool:
     setting or read failure defaults to ON (the safer, review-gated
     behavior).
     """
-    from backend.data.db import prisma
-
     try:
-        org = await prisma.organization.find_unique(where={"id": org_id})
+        return await orgs_db().get_shared_memory_hold_buffer(org_id)
     except Exception:
         logger.debug("Failed to read org settings for %s", org_id, exc_info=True)
         return True
-    if org is None:
-        return True
-
-    settings = org.settings
-    if isinstance(settings, str):
-        import json
-
-        try:
-            settings = json.loads(settings)
-        except (json.JSONDecodeError, TypeError):
-            return True
-    if not isinstance(settings, dict):
-        return True
-    memory = settings.get("memory")
-    if not isinstance(memory, dict):
-        return True
-    return bool(memory.get("holdBuffer", True))
 
 
 async def resolve_store_team(
@@ -209,7 +181,13 @@ async def resolve_store_team(
     user is not an ACTIVE member of it. Returns the TeamMember row so
     the caller can read ``teamId`` and ``isAdmin`` without a second query.
     """
-    target = explicit_team_id or session_team_id
+    if (
+        session_team_id is not None
+        and explicit_team_id is not None
+        and explicit_team_id != session_team_id
+    ):
+        raise TierError("Team memory is limited to this session's workspace.")
+    target = session_team_id or explicit_team_id
     if not target:
         active_ids = await get_user_team_ids(user_id, org_id)
         if len(active_ids) == 1:
@@ -226,9 +204,9 @@ async def resolve_store_team(
             )
 
     membership = await get_team_membership(user_id, target, org_id)
-    if membership is None:
+    if membership is None or not membership.can_write:
         raise TierError(
-            "You are not an active member of the specified team, so you cannot "
+            "You do not have resource access to the specified team, so you cannot "
             "store to its team memory."
         )
     return membership
@@ -282,7 +260,9 @@ async def resolve_warm_targets(
             if session_team_id:
                 active_ids = await get_user_team_ids(user_id, organization_id)
                 if session_team_id in active_ids:
-                    name = await resolve_team_name(session_team_id)
+                    name = await resolve_team_name(
+                        user_id, organization_id, session_team_id
+                    )
                     targets.append(
                         TierTarget(
                             group_id=derive_team_group_id(session_team_id),
@@ -300,12 +280,13 @@ async def resolve_search_targets(
     organization_id: str | None,
     tier: str,
     *,
+    session_team_id: str | None = None,
     expert_id: str | None = None,
 ) -> list[TierTarget]:
     """Groups an explicit ``memory_search`` may read for the given tier.
 
-    ``all`` (default) unions personal + org + EVERY ACTIVE team the user
-    belongs to; ``personal``/``org``/``team`` restrict to that tier.
+    ``all`` (default) unions personal + org + the session workspace. Org-home
+    sessions may search every ACTIVE team the user belongs to.
     The org tier is included only for ACTIVE org members and team tiers only
     for the user's ACTIVE memberships (re-checked here, not trusted from the
     session), so a non-member never reads shared memory. Raises ``TierError``
@@ -354,7 +335,9 @@ async def resolve_search_targets(
 
     if include_team and organization_id:
         active_ids = await get_user_team_ids(user_id, organization_id)
-        names = await resolve_team_names(active_ids)
+        if session_team_id is not None:
+            active_ids = [session_team_id] if session_team_id in active_ids else []
+        names = await resolve_team_names(user_id, organization_id, active_ids)
         for team_id in active_ids:
             targets.append(
                 TierTarget(

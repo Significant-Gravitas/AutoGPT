@@ -36,15 +36,19 @@ interface OrgTeamState {
 
 export const useOrgTeamStore = create<OrgTeamState>((set) => ({
   activeOrgID: storage.get(Key.ACTIVE_ORG) || null,
-  activeTeamID: storage.get(Key.ACTIVE_TEAM) || null,
+  activeTeamID: null,
   orgs: [],
   teams: [],
   isLoaded: false,
 
   setActiveOrg(orgID: string) {
     storage.set(Key.ACTIVE_ORG, orgID);
-    set({ activeOrgID: orgID, activeTeamID: null });
-    // Clear team when switching org — provider will resolve default
+    set({
+      activeOrgID: orgID,
+      activeTeamID: null,
+      teams: [],
+      isLoaded: false,
+    });
     storage.clean(Key.ACTIVE_TEAM);
   },
 

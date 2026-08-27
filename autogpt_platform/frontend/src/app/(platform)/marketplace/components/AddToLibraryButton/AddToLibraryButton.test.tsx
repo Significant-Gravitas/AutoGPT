@@ -141,12 +141,12 @@ describe("AddToLibraryButton", () => {
 
     await waitFor(() => expect(addCalls).toBe(1));
     // A failed add must not update the remembered target.
-    expect(getLastUsedTeam(CreateSurface.MarketplaceAdd)).toBeNull();
+    expect(getLastUsedTeam("org-1", CreateSurface.MarketplaceAdd)).toBeNull();
   });
 
   it("primary action adds to the last-used team via the X-Team-Id header", async () => {
     seedTeams([TEAM_A]);
-    setLastUsedTeam(CreateSurface.MarketplaceAdd, TEAM_A.id);
+    setLastUsedTeam("org-1", CreateSurface.MarketplaceAdd, TEAM_A.id);
     const add = captureAddHeader();
 
     renderButton();
@@ -178,6 +178,8 @@ describe("AddToLibraryButton", () => {
 
     await waitFor(() => expect(add.called).toBe(1));
     expect(add.teamHeader).toBe(TEAM_B.id);
-    expect(getLastUsedTeam(CreateSurface.MarketplaceAdd)).toBe(TEAM_B.id);
+    expect(getLastUsedTeam("org-1", CreateSurface.MarketplaceAdd)).toBe(
+      TEAM_B.id,
+    );
   });
 });

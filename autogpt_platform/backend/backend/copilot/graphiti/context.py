@@ -4,6 +4,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from backend.data.db_accessors import live_resource_lease
+
 from ._format import (
     extract_episode_body,
     extract_episode_body_raw,
@@ -13,6 +15,7 @@ from ._format import (
 )
 from .client import get_graphiti_client
 from .config import graphiti_config
+from .lifecycle import active_shared_search_filter, filter_active_shared_edges
 from .tiers import MemoryTier, TierTarget, merge_tiered, resolve_warm_targets
 
 logger = logging.getLogger(__name__)
@@ -21,6 +24,7 @@ logger = logging.getLogger(__name__)
 # (same >= half rule as facts). Kept small so episodes stay a recency hint,
 # not the bulk of the injected context.
 _WARM_EPISODE_BUDGET = 8
+_SHARED_CANDIDATE_CAP = 50
 
 
 async def fetch_warm_context(
@@ -69,6 +73,44 @@ async def _fetch(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> str | None:
+    if organization_id is None:
+        return await _fetch_authorized(user_id, message, expert_id, None, None)
+
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "view"
+    ) as allowed:
+        if allowed:
+            action = _fetch_authorized(
+                user_id, message, expert_id, organization_id, team_id
+            )
+            return (
+                await allowed.run(action) if hasattr(allowed, "run") else await action
+            )
+
+    if team_id is not None:
+        async with live_resource_lease(
+            user_id, organization_id, None, "view"
+        ) as org_allowed:
+            if org_allowed:
+                action = _fetch_authorized(
+                    user_id, message, expert_id, organization_id, None
+                )
+                return (
+                    await org_allowed.run(action)
+                    if hasattr(org_allowed, "run")
+                    else await action
+                )
+
+    return await _fetch_authorized(user_id, message, expert_id, None, None)
+
+
+async def _fetch_authorized(
+    user_id: str,
+    message: str,
+    expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str | None:
     # Imported lazily so the module can be imported without graphiti-core
     # installed (matches the pattern in client.py).
     from graphiti_core.search.search_config_recipes import (
@@ -90,24 +132,44 @@ async def _fetch(
     search_config = EDGE_HYBRID_SEARCH_CROSS_ENCODER.model_copy(
         update={"limit": graphiti_config.context_max_facts}
     )
+    shared_search_config = search_config.model_copy(
+        update={
+            "limit": min(graphiti_config.context_max_facts * 2, _SHARED_CANDIDATE_CAP)
+        }
+    )
     now = datetime.now(timezone.utc)
 
     async def _fetch_one(target: TierTarget):
         client = await get_graphiti_client(target.group_id)
-        edge_results, episodes = await asyncio.gather(
-            client.search_(
-                query=message,
-                config=search_config,
-                group_ids=[target.group_id],
-            ),
-            client.retrieve_episodes(
-                reference_time=now,
-                group_ids=[target.group_id],
-                last_n=5,
-            ),
+        if target.tier == MemoryTier.personal:
+            edge_results, episodes = await asyncio.gather(
+                client.search_(
+                    query=message,
+                    config=search_config,
+                    group_ids=[target.group_id],
+                ),
+                client.retrieve_episodes(
+                    reference_time=now,
+                    group_ids=[target.group_id],
+                    last_n=5,
+                ),
+            )
+            edges = edge_results.edges if edge_results is not None else []
+            return edges, episodes
+        edge_results = await client.search_(
+            query=message,
+            config=shared_search_config,
+            group_ids=[target.group_id],
+            search_filter=active_shared_search_filter(),
         )
         edges = edge_results.edges if edge_results is not None else []
-        return edges, episodes
+        active_edges = await filter_active_shared_edges(
+            target.group_id,
+            edges,
+            driver=getattr(client, "graph_driver", None)
+            or getattr(client, "driver", None),
+        )
+        return active_edges, []
 
     # Per-tier failures are non-fatal: a flaky org/team graph must not
     # nuke the personal warm context. Collect exceptions and skip that tier.

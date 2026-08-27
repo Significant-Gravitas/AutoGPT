@@ -9,6 +9,7 @@ from prisma.types import ProfileCreateInput
 from pydantic import SecretStr
 
 from backend.api.features.library import db as library_db
+from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store import db as store_db
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
@@ -23,6 +24,7 @@ from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 _logger = logging.getLogger(__name__)
+_TEST_USER_ORGANIZATION_IDS: dict[str, str] = {}
 
 
 async def _ensure_db_connected() -> None:
@@ -50,6 +52,8 @@ def make_session(
     guide_read: bool = True,
     library_check: bool = True,
     expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ):
     """Build a fake ChatSession for tool tests.
 
@@ -73,6 +77,9 @@ def make_session(
                 tool_calls=[{"function": {"name": "get_agent_building_guide"}}],
             )
         )
+    resolved_organization_id = organization_id or _TEST_USER_ORGANIZATION_IDS.get(
+        user_id
+    )
     session = ChatSession(
         session_id=str(uuid.uuid4()),
         user_id=user_id,
@@ -83,6 +90,8 @@ def make_session(
         successful_agent_runs={},
         successful_agent_schedules={},
         expert_id=expert_id,
+        organization_id=resolved_organization_id,
+        team_id=team_id,
         # Direct construction bypasses ``ChatSession.new``, which is what
         # stamps the origin in production. Left unset this would model a
         # session persisted before the field existed, which is a different
@@ -169,7 +178,11 @@ async def setup_test_data(server):
         links=[link],
     )
 
-    created_graph = await create_graph(graph, user.id)
+    created_graph = await create_graph(
+        graph,
+        user.id,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
+    )
 
     # 3. Create and approve a store listing
     store_submission = await _publish_to_store(
@@ -309,7 +322,11 @@ async def setup_llm_test_data(server):
         links=[link1, link2],
     )
 
-    created_graph = await create_graph(graph, user.id)
+    created_graph = await create_graph(
+        graph,
+        user.id,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
+    )
 
     # 4. Create and approve a store listing
     store_submission = await _publish_to_store(
@@ -355,6 +372,7 @@ async def setup_firecrawl_test_data(server):
             description="An agent that uses Firecrawl to scrape websites",
         ),
         user.id,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
     )
 
     # 3. Create and approve a store listing
@@ -397,6 +415,7 @@ async def setup_subagent_test_data(server):
             description="Sub-agent that scrapes a website with Firecrawl",
         ),
         user.id,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
     )
 
     # 3. Create the parent graph: input -> sub-agent -> output
@@ -471,6 +490,7 @@ async def setup_subagent_test_data(server):
             ],
         ),
         user.id,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
     )
 
     # 4a. Add the parent to the user's library (the library_agent_id run path)
@@ -478,6 +498,7 @@ async def setup_subagent_test_data(server):
         graph=parent_graph,
         user_id=user.id,
         create_library_agents_for_sub_graphs=False,
+        organization_id=_TEST_USER_ORGANIZATION_IDS[user.id],
     )
     assert len(library_agents) == 1
 
@@ -529,6 +550,9 @@ async def _create_user_with_profile(profile_description: str):
             },
         },
     )
+    organization_id, _ = await get_user_default_team(user.id)
+    assert organization_id is not None
+    _TEST_USER_ORGANIZATION_IDS[user.id] = organization_id
     return user
 
 
@@ -554,6 +578,8 @@ async def _publish_to_store(
         sub_heading=sub_heading,
         categories=categories,
         image_urls=["https://example.com/image.jpg"],
+        organization_id=graph.organization_id,
+        team_id_restriction=graph.team_id,
     )
     assert submission.listing_version_id is not None
     await store_db.review_store_submission(

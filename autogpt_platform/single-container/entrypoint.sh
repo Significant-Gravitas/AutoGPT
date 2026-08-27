@@ -40,7 +40,7 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/workspaces /data/home /data/frontend-home \
+    /data/workspaces /data/media /data/home /data/frontend-home \
     /data/cache /data/cache/backend /data/cache/next \
     "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
@@ -54,6 +54,7 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
+  install -d -m 0750 -o autogpt -g autogpt /data/media
   install -d -m 0750 -o autogpt -g autogpt /data/home
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
   install -d -m 0711 -o root -g root /data/cache
@@ -97,7 +98,7 @@ configure_environment() {
   if [[ "${AUTH_REQUIRE_EMAIL_VERIFICATION:-false}" != false ]]; then
     fatal "email verification is not supported by the single-container distribution"
   fi
-  normalize_integer DB_CONNECTION_LIMIT 5 1 5
+  normalize_integer DB_CONNECTION_LIMIT 5 2 5
   normalize_integer DB_CONNECT_TIMEOUT 60 1 600
   normalize_integer DB_POOL_TIMEOUT 300 1 3600
 
@@ -188,6 +189,7 @@ configure_environment() {
   export AGPT_SERVER_URL="http://127.0.0.1:${AUTOGPT_AGENT_API_PORT}/api"
   export AGPT_WS_SERVER_URL="ws://127.0.0.1:${AUTOGPT_WEBSOCKET_PORT}/ws"
   export WORKSPACE_STORAGE_DIR=/data/workspaces
+  export MEDIA_STORAGE_DIR=/data/media
   export VAPID_CLAIM_EMAIL="${VAPID_CLAIM_EMAIL:-mailto:admin@localhost}"
   export AUTH_REQUIRE_EMAIL_VERIFICATION=false
   export NODE_ENV=production

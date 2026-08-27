@@ -97,6 +97,49 @@ class PlatformLinkingManager(AppService):
         return None
 
     @expose
+    async def acquire_platform_link_lease(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        platform_user_id: str,
+    ) -> str:
+        return await platform_linking_db().acquire_platform_link_lease(
+            platform.value,
+            platform_server_id,
+            platform_user_id,
+        )
+
+    @expose
+    async def release_platform_link_lease(self, lease_id: str) -> bool:
+        return await platform_linking_db().release_platform_link_lease(lease_id)
+
+    @expose
+    async def is_platform_link_lease_active(self, lease_id: str) -> bool:
+        return await platform_linking_db().is_platform_link_lease_active(lease_id)
+
+    @expose
+    async def is_platform_link_owner(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        expected_owner_user_id: str,
+    ) -> bool:
+        db = platform_linking_db()
+        if platform_server_id is not None:
+            owner = await db.find_server_link_owner_for_sender(
+                platform.value,
+                platform_server_id,
+                platform_user_id,
+            )
+        else:
+            owner = await db.find_user_link_owner(
+                platform.value,
+                platform_user_id,
+            )
+        return owner == expected_owner_user_id
+
+    @expose
     async def ensure_chat_session(
         self,
         platform: Platform,
@@ -183,6 +226,18 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.list_user_server_ids
     )
     get_user_dm_id = endpoint_to_async(PlatformLinkingManager.get_user_dm_id)
+    acquire_platform_link_lease = endpoint_to_async(
+        PlatformLinkingManager.acquire_platform_link_lease
+    )
+    release_platform_link_lease = endpoint_to_async(
+        PlatformLinkingManager.release_platform_link_lease
+    )
+    is_platform_link_lease_active = endpoint_to_async(
+        PlatformLinkingManager.is_platform_link_lease_active
+    )
+    is_platform_link_owner = endpoint_to_async(
+        PlatformLinkingManager.is_platform_link_owner
+    )
     ensure_chat_session = endpoint_to_async(PlatformLinkingManager.ensure_chat_session)
     start_chat_turn = endpoint_to_async(PlatformLinkingManager.start_chat_turn)
     upload_workspace_file = endpoint_to_async(

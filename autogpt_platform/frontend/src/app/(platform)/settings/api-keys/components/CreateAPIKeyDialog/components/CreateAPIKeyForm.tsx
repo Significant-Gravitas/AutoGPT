@@ -23,6 +23,7 @@ interface Props {
   isPending: boolean;
   teamId: string | null;
   setTeamId: (teamId: string | null) => void;
+  isReady: boolean;
 }
 
 export function CreateAPIKeyForm({
@@ -31,6 +32,7 @@ export function CreateAPIKeyForm({
   isPending,
   teamId,
   setTeamId,
+  isReady,
 }: Props) {
   return (
     <Form form={form} onSubmit={onSubmit} className="flex flex-col gap-4 px-1">
@@ -100,7 +102,7 @@ export function CreateAPIKeyForm({
         type="submit"
         variant="primary"
         size="large"
-        disabled={!form.formState.isValid || isPending}
+        disabled={!form.formState.isValid || isPending || !isReady}
         loading={isPending}
       >
         Create Key

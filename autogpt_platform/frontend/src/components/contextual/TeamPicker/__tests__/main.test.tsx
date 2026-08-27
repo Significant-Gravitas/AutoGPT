@@ -1,5 +1,6 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -109,13 +110,13 @@ describe("TeamPicker", () => {
     });
     expect(
       JSON.parse(window.localStorage.getItem("create-surface-teams") ?? "{}"),
-    ).toMatchObject({ [CreateSurface.BuilderSave]: "team-b" });
+    ).toMatchObject({ [`org-1:${CreateSurface.BuilderSave}`]: "team-b" });
   });
 
   it("seeds the last-used team for that surface on mount", () => {
     window.localStorage.setItem(
       "create-surface-teams",
-      JSON.stringify({ [CreateSurface.LibraryFolder]: "team-a" }),
+      JSON.stringify({ [`org-1:${CreateSurface.LibraryFolder}`]: "team-a" }),
     );
     seedTeams([TEAM_A, TEAM_B]);
     render(<Harness surfaceKey={CreateSurface.LibraryFolder} />);
@@ -129,7 +130,7 @@ describe("TeamPicker", () => {
   it("does not leak one surface's last-used team into another", () => {
     window.localStorage.setItem(
       "create-surface-teams",
-      JSON.stringify({ [CreateSurface.LibraryFolder]: "team-a" }),
+      JSON.stringify({ [`org-1:${CreateSurface.LibraryFolder}`]: "team-a" }),
     );
     seedTeams([TEAM_A, TEAM_B]);
     render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
@@ -140,7 +141,9 @@ describe("TeamPicker", () => {
   it("falls back to org-home when the last-used team no longer exists", async () => {
     window.localStorage.setItem(
       "create-surface-teams",
-      JSON.stringify({ [CreateSurface.BuilderSave]: "deleted-team" }),
+      JSON.stringify({
+        [`org-1:${CreateSurface.BuilderSave}`]: "deleted-team",
+      }),
     );
     seedTeams([TEAM_A]);
     render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
@@ -153,7 +156,7 @@ describe("TeamPicker", () => {
   it("clears a stale last-used team (and its persisted value) when the user has no teams", async () => {
     window.localStorage.setItem(
       "create-surface-teams",
-      JSON.stringify({ [CreateSurface.BuilderSave]: "team-a" }),
+      JSON.stringify({ [`org-1:${CreateSurface.BuilderSave}`]: "team-a" }),
     );
     // Loaded store with an empty team list (solo user, or left the org).
     seedTeams([]);
@@ -165,19 +168,45 @@ describe("TeamPicker", () => {
     // Persisted value is reset so a remount can't resurrect the stale id.
     expect(
       JSON.parse(window.localStorage.getItem("create-surface-teams") ?? "{}"),
-    ).toMatchObject({ [CreateSurface.BuilderSave]: "org-home" });
+    ).toMatchObject({ [`org-1:${CreateSurface.BuilderSave}`]: "org-home" });
   });
 
   it("does not clamp before the store has loaded", () => {
     window.localStorage.setItem(
       "create-surface-teams",
-      JSON.stringify({ [CreateSurface.BuilderSave]: "team-a" }),
+      JSON.stringify({ [`org-1:${CreateSurface.BuilderSave}`]: "team-a" }),
     );
     // Store not yet loaded (default beforeEach state): keep the seeded value
     // rather than prematurely clearing it to org-home.
-    useOrgTeamStore.setState({ isLoaded: false, teams: [] });
+    useOrgTeamStore.setState({
+      activeOrgID: "org-1",
+      isLoaded: false,
+      teams: [],
+    });
     render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
 
     expect(currentValue()).toBe("team-a");
+  });
+
+  it("never exposes the previous organization's team during a switch", async () => {
+    window.localStorage.setItem(
+      "create-surface-teams",
+      JSON.stringify({
+        [`org-1:${CreateSurface.BuilderSave}`]: "team-a",
+        [`org-2:${CreateSurface.BuilderSave}`]: "team-c",
+      }),
+    );
+    seedTeams([TEAM_A]);
+    render(<Harness surfaceKey={CreateSurface.BuilderSave} />);
+    expect(currentValue()).toBe("team-a");
+
+    act(() => useOrgTeamStore.getState().setActiveOrg("org-2"));
+    expect(currentValue()).toBe("org-home");
+
+    useOrgTeamStore.setState({
+      teams: [{ ...TEAM_B, id: "team-c", orgId: "org-2" }],
+      isLoaded: true,
+    });
+    await waitFor(() => expect(currentValue()).toBe("team-c"));
   });
 });

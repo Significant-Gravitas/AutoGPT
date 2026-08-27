@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shlex
 import uuid
@@ -285,6 +286,7 @@ class ClaudeCodeBlock(Block):
                     "sandbox_id",  # sandbox_id
                 ),
             },
+            allow_owner_credentials=False,
         )
 
     async def execute_claude_code(
@@ -319,6 +321,7 @@ class ClaudeCodeBlock(Block):
 
         sandbox = None
         sandbox_id = ""
+        force_dispose = False
 
         try:
             # Either reconnect to existing sandbox or create a new one
@@ -334,7 +337,6 @@ class ClaudeCodeBlock(Block):
                     template=self.DEFAULT_TEMPLATE,
                     api_key=e2b_api_key,
                     timeout=timeout,
-                    envs={"ANTHROPIC_API_KEY": anthropic_api_key},
                 )
 
                 # Install Claude Code from npm (ensures we get the latest version)
@@ -414,6 +416,7 @@ class ClaudeCodeBlock(Block):
             result = await sandbox.commands.run(
                 claude_command,
                 timeout=0,  # No command timeout - let sandbox timeout handle it
+                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
             )
 
             # Check for command failure
@@ -476,13 +479,18 @@ class ClaudeCodeBlock(Block):
             )
 
         except Exception as e:
+            force_dispose = True
             # Wrap exception with sandbox_id so caller can access/cleanup
             # the preserved sandbox when dispose_sandbox=False
             raise ClaudeCodeExecutionError(str(e), sandbox_id) from e
 
+        except BaseException:
+            force_dispose = True
+            raise
+
         finally:
-            if dispose_sandbox and sandbox:
-                await sandbox.kill()
+            if (dispose_sandbox or force_dispose) and sandbox:
+                await asyncio.shield(sandbox.kill())
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""

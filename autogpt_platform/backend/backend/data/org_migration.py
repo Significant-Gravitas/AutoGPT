@@ -712,6 +712,19 @@ async def assign_resources_to_teams(
         renew_lock=renew_lock,
     )
 
+    results["Expert"] = await _assign_team_tenancy(
+        """
+        UPDATE "Expert" t
+        SET "organizationId" = o."id", "teamId" = w."id"
+        FROM "OrgMember" om
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
+        WHERE t."ownerUserId" = om."userId" AND om."isOwner" = true
+          AND t."isTemplate" = false AND t."organizationId" IS NULL
+        """,
+        renew_lock=renew_lock,
+    )
+
     results["LibraryAgent"] = await _assign_team_tenancy(
         """
         UPDATE "LibraryAgent" t

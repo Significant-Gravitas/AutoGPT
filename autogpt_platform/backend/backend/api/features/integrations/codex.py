@@ -167,13 +167,19 @@ async def revoke_codex_credentials(
     manager: IntegrationCredentialsManager,
     user_id: str,
     credential_id: str,
+    lease: CredentialLease | None = None,
 ) -> bool:
+    owns_lease = lease is None
+    if lease is None:
+        try:
+            lease = await manager.acquire_lease(user_id, credential_id)
+        except ValueError:
+            return False
     try:
-        lease = await manager.acquire_lease(user_id, credential_id)
-    except ValueError:
-        return False
-    try:
-        if lease.credentials.provider != "codex":
+        if (
+            lease.credentials.id != credential_id
+            or lease.credentials.provider != "codex"
+        ):
             return False
         revoked = False
         if _is_codex_lease(lease):
@@ -185,7 +191,8 @@ async def revoke_codex_credentials(
         await lease.delete()
         return revoked
     finally:
-        await lease.release()
+        if owns_lease:
+            await lease.release()
 
 
 async def _acquire_codex_lease(

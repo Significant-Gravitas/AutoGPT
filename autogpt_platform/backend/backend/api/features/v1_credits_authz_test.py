@@ -8,6 +8,7 @@ must be rejected with 403. Personal-org owners always carry ``is_org_owner``,
 so the gate is a no-op for them.
 """
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -25,6 +26,11 @@ from .v1 import v1_router
 app = fastapi.FastAPI()
 app.include_router(v1_router)
 client = fastapi.testclient.TestClient(app)
+
+
+@asynccontextmanager
+async def _allow_live_org_permission(*_args, **_kwargs):
+    yield True
 
 
 def _ctx(
@@ -60,7 +66,11 @@ ROLE_CASES: dict[str, tuple[dict, int]] = {
 
 
 @pytest.fixture(autouse=True)
-def _auth(mock_jwt_user):
+def _auth(mock_jwt_user, mocker: pytest_mock.MockFixture):
+    mocker.patch(
+        "backend.api.live_auth.live_org_permission_barrier",
+        _allow_live_org_permission,
+    )
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()

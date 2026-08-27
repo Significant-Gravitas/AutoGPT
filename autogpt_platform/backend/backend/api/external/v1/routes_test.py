@@ -1,21 +1,43 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Any, Awaitable
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
 import pytest
+import pytest_asyncio
 from prisma.enums import APIKeyPermission
 
+import backend.api.external.middleware as middleware_mod
 import backend.api.external.v1.routes as routes_mod
+import backend.api.external.v1.tools as tools_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.tools.models import ExecutionStartedResponse
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
 client = fastapi.testclient.TestClient(app)
+
+
+class _PassthroughLeaseGuard:
+    async def run(self, action: Awaitable[Any]) -> Any:
+        return await action
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def server():
+    return None
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def graph_cleanup():
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -28,11 +50,32 @@ def setup_auth(test_user_id):
             scopes=list(APIKeyPermission),
             type="api_key",
             created_at=datetime.now(timezone.utc),
+            organization_id="test-org",
+            team_id_restriction="test-team",
         )
 
     app.dependency_overrides[require_auth] = fake_require_auth
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def live_resource_access(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "backend.api.external.middleware.has_live_resource_access",
+        AsyncMock(return_value=True),
+    )
+
+
+@pytest.fixture(autouse=True)
+def resource_barriers(monkeypatch: pytest.MonkeyPatch):
+    @asynccontextmanager
+    async def allow(*_args, **_kwargs):
+        yield True
+
+    monkeypatch.setattr(routes_mod, "live_resource_access_barrier", allow)
+    monkeypatch.setattr(routes_mod, "agent_graph_attachment_barrier", allow)
+    monkeypatch.setattr(middleware_mod, "_live_authorization_principal", allow)
 
 
 def _stub_block(
@@ -53,6 +96,7 @@ def _stub_block(
     block.id = block_id
     block.name = name
     block.disabled = disabled
+    block.execution_timeout_seconds = 30
 
     async def _execute(_data, **kwargs):
         if capture is not None:
@@ -317,6 +361,163 @@ def test_execute_graph_honors_key_team_restriction(
     assert response.status_code == 200
     assert captured["organization_id"] == "org-from-key"
     assert captured["team_id"] == "team-from-key"
+
+
+def test_run_agent_tool_honors_key_team_restriction(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    async def fake_require_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-from-key",
+            team_id_restriction="team-from-key",
+        )
+
+    app.dependency_overrides[require_auth] = fake_require_auth
+    captured: dict = {}
+
+    async def fake_execute(**kwargs):
+        captured.update(kwargs)
+        return StreamToolOutputAvailable(
+            toolCallId=kwargs["tool_call_id"],
+            toolName="run_agent",
+            output={"ok": True},
+        )
+
+    monkeypatch.setattr(tools_mod.run_agent_tool, "execute", fake_execute)
+
+    response = client.post(
+        "/tools/run-agent",
+        json={"username_agent_slug": "test/agent"},
+    )
+
+    assert response.status_code == 200
+    assert captured["session"].organization_id == "org-from-key"
+    assert captured["session"].team_id == "team-from-key"
+
+
+def test_external_scheduled_run_holds_execute_and_create_leases(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    async def fake_require_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-from-key",
+            team_id_restriction="team-from-key",
+        )
+
+    app.dependency_overrides[require_auth] = fake_require_auth
+    active: list[str] = []
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        assert (user_id, organization_id, team_id) == (
+            test_user_id,
+            "org-from-key",
+            "team-from-key",
+        )
+        active.append(access)
+        try:
+            yield _PassthroughLeaseGuard()
+        finally:
+            active.remove(access)
+
+    async def fake_execute(user_id, session, **_kwargs):
+        assert user_id == test_user_id
+        assert sorted(active) == ["create", "execute"]
+        return ExecutionStartedResponse(
+            message="Scheduled",
+            session_id=session.session_id,
+            execution_id="schedule-1",
+            graph_id="graph-1",
+            graph_name="Agent",
+            status="SCHEDULED",
+        )
+
+    monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
+    monkeypatch.setattr(tools_mod.run_agent_tool, "_execute", fake_execute)
+
+    response = client.post(
+        "/tools/run-agent",
+        json={
+            "username_agent_slug": "test/agent",
+            "schedule_name": "Daily",
+            "cron": "0 9 * * *",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["execution_id"] == "schedule-1"
+    assert active == []
+
+
+@pytest.mark.asyncio
+async def test_execution_results_scope_lookup_to_key_org_and_team(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    lookup = AsyncMock(return_value=None)
+    monkeypatch.setattr(routes_mod.execution_db, "get_graph_execution", lookup)
+    auth = APIAuthorizationInfo(
+        user_id=test_user_id,
+        scopes=list(APIKeyPermission),
+        type="api_key",
+        created_at=datetime.now(timezone.utc),
+        organization_id="org-from-key",
+        team_id_restriction="team-from-key",
+    )
+
+    with pytest.raises(fastapi.HTTPException) as exc:
+        await routes_mod.get_graph_execution_results(
+            "graph-other-org",
+            "execution-other-org",
+            auth,
+        )
+
+    assert exc.value.status_code == 404
+    lookup.assert_awaited_once_with(
+        user_id=test_user_id,
+        execution_id="execution-other-org",
+        include_node_executions=True,
+        organization_id="org-from-key",
+        team_id_restriction="team-from-key",
+    )
+
+
+@pytest.mark.asyncio
+async def test_execution_results_reject_mismatched_path_graph(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    execution = MagicMock(graph_id="graph-real", graph_version=1)
+    monkeypatch.setattr(
+        routes_mod.execution_db,
+        "get_graph_execution",
+        AsyncMock(return_value=execution),
+    )
+    graph_lookup = AsyncMock()
+    monkeypatch.setattr(routes_mod.graph_db, "get_graph", graph_lookup)
+    auth = APIAuthorizationInfo(
+        user_id=test_user_id,
+        scopes=list(APIKeyPermission),
+        type="api_key",
+        created_at=datetime.now(timezone.utc),
+        organization_id="org-from-key",
+    )
+
+    with pytest.raises(fastapi.HTTPException) as exc:
+        await routes_mod.get_graph_execution_results(
+            "graph-wrong",
+            "execution-1",
+            auth,
+        )
+
+    assert exc.value.status_code == 404
+    graph_lookup.assert_not_called()
 
 
 def test_execute_graph_block_paywall_propagates(monkeypatch: pytest.MonkeyPatch):

@@ -34,11 +34,15 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
     origin: str | None = "interactive",
+    organization_id: str | None = "org-1",
+    team_id: str | None = "team-1",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
     sess.user_id = user_id
     sess.dry_run = False
+    sess.organization_id = organization_id
+    sess.team_id = team_id
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     # Set explicitly: a bare MagicMock attribute is truthy, so an origin
@@ -65,6 +69,8 @@ def _expert(
     expert.color = "violet"
     expert.is_archived = is_archived
     expert.schedules_paused_at = schedules_paused_at
+    expert.organization_id = "org-1"
+    expert.team_id = "team-1"
     return expert
 
 
@@ -81,12 +87,22 @@ def roster(monkeypatch):
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
-    for module in ("handoff_to_expert", "expert_delegation"):
-        monkeypatch.setattr(
-            f"backend.copilot.tools.{module}.experts_db",
-            lambda: db,
-            raising=True,
+    db.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=lambda _user_id, expert_id: (
+            experts[expert_id].organization_id,
+            experts[expert_id].team_id,
         )
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.handoff_to_expert.experts_db",
+        lambda: db,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.experts_db",
+        lambda: db,
+        raising=True,
+    )
     return experts
 
 
@@ -119,7 +135,13 @@ def mock_sessions(monkeypatch, deleted_sessions):
     created: list[MagicMock] = []
 
     async def fake_create(user_id, **kwargs):
-        sess = _session(user_id, f"inner-{len(created) + 1}", kwargs.get("expert_id"))
+        sess = _session(
+            user_id,
+            f"inner-{len(created) + 1}",
+            kwargs.get("expert_id"),
+            organization_id=kwargs.get("organization_id"),
+            team_id=kwargs.get("team_id"),
+        )
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
@@ -288,6 +310,22 @@ class TestGuards:
         )
         assert isinstance(r, ErrorResponse)
         assert "paused" in r.message
+
+    @pytest.mark.asyncio
+    async def test_target_from_another_workspace_is_rejected(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].team_id = "other-team"
+        response = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "on this team" in response.message
+        assert mock_sessions == []
         mock_turn.assert_not_awaited()
 
 
@@ -748,3 +786,22 @@ class TestExecuteToolEnforcesDisabledGroups:
 
         execute_mock.assert_awaited_once()
         assert result == "it ran"
+
+
+class TestHandoffTenantScope:
+    @pytest.mark.asyncio
+    async def test_new_handoff_inherits_parent_org_team(
+        self, roster, mock_turn, mock_sessions
+    ):
+        response = await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(organization_id="org-1", team_id="team-1"),
+            expert_id="expert-b",
+            prompt="take it",
+        )
+
+        assert isinstance(response, SubSessionStatusResponse)
+        assert (mock_sessions[0].organization_id, mock_sessions[0].team_id) == (
+            "org-1",
+            "team-1",
+        )

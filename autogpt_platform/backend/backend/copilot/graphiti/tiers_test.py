@@ -10,6 +10,7 @@ from . import tiers
 from .tiers import (
     MemoryTier,
     TierError,
+    can_write_org_memory,
     hold_buffer_enabled,
     is_org_admin,
     merge_tiered,
@@ -262,7 +263,7 @@ class TestResolveSearchTargets:
         ):
             targets = await resolve_search_targets("u1", "org-1", "team")
 
-        names.assert_awaited_once_with(["team-1"])
+        names.assert_awaited_once_with("u1", "org-1", ["team-1"])
         assert [t.tier for t in targets] == [MemoryTier.team]
         assert targets[0].group_id == "team_team-1"
 
@@ -290,81 +291,128 @@ class TestResolveSearchTargets:
 class TestIsOrgAdmin:
     @pytest.mark.asyncio
     async def test_admin_true(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.orgmember.find_first = AsyncMock(
-                return_value=SimpleNamespace(isAdmin=True, isOwner=False)
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(
+                return_value=SimpleNamespace(is_admin=True)
             )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await is_org_admin("u1", "org-1") is True
+        client.get_shared_memory_org_access.assert_awaited_once_with("org-1", "u1")
 
     @pytest.mark.asyncio
     async def test_owner_true(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.orgmember.find_first = AsyncMock(
-                return_value=SimpleNamespace(isAdmin=False, isOwner=True)
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(
+                return_value=SimpleNamespace(is_admin=True)
             )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await is_org_admin("u1", "org-1") is True
 
     @pytest.mark.asyncio
     async def test_plain_member_false(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.orgmember.find_first = AsyncMock(
-                return_value=SimpleNamespace(isAdmin=False, isOwner=False)
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(
+                return_value=SimpleNamespace(is_admin=False)
             )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await is_org_admin("u1", "org-1") is False
+
+
+class TestSharedMemoryResourceAccess:
+    @pytest.mark.asyncio
+    async def test_billing_only_org_member_cannot_read_or_write(self) -> None:
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(
+                return_value=SimpleNamespace(
+                    is_admin=False, can_view=False, can_write=False
+                )
+            )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
+            assert await tiers.is_org_member("u1", "org-1") is False
+            assert await can_write_org_memory("u1", "org-1") is False
+
+    @pytest.mark.asyncio
+    async def test_billing_only_teams_are_not_search_targets(self) -> None:
+        client = SimpleNamespace(
+            list_shared_memory_team_access=AsyncMock(
+                return_value=[
+                    SimpleNamespace(
+                        team_id="billing",
+                        can_view=False,
+                        can_write=False,
+                    ),
+                    SimpleNamespace(
+                        team_id="resources",
+                        can_view=True,
+                        can_write=True,
+                    ),
+                ]
+            )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
+            assert await tiers.get_user_team_ids("u1", "org-1") == ["resources"]
 
     @pytest.mark.asyncio
     async def test_non_member_false(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(return_value=None)
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await is_org_admin("u1", "org-1") is False
 
 
 class TestHoldBufferEnabled:
     @pytest.mark.asyncio
     async def test_defaults_true_when_setting_absent(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.organization.find_unique = AsyncMock(
-                return_value=SimpleNamespace(settings={})
-            )
+        client = SimpleNamespace(
+            get_shared_memory_hold_buffer=AsyncMock(return_value=True)
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await hold_buffer_enabled("org-1") is True
 
     @pytest.mark.asyncio
     async def test_false_when_explicitly_disabled(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.organization.find_unique = AsyncMock(
-                return_value=SimpleNamespace(settings={"memory": {"holdBuffer": False}})
-            )
+        client = SimpleNamespace(
+            get_shared_memory_hold_buffer=AsyncMock(return_value=False)
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await hold_buffer_enabled("org-1") is False
 
     @pytest.mark.asyncio
     async def test_true_when_explicitly_enabled(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.organization.find_unique = AsyncMock(
-                return_value=SimpleNamespace(settings={"memory": {"holdBuffer": True}})
-            )
+        client = SimpleNamespace(
+            get_shared_memory_hold_buffer=AsyncMock(return_value=True)
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await hold_buffer_enabled("org-1") is True
 
     @pytest.mark.asyncio
     async def test_defaults_true_when_org_missing(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.organization.find_unique = AsyncMock(return_value=None)
+        client = SimpleNamespace(
+            get_shared_memory_hold_buffer=AsyncMock(
+                side_effect=RuntimeError("database unavailable")
+            )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await hold_buffer_enabled("org-1") is True
 
     @pytest.mark.asyncio
     async def test_parses_settings_stored_as_json_string(self) -> None:
-        with patch("backend.data.db.prisma") as mock_prisma:
-            mock_prisma.organization.find_unique = AsyncMock(
-                return_value=SimpleNamespace(
-                    settings='{"memory": {"holdBuffer": false}}'
-                )
-            )
+        client = SimpleNamespace(
+            get_shared_memory_hold_buffer=AsyncMock(return_value=False)
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
             assert await hold_buffer_enabled("org-1") is False
 
 
 class TestResolveStoreTeam:
     @pytest.mark.asyncio
     async def test_explicit_team_id_validates_membership(self) -> None:
-        membership = SimpleNamespace(teamId="team-1", isAdmin=True)
+        membership = SimpleNamespace(team_id="team-1", is_admin=True, can_write=True)
         with patch.object(
             tiers,
             "get_team_membership",
@@ -373,11 +421,13 @@ class TestResolveStoreTeam:
         ) as get_mem:
             result = await resolve_store_team("u1", "org-1", None, "team-1")
         get_mem.assert_awaited_once_with("u1", "team-1", "org-1")
-        assert result.teamId == "team-1"
+        assert result.team_id == "team-1"
 
     @pytest.mark.asyncio
     async def test_falls_back_to_single_team(self) -> None:
-        membership = SimpleNamespace(teamId="only-team", isAdmin=False)
+        membership = SimpleNamespace(
+            team_id="only-team", is_admin=False, can_write=True
+        )
         with (
             patch.object(
                 tiers,
@@ -393,7 +443,7 @@ class TestResolveStoreTeam:
             ),
         ):
             result = await resolve_store_team("u1", "org-1", None, None)
-        assert result.teamId == "only-team"
+        assert result.team_id == "only-team"
 
     @pytest.mark.asyncio
     async def test_no_teams_raises_clear_error(self) -> None:
@@ -422,7 +472,17 @@ class TestResolveStoreTeam:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            with pytest.raises(
-                TierError, match="not an active member of the specified"
-            ):
+            with pytest.raises(TierError, match="do not have resource access"):
                 await resolve_store_team("u1", "org-1", "some-team", "some-team")
+
+    @pytest.mark.asyncio
+    async def test_billing_only_target_team_cannot_store(self) -> None:
+        membership = SimpleNamespace(team_id="team-1", is_admin=False, can_write=False)
+        with patch.object(
+            tiers,
+            "get_team_membership",
+            new_callable=AsyncMock,
+            return_value=membership,
+        ):
+            with pytest.raises(TierError, match="do not have resource access"):
+                await resolve_store_team("u1", "org-1", "team-1", "team-1")

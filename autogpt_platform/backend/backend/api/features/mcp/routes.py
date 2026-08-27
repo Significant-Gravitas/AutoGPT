@@ -18,10 +18,15 @@ from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     normalize_mcp_url,
+    release_mcp_credential_leases,
     server_host,
 )
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    run_with_credential_lease_guard,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.request import HTTPClientError, Requests, validate_url_host
@@ -85,20 +90,29 @@ async def discover_tools(
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
     auth_token = request.auth_token
+    mcp_leases: list[CredentialLease] = []
 
     # Auto-use stored MCP credential when no explicit token is provided.
     if not auth_token:
         best_cred = await auto_lookup_mcp_credential(
-            user_id, normalize_mcp_url(request.server_url)
+            user_id,
+            normalize_mcp_url(request.server_url),
+            mcp_leases,
         )
         if best_cred:
             auth_token = best_cred.access_token.get_secret_value()
 
     client = MCPClient(request.server_url, auth_token=auth_token)
 
-    try:
+    async def initialize_and_list_tools():
         init_result = await client.initialize()
-        tools = await client.list_tools()
+        return init_result, await client.list_tools()
+
+    try:
+        init_result, tools = await run_with_credential_lease_guard(
+            initialize_and_list_tools(),
+            mcp_leases,
+        )
     except HTTPClientError as e:
         if e.status_code in (401, 403):
             raise fastapi.HTTPException(
@@ -114,6 +128,9 @@ async def discover_tools(
             status_code=502,
             detail=f"Failed to connect to MCP server: {e}",
         )
+    finally:
+        await client.close()
+        await release_mcp_credential_leases(mcp_leases)
 
     return DiscoverToolsResponse(
         tools=[

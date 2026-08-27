@@ -935,10 +935,11 @@ class TestAssignResources:
 
         result = await assign_resources_to_teams()
 
-        # 9 tables with workspace + 3 tables org-only = 12 entries
-        assert len(result) == 12
+        # 10 tables with workspace + 3 tables org-only = 13 entries
+        assert len(result) == 13
         assert result["AgentGraph"] == 10
         assert result["ChatSession"] == 10
+        assert result["Expert"] == 10
         assert result["UserNotificationBatch"] == 10
         assert result["BuilderSearchHistory"] == 10
         assert result["PendingHumanReview"] == 10
@@ -992,9 +993,34 @@ class TestAssignResources:
 
         result = await assign_resources_to_teams(renew_lock=renew_lock)
 
-        assert len(result) == 12
-        assert mock_prisma.execute_raw.await_count == 12
-        assert renew_lock.await_count == 12
+        assert len(result) == 13
+        assert mock_prisma.execute_raw.await_count == 13
+        assert renew_lock.await_count == 13
+
+    @pytest.mark.asyncio
+    async def test_expert_backfill_uses_owner_and_skips_templates(
+        self, mock_prisma, mocker
+    ):
+        single = mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+        mocker.patch(
+            "backend.data.org_migration._assign_team_tenancy_batched",
+            new_callable=AsyncMock,
+            return_value=0,
+        )
+
+        await assign_resources_to_teams()
+
+        expert_sql = next(
+            call.args[0]
+            for call in single.await_args_list
+            if 'UPDATE "Expert"' in call.args[0]
+        )
+        assert 't."ownerUserId" = om."userId"' in expert_sql
+        assert 't."isTemplate" = false' in expert_sql
 
 
 class TestBatchedTenancy:

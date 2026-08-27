@@ -477,7 +477,11 @@ class TestRatificationHitTaskRetention:
 
 def _fact_edge(fact: str):
     return SimpleNamespace(
-        fact=fact, name="rel", valid_at="2025-01-01", invalid_at=None
+        uuid=f"edge-{fact}",
+        fact=fact,
+        name="rel",
+        valid_at="2025-01-01",
+        invalid_at=None,
     )
 
 
@@ -485,6 +489,16 @@ def _tier_client(edges: list[object]) -> AsyncMock:
     client = AsyncMock()
     client.search_.return_value = _search_results(edges)
     client.retrieve_episodes.return_value = []
+    client.graph_driver = None
+    client.driver = SimpleNamespace(
+        execute_query=AsyncMock(
+            side_effect=lambda _query, **params: (
+                [{"uuid": uuid} for uuid in params["edge_ids"]],
+                None,
+                None,
+            )
+        )
+    )
     return client
 
 
@@ -534,6 +548,15 @@ class TestWarmContextFanOut:
         # All three tier groups were queried.
         for client in clients.values():
             client.search_.assert_awaited_once()
+        clients["org_org-1"].retrieve_episodes.assert_not_awaited()
+        assert (
+            clients["org_org-1"].search_.await_args.kwargs["search_filter"].expired_at
+            is not None
+        )
+        assert (
+            clients["org_org-1"].search_.await_args.kwargs["config"].limit
+            == context.graphiti_config.context_max_facts * 2
+        )
 
     @pytest.mark.asyncio
     async def test_ratification_fires_only_on_personal_edges(self) -> None:

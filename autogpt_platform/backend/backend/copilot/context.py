@@ -11,7 +11,8 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatSession
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import chat_db, workspace_db
+from backend.data.tenancy import ResourceAccess
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
@@ -269,7 +270,12 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
-async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
+async def get_workspace_manager(
+    user_id: str,
+    session_id: str,
+    *,
+    access: ResourceAccess = "execute",
+) -> WorkspaceManager:
     """Create a session-scoped :class:`WorkspaceManager`.
 
     Placed here (rather than in ``tools/workspace_files``) so that modules
@@ -277,7 +283,17 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     ``tools/__init__`` import chain.
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    session = await chat_db().get_chat_session_metadata(session_id)
+    if session is None or session.user_id != user_id:
+        raise ValueError("Chat session not found")
+    return WorkspaceManager(
+        user_id,
+        workspace.id,
+        session_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+        access=access,
+    )
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:

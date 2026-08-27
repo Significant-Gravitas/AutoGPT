@@ -54,6 +54,10 @@ export function CopilotChatHost({
     isResolvingExpertIdentity,
     isAdoptingExpertSession,
     isKickoffStarting,
+    createTeamId,
+    setCreateTeamId,
+    isTeamContextReady,
+    canSelectCreateTeam,
   } = useCopilotPage();
 
   return (
@@ -99,6 +103,10 @@ export function CopilotChatHost({
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
           hasFloatingControls={hasFloatingControls}
+          createTeamId={createTeamId}
+          onCreateTeamChange={setCreateTeamId}
+          isTeamContextReady={isTeamContextReady}
+          canSelectCreateTeam={canSelectCreateTeam}
         />
       </div>
       <RateLimitGate

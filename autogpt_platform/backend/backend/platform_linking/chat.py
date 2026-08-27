@@ -1,6 +1,9 @@
 """Chat-turn orchestration for the platform bot bridge."""
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Awaitable, TypeVar
 from uuid import uuid4
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -23,6 +26,7 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.tenancy import has_live_resource_access, live_resource_access_barrier
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -43,6 +47,61 @@ logger = logging.getLogger(__name__)
 
 CHAT_TOOL_CALL_ID = "chat_stream"
 CHAT_TOOL_NAME = "chat"
+T = TypeVar("T")
+
+
+class PlatformLinkLeaseGuard:
+    def __init__(self, link_db, lease_id: str) -> None:
+        self._link_db = link_db
+        self.lease_id = lease_id
+
+    async def validate(self) -> None:
+        try:
+            active = await self._link_db.is_platform_link_lease_active(self.lease_id)
+        except Exception as error:
+            raise NotFoundError("The platform link is no longer active.") from error
+        if not active:
+            raise NotFoundError("The platform link is no longer active.")
+
+    async def _wait_for_loss(self) -> None:
+        while True:
+            await asyncio.sleep(0.1)
+            await self.validate()
+
+    async def run(self, action: Awaitable[T]) -> T:
+        action_task = asyncio.ensure_future(action)
+        loss_task = asyncio.create_task(self._wait_for_loss())
+        try:
+            done, _ = await asyncio.wait(
+                (action_task, loss_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if loss_task in done:
+                action_task.cancel()
+                await asyncio.gather(action_task, return_exceptions=True)
+                await loss_task
+            result = await action_task
+            await self.validate()
+            return result
+        finally:
+            if not loss_task.done():
+                loss_task.cancel()
+            await asyncio.gather(loss_task, return_exceptions=True)
+
+
+def _session_matches_scope(
+    session: ChatSession | None,
+    organization_id: str | None,
+    team_id: str | None,
+) -> bool:
+    return session is not None and (
+        session.organization_id,
+        session.team_id,
+    ) == (organization_id, team_id)
+
+
+async def _default_scope(user_id: str) -> tuple[str | None, str | None]:
+    return await orgs_db().get_user_default_team(user_id)
 
 
 def _billing_url() -> str | None:
@@ -149,9 +208,13 @@ async def _resolve_owner(
     db = platform_linking_db()
 
     if platform_server_id:
-        owner = await db.find_server_link_owner(platform, platform_server_id)
+        owner = await db.find_server_link_owner_for_sender(
+            platform, platform_server_id, platform_user_id
+        )
         if owner is None:
-            raise NotFoundError("This server is not linked to an AutoGPT account.")
+            raise NotFoundError(
+                "Only the account owner who linked this server can use AutoGPT here."
+            )
         return owner
 
     owner = await db.find_user_link_owner(platform, platform_user_id)
@@ -169,6 +232,34 @@ async def resolve_chat_owner(request: BotChatRequest) -> str:
     )
 
 
+@asynccontextmanager
+async def _live_platform_link(
+    platform: str,
+    platform_server_id: str | None,
+    platform_user_id: str,
+    expected_owner_user_id: str,
+) -> AsyncIterator[PlatformLinkLeaseGuard]:
+    db = platform_linking_db()
+    lease_id = await db.acquire_platform_link_lease(
+        platform,
+        platform_server_id,
+        platform_user_id,
+    )
+    try:
+        current_owner = await _resolve_owner(
+            platform,
+            platform_server_id,
+            platform_user_id,
+        )
+        if current_owner != expected_owner_user_id:
+            raise NotFoundError("The platform link is no longer active.")
+        yield PlatformLinkLeaseGuard(db, lease_id)
+    finally:
+        released = await db.release_platform_link_lease(lease_id)
+        if not released:
+            raise NotFoundError("The platform link is no longer active.")
+
+
 async def upload_workspace_file(
     request: WorkspaceUploadRequest,
 ) -> WorkspaceUploadResult:
@@ -184,13 +275,16 @@ async def upload_workspace_file(
         request.platform_server_id,
         request.platform_user_id,
     )
+    org_id, team_id = await _default_scope(owner_user_id)
     if request.session_id:
         # Same guard as ensure_chat_session / start_chat_turn: the session
         # must exist and belong to the owner, and a shared-server upload must
         # never land inside an expert-scoped session's folder.
         session = await get_chat_session(request.session_id, owner_user_id)
-        if session is None or (
-            request.platform_server_id is not None and session.expert_id is not None
+        if not _session_matches_scope(session, org_id, team_id) or (
+            request.platform_server_id is not None
+            and session is not None
+            and session.expert_id is not None
         ):
             raise NotFoundError("The session for the uploaded files no longer exists.")
     # Reduce the filename to its basename so a (possibly hostile) client can't
@@ -201,23 +295,39 @@ async def upload_workspace_file(
     if safe_name in {"", ".", ".."}:
         safe_name = "file"
     try:
-        workspace = await workspace_db().get_or_create_workspace(owner_user_id)
-        # Session-scoped, exactly like the web upload endpoint: the file lands
-        # at /sessions/<session_id>/<name> so AutoPilot reads it during the
-        # turn. The caller resolves the session before uploading (see
-        # ensure_chat_session).
-        manager = WorkspaceManager(owner_user_id, workspace.id, request.session_id)
-        stored = await manager.write_file(
-            content=request.content,
-            filename=safe_name,
-            mime_type=request.mime_type,
-            metadata={"origin": "user-upload"},
-            # Re-uploading a same-named file in the conversation replaces it
-            # rather than erroring — without this a name collision raises
-            # ValueError that would be mislabelled a "too large / quota"
-            # rejection. Keeps the ValueError branch below meaning only that.
-            overwrite=True,
-        )
+
+        async def write_upload():
+            async with live_resource_access_barrier(
+                owner_user_id, org_id, team_id, "create"
+            ) as allowed:
+                if not allowed:
+                    raise NotFoundError(
+                        "The session for the uploaded files no longer exists."
+                    )
+                workspace = await workspace_db().get_or_create_workspace(owner_user_id)
+                manager = WorkspaceManager(
+                    owner_user_id,
+                    workspace.id,
+                    request.session_id,
+                    organization_id=org_id,
+                    team_id=team_id,
+                    access="create",
+                )
+                return await manager.write_file(
+                    content=request.content,
+                    filename=safe_name,
+                    mime_type=request.mime_type,
+                    metadata={"origin": "user-upload"},
+                    overwrite=True,
+                )
+
+        async with _live_platform_link(
+            request.platform.value,
+            request.platform_server_id,
+            request.platform_user_id,
+            owner_user_id,
+        ) as link_guard:
+            stored = await link_guard.run(write_upload())
     except VirusDetectedError:
         return WorkspaceUploadResult(filename=request.filename, error="virus_detected")
     except VirusScanError:
@@ -250,24 +360,33 @@ async def _resolve_or_create_session(
     deleted from the web app in between — fall back to a new one so the
     conversation self-heals instead of erroring.
     """
+    org_id, team_id = await _default_scope(owner_user_id)
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
-        if (
+        if not _session_matches_scope(session, org_id, team_id) or (
             session is not None
             and not allow_expert_session
             and session.expert_id is not None
         ):
             session = None
     if session is None:
-        org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
-        session = await create_chat_session(
-            owner_user_id,
-            dry_run=False,
-            organization_id=org_id,
-            team_id=team_id,
-            source_platform=source_platform,
-        )
+        async with live_resource_access_barrier(
+            owner_user_id, org_id, team_id, "create"
+        ) as allowed:
+            if not allowed:
+                raise NotFoundError("The selected workspace is no longer available.")
+            session = await create_chat_session(
+                owner_user_id,
+                dry_run=False,
+                organization_id=org_id,
+                team_id=team_id,
+                source_platform=source_platform,
+            )
+            if not _session_matches_scope(session, org_id, team_id):
+                raise NotFoundError("The selected workspace is no longer available.")
+    elif not await has_live_resource_access(owner_user_id, org_id, team_id, "execute"):
+        raise NotFoundError("The selected workspace is no longer available.")
     return session
 
 
@@ -292,21 +411,31 @@ async def ensure_chat_session(
     owner_user_id = await _resolve_owner(
         platform.value, platform_server_id, platform_user_id
     )
-    denial = await evaluate_turn_gate(owner_user_id)
-    if denial is not None:
-        logger.info(
-            "Bot session request denied (%s) for user ...%s",
-            denial.reason,
-            owner_user_id[-8:],
+
+    async def ensure_linked_session() -> EnsureSessionResult:
+        denial = await evaluate_turn_gate(owner_user_id)
+        if denial is not None:
+            logger.info(
+                "Bot session request denied (%s) for user ...%s",
+                denial.reason,
+                owner_user_id[-8:],
+            )
+            return EnsureSessionResult(denial=denial)
+        session = await _resolve_or_create_session(
+            owner_user_id,
+            session_id,
+            platform.value.lower(),
+            allow_expert_session=platform_server_id is None,
         )
-        return EnsureSessionResult(denial=denial)
-    session = await _resolve_or_create_session(
+        return EnsureSessionResult(session_id=session.session_id)
+
+    async with _live_platform_link(
+        platform.value,
+        platform_server_id,
+        platform_user_id,
         owner_user_id,
-        session_id,
-        platform.value.lower(),
-        allow_expert_session=platform_server_id is None,
-    )
-    return EnsureSessionResult(session_id=session.session_id)
+    ) as link_guard:
+        return await link_guard.run(ensure_linked_session())
 
 
 async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
@@ -317,94 +446,102 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
     """
     owner_user_id = await resolve_chat_owner(request)
 
-    # Gate before touching the session / enqueue so a refused turn neither
-    # persists a message nor runs the LLM.
-    denial = await evaluate_turn_gate(owner_user_id)
-    if denial is not None:
+    async def start_linked_turn() -> ChatTurnHandle:
+        denial = await evaluate_turn_gate(owner_user_id)
+        if denial is not None:
+            logger.info(
+                "Bot chat turn denied (%s) for user ...%s",
+                denial.reason,
+                owner_user_id[-8:],
+            )
+            return ChatTurnHandle(
+                session_id="", turn_id="", user_id=owner_user_id, denial=denial
+            )
+
+        session: ChatSession | None
+        if request.file_ids and request.session_id:
+            session = await get_chat_session(request.session_id, owner_user_id)
+            org_id, team_id = await _default_scope(owner_user_id)
+            if session is None or not _session_matches_scope(session, org_id, team_id):
+                raise NotFoundError(
+                    "The session for the uploaded files no longer exists."
+                )
+            if request.platform_server_id is not None and session.expert_id is not None:
+                raise NotFoundError(
+                    "The session for the uploaded files no longer exists."
+                )
+        else:
+            session = await _resolve_or_create_session(
+                owner_user_id,
+                request.session_id,
+                request.platform.value.lower(),
+                allow_expert_session=request.platform_server_id is None,
+            )
+        if session is None:
+            raise NotFoundError("The selected workspace is no longer available.")
+        session_id = session.session_id
+        org_id, team_id = session.organization_id, session.team_id
+
+        async with live_resource_access_barrier(
+            owner_user_id, org_id, team_id, "execute"
+        ) as allowed:
+            if not allowed:
+                raise NotFoundError("The selected workspace is no longer available.")
+            is_duplicate = (
+                await append_and_save_message(
+                    session_id, ChatMessage(role="user", content=request.message)
+                )
+            ) is None
+            if is_duplicate:
+                logger.info(
+                    "Duplicate bot message for session %s (platform %s, user ...%s)",
+                    session_id,
+                    request.platform.value,
+                    owner_user_id[-8:],
+                )
+                raise DuplicateChatMessageError("Message already in flight.")
+
+            turn_id = str(uuid4())
+            await stream_registry.create_session(
+                session_id=session_id,
+                user_id=owner_user_id,
+                tool_call_id=CHAT_TOOL_CALL_ID,
+                tool_name=CHAT_TOOL_NAME,
+                turn_id=turn_id,
+            )
+            await enqueue_copilot_turn(
+                session_id=session_id,
+                user_id=owner_user_id,
+                message=request.message,
+                turn_id=turn_id,
+                is_user_message=True,
+                organization_id=org_id,
+                team_id=team_id,
+                file_ids=request.file_ids or None,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+            )
         logger.info(
-            "Bot chat turn denied (%s) for user ...%s",
-            denial.reason,
+            "Bot chat turn started: %s (server %s, session %s, turn %s, owner ...%s)",
+            request.platform.value,
+            request.platform_server_id or "DM",
+            session_id,
+            turn_id,
             owner_user_id[-8:],
         )
         return ChatTurnHandle(
-            session_id="", turn_id="", user_id=owner_user_id, denial=denial
+            session_id=session_id,
+            turn_id=turn_id,
+            user_id=owner_user_id,
         )
 
-    if request.file_ids and request.session_id:
-        # Attachment turn: the files were already uploaded into this session
-        # (ensure_chat_session ran first). It must still exist — silently
-        # switching to a new session would orphan those files. Fail instead.
-        session = await get_chat_session(request.session_id, owner_user_id)
-        if session is None:
-            raise NotFoundError("The session for the uploaded files no longer exists.")
-        if request.platform_server_id is not None and session.expert_id is not None:
-            raise NotFoundError("The session for the uploaded files no longer exists.")
-    else:
-        session = await _resolve_or_create_session(
-            owner_user_id,
-            request.session_id,
-            request.platform.value.lower(),
-            allow_expert_session=request.platform_server_id is None,
-        )
-    session_id = session.session_id
-
-    # Persist the user message before enqueueing, mirroring the REST chat
-    # endpoint — otherwise the executor runs against empty history.
-    is_duplicate = (
-        await append_and_save_message(
-            session_id, ChatMessage(role="user", content=request.message)
-        )
-    ) is None
-    if is_duplicate:
-        # Matches REST chat behaviour: skip create_session + enqueue so we
-        # don't create an orphan stream with no producer. Caller subscribes
-        # to the in-flight turn via its own retry logic, or drops.
-        logger.info(
-            "Duplicate bot message for session %s (platform %s, user ...%s)",
-            session_id,
-            request.platform.value,
-            owner_user_id[-8:],
-        )
-        raise DuplicateChatMessageError("Message already in flight.")
-
-    turn_id = str(uuid4())
-
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=owner_user_id,
-        tool_call_id=CHAT_TOOL_CALL_ID,
-        tool_name=CHAT_TOOL_NAME,
-        turn_id=turn_id,
-    )
-
-    org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=owner_user_id,
-        message=request.message,
-        turn_id=turn_id,
-        is_user_message=True,
-        organization_id=org_id,
-        team_id=team_id,
-        file_ids=request.file_ids or None,
-        llm_auth_provider=session.metadata.llm_auth_provider,
-        llm_credential_id=session.metadata.llm_credential_id,
-    )
-
-    logger.info(
-        "Bot chat turn started: %s (server %s, session %s, turn %s, owner ...%s)",
+    async with _live_platform_link(
         request.platform.value,
-        request.platform_server_id or "DM",
-        session_id,
-        turn_id,
-        owner_user_id[-8:],
-    )
-
-    return ChatTurnHandle(
-        session_id=session_id,
-        turn_id=turn_id,
-        user_id=owner_user_id,
-    )
+        request.platform_server_id,
+        request.platform_user_id,
+        owner_user_id,
+    ) as link_guard:
+        return await link_guard.run(start_linked_turn())
 
 
 LIST_USER_CHATS_MAX_LIMIT = 25
@@ -433,17 +570,44 @@ async def list_user_chats(
     safe_limit = max(0, min(limit, LIST_USER_CHATS_MAX_LIMIT))
     safe_offset = max(0, offset)
 
-    sessions, total = await get_user_sessions(
-        owner_user_id, limit=safe_limit, offset=safe_offset
-    )
-    return ListUserChatsResponse(
-        sessions=[
-            ChatSessionSummary(
-                session_id=s.session_id,
-                title=s.title,
-                updated_at=s.updated_at,
+    async def list_linked_chats() -> ListUserChatsResponse:
+        org_id, team_id = await _default_scope(owner_user_id)
+        async with live_resource_access_barrier(
+            owner_user_id, org_id, team_id, "view"
+        ) as allowed:
+            if not allowed:
+                raise NotFoundError("The selected workspace is no longer available.")
+            sessions, total = await get_user_sessions(
+                owner_user_id,
+                limit=safe_limit,
+                offset=safe_offset,
+                organization_id=org_id,
+                team_id=team_id,
+                team_ids=[team_id] if team_id is not None else [],
             )
-            for s in sessions
-        ],
-        total=total,
-    )
+            visible_sessions = [
+                session
+                for session in sessions
+                if (session.organization_id, session.team_id) == (org_id, team_id)
+            ]
+            if len(visible_sessions) != len(sessions):
+                total = len(visible_sessions)
+            return ListUserChatsResponse(
+                sessions=[
+                    ChatSessionSummary(
+                        session_id=s.session_id,
+                        title=s.title,
+                        updated_at=s.updated_at,
+                    )
+                    for s in visible_sessions
+                ],
+                total=total,
+            )
+
+    async with _live_platform_link(
+        platform.value,
+        None,
+        platform_user_id,
+        owner_user_id,
+    ) as link_guard:
+        return await link_guard.run(list_linked_chats())

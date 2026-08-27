@@ -7,14 +7,24 @@ import Avatar, {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CreateOrgDialog } from "@/components/contextual/CreateOrgDialog/CreateOrgDialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { isProtectedOrgAvatarUrl } from "@/services/org-team/avatar";
 import { PlusSignIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useOrgTeamSwitcher } from "../../OrgTeamSwitcher/useOrgTeamSwitcher";
 
-export function AccountMenuOrgList() {
+interface Props {
+  onSelect?: () => void;
+}
+
+export function AccountMenuOrgList({ onSelect }: Props) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const canManageOrgs = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
+
+  function handleSwitchOrg(orgId: string) {
+    switchOrg(orgId);
+    onSelect?.();
+  }
 
   if (!isLoaded) {
     return null;
@@ -65,10 +75,14 @@ export function AccountMenuOrgList() {
               type="button"
               className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
               aria-pressed={org.id === activeOrg?.id}
-              onClick={() => switchOrg(org.id)}
+              onClick={() => handleSwitchOrg(org.id)}
             >
               <Avatar className="h-5 w-5">
-                <AvatarImage src={org.avatarUrl ?? ""} alt="" />
+                <AvatarImage
+                  src={org.avatarUrl ?? ""}
+                  alt=""
+                  unoptimized={isProtectedOrgAvatarUrl(org.avatarUrl)}
+                />
                 <AvatarFallback className="text-xs">
                   {org.name.charAt(0)}
                 </AvatarFallback>

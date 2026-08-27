@@ -10,10 +10,17 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
-from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.db_accessors import (
+    agent_graph_attachment_lease,
+    execution_db,
+    graph_db,
+    library_db,
+    user_db,
+)
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
+from backend.data.tenancy import ResourceAccess
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_database_manager_async_client, get_scheduler_client
@@ -234,6 +241,15 @@ class RunAgentTool(BaseTool):
         """All operations require authentication."""
         return True
 
+    def additional_resource_accesses(self, **kwargs) -> tuple[ResourceAccess, ...]:
+        if (
+            kwargs.get("schedule_name")
+            or kwargs.get("cron")
+            or kwargs.get("save_as_preset")
+        ):
+            return ("create",)
+        return ()
+
     async def _execute(
         self,
         user_id: str | None,
@@ -268,9 +284,15 @@ class RunAgentTool(BaseTool):
         builder_graph_id = session.metadata.builder_graph_id
         if builder_graph_id and user_id and not has_slug and not has_library_id:
             library_agent = await library_db().get_library_agent_by_graph_id(
-                user_id, builder_graph_id
+                user_id,
+                builder_graph_id,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
-            if library_agent:
+            if library_agent and (
+                library_agent.organization_id,
+                library_agent.team_id,
+            ) == (session.organization_id, session.team_id):
                 params.library_agent_id = library_agent.id
                 has_library_id = True
 
@@ -313,9 +335,15 @@ class RunAgentTool(BaseTool):
             # Priority: library_agent_id if provided
             if has_library_id:
                 library_agent = await library_db().get_library_agent(
-                    params.library_agent_id, user_id
+                    params.library_agent_id,
+                    user_id,
+                    organization_id=session.organization_id,
+                    team_id_restriction=session.team_id,
                 )
-                if not library_agent:
+                if not library_agent or (
+                    library_agent.organization_id,
+                    library_agent.team_id,
+                ) != (session.organization_id, session.team_id):
                     return ErrorResponse(
                         message=f"Library agent '{params.library_agent_id}' not found",
                         session_id=session_id,
@@ -326,6 +354,8 @@ class RunAgentTool(BaseTool):
                     library_agent.graph_version,
                     user_id=user_id,
                     include_subgraphs=True,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
                 )
             else:
                 # Fetch from marketplace slug
@@ -423,10 +453,15 @@ class RunAgentTool(BaseTool):
                     graph=graph,
                     graph_credentials=graph_credentials,
                     params=params,
-                    expert_id=session.expert_id,
+                    session=session,
                 )
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
+                elif params.save_as_preset:
+                    result.message += (
+                        " The run started, but the preset was not saved because "
+                        "your workspace access changed."
+                    )
             return result
 
         except ExpertNotFoundError:
@@ -753,7 +788,11 @@ class RunAgentTool(BaseTool):
             )
 
         preset = await library_db().get_preset(
-            user_id=user_id, preset_id=params.preset_id
+            user_id=user_id,
+            preset_id=params.preset_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            enforce_team_scope=True,
         )
         if not preset:
             return ErrorResponse(
@@ -761,7 +800,15 @@ class RunAgentTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        if preset.expert_id != session.expert_id:
+        if (
+            preset.organization_id,
+            preset.team_id,
+            preset.expert_id,
+        ) != (
+            session.organization_id,
+            session.team_id,
+            session.expert_id,
+        ):
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
                 error="preset_not_found",
@@ -772,6 +819,8 @@ class RunAgentTool(BaseTool):
             preset.graph_version,
             user_id=user_id,
             include_subgraphs=True,  # needed for full credentials aggregation
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
         if not graph:
             return ErrorResponse(
@@ -830,7 +879,7 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         params: RunAgentInput,
-        expert_id: str | None,
+        session: ChatSession,
     ) -> str | None:
         """Persist the validated run config as a reusable preset when requested.
 
@@ -849,7 +898,10 @@ class RunAgentTool(BaseTool):
                 credentials=graph_credentials,
                 is_active=True,
             ),
-            expert_id=expert_id,
+            expert_id=session.expert_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            enforce_scope=True,
         )
         return created.id
 
@@ -877,8 +929,25 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
+        library_agent = await library_db().get_library_agent_by_graph_id(
+            user_id,
+            graph.id,
+            graph.version,
+            organization_id=session.organization_id,
+            team_id_restriction=session.team_id,
+        )
+        if library_agent and (
+            library_agent.organization_id,
+            library_agent.team_id,
+        ) != (session.organization_id, session.team_id):
+            library_agent = None
+        if library_agent is None:
+            library_agent = await get_or_create_library_agent(
+                graph,
+                user_id,
+                session.organization_id,
+                session.team_id,
+            )
 
         # Execute — ``add_graph_execution`` ultimately calls
         # ``validate_and_construct_node_execution_input`` which raises
@@ -889,14 +958,7 @@ class RunAgentTool(BaseTool):
         # setup card.
         # The chat session is the tenancy anchor: an agent launched from an
         # org's copilot chat attributes/bills to that org, not to whatever
-        # the user's default org happens to be. Default-team resolution is
-        # only the fallback for sessions predating org tagging.
-        org_id, team_id = session.organization_id, session.team_id
-        if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
-
+        # the user's default org happens to be.
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
@@ -904,8 +966,8 @@ class RunAgentTool(BaseTool):
                 inputs=inputs,
                 graph_credentials_inputs=graph_credentials,
                 dry_run=dry_run,
-                organization_id=org_id,
-                team_id=team_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
             )
@@ -946,6 +1008,8 @@ class RunAgentTool(BaseTool):
                 graph_id=library_agent.graph_id,
                 execution_id=execution.id,
                 timeout_seconds=wait_for_result,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
@@ -964,6 +1028,8 @@ class RunAgentTool(BaseTool):
                         user_id=user_id,
                         execution_id=execution.id,
                         include_node_executions=True,
+                        organization_id=session.organization_id,
+                        team_id_restriction=session.team_id,
                     )
                     if isinstance(detailed, GraphExecutionWithNodes):
                         node_failures = summarize_node_failures(
@@ -1154,9 +1220,6 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
-
         # Get user timezone
         user = await user_db().get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
@@ -1176,26 +1239,34 @@ class RunAgentTool(BaseTool):
         # expert-scoped chat belongs to that expert, so it surfaces on her
         # Team card / expert page, counts toward her weekly credit budget,
         # and is cleaned up when she is archived.
-        org_id, team_id = session.organization_id, session.team_id
-        if org_id is None:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, team_id = await get_user_default_team(user_id)
-
         try:
-            result = await get_scheduler_client().add_execution_schedule(
-                user_id=user_id,
-                graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
-                name=schedule_name,
-                cron=cron,
-                input_data=inputs,
-                input_credentials=graph_credentials,
-                user_timezone=user_timezone,
-                organization_id=org_id,
-                team_id=team_id,
-                expert_id=session.expert_id,
-            )
+
+            async def attach_and_schedule():
+                library_agent = await get_or_create_library_agent(
+                    graph,
+                    user_id,
+                    session.organization_id,
+                    session.team_id,
+                )
+                result = await get_scheduler_client().add_execution_schedule(
+                    user_id=user_id,
+                    graph_id=library_agent.graph_id,
+                    graph_version=library_agent.graph_version,
+                    name=schedule_name,
+                    cron=cron,
+                    input_data=inputs,
+                    input_credentials=graph_credentials,
+                    user_timezone=user_timezone,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                    expert_id=session.expert_id,
+                )
+                return library_agent, result
+
+            async with agent_graph_attachment_lease([graph.id]) as attachment_guard:
+                library_agent, result = await attachment_guard.run(
+                    attach_and_schedule()
+                )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(
                 error=e,

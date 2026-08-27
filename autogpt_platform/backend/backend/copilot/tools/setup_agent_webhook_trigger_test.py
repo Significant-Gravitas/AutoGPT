@@ -109,10 +109,17 @@ def _patches(graph, *, matched=None, available=None, preset=None, graph_db_mock=
     """
     mock_graph_db = graph_db_mock or MagicMock()
     mock_graph_db.get_graph = AsyncMock(return_value=graph)
+    scoped_agent = MagicMock(organization_id=None, team_id=None)
+    mock_library_db = MagicMock()
+    mock_library_db.get_library_agent_by_graph_id = AsyncMock(return_value=scoped_agent)
     mock_triggers = MagicMock()
     mock_triggers.setup_triggered_preset = AsyncMock(return_value=preset)
     return [
-        patch(f"{_PATH}.graph_db", return_value=mock_graph_db),
+        patch.multiple(
+            _PATH,
+            graph_db=MagicMock(return_value=mock_graph_db),
+            library_db=MagicMock(return_value=mock_library_db),
+        ),
         patch(
             f"{_PATH}.get_or_create_library_agent",
             new=AsyncMock(return_value=MagicMock(id="lib-1")),
@@ -490,7 +497,12 @@ async def test_library_agent_id_resolves_and_proceeds(tool, session):
     ctxs, setup_mock = _patches(graph, preset=preset)
     mock_lib_db = MagicMock()
     mock_lib_db.get_library_agent = AsyncMock(
-        return_value=MagicMock(graph_id="graph-1", graph_version=1)
+        return_value=MagicMock(
+            graph_id="graph-1",
+            graph_version=1,
+            organization_id=None,
+            team_id=None,
+        )
     )
     with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4], patch(
         f"{_PATH}.library_db", return_value=mock_lib_db

@@ -43,7 +43,7 @@ def _modules() -> list[pathlib.Path]:
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: p.name)
 def test_no_direct_prisma_access_in_the_notification_service(module: pathlib.Path):
-    tree = ast.parse(module.read_text(), filename=str(module))
+    tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
 
     for node in ast.walk(tree):
         # `Something.prisma()` — the Prisma model accessor.
@@ -79,7 +79,7 @@ def test_the_service_does_not_connect_a_database_itself():
     """If this ever needs changing, the RPC boundary has been abandoned and
     every module above is free to query Prisma again — which is the state that
     shipped the outage."""
-    source = (_PACKAGE / "notifications.py").read_text()
+    source = (_PACKAGE / "notifications.py").read_text(encoding="utf-8")
     assert "db.connect()" not in source, (
         "NotificationManager must not open its own Prisma connection; its "
         "database access belongs behind the DatabaseManager RPC."

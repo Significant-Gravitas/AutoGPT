@@ -24,11 +24,34 @@ class HeldMemoryListResponse(BaseModel):
     items: list[HeldMemory]
 
 
+class ActiveMemoryListResponse(BaseModel):
+    org_id: str
+    items: list[HeldMemory]
+
+
 class MemoryActionResult(BaseModel):
     """Result of approving or rejecting a held memory."""
 
     id: str
-    action: str  # "approve" | "reject"
+    action: str  # "approve" | "reject" | "revoke"
     applied: bool  # False when the edge was already resolved (idempotent no-op)
     tier: str
     team_id: str | None = None
+
+
+class SharedMemoryOrgAccess(BaseModel):
+    """Prisma-free org membership facts for executor and scheduler processes."""
+
+    is_admin: bool
+    can_view: bool
+    can_write: bool
+
+
+class SharedMemoryTeamAccess(BaseModel):
+    """Prisma-free active team membership used by tiered memory routing."""
+
+    team_id: str
+    name: str
+    is_admin: bool
+    can_view: bool
+    can_write: bool

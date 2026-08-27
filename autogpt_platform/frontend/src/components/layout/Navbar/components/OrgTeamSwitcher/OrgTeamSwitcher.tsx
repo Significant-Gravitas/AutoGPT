@@ -2,7 +2,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -10,6 +10,7 @@ import Avatar, {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CreateOrgDialog } from "@/components/contextual/CreateOrgDialog/CreateOrgDialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { isProtectedOrgAvatarUrl } from "@/services/org-team/avatar";
 import {
   ArrowDown01Icon,
   PlusSignIcon,
@@ -21,6 +22,7 @@ import { useState } from "react";
 import { useOrgTeamSwitcher } from "./useOrgTeamSwitcher";
 
 export function OrgTeamSwitcher() {
+  const [isOpen, setIsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const canManageOrgs = useGetFlag(Flag.SHOW_ORG_SETTINGS);
   const { orgs, activeOrg, switchOrg, isLoaded } = useOrgTeamSwitcher();
@@ -29,9 +31,19 @@ export function OrgTeamSwitcher() {
     return null;
   }
 
+  function handleSwitchOrg(orgId: string) {
+    switchOrg(orgId);
+    setIsOpen(false);
+  }
+
+  function handleCreateOrg() {
+    setIsOpen(false);
+    setIsCreateOpen(true);
+  }
+
   return (
     <>
-      <Popover>
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -44,6 +56,9 @@ export function OrgTeamSwitcher() {
                 src={activeOrg?.avatarUrl ?? ""}
                 alt=""
                 aria-hidden="true"
+                unoptimized={isProtectedOrgAvatarUrl(
+                  activeOrg?.avatarUrl ?? null,
+                )}
               />
               <AvatarFallback className="text-xs" aria-hidden="true">
                 {activeOrg?.name?.charAt(0) || "O"}
@@ -68,10 +83,15 @@ export function OrgTeamSwitcher() {
                 key={org.id}
                 type="button"
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-100"
-                onClick={() => switchOrg(org.id)}
+                aria-pressed={org.id === activeOrg?.id}
+                onClick={() => handleSwitchOrg(org.id)}
               >
                 <Avatar className="h-5 w-5">
-                  <AvatarImage src={org.avatarUrl ?? ""} alt="" />
+                  <AvatarImage
+                    src={org.avatarUrl ?? ""}
+                    alt=""
+                    unoptimized={isProtectedOrgAvatarUrl(org.avatarUrl)}
+                  />
                   <AvatarFallback className="text-xs">
                     {org.name.charAt(0)}
                   </AvatarFallback>
@@ -91,28 +111,30 @@ export function OrgTeamSwitcher() {
             ))}
           </div>
 
-          <div className="border-t border-neutral-100" />
-          <div className="flex flex-col gap-0.5">
-            <Link
-              href="/settings/organization"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
-              data-testid="org-switcher-manage"
-            >
-              <Icon icon={Settings02Icon} size={14} />
-              <span>Manage organization</span>
-            </Link>
-            {canManageOrgs && (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
-                onClick={() => setIsCreateOpen(true)}
-                data-testid="org-switcher-create"
-              >
-                <Icon icon={PlusSignIcon} size={14} />
-                <span>Create organization</span>
-              </button>
-            )}
-          </div>
+          {canManageOrgs ? (
+            <>
+              <div className="border-t border-neutral-100" />
+              <div className="flex flex-col gap-0.5">
+                <Link
+                  href="/settings/organization"
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
+                  data-testid="org-switcher-manage"
+                >
+                  <Icon icon={Settings02Icon} size={14} />
+                  <span>Manage organization</span>
+                </Link>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
+                  onClick={handleCreateOrg}
+                  data-testid="org-switcher-create"
+                >
+                  <Icon icon={PlusSignIcon} size={14} />
+                  <span>Create organization</span>
+                </button>
+              </div>
+            </>
+          ) : null}
         </PopoverContent>
       </Popover>
       {canManageOrgs && (

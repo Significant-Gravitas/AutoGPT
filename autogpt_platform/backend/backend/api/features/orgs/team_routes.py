@@ -1,7 +1,8 @@
 """Workspace management API routes (nested under /api/orgs/{org_id}/workspaces)."""
 
 import functools
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Annotated, ParamSpec, TypeVar
 
 from autogpt_libs.auth import get_request_context, requires_org_permission
@@ -9,6 +10,7 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 
+from backend.data.tenancy import live_org_context_barrier
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from . import team_db as team_db
@@ -55,25 +57,18 @@ def _rejects_as_400(
     return wrapper
 
 
-async def _authorize_team_management(
-    ctx: RequestContext, org_id: str, ws_id: str
-) -> None:
-    """Authorize a management action against the target team from the URL path.
-
-    Independent of the caller's active team (X-Team-Id): allowed when the caller
-    administers the target team directly, or holds org-level MANAGE_WORKSPACES
-    over the org that owns it. The target team must belong to the path org.
-    """
+@asynccontextmanager
+async def _live_org_view(
+    ctx: RequestContext,
+    org_id: str,
+    action: OrgAction = OrgAction.VIEW_RESOURCES,
+) -> AsyncIterator[RequestContext]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    await team_db.get_team(ws_id, expected_org_id=org_id)
-    if check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES):
-        return
-    if await team_db.is_team_admin(ws_id, ctx.user_id):
-        return
-    raise HTTPException(
-        403, detail="Must be a team admin or org admin to manage this team"
-    )
+    async with live_org_context_barrier(ctx.user_id, org_id) as live_ctx:
+        if live_ctx is None or not check_org_permission(live_ctx, action):
+            raise HTTPException(403, detail="Organization access was revoked")
+        yield live_ctx
 
 
 @router.post(
@@ -97,6 +92,7 @@ async def create_team(
         user_id=ctx.user_id,
         description=request.description,
         join_policy=request.join_policy,
+        require_live_permission=True,
     )
 
 
@@ -109,13 +105,14 @@ async def list_teams(
     org_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[TeamResponse]:
-    if ctx.org_id != org_id:
-        raise HTTPException(403, detail="Not a member of this organization")
-    return await team_db.list_teams(
-        org_id,
-        ctx.user_id,
-        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
-    )
+    async with _live_org_view(ctx, org_id, OrgAction.VIEW_ORG) as live_ctx:
+        return await team_db.list_teams(
+            org_id,
+            ctx.user_id,
+            can_manage_workspaces=check_org_permission(
+                live_ctx, OrgAction.MANAGE_WORKSPACES
+            ),
+        )
 
 
 @router.get(
@@ -128,14 +125,15 @@ async def get_team(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
-    if ctx.org_id != org_id:
-        raise HTTPException(403, detail="Not a member of this organization")
-    return await team_db.get_team_for_viewer(
-        ws_id,
-        org_id,
-        ctx.user_id,
-        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
-    )
+    async with _live_org_view(ctx, org_id) as live_ctx:
+        return await team_db.get_team_for_viewer(
+            ws_id,
+            org_id,
+            ctx.user_id,
+            can_manage_workspaces=check_org_permission(
+                live_ctx, OrgAction.MANAGE_WORKSPACES
+            ),
+        )
 
 
 @router.patch(
@@ -150,7 +148,8 @@ async def update_team(
     request: UpdateTeamRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
-    await _authorize_team_management(ctx, org_id, ws_id)
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.update_team(
         ws_id,
         {
@@ -158,6 +157,8 @@ async def update_team(
             "description": request.description,
             "joinPolicy": request.join_policy,
         },
+        org_id=org_id,
+        actor_user_id=ctx.user_id,
     )
 
 
@@ -176,18 +177,13 @@ async def delete_team(
         Security(requires_org_permission(OrgAction.MANAGE_WORKSPACES)),
     ],
 ) -> None:
-    # Deliberate asymmetry with _authorize_team_management: team admins may
-    # rename a team and manage its members, but deletion is destructive and
-    # stays org-admin-only (MANAGE_WORKSPACES).
-    #
-    # MANAGE_WORKSPACES only proves the caller administers their *active*
-    # org (ctx.org_id); without this guard an admin of org A could delete
-    # a workspace in org B (the permission passes, and get_team only checks
-    # the workspace is in the path org). Mirror every sibling route.
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    await team_db.get_team(ws_id, expected_org_id=org_id)
-    await team_db.delete_team(ws_id)
+    await team_db.delete_team(
+        ws_id,
+        org_id=org_id,
+        actor_user_id=ctx.user_id,
+    )
 
 
 @router.post(
@@ -220,7 +216,7 @@ async def leave_team(
 ) -> None:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    await team_db.leave_team(ws_id, ctx.user_id)
+    await team_db.leave_team(ws_id, ctx.user_id, org_id)
 
 
 # --- Members ---
@@ -236,22 +232,18 @@ async def list_members(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[TeamMemberResponse]:
-    if ctx.org_id != org_id:
-        raise HTTPException(403, detail="Not a member of this organization")
-    # Mirror list/details visibility: a private workspace's roster is part of
-    # its contents. Members and OPEN workspaces list normally; org admins get
-    # a 403 (they see the workspace exists but must join to see who's in it —
-    # governance without surveillance); regular non-members get the same 404
-    # as everywhere else.
-    team = await team_db.get_team_for_viewer(
-        ws_id,
-        org_id,
-        ctx.user_id,
-        can_manage_workspaces=check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES),
-    )
-    if team.join_policy != "OPEN" and not team.is_member:
-        raise HTTPException(403, detail="Join this workspace to view its members")
-    return await team_db.list_team_members(ws_id)
+    async with _live_org_view(ctx, org_id) as live_ctx:
+        team = await team_db.get_team_for_viewer(
+            ws_id,
+            org_id,
+            ctx.user_id,
+            can_manage_workspaces=check_org_permission(
+                live_ctx, OrgAction.MANAGE_WORKSPACES
+            ),
+        )
+        if team.join_policy != "OPEN" and not team.is_member:
+            raise HTTPException(403, detail="Join this workspace to view its members")
+        return await team_db.list_team_members(ws_id)
 
 
 @router.post(
@@ -266,7 +258,10 @@ async def add_member(
     request: AddTeamMemberRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamMemberResponse:
-    await _authorize_team_management(ctx, org_id, ws_id)
+    if request.user_id == ctx.user_id:
+        raise HTTPException(400, detail="Use the workspace join action to add yourself")
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.add_team_member(
         ws_id=ws_id,
         user_id=request.user_id,
@@ -289,12 +284,17 @@ async def update_member(
     request: UpdateTeamMemberRequest,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamMemberResponse:
-    await _authorize_team_management(ctx, org_id, ws_id)
+    if uid == ctx.user_id:
+        raise HTTPException(400, detail="You cannot change your own workspace role")
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
     return await team_db.update_team_member(
         ws_id=ws_id,
         user_id=uid,
         is_admin=request.is_admin,
         is_billing_manager=request.is_billing_manager,
+        org_id=org_id,
+        requesting_user_id=ctx.user_id,
     )
 
 
@@ -311,5 +311,13 @@ async def remove_member(
     uid: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
-    await _authorize_team_management(ctx, org_id, ws_id)
-    await team_db.remove_team_member(ws_id, uid)
+    if uid == ctx.user_id:
+        raise HTTPException(400, detail="Use the workspace leave action")
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+    await team_db.remove_team_member(
+        ws_id,
+        uid,
+        org_id=org_id,
+        requesting_user_id=ctx.user_id,
+    )

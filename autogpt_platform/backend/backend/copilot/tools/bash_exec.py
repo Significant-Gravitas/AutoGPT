@@ -14,8 +14,10 @@ OS-level isolation with a whitelist-only filesystem, no network, and resource
 limits.  Requires bubblewrap to be installed (Linux only).
 """
 
+import asyncio
 import logging
 import shlex
+from contextlib import AsyncExitStack
 from typing import Any
 
 from e2b import AsyncSandbox, CommandExitException
@@ -29,15 +31,42 @@ from backend.copilot.context import (
 )
 from backend.copilot.integration_creds import (
     get_github_user_git_identity,
-    get_integration_env_vars,
+    leased_integration_env_vars,
 )
 from backend.copilot.model import ChatSession
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    run_with_credential_lease_guard,
+)
 
 from .base import BaseTool
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
+MIN_BASH_TIMEOUT_SECONDS = 1
+MAX_BASH_TIMEOUT_SECONDS = 25 * 60
+E2B_COMMAND_STOP_TIMEOUT_SECONDS = 10
+
+
+async def _stop_e2b_command(sandbox: AsyncSandbox, handle: Any | None) -> None:
+    if handle is not None:
+        try:
+            killed = await asyncio.wait_for(
+                asyncio.shield(handle.kill()),
+                timeout=E2B_COMMAND_STOP_TIMEOUT_SECONDS,
+            )
+            if killed:
+                return
+        except Exception:
+            logger.exception("[E2B] failed to kill command handle")
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(sandbox.kill()),
+            timeout=E2B_COMMAND_STOP_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.exception("[E2B] failed to kill sandbox after command cancellation")
 
 
 def _build_completion_response(
@@ -88,8 +117,13 @@ class BashExecTool(BaseTool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds; raise for long-running commands.",
+                    "description": (
+                        "Timeout in seconds, between 1 and "
+                        f"{MAX_BASH_TIMEOUT_SECONDS}."
+                    ),
                     "default": 120,
+                    "minimum": MIN_BASH_TIMEOUT_SECONDS,
+                    "maximum": MAX_BASH_TIMEOUT_SECONDS,
                 },
             },
             "required": ["command"],
@@ -127,6 +161,16 @@ class BashExecTool(BaseTool):
             return ErrorResponse(
                 message="No command provided.",
                 error="empty_command",
+                session_id=session_id,
+            )
+
+        if not MIN_BASH_TIMEOUT_SECONDS <= timeout <= MAX_BASH_TIMEOUT_SECONDS:
+            return ErrorResponse(
+                message=(
+                    "Timeout must be between "
+                    f"{MIN_BASH_TIMEOUT_SECONDS} and {MAX_BASH_TIMEOUT_SECONDS} seconds."
+                ),
+                error="invalid_timeout",
                 session_id=session_id,
             )
 
@@ -192,50 +236,90 @@ class BashExecTool(BaseTool):
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
-        # Collect injected secret values so we can scrub them from output.
-        secret_values: list[str] = []
-        if user_id is not None:
-            integration_env = await get_integration_env_vars(user_id)
-            secret_values = [v for v in integration_env.values() if v]
+        credential_leases: list[CredentialLease] = []
+        async with AsyncExitStack() as stack:
+            integration_env = (
+                await stack.enter_async_context(
+                    leased_integration_env_vars(user_id, credential_leases)
+                )
+                if user_id is not None
+                else {}
+            )
+
+            secret_values = [value for value in integration_env.values() if value]
             envs.update(integration_env)
 
-            # Set git author/committer identity from the user's GitHub profile
-            # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(user_id)
-            if git_identity:
-                envs.update(git_identity)
+            if user_id is not None:
+                github_token = integration_env.get("GH_TOKEN") or integration_env.get(
+                    "GITHUB_TOKEN"
+                )
+                git_identity = await get_github_user_git_identity(
+                    user_id,
+                    github_token,
+                )
+                if git_identity:
+                    envs.update(git_identity)
 
-        try:
-            result = await sandbox.commands.run(
-                f"bash -c {shlex.quote(command)}",
-                cwd=E2B_WORKDIR,
-                timeout=timeout,
-                envs=envs,
-            )
-            return _build_completion_response(
-                result.stdout,
-                result.stderr,
-                result.exit_code,
-                secret_values,
-                session_id,
-            )
-        except CommandExitException as exc:
-            return _build_completion_response(
-                exc.stdout, exc.stderr, exc.exit_code, secret_values, session_id
-            )
-        except TimeoutException:
-            return BashExecResponse(
-                message="Execution timed out",
-                stdout="",
-                stderr=f"Timed out after {timeout}s",
-                exit_code=-1,
-                timed_out=True,
-                session_id=session_id,
-            )
-        except Exception as exc:
-            logger.error("[E2B] bash_exec failed: %s", exc, exc_info=True)
-            return ErrorResponse(
-                message=f"E2B execution failed: {exc}",
-                error="e2b_execution_error",
-                session_id=session_id,
-            )
+            try:
+                start_task = asyncio.create_task(
+                    sandbox.commands.run(
+                        f"bash -c {shlex.quote(command)}",
+                        background=True,
+                        cwd=E2B_WORKDIR,
+                        timeout=timeout,
+                        envs=envs,
+                    )
+                )
+                handle = None
+                try:
+                    handle = await run_with_credential_lease_guard(
+                        asyncio.shield(start_task),
+                        credential_leases,
+                    )
+                except BaseException:
+                    try:
+                        handle = await asyncio.wait_for(
+                            asyncio.shield(start_task),
+                            timeout=E2B_COMMAND_STOP_TIMEOUT_SECONDS,
+                        )
+                    except BaseException:
+                        pass
+                    await _stop_e2b_command(sandbox, handle)
+                    raise
+                try:
+                    result = await run_with_credential_lease_guard(
+                        handle.wait(),
+                        credential_leases,
+                    )
+                except CommandExitException:
+                    raise
+                except BaseException:
+                    await _stop_e2b_command(sandbox, handle)
+                    raise
+                return _build_completion_response(
+                    result.stdout,
+                    result.stderr,
+                    result.exit_code,
+                    secret_values,
+                    session_id,
+                )
+            except CommandExitException as exc:
+                return _build_completion_response(
+                    exc.stdout, exc.stderr, exc.exit_code, secret_values, session_id
+                )
+            except TimeoutException:
+                return BashExecResponse(
+                    message="Execution timed out",
+                    stdout="",
+                    stderr=f"Timed out after {timeout}s",
+                    exit_code=-1,
+                    timed_out=True,
+                    session_id=session_id,
+                )
+            except Exception as exc:
+                logger.error("[E2B] bash_exec failed: %s", exc, exc_info=True)
+                return ErrorResponse(
+                    message=f"E2B execution failed: {exc}",
+                    error="e2b_execution_error",
+                    session_id=session_id,
+                )

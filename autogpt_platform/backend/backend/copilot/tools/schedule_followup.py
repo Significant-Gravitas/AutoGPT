@@ -36,6 +36,7 @@ from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
 from backend.data.db_accessors import user_db
+from backend.data.tenancy import ResourceAccess
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -91,6 +92,10 @@ class ScheduleFollowupTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -184,7 +189,15 @@ class ScheduleFollowupTool(BaseTool):
         target_session_id: str | None = kwargs.get("session_id")
         if target_session_id and target_session_id != current_session_id:
             target = await get_chat_session(target_session_id, user_id)
-            if target is None or target.expert_id != session.expert_id:
+            if target is None or (
+                target.organization_id,
+                target.team_id,
+                target.expert_id,
+            ) != (
+                session.organization_id,
+                session.team_id,
+                session.expert_id,
+            ):
                 return ErrorResponse(
                     message=(
                         f"Session {target_session_id} not found, not owned by "
@@ -245,6 +258,8 @@ class ScheduleFollowupTool(BaseTool):
                 )
 
         try:
+            org_id = session.organization_id if session else None
+            team_id = session.team_id if session else None
             info = await get_scheduler_client().add_copilot_turn_schedule(
                 user_id=user_id,
                 session_id=target_session_id,
@@ -253,11 +268,8 @@ class ScheduleFollowupTool(BaseTool):
                 run_at=run_at,
                 name=name,
                 user_timezone=user_timezone,
-                # Capture the scheduling chat's tenant so a fresh session
-                # minted at fire time lands in the same org/team, and its
-                # expert so those follow-up runs stay attributed to her.
-                organization_id=session.organization_id if session else None,
-                team_id=session.team_id if session else None,
+                organization_id=org_id,
+                team_id=team_id,
                 expert_id=session.expert_id if session else None,
             )
         except ValueError as e:

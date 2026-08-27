@@ -159,12 +159,18 @@ def fence_voice_preferences(voice: str) -> str:
     )
 
 
-async def build_expert_context(user_id: str | None, expert_id: str | None) -> str:
+async def build_expert_context(
+    user_id: str | None,
+    expert_id: str | None,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str:
     """Build the expert/team context prefix for the first user message.
 
     Returns ``""`` when there is nothing to inject or any lookup fails.
     """
-    if not user_id:
+    if not user_id or organization_id is None:
         return ""
     try:
         # ``delegate_to_expert`` is hidden from the tool schema and refused by
@@ -176,16 +182,30 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
         )
         if expert_id:
             return await _expert_session_context(
-                user_id, expert_id, delegation_enabled=delegation_enabled
+                user_id,
+                expert_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                delegation_enabled=delegation_enabled,
             )
-        return await _team_context(user_id, delegation_enabled=delegation_enabled)
+        return await _team_context(
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            delegation_enabled=delegation_enabled,
+        )
     except Exception as e:
         logger.warning(f"Failed to build expert context: {e}")
         return ""
 
 
 async def _expert_session_context(
-    user_id: str, expert_id: str, *, delegation_enabled: bool
+    user_id: str,
+    expert_id: str,
+    *,
+    organization_id: str,
+    team_id: str | None,
+    delegation_enabled: bool,
 ) -> str:
     async def _load_teammates() -> str:
         # The roster is an optional extra here; a failed lookup must not cost
@@ -193,6 +213,8 @@ async def _expert_session_context(
         try:
             return await _team_context(
                 user_id,
+                organization_id=organization_id,
+                team_id=team_id,
                 delegation_enabled=delegation_enabled,
                 exclude_expert_id=expert_id,
             )
@@ -209,6 +231,8 @@ async def _expert_session_context(
     # Identity validation already failed closed before this context lookup.
     # If the expert changes between those reads, omit only this optional block.
     if expert is None or expert.is_archived:
+        return ""
+    if not await _expert_matches_workspace(user_id, expert, organization_id, team_id):
         return ""
 
     if expert.workflows:
@@ -235,6 +259,8 @@ async def _expert_session_context(
 async def _team_context(
     user_id: str,
     *,
+    organization_id: str,
+    team_id: str | None,
     delegation_enabled: bool,
     exclude_expert_id: str | None = None,
 ) -> str:
@@ -253,7 +279,16 @@ async def _team_context(
     naming a tool the turn cannot execute is worse than saying nothing.
     """
     experts = await experts_db().list_experts(user_id, with_metrics=False)
-    teammates = [e for e in experts if e.id != exclude_expert_id]
+    candidates = [e for e in experts if e.id != exclude_expert_id]
+    matches = await asyncio.gather(
+        *(
+            _expert_matches_workspace(user_id, expert, organization_id, team_id)
+            for expert in candidates
+        )
+    )
+    teammates = [
+        expert for expert, matches_scope in zip(candidates, matches) if matches_scope
+    ]
     if not teammates:
         return ""
 
@@ -268,6 +303,22 @@ async def _team_context(
         else "Your teammates on this user's team:"
     )
     return f"<team_context>\n{header}\n{lines}\n{rule}\n</team_context>\n\n"
+
+
+async def _expert_matches_workspace(
+    user_id: str,
+    expert: Expert,
+    organization_id: str,
+    team_id: str | None,
+) -> bool:
+    if (expert.organization_id, expert.team_id) != (organization_id, team_id):
+        return False
+    try:
+        scope = await experts_db().resolve_private_expert_tenancy(user_id, expert.id)
+    except Exception as e:
+        logger.warning(f"Failed to validate expert workspace for {expert.id}: {e}")
+        return False
+    return scope == (organization_id, team_id)
 
 
 def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> str:

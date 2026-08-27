@@ -31,7 +31,12 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import (
+    LiveResourceAccessRevoked,
+    chat_db,
+    live_resource_lease,
+    require_exact_chat_session_scope,
+)
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import resolve_workspace_files
@@ -134,6 +139,9 @@ class QueuePendingMessageResponse(BaseModel):
 async def queue_user_message(
     *,
     session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
     message: str,
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
@@ -146,35 +154,56 @@ async def queue_user_message(
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
     """
-    pending = PendingMessage(
-        content=message,
-        file_ids=file_ids or [],
-        context=context,
-    )
-    if require_turn_in_flight:
-        new_len = await push_pending_message_if_session_running(
-            session_id,
-            pending,
-            session_meta_key=get_session_meta_key(session_id),
-        )
-        return QueuePendingMessageResponse(
-            buffer_length=new_len or 0,
-            max_buffer_length=MAX_PENDING_MESSAGES,
-            turn_in_flight=new_len is not None,
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise LiveResourceAccessRevoked("workspace_access_revoked")
+        await require_exact_chat_session_scope(
+            session_id, user_id, organization_id, team_id
         )
 
-    new_len = await push_pending_message(session_id, pending)
-    return QueuePendingMessageResponse(
-        buffer_length=new_len,
-        max_buffer_length=MAX_PENDING_MESSAGES,
-        turn_in_flight=await is_turn_in_flight(session_id),
-    )
+        resolved_file_ids: list[str] = []
+        if file_ids:
+            resolved = await resolve_workspace_files(
+                user_id,
+                file_ids,
+                organization_id,
+                team_id,
+            )
+            resolved_file_ids = [file.id for file in resolved]
+
+        pending = PendingMessage(
+            content=message,
+            file_ids=resolved_file_ids,
+            context=context,
+        )
+        if require_turn_in_flight:
+            new_len = await push_pending_message_if_session_running(
+                session_id,
+                pending,
+                session_meta_key=get_session_meta_key(session_id),
+            )
+            return QueuePendingMessageResponse(
+                buffer_length=new_len or 0,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=new_len is not None,
+            )
+
+        new_len = await push_pending_message(session_id, pending)
+        return QueuePendingMessageResponse(
+            buffer_length=new_len,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=await is_turn_in_flight(session_id),
+        )
 
 
 async def queue_pending_for_http(
     *,
     session_id: str,
     user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
     message: str,
     context: dict[str, str] | None,
     file_ids: list[str] | None,
@@ -194,7 +223,12 @@ async def queue_pending_for_http(
     """
     sanitized_file_ids: list[str] | None = None
     if file_ids:
-        files = await resolve_workspace_files(user_id, file_ids)
+        files = await resolve_workspace_files(
+            user_id,
+            file_ids,
+            organization_id,
+            team_id,
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
@@ -211,13 +245,19 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    response = await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
-        require_turn_in_flight=True,
-    )
+    try:
+        response = await queue_user_message(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+        )
+    except LiveResourceAccessRevoked as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
     if not response.turn_in_flight:
         raise HTTPException(
             status_code=409,

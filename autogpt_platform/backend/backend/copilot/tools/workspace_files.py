@@ -19,6 +19,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.tenancy import ResourceAccess
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -817,6 +818,10 @@ class WriteWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
     async def _execute(
         self,
         user_id: str | None,
@@ -893,7 +898,7 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_workspace_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id, access="create")
             rec = await manager.write_file(
                 content=content_bytes,
                 filename=filename,
@@ -1006,6 +1011,10 @@ class DeleteWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
     async def _execute(
         self,
         user_id: str | None,
@@ -1031,7 +1040,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             return ErrorResponse(message=_SKILLS_REGISTRY_ERROR, session_id=session_id)
 
         try:
-            manager = await get_workspace_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id, access="create")
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved

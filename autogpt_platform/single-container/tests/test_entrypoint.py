@@ -14,6 +14,7 @@ ENTRYPOINT_PATH = ASSET_DIR / "entrypoint.sh"
 HEALTHCHECK_PATH = ASSET_DIR / "healthcheck.sh"
 RUN_SERVICE_PATH = ASSET_DIR / "run-service.sh"
 DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
+BAKE_PATH = ASSET_DIR / "docker-bake.hcl"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
 
@@ -53,6 +54,30 @@ class InternalServiceTopologyTest(unittest.TestCase):
             "${AUTOGPT_INTERNAL_HEALTH_PATH}",
             HEALTHCHECK_PATH.read_text(encoding="utf-8"),
         )
+
+
+class FrontendBuildConfigurationTest(unittest.TestCase):
+    def test_org_surfaces_are_enabled_by_the_self_hosted_bake_target(self) -> None:
+        dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
+        bake = BAKE_PATH.read_text(encoding="utf-8")
+
+        flags = (
+            "SHOW_ORG_SETTINGS",
+            "HIRE_EXPERTS",
+            "GRAPHITI_MEMORY",
+            "ARTIFACTS",
+            "ARTIFACTS_PAGE",
+            "CHAT_WORKSPACE_FILES",
+            "CHAT_SHARING",
+        )
+        for flag in flags:
+            name = f"NEXT_PUBLIC_FORCE_FLAG_{flag}"
+            self.assertIn(f"ARG {name}=false", dockerfile)
+            self.assertIn(f"{name}=${{{name}}}", dockerfile)
+            self.assertIn(f'{name} = "true"', bake)
+
+        self.assertIn("FORCE_FLAG_GRAPHITI_MEMORY=true", dockerfile)
+        self.assertIn("FORCE_FLAG_HIRE_EXPERTS=true", dockerfile)
 
 
 class AccountRegistrationTest(unittest.TestCase):
@@ -207,13 +232,14 @@ class NormalizationTest(unittest.TestCase):
     def test_rejects_invalid_integer_values(self) -> None:
         for value, error in (
             ("not-a-number", "must be an integer"),
-            ("0", "must be between 1 and 5"),
-            ("6", "must be between 1 and 5"),
+            ("0", "must be between 2 and 5"),
+            ("1", "must be between 2 and 5"),
+            ("6", "must be between 2 and 5"),
         ):
             with self.subTest(value=value):
                 result = self._run(
                     'DB_CONNECTION_LIMIT="$2"; '
-                    "normalize_integer DB_CONNECTION_LIMIT 5 1 5",
+                    "normalize_integer DB_CONNECTION_LIMIT 5 2 5",
                     value,
                 )
                 self.assertNotEqual(result.returncode, 0)

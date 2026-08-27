@@ -153,7 +153,20 @@ describe("OrgTeamProvider", () => {
                   is_default: true,
                   join_policy: "OPEN",
                   org_id: PERSONAL_ORG.id,
+                  is_member: true,
                   member_count: 3,
+                  created_at: "2026-01-01T00:00:00Z",
+                },
+                {
+                  id: "team-private",
+                  name: "Secret",
+                  slug: "secret",
+                  description: null,
+                  is_default: false,
+                  join_policy: "PRIVATE",
+                  org_id: PERSONAL_ORG.id,
+                  is_member: false,
+                  member_count: 2,
                   created_at: "2026-01-01T00:00:00Z",
                 },
               ]
@@ -175,7 +188,11 @@ describe("OrgTeamProvider", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/proxy/api/orgs/${PERSONAL_ORG.id}/workspaces`,
       expect.objectContaining({
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Org-Id": PERSONAL_ORG.id,
+          "X-Team-Id": "",
+        },
       }),
     );
     const [team] = useOrgTeamStore.getState().teams;
@@ -269,6 +286,24 @@ describe("OrgTeamProvider", () => {
       expect(useOrgTeamStore.getState().isLoaded).toBe(true);
     });
     expect(useOrgTeamStore.getState().activeOrgID).toBe(COMPANY_ORG.id);
+  });
+
+  it("replaces a stored organization the user can no longer access", async () => {
+    window.localStorage.setItem("active-org-id", "org-stale");
+    useOrgTeamStore.setState({ activeOrgID: "org-stale" });
+    mockLoggedIn();
+    mockOrgsResponse([COMPANY_ORG_API, PERSONAL_ORG_API]);
+
+    render(
+      <OrgTeamProvider>
+        <span>app content</span>
+      </OrgTeamProvider>,
+    );
+
+    await waitFor(() => {
+      expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
+      expect(useOrgTeamStore.getState().isLoaded).toBe(true);
+    });
   });
 
   it("still marks the store loaded when the org fetch fails (UI must not hang)", async () => {

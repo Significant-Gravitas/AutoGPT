@@ -10,6 +10,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 from backend.data.redis_client import get_redis_async
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .expert_proposal import (
@@ -40,6 +41,10 @@ class ConfirmExpertChangeTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def description(self) -> str:

@@ -25,6 +25,9 @@ _ENV_VARS_TO_CLEAR = (
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _ENV_VARS_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("GRAPHITI_LLM_MODEL", "openai/gpt-4.1-mini")
+    monkeypatch.setenv("GRAPHITI_RERANKER_MODEL", "openai/gpt-4.1-nano")
+    monkeypatch.setenv("GRAPHITI_EMBEDDER_MODEL", "text-embedding-3-small")
 
 
 def _patch_chat_cfg(monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig) -> None:
@@ -193,7 +196,7 @@ class TestApplyLocalGraphitiModels:
     ) -> None:
         _patch_chat_cfg(monkeypatch, _local_chat_cfg())
         cfg = GraphitiConfig()
-        # llm_model: gpt-4.1-mini → Qwen3.5-4B Unsloth GGUF
+        # llm_model: openai/gpt-4.1-mini → Qwen3.5-4B Unsloth GGUF
         assert cfg.llm_model == "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
         # reranker reuses the same model (simpler prompts, avoids a
         # second Ollama pull).
@@ -218,7 +221,7 @@ class TestApplyLocalGraphitiModels:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenRouter / direct-Anthropic transports leave the cloud
-        defaults alone — graphiti's ``gpt-4.1-mini`` stays put for
+        defaults alone — graphiti's ``openai/gpt-4.1-mini`` stays put for
         anyone who isn't on a self-hosted backend."""
         _patch_chat_cfg(
             monkeypatch,
@@ -229,8 +232,8 @@ class TestApplyLocalGraphitiModels:
             ),
         )
         cfg = GraphitiConfig()
-        assert cfg.llm_model == "gpt-4.1-mini"
-        assert cfg.reranker_model == "gpt-4.1-nano"
+        assert cfg.llm_model == "openai/gpt-4.1-mini"
+        assert cfg.reranker_model == "openai/gpt-4.1-nano"
         assert cfg.embedder_model == "text-embedding-3-small"
 
 

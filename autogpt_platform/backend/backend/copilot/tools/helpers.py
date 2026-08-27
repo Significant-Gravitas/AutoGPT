@@ -33,7 +33,10 @@ from backend.executor.auto_credentials import (
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.codex.access import enforce_codex_access
-from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credential_lease import (
+    CredentialLease,
+    iterate_with_credential_lease_guard,
+)
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
@@ -311,34 +314,16 @@ async def execute_block(
                 credential_field_name = field_name
                 if field_name not in input_data:
                     input_data[field_name] = cred_meta.model_dump()
-                if cred_meta.provider == ProviderName.CODEX:
-                    lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
-                    credential_leases[field_name] = lease
-                    credentials = lease.credentials
-                    if not (
-                        provider_matches(credentials.provider, cred_meta.provider)
-                        and credentials.type == cred_meta.type
-                    ):
-                        raise ValueError
-                    await enforce_codex_access(user_id)
-                    exec_kwargs[field_name] = credentials
-                    continue
-
-                credentials = await creds_manager.get(
-                    user_id,
-                    cred_meta.id,
-                    lock=False,
-                )
+                lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
+                credential_leases[field_name] = lease
+                credentials = lease.credentials
                 if not (
-                    credentials is not None
-                    and provider_matches(credentials.provider, cred_meta.provider)
+                    provider_matches(credentials.provider, cred_meta.provider)
                     and credentials.type == cred_meta.type
                 ):
-                    await _release_credential_leases(credential_leases)
-                    return ErrorResponse(
-                        message=f"Failed to retrieve credentials for {field_name}",
-                        session_id=session_id,
-                    )
+                    raise ValueError
+                if cred_meta.provider == ProviderName.CODEX:
+                    await enforce_codex_access(user_id)
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)
@@ -357,9 +342,9 @@ async def execute_block(
         # If the picker hasn't been filled, surface the existing setup-card so
         # the user can pick inline via FormRenderer's google-drive-picker; the
         # LLM re-invokes this tool once input_data carries `_credentials_id`.
-        auto_locks: list[Any] = []
+        auto_leases: list[CredentialLease] = []
         try:
-            auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+            auto_extra_kwargs, auto_leases = await acquire_auto_credentials(
                 input_model=block.input_schema,
                 input_data=input_data,
                 creds_manager=creds_manager,
@@ -442,7 +427,13 @@ async def execute_block(
             charge_handled = False
             try:
                 await asyncio.wait_for(
-                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                    _collect_block_outputs(
+                        block,
+                        input_data,
+                        exec_kwargs,
+                        outputs,
+                        [*credential_leases.values(), *auto_leases],
+                    ),
                     timeout=MAX_TOOL_WAIT_SECONDS,
                 )
 
@@ -527,10 +518,9 @@ async def execute_block(
                     )
         finally:
             await _release_credential_leases(credential_leases)
-            # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
-            for lock in auto_locks:
+            for lease in auto_leases:
                 try:
-                    await lock.release()
+                    await lease.release()
                 except Exception as release_exc:
                     logger.warning(
                         "Failed to release auto-credential lock: %s",
@@ -558,6 +548,7 @@ async def _collect_block_outputs(
     input_data: dict[str, Any],
     exec_kwargs: dict[str, Any],
     outputs: dict[str, list[Any]],
+    credential_leases: list[CredentialLease],
 ) -> None:
     """Drive ``block.execute`` and append each emitted pair to *outputs*.
 
@@ -566,7 +557,11 @@ async def _collect_block_outputs(
     the cancellation path) to decide whether the block produced enough
     side-effects to warrant billing.
     """
-    async for output_name, output_data in block.execute(input_data, **exec_kwargs):
+    iterator = block.execute(input_data, **exec_kwargs)
+    async for output_name, output_data in iterate_with_credential_lease_guard(
+        iterator,
+        credential_leases,
+    ):
         outputs[output_name].append(output_data)
 
 
