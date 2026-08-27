@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
 
+const getFlagMock = vi.hoisted(() => vi.fn(() => false));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return { ...actual, useGetFlag: () => false };
+  return { ...actual, useGetFlag: getFlagMock };
 });
 
 const mockScrollEl = {
@@ -171,6 +173,10 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     },
   ];
 
+  beforeEach(() => {
+    getFlagMock.mockReturnValue(false);
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -179,6 +185,34 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     render(<ChatMessagesContainer {...baseProps} messages={messages} />);
 
     expect(screen.getByTestId("chain-message-parts")).toBeDefined();
+  });
+
+  it("renders watcher cards only when hire-experts is enabled", () => {
+    const watcher = [
+      {
+        id: "watcher-1",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "raw watcher message" }],
+        metadata: {
+          kind: "copilot_watcher",
+          title: "Lead Research needs attention",
+          description: "Workflow run failed",
+          action_label: "Open run",
+          action_href: "/home",
+          status: "failed",
+        },
+      },
+    ];
+    const { rerender } = render(
+      <ChatMessagesContainer {...baseProps} messages={watcher} />,
+    );
+
+    expect(screen.queryByText("Lead Research needs attention")).toBeNull();
+
+    getFlagMock.mockReturnValue(true);
+    rerender(<ChatMessagesContainer {...baseProps} messages={watcher} />);
+
+    expect(screen.getByText("Lead Research needs attention")).toBeDefined();
   });
 
   it("shows the thinking indicator inside a submitted assistant turn", () => {

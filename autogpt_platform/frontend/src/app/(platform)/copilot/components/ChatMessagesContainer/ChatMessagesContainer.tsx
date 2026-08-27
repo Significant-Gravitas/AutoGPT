@@ -516,7 +516,9 @@ export function ChatMessagesContainer({
             </div>
           )}
           {messages.map((message, messageIndex) => {
-            const watcherMetadata = getWatcherMetadata(message.metadata);
+            const watcherMetadata = isFounderMode
+              ? getWatcherMetadata(message.metadata)
+              : null;
             if (watcherMetadata) {
               return (
                 <Message
