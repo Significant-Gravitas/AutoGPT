@@ -110,6 +110,28 @@ async def test_upload_media_org_scoped_local_storage(tmp_path, monkeypatch, mock
     )
 
 
+async def test_upload_media_rejects_filename_scope_escape(
+    mock_settings, mock_storage_client
+):
+    test_file = fastapi.UploadFile(
+        filename="../../other-org/images/avatar.png",
+        file=io.BytesIO(b"\x89PNG\r\n\x1a\n"),
+        headers=starlette.datastructures.Headers({"content-type": "image/png"}),
+    )
+
+    with pytest.raises(
+        store_exceptions.InvalidFileTypeError, match="Invalid file name"
+    ):
+        await store_media.upload_media(
+            "test-user",
+            test_file,
+            use_file_name=True,
+            organization_id="org-123",
+        )
+
+    mock_storage_client.upload.assert_not_called()
+
+
 def test_local_media_path_rejects_escape(tmp_path, monkeypatch):
     settings = Settings()
     settings.config.media_storage_dir = str(tmp_path)
@@ -117,6 +139,10 @@ def test_local_media_path_rejects_escape(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="Invalid media path"):
         store_media.get_local_media_path("../outside.png")
+
+    sibling = tmp_path.parent / f"{tmp_path.name}-outside" / "avatar.png"
+    with pytest.raises(ValueError, match="Invalid media path"):
+        store_media.get_local_media_path(str(sibling))
 
 
 async def test_upload_media_invalid_type(mock_settings, mock_storage_client):

@@ -12,6 +12,9 @@ from backend.copilot.bot.adapters.base import ChannelInfo, PostedRef
 def _api(server_ids: list[str]) -> AsyncMock:
     api = AsyncMock()
     api.list_linked_server_ids.return_value = server_ids
+    api.acquire_platform_link_lease.return_value = "lease-1"
+    api.release_platform_link_lease.return_value = True
+    api.is_platform_link_lease_active.return_value = True
     return api
 
 
@@ -138,6 +141,25 @@ async def test_deliver_message_send_failure():
 
 
 @pytest.mark.asyncio
+async def test_deliver_message_rechecks_link_after_acquiring_lease():
+    adapter = _adapter(
+        channels=[ChannelInfo(id="42", name="announcements", server_id="g1")],
+        posted=PostedRef(id="100"),
+    )
+    api = _api(["g1"])
+    api.list_linked_server_ids.side_effect = [["g1"], []]
+
+    result = await outbound.deliver_message(
+        adapter, api, "discord", "user-1", "#announcements", "hi"
+    )
+
+    assert result.ok is False
+    assert result.error == "not_authorized"
+    adapter.post_channel_message.assert_not_awaited()
+    api.release_platform_link_lease.assert_awaited_once_with("lease-1")
+
+
+@pytest.mark.asyncio
 async def test_deliver_message_empty_content_is_distinct_error():
     adapter = _adapter()
     result = await outbound.deliver_message(
@@ -192,6 +214,9 @@ async def test_create_thread_failure():
 def _dm_api(dm_user_id: str | None) -> AsyncMock:
     api = AsyncMock()
     api.get_dm_user_id.return_value = dm_user_id
+    api.acquire_platform_link_lease.return_value = "lease-1"
+    api.release_platform_link_lease.return_value = True
+    api.is_platform_link_lease_active.return_value = True
     return api
 
 

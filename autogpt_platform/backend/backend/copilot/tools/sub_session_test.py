@@ -39,13 +39,15 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = None,
     origin: str | None = "interactive",
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
     sess.user_id = user_id
     sess.dry_run = False
-    sess.organization_id = None
-    sess.team_id = None
+    sess.organization_id = organization_id
+    sess.team_id = team_id
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.origin = origin
@@ -548,7 +550,13 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_other_user_cannot_access(self, monkeypatch):
         """Cross-user lookups are indistinguishable from 'not found'."""
-        foreign = MagicMock(user_id="bob", expert_id=None, messages=[])
+        foreign = MagicMock(
+            user_id="bob",
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            messages=[],
+        )
 
         async def foreign_get(_sid):
             return foreign
@@ -587,7 +595,13 @@ class TestGetSubSessionResult:
 
     @pytest.mark.asyncio
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub = MagicMock(
+            user_id="alice",
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            messages=[],
+        )
 
         async def fake_get(_sid):
             return sub
@@ -620,7 +634,11 @@ class TestGetSubSessionResult:
         """'completed' outcome surfaces the SessionResult directly."""
 
         sub = MagicMock(
-            user_id="alice", expert_id=None, messages=[]
+            user_id="alice",
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            messages=[],
         )  # not terminal-looking
 
         async def fake_get(_sid):
@@ -658,7 +676,9 @@ class TestGetSubSessionResult:
         in flight, the tool returns 'completed' without ever calling
         wait_for_session_result — it rebuilds the response from the
         persisted message instead."""
-        sub = MagicMock(user_id="alice", expert_id=None)
+        sub = MagicMock(
+            user_id="alice", organization_id=None, team_id=None, expert_id=None
+        )
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "already done"
@@ -704,7 +724,13 @@ class TestGetSubSessionResult:
         prior.role = "assistant"
         prior.content = "OLD stale result"
         prior.tool_calls = None
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
+        sub = MagicMock(
+            user_id="alice",
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            messages=[prior],
+        )
 
         async def fake_get(_sid):
             return sub
@@ -743,7 +769,13 @@ class TestGetSubSessionResult:
     ):
         """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
         without waiting for the sub to finish (the worker will finalise)."""
-        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub = MagicMock(
+            user_id="alice",
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            messages=[],
+        )
 
         async def fake_get(_sid):
             return sub
@@ -773,7 +805,9 @@ class TestGetSubSessionResult:
         log only holds the last message — yet the file manifest is still
         populated from the authoritative workspace listing."""
 
-        sub = MagicMock(user_id="alice", expert_id=None)
+        sub = MagicMock(
+            user_id="alice", organization_id=None, team_id=None, expert_id=None
+        )
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"
@@ -819,6 +853,69 @@ class TestGetSubSessionResult:
         assert r.sub_workspace_files is not None
         assert r.sub_workspace_files[0].path == "/sessions/inner-9/AUDIT.md"
         assert "workspace file" in (r.message or "")
+
+
+class TestSubSessionTenantScope:
+    @pytest.mark.asyncio
+    async def test_fresh_sub_inherits_exact_org_team(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        parent = _session("alice", organization_id="org-1", team_id="team-1")
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=parent, prompt="work", wait_for_result=0
+        )
+
+        created = mock_model["created"][0]
+        assert (created.organization_id, created.team_id) == ("org-1", "team-1")
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_same_user_sub_from_another_team(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        original = _session("alice", organization_id="org-1", team_id="team-2")
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=original, prompt="work", wait_for_result=0
+        )
+
+        response = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", organization_id="org-1", team_id="team-1"),
+            prompt="continue",
+            sub_autopilot_session_id="inner-1",
+            wait_for_result=0,
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "current memory scope" in response.message
+
+    @pytest.mark.asyncio
+    async def test_poll_rejects_same_user_sub_from_another_team(
+        self, monkeypatch, mock_waiter
+    ):
+        sub = _session(
+            "alice",
+            session_id="inner-1",
+            organization_id="org-1",
+            team_id="team-2",
+        )
+
+        async def fake_get(_session_id):
+            return sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        response = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice", organization_id="org-1", team_id="team-1"),
+            sub_session_id="inner-1",
+            wait_if_running=0,
+        )
+
+        assert isinstance(response, ErrorResponse)
+        mock_waiter.result_mock.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

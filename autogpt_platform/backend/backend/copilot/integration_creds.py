@@ -22,12 +22,14 @@ a shared cache (e.g. Redis) should be used instead.
 """
 
 import logging
-from typing import cast
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, cast
 
 from cachetools import TTLCache
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
@@ -197,12 +199,64 @@ async def get_integration_env_vars(user_id: str) -> dict[str, str]:
     return env
 
 
+@asynccontextmanager
+async def leased_integration_env_vars(
+    user_id: str,
+    lease_sink: list[CredentialLease] | None = None,
+) -> AsyncIterator[dict[str, str]]:
+    leases = []
+    env: dict[str, str] = {}
+    try:
+        for provider, var_names in PROVIDER_ENV_VARS.items():
+            credentials = await _manager.store.get_creds_by_provider(user_id, provider)
+            candidates = sorted(
+                credentials,
+                key=lambda item: (
+                    item.type != "oauth2",
+                    (
+                        0
+                        if item.type == "oauth2"
+                        and "repo" in (cast(OAuth2Credentials, item).scopes or [])
+                        else 1
+                    ),
+                ),
+            )
+            lease = None
+            for candidate in candidates:
+                try:
+                    lease = await _manager.acquire_lease(user_id, candidate.id)
+                    break
+                except ValueError:
+                    continue
+            if lease is None:
+                continue
+            leases.append(lease)
+            if lease_sink is not None:
+                lease_sink.append(lease)
+            leased = lease.credentials
+            if leased.type == "oauth2":
+                token = cast(OAuth2Credentials, leased).access_token.get_secret_value()
+            elif leased.type == "api_key":
+                token = cast(APIKeyCredentials, leased).api_key.get_secret_value()
+            else:
+                continue
+            for var_name in var_names:
+                env[var_name] = token
+        yield env
+    finally:
+        for lease in reversed(leases):
+            await lease.release()
+
+
 # ---------------------------------------------------------------------------
 # GitHub user identity (for git committer env vars)
 # ---------------------------------------------------------------------------
 
 
-async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
+async def get_github_user_git_identity(
+    user_id: str,
+    access_token: str | None = None,
+) -> dict[str, str] | None:
     """Fetch the GitHub user's name and email for git committer env vars.
 
     Uses the ``/user`` GitHub API endpoint with the user's stored token.
@@ -218,7 +272,7 @@ async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
     if cached := _gh_identity_cache.get(user_id):
         return cached
 
-    token = await get_provider_token(user_id, "github")
+    token = access_token or await get_provider_token(user_id, "github")
     if not token:
         _gh_identity_null_cache[user_id] = True
         return None

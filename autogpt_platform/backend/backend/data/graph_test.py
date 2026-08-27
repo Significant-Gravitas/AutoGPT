@@ -1,10 +1,13 @@
 import json
+from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
 import prisma
+import prisma.enums
+import prisma.models
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
@@ -18,6 +21,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
     Graph,
+    GraphMeta,
     GraphModel,
     Link,
     Node,
@@ -2371,13 +2375,6 @@ def test_graph_meta_from_db_carries_org_team():
     """Graph-bound resources (webhooks, presets) inherit the GRAPH's tenant,
     so from_db must surface the row's organizationId/teamId — and exports
     must strip them like user_id."""
-    from datetime import datetime
-
-    import prisma.enums
-    import prisma.models
-
-    from backend.data.graph import GraphMeta
-
     row = prisma.models.AgentGraph(
         id="g-org",
         version=1,
@@ -2456,7 +2453,7 @@ async def test_get_graph_org_visibility_where_clause(mocker):
             "OR": [
                 {
                     "userId": "u-1",
-                    "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
+                    "organizationId": None,
                 },
                 {"organizationId": "org-1", "teamId": None},
                 {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},

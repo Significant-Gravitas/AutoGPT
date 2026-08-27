@@ -7,6 +7,7 @@ import pytest
 
 import backend.api.features.library.model
 import backend.api.features.store.model
+from backend.api.features.orgs.db import get_user_default_team
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
@@ -553,8 +554,13 @@ async def test_store_listing_graph(server: SpinTestServer):
     # Add the approved store listing to the admin user's library so they can execute it
     from backend.api.features.library.db import add_store_agent_to_library
 
+    admin_org_id, _ = await get_user_default_team(admin_user.id)
+    assert admin_org_id is not None
     await add_store_agent_to_library(
-        store_listing_version_id=slv_id, user_id=admin_user.id
+        store_listing_version_id=slv_id,
+        user_id=admin_user.id,
+        organization_id=admin_org_id,
+        team_id=None,
     )
 
     alt_test_user = admin_user

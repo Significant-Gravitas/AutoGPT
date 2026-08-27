@@ -6,6 +6,7 @@ from typing import Any
 from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
 from backend.data.model import is_credentials_field_name
+from backend.data.tenancy import ResourceAccess
 
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
@@ -38,6 +39,10 @@ class EditAgentTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -134,7 +139,13 @@ class EditAgentTool(BaseTool):
             )
 
         # Preserve original agent's ID
-        current_agent = await get_agent_as_json(agent_id, user_id)
+        current_agent = await get_agent_as_json(
+            agent_id,
+            user_id,
+            session.organization_id,
+            session.team_id,
+            exact_scope=True,
+        )
         if current_agent is None:
             return ErrorResponse(
                 message=f"Could not find agent with ID '{agent_id}' in your library.",
@@ -166,7 +177,12 @@ class EditAgentTool(BaseTool):
         agent_json.setdefault("is_active", True)
 
         # Fetch library agents for AgentExecutorBlock validation
-        library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        library_agents = await fetch_library_agents(
+            user_id,
+            library_agent_ids,
+            session.organization_id,
+            session.team_id,
+        )
 
         return await fix_validate_and_save(
             agent_json,
@@ -175,6 +191,8 @@ class EditAgentTool(BaseTool):
             save=save,
             is_update=True,
             default_name="Updated Agent",
+            organization_id=session.organization_id,
+            team_id=session.team_id,
             library_agents=library_agents,
         )
 

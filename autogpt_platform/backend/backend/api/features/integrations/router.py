@@ -1,11 +1,21 @@
 import asyncio
 import logging
 import secrets
-from contextlib import suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    AsyncIterator,
+    List,
+    Literal,
+    LiteralString,
+    cast,
+)
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import (
     APIRouter,
     Body,
@@ -16,13 +26,18 @@ from fastapi import (
     Security,
     status,
 )
+from prisma.models import AgentGraph as PrismaAgentGraph
+from prisma.models import AgentNode as PrismaAgentNode
+from prisma.models import AgentPreset as PrismaAgentPreset
 from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.data.db import get_database_schema, transaction
 from backend.data.db_accessors import experts_db
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
+from backend.data.includes import AGENT_PRESET_INCLUDE
 from backend.data.integrations import (
     WebhookEvent,
     WebhookWithRelations,
@@ -41,6 +56,12 @@ from backend.data.model import (
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.data.tenancy import (
+    agent_graph_attachment_barrier,
+    agent_graph_attachment_mutation_barrier,
+    has_live_resource_access,
+    live_resource_permission_barrier,
+)
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.codex.access import (
@@ -51,6 +72,7 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_lease import run_with_credential_lease_guard
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -75,6 +97,7 @@ from backend.integrations.oauth import (
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks.utils import prune_webhook_with_credential_lease
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotInLibraryError,
@@ -117,6 +140,75 @@ router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
 
 creds_manager = IntegrationCredentialsManager()
+
+
+@asynccontextmanager
+async def _live_preset_webhook_trigger(
+    preset: LibraryAgentPreset,
+    webhook: WebhookWithRelations,
+) -> AsyncIterator[LibraryAgentPreset | None]:
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    query = cast(
+        LiteralString,
+        f'SELECT "id" FROM {schema_prefix}"AgentPreset" '
+        'WHERE "id" = $1 AND "userId" = $2 '
+        'AND "agentGraphId" = $3 AND "agentGraphVersion" = $4 '
+        'AND "webhookId" = $5 AND "organizationId" IS NOT DISTINCT FROM $6 '
+        'AND "teamId" IS NOT DISTINCT FROM $7 AND "isActive" = true '
+        'AND "isDeleted" = false FOR SHARE',
+    )
+    async with agent_graph_attachment_barrier(preset.graph_id):
+        async with transaction() as tx:
+            locked = await tx.query_raw(
+                query,
+                preset.id,
+                webhook.user_id,
+                preset.graph_id,
+                preset.graph_version,
+                webhook.id,
+                preset.organization_id,
+                preset.team_id,
+            )
+            if not locked:
+                yield None
+                return
+            current = await PrismaAgentPreset.prisma(tx).find_unique(
+                where={"id": preset.id},
+                include=AGENT_PRESET_INCLUDE,
+            )
+            yield LibraryAgentPreset.from_db(current) if current else None
+
+
+@asynccontextmanager
+async def _live_node_webhook_trigger(
+    node: NodeModel,
+    webhook: WebhookWithRelations,
+) -> AsyncIterator[bool]:
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    query = cast(
+        LiteralString,
+        f'SELECT "id" FROM {schema_prefix}"AgentNode" '
+        'WHERE "id" = $1 AND "agentGraphId" = $2 '
+        'AND "agentGraphVersion" = $3 AND "webhookId" = $4 FOR SHARE',
+    )
+    async with agent_graph_attachment_barrier(node.graph_id):
+        async with transaction() as tx:
+            locked = await tx.query_raw(
+                query,
+                node.id,
+                node.graph_id,
+                node.graph_version,
+                webhook.id,
+            )
+            if not locked:
+                yield False
+                return
+            current = await PrismaAgentNode.prisma(tx).find_unique(
+                where={"id": node.id}
+            )
+            yield current is not None and current.webhookId == webhook.id
 
 
 class LoginResponse(BaseModel):
@@ -962,6 +1054,36 @@ class AyrshareSSOResponse(BaseModel):
     expires_at: datetime = Field(..., description="ISO timestamp when the URL expires")
 
 
+async def _credential_webhook_scope_snapshot(
+    user_id: str,
+    webhooks: list[WebhookWithRelations],
+) -> tuple[set[tuple[str | None, str | None]], set[str]]:
+    scopes: set[tuple[str | None, str | None]] = set()
+    graph_ids: set[str] = set()
+    for webhook in webhooks:
+        scopes.add((webhook.organization_id, webhook.team_id))
+        for preset in webhook.triggered_presets:
+            scopes.add((preset.organization_id, preset.team_id))
+            graph_ids.add(preset.graph_id)
+        for node in webhook.triggered_nodes:
+            graph_ids.add(node.graph_id)
+            graph = await PrismaAgentGraph.prisma().find_unique(
+                where={
+                    "graphVersionId": {
+                        "id": node.graph_id,
+                        "version": node.graph_version,
+                    }
+                }
+            )
+            if graph is None or graph.userId != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Webhook graph ownership changed; retry the deletion",
+                )
+            scopes.add((graph.organizationId, graph.teamId))
+    return scopes, graph_ids
+
+
 @router.delete("/{provider}/credentials/{cred_id}")
 async def delete_credentials(
     request: Request,
@@ -983,49 +1105,125 @@ async def delete_credentials(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System-managed credentials cannot be deleted",
         )
-    creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
-    if not creds:
+    creds_snapshot = await creds_manager.store.get_creds_by_id(user_id, cred_id)
+    if creds_snapshot is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if not provider_matches(creds.provider, provider):
+    if not provider_matches(creds_snapshot.provider, provider):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Credentials not found",
         )
-    if creds.is_managed:
+    if creds_snapshot.is_managed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="AutoGPT-managed credentials cannot be deleted",
         )
 
-    try:
-        await remove_all_webhooks_for_credentials(user_id, creds, force)
-    except NeedConfirmation as e:
-        return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
+    initial_webhooks = await get_all_webhooks_by_creds(
+        user_id,
+        cred_id,
+        include_relations=True,
+    )
+    initial_scopes, initial_graph_ids = await _credential_webhook_scope_snapshot(
+        user_id,
+        initial_webhooks,
+    )
+    async with AsyncExitStack() as stack:
+        for organization_id, team_id in sorted(
+            initial_scopes,
+            key=lambda scope: (scope[0] or "", scope[1] or ""),
+        ):
+            allowed = await stack.enter_async_context(
+                live_resource_permission_barrier(
+                    user_id,
+                    organization_id,
+                    team_id,
+                    OrgAction.MANAGE_CREDENTIALS,
+                    TeamAction.MANAGE_CREDENTIALS,
+                )
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Credential management access was revoked",
+                )
+        for graph_id in sorted(initial_graph_ids):
+            await stack.enter_async_context(
+                agent_graph_attachment_mutation_barrier(graph_id)
+            )
 
-    tokens_revoked = None
-    if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(creds_manager, user_id, cred_id)
-    else:
-        await creds_manager.delete(user_id, cred_id)
+        try:
+            lease = await creds_manager.acquire_lease(user_id, cred_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Credentials not found",
+            )
+        try:
+            creds = lease.credentials
+            if not provider_matches(creds.provider, provider):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credentials not found",
+                )
+            if creds.is_managed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="AutoGPT-managed credentials cannot be deleted",
+                )
+            current_webhooks = await get_all_webhooks_by_creds(
+                user_id,
+                cred_id,
+                include_relations=True,
+            )
+            current_scopes, current_graph_ids = (
+                await _credential_webhook_scope_snapshot(user_id, current_webhooks)
+            )
+            if not current_scopes.issubset(
+                initial_scopes
+            ) or not current_graph_ids.issubset(initial_graph_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Webhook attachments changed; retry the deletion",
+                )
 
-    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
-        if provider_matches(provider.value, ProviderName.MCP.value):
-            # MCP uses dynamic per-server OAuth — create handler from metadata
-            handler = create_mcp_oauth_handler(creds)
-        elif (
-            device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
-        ) is not None:
-            # A device-code grant stores an OAuth2Credentials, so it reaches
-            # this branch too — but its handler lives in the other registry.
-            # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
-            # *after* the local delete had already run, leaving a live token
-            # at the provider with nothing left to revoke it with.
-            handler = device_handler()
-        else:
-            handler = _get_provider_oauth_handler(request, provider)
-        tokens_revoked = await handler.revoke_tokens(creds)
+            async def cleanup_revoke_and_delete() -> bool | None:
+                await remove_all_webhooks_for_credentials(user_id, creds, force)
+                if provider == ProviderName.CODEX:
+                    return await revoke_codex_credentials(
+                        creds_manager,
+                        user_id,
+                        cred_id,
+                        lease=lease,
+                    )
+
+                tokens_revoked = None
+                if isinstance(creds, OAuth2Credentials):
+                    if provider_matches(provider.value, ProviderName.MCP.value):
+                        handler = create_mcp_oauth_handler(creds)
+                    elif (
+                        device_handler := DEVICE_HANDLERS_BY_NAME.get(
+                            provider_key(provider)
+                        )
+                    ) is not None:
+                        handler = device_handler()
+                    else:
+                        handler = _get_provider_oauth_handler(request, provider)
+                    tokens_revoked = await handler.revoke_tokens(creds)
+                await lease.delete()
+                return tokens_revoked
+
+            try:
+                tokens_revoked = await run_with_credential_lease_guard(
+                    cleanup_revoke_and_delete(),
+                    [lease],
+                )
+            except NeedConfirmation as error:
+                return CredentialsDeletionNeedsConfirmationResponse(message=str(error))
+        finally:
+            await lease.release()
 
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
@@ -1149,13 +1347,33 @@ async def webhook_ping(
         )
     webhook_manager = get_webhook_manager(webhook.provider)
 
-    credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
-        if webhook.credentials_id
-        else None
-    )
     try:
-        await webhook_manager.trigger_ping(webhook, credentials)
+        if webhook.credentials_id:
+            try:
+                lease = await creds_manager.acquire_lease(
+                    user_id,
+                    webhook.credentials_id,
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Webhook credentials not found",
+                )
+            try:
+                provider_value = getattr(webhook.provider, "value", webhook.provider)
+                if lease.credentials.provider != provider_value:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Webhook credentials not found",
+                    )
+                await run_with_credential_lease_guard(
+                    webhook_manager.trigger_ping(webhook, lease.credentials),
+                    [lease],
+                )
+            finally:
+                await lease.release()
+        else:
+            await webhook_manager.trigger_ping(webhook, None)
     except NotImplementedError:
         return False
 
@@ -1191,14 +1409,33 @@ async def _execute_webhook_node_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
-            user_id=webhook.user_id,
-            graph_id=node.graph_id,
-            graph_version=node.graph_version,
-            nodes_input_masks={node.id: {"payload": payload}},
-            organization_id=org_id,
-            team_id=ws_id,
-        )
+        if not await has_live_resource_access(
+            webhook.user_id,
+            org_id,
+            ws_id,
+            "execute",
+        ):
+            logger.warning(
+                "Skipping webhook %s because its org/team access is inactive",
+                webhook_id,
+            )
+            return
+        async with _live_node_webhook_trigger(node, webhook) as active:
+            if not active:
+                logger.info(
+                    "Skipping detached webhook node %s for webhook %s",
+                    node.id,
+                    webhook_id,
+                )
+                return
+            await add_graph_execution(
+                user_id=webhook.user_id,
+                graph_id=node.graph_id,
+                graph_version=node.graph_version,
+                nodes_input_masks={node.id: {"payload": payload}},
+                organization_id=org_id,
+                team_id=ws_id,
+            )
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
@@ -1290,17 +1527,42 @@ async def _execute_webhook_preset_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
-            user_id=webhook.user_id,
-            graph_id=preset.graph_id,
-            preset_id=preset.id,
-            graph_version=preset.graph_version,
-            graph_credentials_inputs=preset.credentials,
-            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
-            organization_id=org_id,
-            team_id=ws_id,
-            expert_id=preset.expert_id,
-        )
+        if not await has_live_resource_access(
+            webhook.user_id,
+            org_id,
+            ws_id,
+            "execute",
+        ):
+            logger.warning(
+                "Skipping webhook %s because its org/team access is inactive",
+                webhook_id,
+            )
+            return
+        async with _live_preset_webhook_trigger(preset, webhook) as live_preset:
+            if live_preset is None:
+                logger.info(
+                    "Skipping inactive or detached preset %s for webhook %s",
+                    preset.id,
+                    webhook_id,
+                )
+                return
+            if not trigger_node.block.is_triggered_by_event_type(
+                live_preset.inputs, event_type
+            ):
+                return
+            await add_graph_execution(
+                user_id=webhook.user_id,
+                graph_id=live_preset.graph_id,
+                preset_id=live_preset.id,
+                graph_version=live_preset.graph_version,
+                graph_credentials_inputs=live_preset.credentials,
+                nodes_input_masks={
+                    trigger_node.id: {**live_preset.inputs, "payload": payload}
+                },
+                organization_id=org_id,
+                team_id=ws_id,
+                expert_id=live_preset.expert_id,
+            )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
         # not an error worth a stack trace on every webhook delivery.
@@ -1635,16 +1897,9 @@ async def _cleanup_orphaned_webhook_for_graph(
                 and not updated_webhook.triggered_presets
             ):
                 try:
-                    webhook_manager = get_webhook_manager(
-                        ProviderName(webhook.provider)
-                    )
-                    credentials = (
-                        await creds_manager.get(user_id, webhook.credentials_id)
-                        if webhook.credentials_id
-                        else None
-                    )
-                    success = await webhook_manager.prune_webhook_if_dangling(
-                        user_id, webhook.id, credentials
+                    success = await prune_webhook_with_credential_lease(
+                        user_id,
+                        webhook,
                     )
                     if success:
                         logger.info(

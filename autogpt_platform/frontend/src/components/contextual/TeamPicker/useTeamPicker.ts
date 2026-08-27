@@ -8,7 +8,9 @@ interface Params {
 }
 
 export function useTeamPicker({ value, onChange }: Params) {
-  const teams = useOrgTeamStore((s) => s.teams);
+  const allTeams = useOrgTeamStore((s) => s.teams);
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const teams = allTeams.filter((team) => team.orgId === activeOrgID);
   const hasTeams = teams.length > 0;
 
   const options: SelectOption[] = [

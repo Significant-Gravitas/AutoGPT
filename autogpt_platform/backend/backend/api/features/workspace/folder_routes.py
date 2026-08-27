@@ -7,13 +7,16 @@ sibling workspace file routes) and are included into the workspace router, which
 the app mounts under ``/api/workspace`` — giving ``/api/workspace/folders``.
 """
 
-from typing import Annotated
+from typing import Annotated, Awaitable, Callable, TypeVar
 
 import fastapi
-from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from autogpt_libs.auth.dependencies import get_request_context, requires_user
+from autogpt_libs.auth.models import RequestContext
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from backend.data.db_accessors import LiveResourceAccessRevoked, live_resource_lease
+from backend.data.tenancy import ResourceAccess
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
 from backend.data.workspace_folder import (
     WorkspaceFolder,
@@ -27,6 +30,23 @@ from backend.data.workspace_folder import (
 router = fastapi.APIRouter(
     dependencies=[fastapi.Security(requires_user)],
 )
+T = TypeVar("T")
+
+
+async def _run_scoped(
+    ctx: RequestContext,
+    access: ResourceAccess,
+    action: Callable[[], Awaitable[T]],
+) -> T:
+    try:
+        async with live_resource_lease(
+            ctx.user_id, ctx.org_id, ctx.team_id, access
+        ) as guard:
+            if not guard:
+                raise LiveResourceAccessRevoked("workspace_access_revoked")
+            return await guard.run(action())
+    except LiveResourceAccessRevoked as exc:
+        raise fastapi.HTTPException(status_code=404, detail="Folder not found") from exc
 
 
 class WorkspaceFolderCreateRequest(BaseModel):
@@ -56,10 +76,14 @@ class WorkspaceFolderListResponse(BaseModel):
     operation_id="listWorkspaceFolders",
 )
 async def list_workspace_folders(
-    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
 ) -> WorkspaceFolderListResponse:
-    workspace = await get_or_create_workspace(user_id)
-    folders = await list_folders(workspace.id)
+    workspace = await get_or_create_workspace(ctx.user_id)
+    folders = await _run_scoped(
+        ctx,
+        "view",
+        lambda: list_folders(workspace.id, ctx.org_id, ctx.team_id),
+    )
     return WorkspaceFolderListResponse(folders=folders)
 
 
@@ -71,14 +95,20 @@ async def list_workspace_folders(
     responses={409: {"description": "A folder with this name already exists"}},
 )
 async def create_workspace_folder(
-    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
     payload: WorkspaceFolderCreateRequest,
 ) -> WorkspaceFolder:
-    workspace = await get_or_create_workspace(user_id)
-    return await create_folder(
-        workspace_id=workspace.id,
-        name=payload.name,
-        icon=payload.icon,
+    workspace = await get_or_create_workspace(ctx.user_id)
+    return await _run_scoped(
+        ctx,
+        "create",
+        lambda: create_folder(
+            workspace_id=workspace.id,
+            name=payload.name,
+            icon=payload.icon,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        ),
     )
 
 
@@ -92,16 +122,22 @@ async def create_workspace_folder(
     },
 )
 async def update_workspace_folder(
-    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
     folder_id: str,
     payload: WorkspaceFolderUpdateRequest,
 ) -> WorkspaceFolder:
-    workspace = await get_or_create_workspace(user_id)
-    return await update_folder(
-        folder_id=folder_id,
-        workspace_id=workspace.id,
-        name=payload.name,
-        icon=payload.icon,
+    workspace = await get_or_create_workspace(ctx.user_id)
+    return await _run_scoped(
+        ctx,
+        "create",
+        lambda: update_folder(
+            folder_id=folder_id,
+            workspace_id=workspace.id,
+            name=payload.name,
+            icon=payload.icon,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        ),
     )
 
 
@@ -113,11 +149,20 @@ async def update_workspace_folder(
     responses={404: {"description": "Folder not found"}},
 )
 async def delete_workspace_folder(
-    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
     folder_id: str,
 ) -> Response:
-    workspace = await get_or_create_workspace(user_id)
-    await delete_folder(folder_id=folder_id, workspace_id=workspace.id)
+    workspace = await get_or_create_workspace(ctx.user_id)
+    await _run_scoped(
+        ctx,
+        "create",
+        lambda: delete_folder(
+            folder_id=folder_id,
+            workspace_id=workspace.id,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        ),
+    )
     return Response(status_code=fastapi.status.HTTP_204_NO_CONTENT)
 
 
@@ -127,12 +172,18 @@ async def delete_workspace_folder(
     operation_id="bulkMoveWorkspaceFiles",
 )
 async def bulk_move_workspace_files(
-    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[RequestContext, fastapi.Security(get_request_context)],
     payload: BulkMoveFilesRequest,
 ) -> list[WorkspaceFile]:
-    workspace = await get_or_create_workspace(user_id)
-    return await bulk_move_files_to_folder(
-        workspace_id=workspace.id,
-        file_ids=payload.file_ids,
-        folder_id=payload.folder_id,
+    workspace = await get_or_create_workspace(ctx.user_id)
+    return await _run_scoped(
+        ctx,
+        "create",
+        lambda: bulk_move_files_to_folder(
+            workspace_id=workspace.id,
+            file_ids=payload.file_ids,
+            folder_id=payload.folder_id,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        ),
     )

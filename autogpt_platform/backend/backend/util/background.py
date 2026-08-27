@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Coroutine
 
+from backend.data.db_accessors import context_without_live_leases
+
 logger = logging.getLogger(__name__)
 
 # asyncio only keeps weak references to running tasks, so a task nobody holds
@@ -27,7 +29,11 @@ def spawn_background_task(coro: Coroutine, *, name: str) -> asyncio.Task:
     Detached tasks have no awaiter, so their exceptions would otherwise go
     unobserved; failures are logged rather than lost.
     """
-    task = asyncio.create_task(coro, name=name)
+    task = asyncio.create_task(
+        coro,
+        name=name,
+        context=context_without_live_leases(),
+    )
     _background_tasks.add(task)
     task.add_done_callback(_on_done)
     return task

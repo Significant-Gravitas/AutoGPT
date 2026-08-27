@@ -61,7 +61,13 @@ async def test_expert_session_searches_only_expert_memory_group() -> None:
         )
 
     assert isinstance(result, MemorySearchResponse)
-    resolve_mock.assert_awaited_once_with("user-1", None, "all", expert_id="expert-1")
+    resolve_mock.assert_awaited_once_with(
+        "user-1",
+        None,
+        "all",
+        session_team_id=None,
+        expert_id="expert-1",
+    )
     get_client_mock.assert_awaited_once_with("expert_private_group")
     client.search_.assert_awaited_once()
     assert client.search_.await_args.kwargs["query"] == "private fact"
@@ -92,9 +98,9 @@ class TestFilterEpisodesByScopeTruncation:
         )
         # Requesting real:global scope — this project:crm episode should be excluded
         results = _filter_episodes_by_scope([ep], "real:global")
-        assert results == [], (
-            f"project-scoped episode leaked into global results: {results}"
-        )
+        assert (
+            results == []
+        ), f"project-scoped episode leaked into global results: {results}"
 
     def test_short_envelope_filtered_correctly(self) -> None:
         """Short envelopes (under 500 chars) are parsed correctly."""
@@ -274,6 +280,54 @@ class TestMemorySearchTiers:
         assert result.recent_episodes == []
 
     @pytest.mark.asyncio
+    async def test_scope_hard_filters_relationship_facts(self) -> None:
+        target = TierTarget(
+            group_id="org_org-1", tier=MemoryTier.org, label="org memory"
+        )
+        atlas = _fact_edge("atlas-only fact")
+        beacon = _fact_edge("beacon-only fact")
+        client = _tier_client([atlas, beacon])
+
+        async def filter_rows(_query, **params):
+            ids = params["edge_ids"]
+            if "scope" in params:
+                ids = [atlas.uuid] if params["scope"] == "project:atlas" else []
+            return ([{"uuid": uuid} for uuid in ids], None, None)
+
+        client.driver.execute_query.side_effect = filter_rows
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_search.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch.object(
+                search_mod,
+                "resolve_search_targets",
+                new_callable=AsyncMock,
+                return_value=[target],
+            ),
+            patch.object(
+                search_mod,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=client,
+            ),
+        ):
+            result = await MemorySearchTool()._execute(
+                "user-1",
+                _org_session(),
+                query="fact",
+                tier="org",
+                scope="project:atlas",
+            )
+
+        assert isinstance(result, MemorySearchResponse)
+        assert any("atlas-only fact" in fact for fact in result.facts)
+        assert all("beacon-only fact" not in fact for fact in result.facts)
+
+    @pytest.mark.asyncio
     async def test_tier_all_queries_only_active_membership_targets(self) -> None:
         """The tool queries exactly the groups resolve_search_targets returns
         — which is the active-membership source — never an arbitrary team."""
@@ -307,7 +361,13 @@ class TestMemorySearchTiers:
                 user_id="user-1", session=_org_session(), query="q", tier="all"
             )
 
-        resolve.assert_awaited_once_with("user-1", "org-1", "all", expert_id=None)
+        resolve.assert_awaited_once_with(
+            "user-1",
+            "org-1",
+            "all",
+            session_team_id=None,
+            expert_id=None,
+        )
         assert isinstance(result, MemorySearchResponse)
         personal_client.search_.assert_awaited_once()
 

@@ -6082,7 +6082,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -11608,6 +11609,100 @@
         }
       }
     },
+    "/api/orgs/{org_id}/memory/active": {
+      "get": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "List active shared memories",
+        "operationId": "getV2List active shared memories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveMemoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orgs/{org_id}/memory/active/{memory_id}": {
+      "delete": {
+        "tags": ["v2", "orgs", "memory", "orgs", "memory"],
+        "summary": "Revoke an active shared memory",
+        "operationId": "deleteV2Revoke an active shared memory",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Org Id" }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Memory Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemoryActionResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/orgs/{org_id}/memory/held": {
       "get": {
         "tags": ["v2", "orgs", "memory", "orgs", "memory"],
@@ -15590,6 +15685,19 @@
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
+      "ActiveMemoryListResponse": {
+        "properties": {
+          "org_id": { "type": "string", "title": "Org Id" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/HeldMemory" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["org_id", "items"],
+        "title": "ActiveMemoryListResponse"
+      },
       "ActiveStreamInfo": {
         "properties": {
           "turn_id": { "type": "string", "title": "Turn Id" },
@@ -18327,6 +18435,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -19663,6 +19779,14 @@
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -23433,6 +23557,14 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id_restriction": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id Restriction"
           }
         },
         "type": "object",
@@ -23760,6 +23892,14 @@
             "type": "integer",
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           },
           "payload": {
             "anyOf": [
@@ -25863,6 +26003,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",
@@ -29828,6 +29976,32 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Metadata"
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Id"
+          },
+          "scope_resolved": {
+            "type": "boolean",
+            "title": "Scope Resolved",
+            "default": true
+          },
+          "is_user_global_config": {
+            "type": "boolean",
+            "title": "Is User Global Config",
+            "default": false
           }
         },
         "type": "object",
@@ -29903,6 +30077,14 @@
             "type": "integer",
             "title": "File Count",
             "default": 0
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
           }
         },
         "type": "object",

@@ -231,6 +231,8 @@ def _extract_credential_type_from_schema(cred_schema: dict[str, Any]) -> str:
 async def get_or_create_library_agent(
     graph: GraphModel,
     user_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> library_model.LibraryAgent:
     """
     Get existing library agent or create new one.
@@ -245,15 +247,23 @@ async def get_or_create_library_agent(
         LibraryAgent instance
     """
     existing = await library_db().get_library_agent_by_graph_id(
-        graph_id=graph.id, user_id=user_id
+        graph_id=graph.id,
+        user_id=user_id,
+        organization_id=organization_id,
+        team_id_restriction=team_id,
     )
-    if existing:
+    if existing and (existing.organization_id, existing.team_id) == (
+        organization_id,
+        team_id,
+    ):
         return existing
 
     library_agents = await library_db().create_library_agent(
         graph=graph,
         user_id=user_id,
         create_library_agents_for_sub_graphs=False,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     assert len(library_agents) == 1, "Expected 1 library agent to be created"
     return library_agents[0]

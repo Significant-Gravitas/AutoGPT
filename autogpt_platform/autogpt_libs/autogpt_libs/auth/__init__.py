@@ -5,6 +5,7 @@ from .dependencies import (
     get_user_id,
     requires_admin_user,
     requires_org_permission,
+    requires_resource_permission,
     requires_team_permission,
     requires_user,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "get_optional_user_id",
     "get_request_context",
     "requires_org_permission",
+    "requires_resource_permission",
     "requires_team_permission",
     "requires_frontend_service",
     "add_auth_responses_to_openapi",

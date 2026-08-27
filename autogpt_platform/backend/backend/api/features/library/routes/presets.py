@@ -2,9 +2,11 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 
 from backend.api.features.experts import experts_db
+from backend.api.live_auth import live_dependency, requires_live_resource_permission
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
@@ -24,6 +26,7 @@ from ..triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from .live import require_live_library_create, require_live_library_delete
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,9 @@ router = APIRouter(
 )
 async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
+    ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1),
     graph_id: Optional[str] = Query(
@@ -64,6 +70,9 @@ async def list_presets(
             graph_id=graph_id,
             page=page,
             page_size=page_size,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            enforce_team_scope=True,
         )
     except Exception as e:
         logger.exception("Failed to list presets for user %s: %s", user_id, e)
@@ -80,6 +89,9 @@ async def list_presets(
 async def get_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
+    ),
 ) -> models.LibraryAgentPreset:
     """
     Retrieve details for a specific preset by its ID.
@@ -95,7 +107,13 @@ async def get_preset(
         HTTPException: If the preset is not found or an error occurs.
     """
     try:
-        preset = await db.get_preset(user_id, preset_id)
+        preset = await db.get_preset(
+            user_id,
+            preset_id,
+            ctx.org_id,
+            ctx.team_id,
+            True,
+        )
     except Exception as e:
         logger.exception(
             "Error retrieving preset %s for user %s: %s", preset_id, user_id, e
@@ -104,7 +122,11 @@ async def get_preset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
-    if not preset:
+    if (
+        not preset
+        or preset.organization_id != ctx.org_id
+        or preset.team_id != ctx.team_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
@@ -116,6 +138,7 @@ async def get_preset(
     "/presets",
     summary="Create a new preset",
     description="Create a new preset for the current user.",
+    dependencies=[live_dependency(require_live_library_create)],
 )
 async def create_preset(
     preset: (
@@ -123,6 +146,11 @@ async def create_preset(
         | models.LibraryAgentPresetCreatableFromGraphExecution
     ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        )
+    ),
 ) -> models.LibraryAgentPreset:
     """
     Create a new library agent preset. Automatically corrects node_input format if needed.
@@ -145,9 +173,16 @@ async def create_preset(
                 expert_id=await experts_db.resolve_expert_for_graph(
                     user_id, preset.graph_id
                 ),
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
             )
         else:
-            return await db.create_preset_from_graph_execution(user_id, preset)
+            return await db.create_preset_from_graph_execution(
+                user_id,
+                preset,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+            )
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except MissingConfigError as e:
@@ -161,10 +196,18 @@ async def create_preset(
         )
 
 
-@router.post("/presets/setup-trigger")
+@router.post(
+    "/presets/setup-trigger",
+    dependencies=[live_dependency(require_live_library_create)],
+)
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        )
+    ),
 ) -> models.LibraryAgentPreset:
     """
     Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
@@ -186,6 +229,8 @@ async def setup_trigger(
             expert_id=await experts_db.resolve_expert_for_graph(
                 user_id, params.graph_id
             ),
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
         )
     except WebhookSetupUnavailableError as e:
         # Server-side availability problem (e.g. Redis lock), not a bad
@@ -205,11 +250,17 @@ async def setup_trigger(
     "/presets/{preset_id}",
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
+    dependencies=[live_dependency(require_live_library_create)],
 )
 async def update_preset(
     preset_id: str,
     preset: models.LibraryAgentPresetUpdatable,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        )
+    ),
 ) -> models.LibraryAgentPreset:
     """
     Update an existing library agent preset.
@@ -237,6 +288,9 @@ async def update_preset(
         name=preset.name,
         description=preset.description,
         is_active=preset.is_active,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+        enforce_team_scope=True,
     )
 
 
@@ -245,10 +299,16 @@ async def update_preset(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a preset",
     description="Delete an existing preset by its ID.",
+    dependencies=[live_dependency(require_live_library_delete)],
 )
 async def delete_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+        )
+    ),
 ) -> None:
     """
     Delete a preset by its ID. Returns 204 No Content on success.
@@ -263,7 +323,13 @@ async def delete_preset(
     # Webhook detach + prune-if-dangling lives in the shared
     # delete_preset_with_webhook_cleanup (see triggers.py) so the copilot
     # delete_preset tool reuses it. NotFoundError → 404 via the global handler.
-    await delete_preset_with_webhook_cleanup(user_id=user_id, preset_id=preset_id)
+    await delete_preset_with_webhook_cleanup(
+        user_id=user_id,
+        preset_id=preset_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+        enforce_team_scope=True,
+    )
 
 
 @router.post(
@@ -281,7 +347,9 @@ async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+        )
     ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
@@ -303,8 +371,18 @@ async def execute_preset(
     Raises:
         HTTPException: If the preset is not found or an error occurs while executing the preset.
     """
-    preset = await db.get_preset(user_id, preset_id)
-    if not preset:
+    preset = await db.get_preset(
+        user_id,
+        preset_id,
+        ctx.org_id,
+        ctx.team_id,
+        True,
+    )
+    if (
+        not preset
+        or preset.organization_id != ctx.org_id
+        or preset.team_id != ctx.team_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
@@ -313,16 +391,6 @@ async def execute_preset(
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
-
-    # Resource-follows-parent: the execution attributes (visibility + org
-    # credit spend) to the preset's own org/team — set from its parent
-    # graph at creation — not the caller's active header org. Untagged
-    # legacy presets fall back to the caller's context.
-    exec_org_id, exec_team_id = (
-        (preset.organization_id, preset.team_id)
-        if preset.organization_id
-        else (ctx.org_id, ctx.team_id)
-    )
 
     try:
         return await add_graph_execution(
@@ -333,8 +401,8 @@ async def execute_preset(
             expert_id=preset.expert_id,
             inputs=merged_node_input,
             graph_credentials_inputs=merged_credential_inputs,
-            organization_id=exec_org_id,
-            team_id=exec_team_id,
+            organization_id=preset.organization_id,
+            team_id=preset.team_id,
         )
     except ExpertRunPausedError as e:
         # A paused/over-budget expert is a user-visible state, not a server

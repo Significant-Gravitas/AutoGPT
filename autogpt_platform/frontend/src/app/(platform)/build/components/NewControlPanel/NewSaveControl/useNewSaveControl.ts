@@ -30,7 +30,7 @@ export const useNewSaveControl = () => {
 
   // Only a brand-new agent gets a team owner; saving over an existing graph
   // (flowID present) reuses its ownership, so hide the picker then.
-  const { teamId, setTeamId, hasTeams } = useCreateTeamSelection(
+  const { teamId, setTeamId, hasTeams, isReady } = useCreateTeamSelection(
     CreateSurface.BuilderSave,
   );
 
@@ -66,9 +66,10 @@ export const useNewSaveControl = () => {
 
   const handleSave = useCallback(
     (values: SaveableGraphFormValues) => {
+      if (!isReady) return;
       saveGraph(values);
     },
-    [saveGraph],
+    [isReady, saveGraph],
   );
 
   useEffect(() => {
@@ -107,5 +108,6 @@ export const useNewSaveControl = () => {
     teamId,
     setTeamId,
     showTeamPicker,
+    isReady,
   };
 };

@@ -1,13 +1,51 @@
 """Database operations for workspace management."""
 
 import logging
+from datetime import datetime, timezone
 
-from backend.data.db import prisma
-from backend.util.exceptions import NotFoundError
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
+from prisma import Prisma
 
+from backend.data.db import TRANSACTION_TIMEOUT, execute_raw_with_schema, prisma
+from backend.data.tenancy import (
+    lock_live_org_membership_scopes,
+    lock_live_org_or_team_permission_scope,
+    lock_live_org_permission_scope,
+    lock_live_team_scope,
+)
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
+
+from .db import (
+    assert_no_owned_resources,
+    assert_no_owned_schedules,
+    lock_org_membership,
+)
 from .team_model import TeamMemberResponse, TeamResponse
 
 logger = logging.getLogger(__name__)
+
+
+async def _lock_team_manager(
+    client: Prisma,
+    org_id: str,
+    ws_id: str,
+    actor_user_id: str,
+    team_action: TeamAction,
+    related_user_ids: list[str] | None = None,
+) -> None:
+    if (
+        await lock_live_org_or_team_permission_scope(
+            client,
+            actor_user_id,
+            org_id,
+            ws_id,
+            OrgAction.MANAGE_WORKSPACES,
+            team_action,
+            related_user_ids,
+        )
+        is None
+    ):
+        raise NotAuthorizedError("Workspace management access was revoked")
 
 
 async def create_team(
@@ -16,27 +54,41 @@ async def create_team(
     user_id: str,
     description: str | None = None,
     join_policy: str = "OPEN",
+    require_live_permission: bool = False,
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
-    ws = await prisma.team.create(
-        data={
-            "name": name,
-            "orgId": org_id,
-            "description": description,
-            "joinPolicy": join_policy,
-            "createdByUserId": user_id,
-        }
-    )
-
-    # Creator becomes admin
-    await prisma.teammember.create(
-        data={
-            "teamId": ws.id,
-            "userId": user_id,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        await lock_org_membership(tx, org_id, user_id)
+        member = await tx.orgmember.find_first(
+            where={
+                "orgId": org_id,
+                "userId": user_id,
+                "status": "ACTIVE",
+                "Org": {"is": {"deletedAt": None}},
+            }
+        )
+        if member is None or (
+            require_live_permission
+            and not (member.isOwner or member.isAdmin or member.isBillingManager)
+        ):
+            raise NotAuthorizedError("Workspace creation access was revoked")
+        ws = await tx.team.create(
+            data={
+                "name": name,
+                "orgId": org_id,
+                "description": description,
+                "joinPolicy": join_policy,
+                "createdByUserId": user_id,
+            }
+        )
+        await tx.teammember.create(
+            data={
+                "teamId": ws.id,
+                "userId": user_id,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
 
     return TeamResponse.from_db(ws, member_count=1, is_member=True)
 
@@ -108,7 +160,7 @@ async def list_teams(
 async def get_team(ws_id: str, expected_org_id: str | None = None) -> TeamResponse:
     """Get workspace details. Validates org ownership if expected_org_id is given."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if expected_org_id and ws.orgId != expected_org_id:
         raise NotFoundError(f"Workspace {ws_id} not found in org {expected_org_id}")
@@ -130,7 +182,7 @@ async def get_team_for_viewer(
     list visibility rather than exposing every team by id.
     """
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if ws.orgId != org_id:
         raise NotFoundError(f"Workspace {ws_id} not found in org {org_id}")
@@ -149,76 +201,297 @@ async def get_team_for_viewer(
     )
 
 
-async def update_team(ws_id: str, data: dict) -> TeamResponse:
+async def update_team(
+    ws_id: str,
+    data: dict,
+    *,
+    org_id: str | None = None,
+    actor_user_id: str | None = None,
+) -> TeamResponse:
     """Update workspace fields. Guards the default workspace join policy."""
     update_data = {k: v for k, v in data.items() if v is not None}
-    if not update_data:
-        return await get_team(ws_id)
-
-    # Guard: default workspace joinPolicy cannot be changed
-    if "joinPolicy" in update_data:
-        ws = await prisma.team.find_unique(where={"id": ws_id})
-        if ws and ws.isDefault:
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        if org_id is not None and actor_user_id is not None:
+            await _lock_team_manager(
+                tx,
+                org_id,
+                ws_id,
+                actor_user_id,
+                TeamAction.MANAGE_SETTINGS,
+            )
+        else:
+            await lock_live_team_scope(tx, ws_id)
+        current = await tx.team.find_unique(where={"id": ws_id})
+        if (
+            current is None
+            or current.archivedAt is not None
+            or (org_id is not None and current.orgId != org_id)
+        ):
+            raise NotFoundError(f"Workspace {ws_id} not found")
+        if not update_data:
+            return TeamResponse.from_db(current)
+        if "joinPolicy" in update_data and current.isDefault:
             raise ValueError("Cannot change the default workspace's join policy")
+        updated = await tx.team.update(where={"id": ws_id}, data=update_data)
+        return TeamResponse.from_db(updated)
 
-    await prisma.team.update(where={"id": ws_id}, data=update_data)
-    return await get_team(ws_id)
 
-
-async def delete_team(ws_id: str) -> None:
-    """Delete a workspace. Cannot delete the default workspace."""
+async def delete_team(
+    ws_id: str,
+    *,
+    org_id: str | None = None,
+    actor_user_id: str | None = None,
+) -> None:
+    """Archive a workspace without widening its resources to org-home."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
-    if ws.isDefault:
-        raise ValueError("Cannot delete the default workspace")
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        effective_org_id = org_id or ws.orgId
+        if actor_user_id is not None:
+            if (
+                await lock_live_org_permission_scope(
+                    tx,
+                    actor_user_id,
+                    effective_org_id,
+                    OrgAction.MANAGE_WORKSPACES,
+                )
+                is None
+            ):
+                raise NotAuthorizedError("Workspace management access was revoked")
+        await _lock_team(tx, ws_id)
+        current = await tx.team.find_unique(where={"id": ws_id})
+        if (
+            current is None
+            or current.archivedAt is not None
+            or current.orgId != effective_org_id
+        ):
+            raise NotFoundError(f"Workspace {ws_id} not found")
+        if current.isDefault:
+            raise ValueError("Cannot delete the default workspace")
 
-    await prisma.team.delete(where={"id": ws_id})
+        await tx.team.update(
+            where={"id": ws_id},
+            data={
+                "archivedAt": datetime.now(timezone.utc),
+                "name": f"{current.name} [archived {current.id[:8]}]",
+                "slug": None,
+            },
+        )
 
 
 async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
     """Self-join an OPEN workspace. User must be an org member."""
-    ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
-        raise NotFoundError(f"Workspace {ws_id} not found")
-    if ws.orgId != org_id:
-        raise ValueError("Workspace does not belong to this organization")
-    if ws.joinPolicy != "OPEN":
-        raise ValueError("Cannot self-join a PRIVATE workspace. Request an invite.")
-
-    # Verify user is actually an org member
-    org_member = await prisma.orgmember.find_unique(
-        where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
-    )
-    if org_member is None:
-        raise ValueError(f"User {user_id} is not a member of the organization")
-
-    # Check not already a member
-    existing = await prisma.teammember.find_unique(
-        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
-    )
-    if existing:
-        return TeamResponse.from_db(ws, is_member=True)
-
-    await prisma.teammember.create(
-        data={
-            "teamId": ws_id,
-            "userId": user_id,
-            "status": "ACTIVE",
-        }
-    )
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        if (
+            await lock_live_org_permission_scope(
+                tx, user_id, org_id, OrgAction.VIEW_RESOURCES
+            )
+            is None
+        ):
+            raise ValueError(
+                f"User {user_id} is not an active member of the organization"
+            )
+        await _lock_team(tx, ws_id)
+        ws = await tx.team.find_unique(where={"id": ws_id})
+        if ws is None or ws.archivedAt is not None:
+            raise NotFoundError(f"Workspace {ws_id} not found")
+        if ws.orgId != org_id:
+            raise ValueError("Workspace does not belong to this organization")
+        if ws.joinPolicy != "OPEN":
+            raise ValueError("Cannot self-join a PRIVATE workspace. Request an invite.")
+        existing = await tx.teammember.find_unique(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+        )
+        if existing is not None:
+            if existing.status != "ACTIVE":
+                raise ValueError("Workspace membership is being removed")
+            return TeamResponse.from_db(ws, is_member=True)
+        await tx.teammember.create(
+            data={"teamId": ws_id, "userId": user_id, "status": "ACTIVE"}
+        )
     return TeamResponse.from_db(ws, is_member=True)
 
 
-async def leave_team(ws_id: str, user_id: str) -> None:
-    """Leave a workspace. Cannot leave the default workspace."""
-    ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
-        raise NotFoundError(f"Workspace {ws_id} not found")
-    if ws.isDefault:
-        raise ValueError("Cannot leave the default workspace")
+async def _lock_team(client: Prisma, ws_id: str) -> None:
+    await lock_live_team_scope(client, ws_id)
+    await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"Team" SET "updatedAt" = "updatedAt" ' 'WHERE "id" = $1',
+        ws_id,
+        client=client,
+    )
 
-    await prisma.teammember.delete_many(where={"teamId": ws_id, "userId": user_id})
+
+async def _start_team_member_removal(
+    ws_id: str,
+    user_id: str,
+    org_id: str | None,
+    reject_default: bool,
+    requesting_user_id: str,
+    require_manage_permission: bool,
+) -> str:
+    team = await prisma.team.find_unique(where={"id": ws_id})
+    if team is None or team.archivedAt is not None:
+        raise NotFoundError(f"Workspace {ws_id} not found")
+    if org_id is not None and team.orgId != org_id:
+        raise NotFoundError(f"Workspace {ws_id} not found")
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        if require_manage_permission:
+            await _lock_team_manager(
+                tx,
+                team.orgId,
+                ws_id,
+                requesting_user_id,
+                TeamAction.MANAGE_MEMBERS,
+                [user_id],
+            )
+        else:
+            if (
+                await lock_live_org_permission_scope(
+                    tx,
+                    requesting_user_id,
+                    team.orgId,
+                    OrgAction.VIEW_RESOURCES,
+                    [user_id],
+                )
+                is None
+            ):
+                raise NotAuthorizedError("Workspace access was revoked")
+            await _lock_team(tx, ws_id)
+        current_team = await tx.team.find_unique(where={"id": ws_id})
+        if current_team is None or current_team.archivedAt is not None:
+            raise NotFoundError(f"Workspace {ws_id} not found")
+        if reject_default and current_team.isDefault:
+            raise ValueError("Cannot leave the default workspace")
+        member = await tx.teammember.find_unique(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
+            include={"User": True},
+        )
+        if member is None or member.status != "ACTIVE":
+            raise NotFoundError(f"Workspace membership for {user_id} not found")
+        if member.isAdmin:
+            admin_count = await tx.teammember.count(
+                where={"teamId": ws_id, "isAdmin": True, "status": "ACTIVE"}
+            )
+            if admin_count <= 1:
+                raise ValueError(
+                    "Cannot remove the last workspace admin. "
+                    "Promote another member to admin first."
+                )
+        await tx.teammember.update(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
+            data={"status": "SUSPENDED"},
+        )
+    return team.orgId
+
+
+async def _finalize_team_member_removal(
+    ws_id: str,
+    user_id: str,
+    org_id: str,
+    requesting_user_id: str,
+    require_manage_permission: bool,
+) -> None:
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        if require_manage_permission:
+            await _lock_team_manager(
+                tx,
+                org_id,
+                ws_id,
+                requesting_user_id,
+                TeamAction.MANAGE_MEMBERS,
+                [user_id],
+            )
+        else:
+            if (
+                await lock_live_org_permission_scope(
+                    tx,
+                    requesting_user_id,
+                    org_id,
+                    OrgAction.VIEW_RESOURCES,
+                    [user_id],
+                )
+                is None
+            ):
+                raise NotAuthorizedError("Workspace access was revoked")
+            await _lock_team(tx, ws_id)
+        member = await tx.teammember.find_unique(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+        )
+        if member is None or member.status != "SUSPENDED":
+            raise NotFoundError(f"Workspace membership for {user_id} not found")
+        await assert_no_owned_resources(tx, org_id, user_id, ws_id)
+        await tx.teaminvite.update_many(
+            where={
+                "teamId": ws_id,
+                "targetUserId": user_id,
+                "acceptedAt": None,
+                "revokedAt": None,
+            },
+            data={"revokedAt": datetime.now(timezone.utc)},
+        )
+        await tx.teammember.delete(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+        )
+
+
+async def _remove_team_membership(
+    ws_id: str,
+    user_id: str,
+    org_id: str | None,
+    reject_default: bool,
+    requesting_user_id: str,
+    require_manage_permission: bool,
+) -> None:
+    resolved_org_id = await _start_team_member_removal(
+        ws_id,
+        user_id,
+        org_id,
+        reject_default,
+        requesting_user_id,
+        require_manage_permission,
+    )
+    try:
+        await assert_no_owned_resources(prisma, resolved_org_id, user_id, ws_id)
+        await assert_no_owned_schedules(
+            resolved_org_id, user_id, [ws_id], team_id=ws_id
+        )
+        await _finalize_team_member_removal(
+            ws_id,
+            user_id,
+            resolved_org_id,
+            requesting_user_id,
+            require_manage_permission,
+        )
+    except Exception:
+        async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+            await lock_live_org_membership_scopes(
+                tx, resolved_org_id, [requesting_user_id, user_id]
+            )
+            org = await tx.organization.find_first(
+                where={"id": resolved_org_id, "deletedAt": None}
+            )
+            if org is not None:
+                await tx.teammember.update_many(
+                    where={
+                        "teamId": ws_id,
+                        "userId": user_id,
+                        "status": "SUSPENDED",
+                    },
+                    data={"status": "ACTIVE"},
+                )
+        raise
+
+
+async def leave_team(ws_id: str, user_id: str, org_id: str) -> None:
+    await _remove_team_membership(
+        ws_id,
+        user_id,
+        org_id,
+        reject_default=True,
+        requesting_user_id=user_id,
+        require_manage_permission=False,
+    )
 
 
 async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
@@ -247,29 +520,40 @@ async def add_team_member(
     invited_by: str | None = None,
 ) -> TeamMemberResponse:
     """Add a member to a workspace. Must be an org member, workspace must belong to org."""
-    # Verify workspace belongs to the org
-    ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None or ws.orgId != org_id:
-        raise ValueError(f"Workspace {ws_id} does not belong to org {org_id}")
-
-    # Verify user is in the org
-    org_member = await prisma.orgmember.find_unique(
-        where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
-    )
-    if org_member is None:
-        raise ValueError(f"User {user_id} is not a member of the organization")
-
-    member = await prisma.teammember.create(
-        data={
-            "teamId": ws_id,
-            "userId": user_id,
-            "isAdmin": is_admin,
-            "isBillingManager": is_billing_manager,
-            "status": "ACTIVE",
-            "invitedByUserId": invited_by,
-        },
-        include={"User": True},
-    )
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        if invited_by is not None:
+            await _lock_team_manager(
+                tx,
+                org_id,
+                ws_id,
+                invited_by,
+                TeamAction.MANAGE_MEMBERS,
+                [user_id],
+            )
+        else:
+            await lock_org_membership(tx, org_id, user_id)
+            await _lock_team(tx, ws_id)
+        ws = await tx.team.find_unique(where={"id": ws_id})
+        if ws is None or ws.archivedAt is not None or ws.orgId != org_id:
+            raise ValueError(f"Workspace {ws_id} does not belong to org {org_id}")
+        org_member = await tx.orgmember.find_unique(
+            where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
+        )
+        if org_member is None or org_member.status != "ACTIVE":
+            raise ValueError(
+                f"User {user_id} is not an active member of the organization"
+            )
+        member = await tx.teammember.create(
+            data={
+                "teamId": ws_id,
+                "userId": user_id,
+                "isAdmin": is_admin,
+                "isBillingManager": is_billing_manager,
+                "status": "ACTIVE",
+                "invitedByUserId": invited_by,
+            },
+            include={"User": True},
+        )
     return TeamMemberResponse.from_db(member)
 
 
@@ -278,43 +562,82 @@ async def update_team_member(
     user_id: str,
     is_admin: bool | None,
     is_billing_manager: bool | None,
+    *,
+    org_id: str | None = None,
+    requesting_user_id: str | None = None,
 ) -> TeamMemberResponse:
     """Update a workspace member's role flags."""
-    update_data: dict = {}
+    update_data: dict[str, bool] = {}
     if is_admin is not None:
         update_data["isAdmin"] = is_admin
     if is_billing_manager is not None:
         update_data["isBillingManager"] = is_billing_manager
 
-    if update_data:
-        await prisma.teammember.update(
-            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
-            data=update_data,
+    team = await prisma.team.find_unique(where={"id": ws_id})
+    if team is None or team.archivedAt is not None:
+        raise NotFoundError(f"Workspace {ws_id} not found")
+    async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
+        effective_org_id = org_id or team.orgId
+        if requesting_user_id is not None:
+            await _lock_team_manager(
+                tx,
+                effective_org_id,
+                ws_id,
+                requesting_user_id,
+                TeamAction.MANAGE_MEMBERS,
+                [user_id],
+            )
+        else:
+            await lock_org_membership(tx, effective_org_id, user_id)
+            await _lock_team(tx, ws_id)
+        current_team = await tx.team.find_unique(where={"id": ws_id})
+        if (
+            current_team is None
+            or current_team.archivedAt is not None
+            or current_team.orgId != effective_org_id
+        ):
+            raise NotFoundError(f"Workspace {ws_id} not found")
+        member = await tx.teammember.find_unique(
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
         )
-
-    members = await list_team_members(ws_id)
-    return next(m for m in members if m.user_id == user_id)
-
-
-async def remove_team_member(ws_id: str, user_id: str) -> None:
-    """Remove a member from a workspace.
-
-    Guards against removing the last admin — workspace would become unmanageable.
-    """
-    # Check if this would remove the last admin
-    member = await prisma.teammember.find_unique(
-        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
-    )
-    if member and member.isAdmin:
-        admin_count = await prisma.teammember.count(
-            where={"teamId": ws_id, "isAdmin": True, "status": "ACTIVE"}
-        )
-        if admin_count <= 1:
-            raise ValueError(
-                "Cannot remove the last workspace admin. "
-                "Promote another member to admin first."
+        if member is None or member.status != "ACTIVE":
+            raise NotFoundError(f"Workspace membership for {user_id} not found")
+        if is_admin is False and member.isAdmin:
+            other_admins = await tx.teammember.count(
+                where={
+                    "teamId": ws_id,
+                    "userId": {"not": user_id},
+                    "isAdmin": True,
+                    "status": "ACTIVE",
+                }
+            )
+            if other_admins == 0:
+                raise ValueError(
+                    "Cannot demote the last workspace admin. "
+                    "Promote another member to admin first."
+                )
+        if update_data:
+            member = await tx.teammember.update(
+                where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
+                data=update_data,
+                include={"User": True},
             )
 
-    await prisma.teammember.delete(
-        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    return TeamMemberResponse.from_db(member)
+
+
+async def remove_team_member(
+    ws_id: str,
+    user_id: str,
+    *,
+    org_id: str | None = None,
+    requesting_user_id: str | None = None,
+) -> None:
+    await _remove_team_membership(
+        ws_id,
+        user_id,
+        org_id,
+        reject_default=False,
+        requesting_user_id=requesting_user_id or user_id,
+        require_manage_permission=requesting_user_id is not None,
     )

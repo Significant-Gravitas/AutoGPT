@@ -12,6 +12,7 @@ from backend.copilot.graphiti._format import extract_fact, extract_temporal_vali
 from backend.copilot.graphiti.client import derive_memory_group_id, get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import (
@@ -116,6 +117,10 @@ class MemoryForgetSearchTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
 
     async def _execute(
         self,
@@ -256,6 +261,10 @@ class MemoryForgetConfirmTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "delete"
 
     async def _execute(
         self,

@@ -19,13 +19,14 @@ signature checks to each manager's `verify_signature`. This file pins:
 import base64
 import hashlib
 import hmac
-from contextlib import ExitStack
+from contextlib import ExitStack, asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
 import pytest
 
+from backend.api.features.integrations import router as ingress_router
 from backend.api.features.integrations.router import router
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
@@ -41,6 +42,28 @@ client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 WEBHOOK_ID = "wh-12345"
 WEBHOOK_SECRET = "s" * 64
 USER_ID = "user-1"
+
+
+@pytest.fixture(autouse=True)
+def allow_live_resource_access(mocker):
+    return mocker.patch.object(
+        ingress_router,
+        "has_live_resource_access",
+        new=AsyncMock(return_value=True),
+    )
+
+
+@pytest.fixture(autouse=True)
+def allow_live_preset_trigger(mocker):
+    @asynccontextmanager
+    async def live_preset(preset, _webhook):
+        yield preset
+
+    return mocker.patch.object(
+        ingress_router,
+        "_live_preset_webhook_trigger",
+        new=live_preset,
+    )
 
 
 def _make_webhook(
@@ -579,6 +602,96 @@ async def test_preset_trigger_refuses_foreign_owner(mocker):
 
     # Bailed out before touching the graph or enqueuing anything.
     get_graph.assert_not_awaited()
+    add_exec.assert_not_awaited()
+
+
+async def test_node_trigger_stops_after_resource_role_downgrade(
+    mocker,
+    allow_live_resource_access,
+):
+    allow_live_resource_access.return_value = False
+    add_exec = mocker.patch.object(
+        ingress_router,
+        "add_graph_execution",
+        new_callable=AsyncMock,
+    )
+    node = MagicMock(
+        id="node-1",
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    node.is_triggered_by_event_type.return_value = True
+    webhook = _make_webhook(
+        ProviderName.GITHUB,
+        organization_id="org-1",
+        team_id="team-1",
+    )
+
+    await ingress_router._execute_webhook_node_trigger(
+        node,
+        webhook,
+        WEBHOOK_ID,
+        "pull_request",
+        {},
+    )
+
+    allow_live_resource_access.assert_awaited_once_with(
+        USER_ID,
+        "org-1",
+        "team-1",
+        "execute",
+    )
+    add_exec.assert_not_awaited()
+
+
+async def test_preset_trigger_stops_after_resource_role_downgrade(
+    mocker,
+    allow_live_resource_access,
+):
+    allow_live_resource_access.return_value = False
+    mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    add_exec = mocker.patch.object(
+        ingress_router,
+        "add_graph_execution",
+        new_callable=AsyncMock,
+    )
+    preset = MagicMock(
+        id="preset-1",
+        user_id=USER_ID,
+        is_active=True,
+        expert_id=None,
+        organization_id="org-1",
+        team_id="team-1",
+        graph_id="graph-1",
+        graph_version=1,
+        inputs={},
+        credentials={},
+    )
+    webhook = _make_webhook(
+        ProviderName.GITHUB,
+        organization_id="org-1",
+        team_id="team-1",
+    )
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset,
+        webhook,
+        WEBHOOK_ID,
+        "pull_request",
+        {},
+    )
+
+    allow_live_resource_access.assert_awaited_once_with(
+        USER_ID,
+        "org-1",
+        "team-1",
+        "execute",
+    )
     add_exec.assert_not_awaited()
 
 

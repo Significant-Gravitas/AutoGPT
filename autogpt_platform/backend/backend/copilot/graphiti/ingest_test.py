@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,6 +29,7 @@ def _stub_dream_registration(mocker):
 def _enqueue_mock(queue: asyncio.Queue) -> AsyncMock:
     async def enqueue(_user_id: str, _group_id: str, payload: dict, **_kwargs) -> bool:
         try:
+            payload["_actor_user_id"] = _user_id
             queue.put_nowait(payload)
         except asyncio.QueueFull:
             return False
@@ -55,6 +57,7 @@ class TestIngestionWorkerExceptionHandling:
                 "source_description": "test",
                 "reference_time": None,
                 "group_id": "expert_other",
+                "_actor_user_id": "test-user",
             }
         )
         get_client = AsyncMock()
@@ -64,9 +67,7 @@ class TestIngestionWorkerExceptionHandling:
             ingest._WORKER_IDLE_TIMEOUT = 0.05
             try:
                 with caplog.at_level(logging.ERROR, logger=ingest.logger.name):
-                    await ingest._ingestion_worker(
-                        "test-user", "expert_expected", queue
-                    )
+                    await ingest._ingestion_worker("expert_expected", queue)
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
@@ -97,6 +98,7 @@ class TestIngestionWorkerExceptionHandling:
                 "source_description": "test",
                 "reference_time": None,
                 "group_id": "user_test",
+                "_actor_user_id": "test-user",
             }
         )
 
@@ -117,7 +119,7 @@ class TestIngestionWorkerExceptionHandling:
             original_timeout = ingest._WORKER_IDLE_TIMEOUT
             ingest._WORKER_IDLE_TIMEOUT = 0.1
             try:
-                await ingest._ingestion_worker("test-user", "user_test", queue)
+                await ingest._ingestion_worker("user_test", queue)
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
@@ -139,6 +141,7 @@ class TestIngestionWorkerExceptionHandling:
                 "source_description": "test",
                 "reference_time": None,
                 "group_id": "user_test",
+                "_actor_user_id": "test-user",
             }
         )
 
@@ -154,7 +157,7 @@ class TestIngestionWorkerExceptionHandling:
             original_timeout = ingest._WORKER_IDLE_TIMEOUT
             ingest._WORKER_IDLE_TIMEOUT = 0.05
             try:
-                await ingest._ingestion_worker("test-user", "user_test", queue)
+                await ingest._ingestion_worker("user_test", queue)
             finally:
                 ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
@@ -262,6 +265,7 @@ class TestWaitForIngestion:
                     "reference_time": None,
                     "group_id": "user_scoped",
                     "_completion": completion,
+                    "_actor_user_id": user_id,
                 }
             )
             completion.register()
@@ -274,6 +278,7 @@ class TestWaitForIngestion:
                 "source_description": "c",
                 "reference_time": None,
                 "group_id": "user_scoped",
+                "_actor_user_id": user_id,
             }
         )
 
@@ -286,9 +291,7 @@ class TestWaitForIngestion:
                 return_value=mock_client,
             ),
         ):
-            worker = asyncio.create_task(
-                ingest._ingestion_worker(user_id, "user_scoped", queue)
-            )
+            worker = asyncio.create_task(ingest._ingestion_worker("user_scoped", queue))
             try:
                 result = await ingest.wait_for_ingestion(completion, 5)
                 assert result is True
@@ -361,6 +364,35 @@ class TestEnqueueConversationTurn:
 
 class TestMemoryGroupQueueIsolation:
     @pytest.mark.asyncio
+    async def test_shared_worker_uses_each_payload_actor(self) -> None:
+        group_id = "org-shared"
+        processed: list[str] = []
+
+        async def process(actor_user_id: str, _group_id: str, _payload: dict) -> None:
+            processed.append(actor_user_id)
+
+        with patch.object(
+            ingest,
+            "_process_ingestion_payload",
+            side_effect=process,
+        ):
+            assert await ingest._enqueue_payload(
+                "admin-user", group_id, {"group_id": group_id}, schedule_dreams=False
+            )
+            assert await ingest._enqueue_payload(
+                "member-user", group_id, {"group_id": group_id}, schedule_dreams=False
+            )
+            state = ingest._get_loop_state()
+            await asyncio.wait_for(state.group_queues[group_id].join(), timeout=1)
+            state.group_workers[group_id].cancel()
+            await asyncio.gather(
+                state.group_workers[group_id],
+                return_exceptions=True,
+            )
+
+        assert processed == ["admin-user", "member-user"]
+
+    @pytest.mark.asyncio
     async def test_same_user_experts_get_distinct_workers(self) -> None:
         first_group = "expert_first"
         second_group = "expert_second"
@@ -397,7 +429,7 @@ class TestMemoryGroupQueueIsolation:
             worker = state.group_workers[group_id]
             await worker
 
-        worker_mock.assert_awaited_once_with("user-1", group_id, queue)
+        worker_mock.assert_awaited_once_with(group_id, queue)
         assert queue.get_nowait()["group_id"] == group_id
 
 
@@ -535,6 +567,8 @@ class TestEnqueueEpisode:
                 group_id="team_team-1",
                 edge_metadata=metadata,
                 completion=completion,
+                organization_id="org-1",
+                team_id="team-1",
             )
 
         assert result is True
@@ -544,7 +578,95 @@ class TestEnqueueEpisode:
         assert payload["group_id"] == "team_team-1"
         assert payload["_edge_metadata"] is metadata
         assert payload["_completion"] is completion
+        assert payload["_resource_scope"] == {
+            "organization_id": "org-1",
+            "team_id": "team-1",
+        }
         assert enqueue_mock.await_args.kwargs["schedule_dreams"] is False
+
+
+class TestSharedIngestionLiveBarrier:
+    @pytest.mark.asyncio
+    async def test_worker_drops_episode_after_access_revocation(self) -> None:
+        client = MagicMock()
+        client.add_episode = AsyncMock()
+        barrier_calls: list[tuple] = []
+
+        @asynccontextmanager
+        async def revoked_barrier(*args):
+            barrier_calls.append(args)
+            yield False
+
+        payload = {
+            "name": "shared",
+            "episode_body": "shared fact",
+            "source": EpisodeType.text,
+            "source_description": "test",
+            "reference_time": datetime.now(timezone.utc),
+            "group_id": "team_team-1",
+            "custom_extraction_instructions": "",
+            "_resource_scope": {
+                "organization_id": "org-1",
+                "team_id": "team-1",
+            },
+        }
+        with (
+            patch.object(
+                ingest, "get_graphiti_client", new=AsyncMock(return_value=client)
+            ),
+            patch.object(ingest, "ensure_indices_once", new=AsyncMock()),
+            patch.object(ingest, "live_resource_lease", new=revoked_barrier),
+        ):
+            await ingest._process_ingestion_payload("user-1", "team_team-1", payload)
+
+        assert barrier_calls == [("user-1", "org-1", "team-1", "create")]
+        client.add_episode.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_worker_downgrades_stale_admin_memory_to_tentative(self) -> None:
+        client = MagicMock()
+        client.add_episode = AsyncMock(return_value=MagicMock())
+
+        @asynccontextmanager
+        async def allowed_lease(*_args):
+            yield True
+
+        payload = {
+            "name": "shared",
+            "episode_body": (
+                '{"content":"shared fact","source_kind":"user_asserted",'
+                '"scope":"real:global","memory_kind":"fact",'
+                '"status":"active"}'
+            ),
+            "source": EpisodeType.json,
+            "source_description": "test",
+            "reference_time": datetime.now(timezone.utc),
+            "group_id": "org_org-1",
+            "custom_extraction_instructions": "",
+            "_edge_metadata": {"status": "active", "scope": "real:global"},
+            "_resource_scope": {
+                "organization_id": "org-1",
+                "team_id": None,
+            },
+        }
+        stamp = AsyncMock()
+        with (
+            patch.object(
+                ingest, "get_graphiti_client", new=AsyncMock(return_value=client)
+            ),
+            patch.object(ingest, "ensure_indices_once", new=AsyncMock()),
+            patch.object(ingest, "live_resource_lease", new=allowed_lease),
+            patch.object(
+                ingest, "hold_buffer_enabled", new=AsyncMock(return_value=True)
+            ),
+            patch.object(ingest, "is_org_admin", new=AsyncMock(return_value=False)),
+            patch.object(ingest, "_stamp_edge_metadata", new=stamp),
+        ):
+            await ingest._process_ingestion_payload("user-1", "org_org-1", payload)
+
+        episode_body = client.add_episode.await_args.kwargs["episode_body"]
+        assert '"status":"tentative"' in episode_body
+        assert stamp.await_args.args[3]["status"] == "tentative"
 
     @pytest.mark.asyncio
     async def test_enqueue_episode_returns_true_on_success(self) -> None:
@@ -737,8 +859,73 @@ class TestDerivedFindingDistillation:
 
 class TestWorkerIdleTimeout:
     @pytest.mark.asyncio
+    async def test_worker_drops_inherited_remote_lease_for_repeated_payloads(
+        self,
+    ) -> None:
+        from backend.data import db_accessors
+
+        user_id = "lease-context-user"
+        group_id = "org_lease-context"
+        client = MagicMock(add_episode=AsyncMock(return_value=MagicMock()))
+        seen_contexts: list[tuple] = []
+
+        @asynccontextmanager
+        async def fresh_lease(*_args, **_kwargs):
+            seen_contexts.append(db_accessors._active_live_resource_leases.get())
+            yield True
+
+        def payload(name: str):
+            return {
+                "name": name,
+                "episode_body": "{}",
+                "source": EpisodeType.text,
+                "source_description": "lease context regression",
+                "reference_time": datetime.now(timezone.utc),
+                "group_id": group_id,
+                "custom_extraction_instructions": "",
+                "_resource_scope": {
+                    "organization_id": "org-1",
+                    "team_id": "team-1",
+                },
+            }
+
+        stale_token = db_accessors._active_live_resource_leases.set(
+            (MagicMock(name="released-outer-lease"),)  # type: ignore[arg-type]
+        )
+        try:
+            with (
+                patch.object(
+                    ingest,
+                    "get_graphiti_client",
+                    new=AsyncMock(return_value=client),
+                ),
+                patch.object(ingest, "ensure_indices_once", new=AsyncMock()),
+                patch.object(ingest, "live_resource_lease", new=fresh_lease),
+                patch.object(
+                    ingest, "hold_buffer_enabled", new=AsyncMock(return_value=False)
+                ),
+            ):
+                assert await ingest._enqueue_payload(
+                    user_id, group_id, payload("first"), schedule_dreams=False
+                )
+                assert await ingest._enqueue_payload(
+                    user_id, group_id, payload("second"), schedule_dreams=False
+                )
+                queue = ingest._get_loop_state().group_queues[group_id]
+                await asyncio.wait_for(queue.join(), timeout=1)
+        finally:
+            db_accessors._active_live_resource_leases.reset(stale_token)
+            state = ingest._get_loop_state()
+            worker = state.group_workers.get(group_id)
+            if worker is not None:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+
+        assert seen_contexts == [(), ()]
+        assert client.add_episode.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_worker_cleans_up_on_idle(self) -> None:
-        user_id = "idle-user"
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
 
         # Pre-populate state so cleanup can remove entries.
@@ -752,7 +939,7 @@ class TestWorkerIdleTimeout:
         original_timeout = ingest._WORKER_IDLE_TIMEOUT
         ingest._WORKER_IDLE_TIMEOUT = 0.05
         try:
-            await ingest._ingestion_worker(user_id, group_id, queue)
+            await ingest._ingestion_worker(group_id, queue)
         finally:
             ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
@@ -780,7 +967,7 @@ class TestWorkerIdleTimeout:
         original_timeout = ingest._WORKER_IDLE_TIMEOUT
         ingest._WORKER_IDLE_TIMEOUT = 0.02
         await state.workers_lock.acquire()
-        worker = asyncio.create_task(ingest._ingestion_worker(user_id, group_id, queue))
+        worker = asyncio.create_task(ingest._ingestion_worker(group_id, queue))
         state.group_queues[group_id] = queue
         state.group_workers[group_id] = worker
         try:
@@ -836,7 +1023,7 @@ class TestWorkerIdleTimeout:
 
         client.add_episode = AsyncMock(side_effect=add_episode)
         await state.workers_lock.acquire()
-        worker = asyncio.create_task(ingest._ingestion_worker(user_id, group_id, queue))
+        worker = asyncio.create_task(ingest._ingestion_worker(group_id, queue))
         state.group_queues[group_id] = queue
         state.group_workers[group_id] = worker
         enqueue_task: asyncio.Task[bool] | None = None

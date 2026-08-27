@@ -13,10 +13,18 @@ for the Briefing's highlights, not a message of its own.
 import logging
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Generic, Literal, Optional, TypeVar, Union
+from typing import Generic, Literal, Optional, Self, TypeVar, Union
+from uuid import uuid4
 
-from prisma.enums import BriefingFrequency, NotificationType
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from prisma.enums import BriefingFrequency, NotificationType, SubmissionStatus
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from backend.util.logging import TruncatedLogger
 
@@ -374,14 +382,60 @@ class BaseEventModel(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
+class NotificationScope(BaseModel):
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_team_scope(self) -> Self:
+        if self.team_id is not None and self.organization_id is None:
+            raise ValueError("Notification team scope requires an organization")
+        return self
+
+
 class NotificationEventModel(BaseEventModel, Generic[NotificationDataType_co]):
-    id: Optional[str] = None
+    id: str = Field(default_factory=lambda: str(uuid4()))
     data: NotificationDataType_co
+    authorization_scopes: list[NotificationScope] = Field(default_factory=list)
+    source_store_listing_version_id: str | None = None
+    expected_store_listing_status: SubmissionStatus | None = None
+    expected_store_listing_reviewed_at: datetime | None = None
 
     @field_validator("type", mode="before")
     @classmethod
     def uppercase_type(cls, v: object) -> object:
         return v.upper() if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def require_resource_authorization(self) -> Self:
+        if (
+            self.type
+            in {
+                NotificationType.ALERT,
+                NotificationType.BRIEFING,
+                NotificationType.VERDICT,
+            }
+            and not self.authorization_scopes
+        ):
+            raise ValueError(
+                f"{self.type.value} notification requires authorization provenance"
+            )
+        if (
+            self.type is NotificationType.VERDICT
+            and self.source_store_listing_version_id is None
+        ):
+            raise ValueError("VERDICT notification requires its reviewed version")
+        if (
+            self.type is NotificationType.VERDICT
+            and len(self.authorization_scopes) != 1
+        ):
+            raise ValueError("VERDICT notification requires one exact source scope")
+        if self.type is NotificationType.VERDICT and (
+            self.expected_store_listing_status is None
+            or self.expected_store_listing_reviewed_at is None
+        ):
+            raise ValueError("VERDICT notification requires its exact review revision")
+        return self
 
 
 class NotificationResult(BaseModel):

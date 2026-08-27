@@ -32,6 +32,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.data.db_accessors import live_resource_lease
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -184,7 +185,13 @@ async def run_copilot_turn_via_queue(
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(session_id=session_id, message=message)
+        state = await queue_user_message(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            message=message,
+        )
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
@@ -213,17 +220,28 @@ async def run_copilot_turn_via_queue(
     # out unbounded copilot turns past the user's cap.
     turn_id = str(uuid.uuid4())
     try:
-        await schedule_turn(
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=message,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            permissions=permissions,
-        )
+        async with live_resource_lease(
+            user_id, session.organization_id, session.team_id, "execute"
+        ) as allowed:
+            if not allowed:
+                raise RuntimeError("workspace_access_revoked")
+            action = schedule_turn(
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                message=message,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+                permissions=permissions,
+            )
+            if hasattr(allowed, "run"):
+                await allowed.run(action)
+            else:
+                await action
     except ConcurrentTurnLimitError:
         # Sub-AutoPilot / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a

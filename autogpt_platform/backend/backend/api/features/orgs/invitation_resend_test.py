@@ -1,6 +1,7 @@
 """HTTP-level tests for the org invitation resend endpoint."""
 
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -63,15 +64,23 @@ class TestInvitationResend:
         self.prisma.team.find_many = AsyncMock(return_value=[])
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
 
-    def _expect_successful_resend(self, invitation, refreshed):
-        """Wire the two find_unique calls a successful resend makes.
+        @asynccontextmanager
+        async def mocked_transaction():
+            yield self.prisma
 
-        The handler reads the invitation by id, compare-and-swaps via
-        update_many, then re-reads the row by id (not by the minted token —
-        see test_resend_reads_the_row_back_by_id).
+        mocker.patch(
+            "backend.api.features.orgs.invitation_routes.transaction",
+            mocked_transaction,
+        )
+
+    def _expect_successful_resend(self, invitation, refreshed):
+        """Wire the three find_unique calls a successful resend makes.
+
+        The handler pre-reads by id, rechecks under its live authorization
+        locks, compare-and-swaps via update_many, then reads the row back by id.
         """
         self.prisma.orginvitation.find_unique = AsyncMock(
-            side_effect=[invitation, refreshed]
+            side_effect=[invitation, invitation, refreshed]
         )
         self.prisma.orginvitation.update_many = AsyncMock(return_value=1)
 
@@ -116,7 +125,6 @@ class TestInvitationResend:
         assert resp.status_code == 200
         update_data = self.prisma.orginvitation.update_many.call_args[1]["data"]
         assert update_data["token"] != "tok-old"
-        assert update_data["tokenHash"] is None
         assert update_data["expiresAt"] > datetime.now(timezone.utc) + timedelta(
             days=INVITATION_TTL_DAYS - 1
         )
@@ -152,7 +160,7 @@ class TestInvitationResend:
 
         self._client(_owner_ctx()).post(f"/orgs/{ORG_ID}/invitations/inv-1/resend")
 
-        read_back = self.prisma.orginvitation.find_unique.call_args_list[1][1]["where"]
+        read_back = self.prisma.orginvitation.find_unique.call_args_list[2][1]["where"]
         assert read_back == {"id": "inv-1"}
 
     def test_resend_superseded_by_concurrent_resend_still_succeeds(self):
@@ -188,7 +196,7 @@ class TestInvitationResend:
         invitation = self._make_invitation()
         accepted = self._make_invitation(acceptedAt=FIXED_NOW)
         self.prisma.orginvitation.find_unique = AsyncMock(
-            side_effect=[invitation, accepted]
+            side_effect=[invitation, invitation, accepted]
         )
         # Zero rows matched: the CAS where-clause rejected the write.
         self.prisma.orginvitation.update_many = AsyncMock(return_value=0)

@@ -16,10 +16,12 @@ export const CreateSurface = {
   ScheduleAgent: "schedule-agent",
   ApiKey: "api-key",
   MarketplaceAdd: "marketplace-add",
+  Copilot: "copilot",
 } as const;
 
 // Stored marker for "org-home was the last-used choice on this surface".
 const ORG_HOME_STORED = "org-home";
+const CONTEXT_LOADING_TEAM_ID = "__org_context_loading__";
 
 function readMap(): Record<string, string> {
   const raw = storage.get(Key.CREATE_SURFACE_TEAMS);
@@ -34,17 +36,25 @@ function readMap(): Record<string, string> {
 
 // Last team the user picked on a given create surface (null == org-home, or
 // never used). Callers seed the picker's default from this.
-export function getLastUsedTeam(surfaceKey: string): string | null {
-  const value = readMap()[surfaceKey];
+function storageKey(orgId: string, surfaceKey: string) {
+  return `${orgId}:${surfaceKey}`;
+}
+
+export function getLastUsedTeam(
+  orgId: string,
+  surfaceKey: string,
+): string | null {
+  const value = readMap()[storageKey(orgId, surfaceKey)];
   return value && value !== ORG_HOME_STORED ? value : null;
 }
 
 export function setLastUsedTeam(
+  orgId: string,
   surfaceKey: string,
   teamId: string | null,
 ): void {
   const map = readMap();
-  map[surfaceKey] = teamId ?? ORG_HOME_STORED;
+  map[storageKey(orgId, surfaceKey)] = teamId ?? ORG_HOME_STORED;
   storage.set(Key.CREATE_SURFACE_TEAMS, JSON.stringify(map));
 }
 
@@ -58,8 +68,15 @@ export const ORG_HOME_TEAM_SENTINEL = "";
 // chosen team via the X-Team-Id header. For org-home (null) it sends the
 // org-home sentinel so the mutator suppresses the active-team context rather
 // than silently inheriting the nav team.
-export function getTeamRequestInit(teamId: string | null): RequestInit {
+export function getTeamRequestInit(
+  teamId: string | null,
+  isReady = true,
+): RequestInit {
   return {
-    headers: { [TEAM_HEADER_NAME]: teamId ?? ORG_HOME_TEAM_SENTINEL },
+    headers: {
+      [TEAM_HEADER_NAME]: isReady
+        ? (teamId ?? ORG_HOME_TEAM_SENTINEL)
+        : CONTEXT_LOADING_TEAM_ID,
+    },
   };
 }

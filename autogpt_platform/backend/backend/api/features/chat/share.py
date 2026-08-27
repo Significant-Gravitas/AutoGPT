@@ -12,7 +12,8 @@ Three groups of routes:
 """
 
 import logging
-from typing import Annotated
+from contextlib import asynccontextmanager
+from typing import Annotated, AsyncIterator
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Body, HTTPException, Path, Response, Security
@@ -20,15 +21,65 @@ from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT
 
 from backend.api.features.workspace.routes import create_file_download_response
+from backend.copilot.model import get_chat_session_metadata
 from backend.copilot.sharing import db as share_db
 from backend.copilot.sharing.models import SharedChatMessagesPage, SharedChatSession
+from backend.data.db_accessors import (
+    LiveResourceAccessRevoked,
+    require_exact_chat_session_scope,
+)
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
-from backend.data.workspace import get_workspace_file_by_id
+from backend.data.tenancy import live_resource_permission_barrier
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+_view_resource_context = auth.requires_resource_permission(
+    auth.OrgAction.VIEW_RESOURCES,
+    auth.TeamAction.VIEW_AGENTS,
+)
+_create_resource_context = auth.requires_resource_permission(
+    auth.OrgAction.CREATE_RESOURCES,
+    auth.TeamAction.CREATE_AGENTS,
+)
+
+
+@asynccontextmanager
+async def _live_chat_share_action(
+    session_id: str,
+    user_id: str,
+    ctx: auth.RequestContext,
+    org_action: auth.OrgAction,
+    team_action: auth.TeamAction,
+) -> AsyncIterator[tuple[str | None, str | None]]:
+    session = await get_chat_session_metadata(session_id, user_id)
+    if (
+        session is None
+        or session.organization_id != ctx.org_id
+        or (ctx.team_id is not None and session.team_id != ctx.team_id)
+    ):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    try:
+        async with live_resource_permission_barrier(
+            user_id,
+            session.organization_id,
+            session.team_id,
+            org_action,
+            team_action,
+        ) as allowed:
+            if not allowed:
+                raise LiveResourceAccessRevoked("workspace_access_revoked")
+            await require_exact_chat_session_scope(
+                session_id,
+                user_id,
+                session.organization_id,
+                session.team_id,
+            )
+            yield session.organization_id, session.team_id
+    except LiveResourceAccessRevoked as exc:
+        raise HTTPException(status_code=404, detail="Chat session not found") from exc
 
 
 # --------------------------------------------------------------------------
@@ -79,13 +130,26 @@ class ShareResponse(BaseModel):
 async def get_chat_share_state(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(_view_resource_context)],
 ) -> ChatShareStateResponse:
     """Return the chat's current share state.
 
     The share modal calls this on open so it can render in the right
     mode (share-vs-revoke) and pre-select the auto-share toggle.
     """
-    state = await share_db.get_chat_share_state(session_id=session_id, user_id=user_id)
+    async with _live_chat_share_action(
+        session_id,
+        user_id,
+        ctx,
+        auth.OrgAction.VIEW_RESOURCES,
+        auth.TeamAction.VIEW_AGENTS,
+    ) as (organization_id, team_id):
+        state = await share_db.get_chat_share_state(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
     return ChatShareStateResponse(
         is_shared=state.is_shared,
         share_token=state.share_token,
@@ -106,6 +170,7 @@ async def get_chat_share_state(
 async def enable_chat_sharing(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(_create_resource_context)],
     body: EnableShareRequest = Body(default_factory=EnableShareRequest),
 ) -> ShareResponse:
     """Enable sharing for a chat session.
@@ -128,11 +193,20 @@ async def enable_chat_sharing(
         )
 
     try:
-        share_token = await share_db.enable_chat_session_share(
-            session_id=session_id,
-            user_id=user_id,
-            auto_share_executions=body.auto_share_executions,
-        )
+        async with _live_chat_share_action(
+            session_id,
+            user_id,
+            ctx,
+            auth.OrgAction.CREATE_RESOURCES,
+            auth.TeamAction.CREATE_AGENTS,
+        ) as (organization_id, team_id):
+            share_token = await share_db.enable_chat_session_share(
+                session_id=session_id,
+                user_id=user_id,
+                auto_share_executions=body.auto_share_executions,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -149,6 +223,7 @@ async def enable_chat_sharing(
 async def disable_chat_sharing(
     session_id: Annotated[str, Path],
     user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(_create_resource_context)],
 ) -> None:
     """Revoke sharing for a chat session.
 
@@ -157,9 +232,19 @@ async def disable_chat_sharing(
     survive — see :func:`backend.copilot.sharing.db.disable_chat_session_share`.
     """
     try:
-        await share_db.disable_chat_session_share(
-            session_id=session_id, user_id=user_id
-        )
+        async with _live_chat_share_action(
+            session_id,
+            user_id,
+            ctx,
+            auth.OrgAction.CREATE_RESOURCES,
+            auth.TeamAction.CREATE_AGENTS,
+        ) as (organization_id, team_id):
+            await share_db.disable_chat_session_share(
+                session_id=session_id,
+                user_id=user_id,
+                organization_id=organization_id,
+                team_id=team_id,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -230,10 +315,7 @@ async def download_shared_chat_file(
     Returns uniform 404 for every failure mode to prevent enumeration —
     indistinguishable from "unknown token" or "wrong file id".
     """
-    session_id = await share_db.get_shared_chat_file(share_token, file_id)
-    if not session_id:
-        raise HTTPException(status_code=404, detail="Not found")
-    file = await get_workspace_file_by_id(file_id)
-    if not file:
-        raise HTTPException(status_code=404, detail="Not found")
-    return await create_file_download_response(file, inline=True)
+    async with share_db.shared_chat_file_access(share_token, file_id) as file:
+        if file is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        return await create_file_download_response(file, inline=True)

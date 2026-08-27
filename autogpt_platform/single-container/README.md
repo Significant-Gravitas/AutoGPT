@@ -69,6 +69,11 @@ The FalkorDB service always runs, while Graphiti memory is enabled by the
 image's default feature configuration; memory extraction also needs a
 configured chat model and embedding provider.
 
+The repository's bake target compiles the organization, expert-team, memory,
+artifact/workspace, and chat-sharing surfaces into the frontend. Their
+`NEXT_PUBLIC_*` switches are build-time values and cannot be changed by adding
+runtime variables to an existing image.
+
 The image supports `linux/amd64` and `linux/arm64`. Test installations used
 about 5–6 GiB of memory during startup and steady-state health checks, though
 actual usage depends on enabled services and workloads.

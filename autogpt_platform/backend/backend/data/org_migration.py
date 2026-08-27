@@ -712,6 +712,19 @@ async def assign_resources_to_teams(
         renew_lock=renew_lock,
     )
 
+    results["Expert"] = await _assign_team_tenancy(
+        """
+        UPDATE "Expert" t
+        SET "organizationId" = o."id", "teamId" = w."id"
+        FROM "OrgMember" om
+        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
+        WHERE t."ownerUserId" = om."userId" AND om."isOwner" = true
+          AND t."isTemplate" = false AND t."organizationId" IS NULL
+        """,
+        renew_lock=renew_lock,
+    )
+
     results["LibraryAgent"] = await _assign_team_tenancy(
         """
         UPDATE "LibraryAgent" t
@@ -799,12 +812,17 @@ async def assign_resources_to_teams(
     results["StoreListingVersion"] = await _assign_org_tenancy(
         """
         UPDATE "StoreListingVersion" slv
-        SET "organizationId" = o."id"
-        FROM "StoreListingVersion" v
-        JOIN "StoreListing" sl ON sl."id" = v."storeListingId"
-        JOIN "OrgMember" om ON om."userId" = sl."owningUserId" AND om."isOwner" = true
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
-        WHERE slv."id" = v."id" AND slv."organizationId" IS NULL
+        SET "organizationId" = o."id", "teamId" = graph."teamId"
+        FROM "AgentGraph" graph
+        JOIN "Organization" o ON o."id" = graph."organizationId" AND o."deletedAt" IS NULL,
+             "StoreListing" listing
+        WHERE graph."id" = slv."agentGraphId"
+          AND graph."version" = slv."agentGraphVersion"
+          AND listing."id" = slv."storeListingId"
+          AND listing."owningOrgId" = graph."organizationId"
+          AND graph."organizationId" IS NOT NULL
+          AND graph."teamId" IS NOT NULL
+          AND (slv."organizationId" IS NULL OR slv."teamId" IS NULL)
         """,
         renew_lock=renew_lock,
     )
@@ -1047,9 +1065,9 @@ async def run_migration() -> None:
         await renew_lock()
         await migrate_credit_transactions()
         await renew_lock()
-        resource_counts = await assign_resources_to_teams(renew_lock=renew_lock)
-        await renew_lock()
         await migrate_store_listings()
+        await renew_lock()
+        resource_counts = await assign_resources_to_teams(renew_lock=renew_lock)
         await renew_lock()
         await create_store_listing_aliases()
         await renew_lock()

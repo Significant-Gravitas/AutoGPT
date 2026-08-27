@@ -4,8 +4,11 @@ import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security, status
 from fastapi.responses import Response
 
+from backend.api.live_auth import live_dependency, requires_live_resource_permission
+
 from .. import db as library_db
 from .. import model as library_model
+from .live import require_live_library_create, require_live_library_delete
 
 router = APIRouter(
     prefix="/folders",
@@ -25,6 +28,10 @@ router = APIRouter(
 )
 async def list_folders(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
     parent_id: Optional[str] = Query(
         None,
         description="Filter by parent folder ID. If not provided, returns root-level folders.",
@@ -49,6 +56,8 @@ async def list_folders(
         user_id=user_id,
         parent_id=parent_id,
         include_relations=include_relations,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return library_model.FolderListResponse(
         folders=folders,
@@ -72,6 +81,10 @@ async def list_folders(
 )
 async def get_folder_tree(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> library_model.FolderTreeResponse:
     """
     Get the full folder tree for the authenticated user.
@@ -82,7 +95,11 @@ async def get_folder_tree(
     Returns:
         A FolderTreeResponse containing the nested folder structure.
     """
-    tree = await library_db.get_folder_tree(user_id=user_id)
+    tree = await library_db.get_folder_tree(
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
+    )
     return library_model.FolderTreeResponse(tree=tree)
 
 
@@ -99,6 +116,10 @@ async def get_folder_tree(
 async def get_folder(
     folder_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = requires_live_resource_permission(
+        autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+        autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+    ),
 ) -> library_model.LibraryFolder:
     """
     Get a specific folder.
@@ -110,13 +131,19 @@ async def get_folder(
     Returns:
         The requested LibraryFolder.
     """
-    return await library_db.get_folder(folder_id=folder_id, user_id=user_id)
+    return await library_db.get_folder(
+        folder_id=folder_id,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
+    )
 
 
 @router.post(
     "",
     summary="Create Folder",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[live_dependency(require_live_library_create)],
     response_model=library_model.LibraryFolder,
     responses={
         201: {"description": "Folder created successfully"},
@@ -130,7 +157,10 @@ async def create_folder(
     payload: library_model.FolderCreateRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
     ),
 ) -> library_model.LibraryFolder:
     """
@@ -143,9 +173,6 @@ async def create_folder(
     Returns:
         The created LibraryFolder.
     """
-    # Stamp the new folder with the caller's active tenancy so an explicit
-    # X-Team-Id lands it in that team. ctx.team_id is already validated as an
-    # active membership by get_request_context (invalid -> None).
     return await library_db.create_folder(
         user_id=user_id,
         name=payload.name,
@@ -160,6 +187,7 @@ async def create_folder(
 @router.patch(
     "/{folder_id}",
     summary="Update Folder",
+    dependencies=[live_dependency(require_live_library_create)],
     response_model=library_model.LibraryFolder,
     responses={
         200: {"description": "Folder updated successfully"},
@@ -173,6 +201,12 @@ async def update_folder(
     folder_id: str,
     payload: library_model.FolderUpdateRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> library_model.LibraryFolder:
     """
     Update a folder's properties.
@@ -191,12 +225,15 @@ async def update_folder(
         name=payload.name,
         icon=payload.icon,
         color=payload.color,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
 @router.post(
     "/{folder_id}/move",
     summary="Move Folder",
+    dependencies=[live_dependency(require_live_library_create)],
     response_model=library_model.LibraryFolder,
     responses={
         200: {"description": "Folder moved successfully"},
@@ -210,6 +247,12 @@ async def move_folder(
     folder_id: str,
     payload: library_model.FolderMoveRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> library_model.LibraryFolder:
     """
     Move a folder to a new parent.
@@ -226,6 +269,8 @@ async def move_folder(
         folder_id=folder_id,
         user_id=user_id,
         target_parent_id=payload.target_parent_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
 
@@ -233,6 +278,7 @@ async def move_folder(
     "/{folder_id}",
     summary="Delete Folder",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[live_dependency(require_live_library_delete)],
     responses={
         204: {"description": "Folder deleted successfully"},
         404: {"description": "Folder not found"},
@@ -242,6 +288,12 @@ async def move_folder(
 async def delete_folder(
     folder_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.DELETE_AGENTS,
+        )
+    ),
 ) -> Response:
     """
     Soft-delete a folder and all its contents.
@@ -257,6 +309,8 @@ async def delete_folder(
         folder_id=folder_id,
         user_id=user_id,
         soft_delete=True,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -267,6 +321,7 @@ async def delete_folder(
 @router.post(
     "/agents/bulk-move",
     summary="Bulk Move Agents",
+    dependencies=[live_dependency(require_live_library_create)],
     response_model=list[library_model.LibraryAgent],
     responses={
         200: {"description": "Agents moved successfully"},
@@ -277,6 +332,12 @@ async def delete_folder(
 async def bulk_move_agents(
     payload: library_model.BulkMoveAgentsRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> list[library_model.LibraryAgent]:
     """
     Move multiple agents to a folder.
@@ -292,4 +353,6 @@ async def bulk_move_agents(
         agent_ids=payload.agent_ids,
         folder_id=payload.folder_id,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )

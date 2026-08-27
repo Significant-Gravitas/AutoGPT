@@ -96,6 +96,10 @@ export interface ChatContainerProps {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports; the thread header clears them. */
   hasFloatingControls?: boolean;
+  createTeamId: string | null;
+  onCreateTeamChange: (teamId: string | null) => void;
+  isTeamContextReady: boolean;
+  canSelectCreateTeam: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -131,6 +135,10 @@ export const ChatContainer = ({
   isAdoptingExpertSession,
   isKickoffStarting,
   hasFloatingControls,
+  createTeamId,
+  onCreateTeamChange,
+  isTeamContextReady,
+  canSelectCreateTeam,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
@@ -365,6 +373,10 @@ export const ChatContainer = ({
                 isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
                 isKickoffStarting={isKickoffStarting}
                 expertName={expertIdentity?.name}
+                createTeamId={createTeamId}
+                onCreateTeamChange={onCreateTeamChange}
+                isTeamContextReady={isTeamContextReady}
+                canSelectCreateTeam={canSelectCreateTeam}
               />
             )}
           </div>

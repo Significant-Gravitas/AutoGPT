@@ -1,12 +1,14 @@
 """Tests for BashExecTool — E2B path with token injection."""
 
+import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from e2b import CommandExitException
 
 from ._test_data import make_session
-from .bash_exec import BashExecTool
+from .bash_exec import MAX_BASH_TIMEOUT_SECONDS, BashExecTool
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -23,8 +25,21 @@ def _make_sandbox(exit_code: int = 0, stdout: str = "", stderr: str = "") -> Mag
     result.stderr = stderr
 
     sandbox = MagicMock()
-    sandbox.commands.run = AsyncMock(return_value=result)
+    handle = MagicMock()
+    handle.wait = AsyncMock(return_value=result)
+    handle.kill = AsyncMock(return_value=True)
+    sandbox.command_handle = handle
+    sandbox.commands.run = AsyncMock(return_value=handle)
+    sandbox.kill = AsyncMock(return_value=True)
     return sandbox
+
+
+def _lease_env(env: dict[str, str]):
+    @asynccontextmanager
+    async def lease():
+        yield env
+
+    return lease()
 
 
 class TestBashExecE2BTokenInjection:
@@ -38,8 +53,8 @@ class TestBashExecE2BTokenInjection:
 
         with (
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value=env_vars),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env(env_vars),
             ) as mock_get_env,
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -54,11 +69,89 @@ class TestBashExecE2BTokenInjection:
                 user_id=_USER,
             )
 
-        mock_get_env.assert_awaited_once_with(_USER)
+        mock_get_env.assert_called_once()
+        assert mock_get_env.call_args.args[0] == _USER
         call_kwargs = sandbox.commands.run.call_args[1]
+        assert call_kwargs["background"] is True
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"
         assert isinstance(result, BashExecResponse)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_active_command_is_cancelled_when_credential_lease_is_lost(self):
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+        killed = asyncio.Event()
+        released = asyncio.Event()
+        failed = asyncio.Event()
+        lease = MagicMock()
+
+        async def wait_for_failure() -> None:
+            await failed.wait()
+            raise RuntimeError("credential lease heartbeat failed")
+
+        lease.wait_for_failure = AsyncMock(side_effect=wait_for_failure)
+        lease.validate = AsyncMock()
+
+        @asynccontextmanager
+        async def leased(_user_id: str, lease_sink: list):
+            lease_sink.append(lease)
+            try:
+                yield {"GH_TOKEN": "gh-secret"}
+            finally:
+                assert killed.is_set()
+                released.set()
+
+        sandbox = MagicMock()
+
+        async def paused_wait():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        handle = MagicMock()
+        handle.wait = AsyncMock(side_effect=paused_wait)
+
+        async def kill_command():
+            killed.set()
+            return True
+
+        handle.kill = AsyncMock(side_effect=kill_command)
+        sandbox.commands.run = AsyncMock(return_value=handle)
+        sandbox.kill = AsyncMock(return_value=True)
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=leased,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            execution = asyncio.create_task(
+                tool._execute_on_e2b(
+                    sandbox=sandbox,
+                    command="sleep 120",
+                    timeout=120,
+                    session_id=session.session_id,
+                    user_id=_USER,
+                )
+            )
+            await started.wait()
+            failed.set()
+            result = await asyncio.wait_for(execution, timeout=1)
+
+        assert isinstance(result, ErrorResponse)
+        assert cancelled.is_set()
+        assert killed.is_set()
+        assert released.is_set()
+        handle.kill.assert_awaited_once()
+        sandbox.kill.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_git_identity_set_from_github_profile(self):
@@ -75,8 +168,8 @@ class TestBashExecE2BTokenInjection:
 
         with (
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env({}),
             ),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -106,8 +199,8 @@ class TestBashExecE2BTokenInjection:
 
         with (
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env({}),
             ),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -132,8 +225,8 @@ class TestBashExecE2BTokenInjection:
         tool = _make_tool()
         session = make_session(user_id=_USER)
 
-        sandbox = MagicMock()
-        sandbox.commands.run = AsyncMock(
+        sandbox = _make_sandbox()
+        sandbox.command_handle.wait = AsyncMock(
             side_effect=CommandExitException(
                 stdout="not logged in gh-secret",
                 stderr="oops gh-secret",
@@ -144,8 +237,10 @@ class TestBashExecE2BTokenInjection:
 
         with (
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={"GH_TOKEN": "gh-secret"}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env(
+                    {"GH_TOKEN": "gh-secret"}
+                ),
             ),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -169,15 +264,14 @@ class TestBashExecE2BTokenInjection:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_token_injection_when_user_id_is_none(self):
-        """When user_id is None, get_integration_env_vars must NOT be called."""
+        """When user_id is None, integration credentials must not be acquired."""
         tool = _make_tool()
         session = make_session(user_id=_USER)
         sandbox = _make_sandbox(stdout="ok")
 
         with (
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={"GH_TOKEN": "should-not-appear"}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
             ) as mock_get_env,
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -250,8 +344,8 @@ class TestBashExecSdkToolResultRedirect:
                 return_value=sandbox,
             ),
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env({}),
             ),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
@@ -266,6 +360,27 @@ class TestBashExecSdkToolResultRedirect:
             )
         assert isinstance(result, BashExecResponse)
         sandbox.commands.run.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_timeout_above_lease_window_is_rejected_before_dispatch():
+    tool = _make_tool()
+    session = make_session(user_id=_USER)
+    sandbox = _make_sandbox(stdout="never")
+    with patch(
+        "backend.copilot.tools.bash_exec.get_current_sandbox",
+        return_value=sandbox,
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            command="sleep 9999",
+            timeout=MAX_BASH_TIMEOUT_SECONDS + 1,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_timeout"
+    sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_redirect_on_relative_tool_outputs_path(self):
@@ -297,8 +412,8 @@ class TestBashExecSdkToolResultRedirect:
                 return_value=sandbox,
             ),
             patch(
-                "backend.copilot.tools.bash_exec.get_integration_env_vars",
-                new=AsyncMock(return_value={}),
+                "backend.copilot.tools.bash_exec.leased_integration_env_vars",
+                side_effect=lambda _user_id, _lease_sink=None: _lease_env({}),
             ),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",

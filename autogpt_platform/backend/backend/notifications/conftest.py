@@ -67,11 +67,18 @@ def make_db_client(**overrides) -> SimpleNamespace:
             return_value=MaturedAlertPage(user_ids=[], exhausted=True)
         ),
         get_pending_alert_conditions=AsyncMock(return_value=[]),
+        get_pending_alert_condition_scopes=AsyncMock(return_value=[]),
+        get_briefing_alert_condition_scopes=AsyncMock(return_value=[]),
+        resolve_alert_conditions_for_scopes=AsyncMock(),
         count_alerts_sent_since=AsyncMock(return_value=0),
-        mark_alert_conditions_sent=AsyncMock(),
+        finalize_alert_delivery=AsyncMock(),
+        finalize_briefing_delivery=AsyncMock(),
+        get_alert_condition_source_graph_ids=AsyncMock(return_value=[]),
+        alert_condition_sources_are_live=AsyncMock(return_value=True),
+        get_stale_alert_condition_ids=AsyncMock(return_value=[]),
+        resolve_alert_conditions_by_ids=AsyncMock(),
         mark_alert_conditions_deferred=AsyncMock(),
         get_briefing_alert_conditions=AsyncMock(return_value=[]),
-        mark_alert_conditions_briefed=AsyncMock(),
         raise_alert_condition=AsyncMock(),
         resolve_alert_condition=AsyncMock(return_value=True),
         # Briefing assembly
@@ -79,9 +86,9 @@ def make_db_client(**overrides) -> SimpleNamespace:
         get_top_scored_runs=AsyncMock(return_value=[]),
         count_active_agents=AsyncMock(return_value=0),
         get_briefing_credit_balance=AsyncMock(return_value=0.0),
+        get_briefing_resource_scopes=AsyncMock(return_value=[]),
         get_briefing_candidates=AsyncMock(return_value=[]),
         get_briefing_candidate=AsyncMock(return_value=None),
-        set_last_briefing_at=AsyncMock(),
         get_graph_execution=AsyncMock(return_value=None),
     )
     for name, value in overrides.items():

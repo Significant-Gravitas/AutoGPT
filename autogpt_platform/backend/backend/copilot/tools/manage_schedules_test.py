@@ -164,7 +164,7 @@ async def test_list_schedules_empty(list_tool, session):
 
 @pytest.mark.asyncio
 async def test_list_schedules_by_library_agent(list_tool, session):
-    mock_agent = MagicMock(graph_id="graph-42")
+    mock_agent = MagicMock(graph_id="graph-42", organization_id=None, team_id=None)
     mock_client = AsyncMock()
     mock_client.get_execution_schedules = AsyncMock(return_value=[])
 
@@ -187,7 +187,10 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     assert isinstance(result, ScheduleListResponse)
     mock_client.get_execution_schedules.assert_called_once_with(
-        graph_id="graph-42", user_id=_USER
+        graph_id="graph-42",
+        user_id=_USER,
+        organization_id=None,
+        team_ids=[],
     )
 
 
@@ -271,7 +274,10 @@ async def test_delete_schedule_success(delete_tool, session):
     assert isinstance(result, ScheduleDeletedResponse)
     assert result.schedule_id == "sched-1"
     mock_client.delete_schedule.assert_called_once_with(
-        schedule_id="sched-1", user_id=_USER
+        schedule_id="sched-1",
+        user_id=_USER,
+        organization_id=None,
+        team_ids=[],
     )
 
 
@@ -373,5 +379,8 @@ async def test_delete_schedule_allows_same_expert_job(delete_tool):
 
     assert isinstance(result, ScheduleDeletedResponse)
     mock_client.delete_schedule.assert_awaited_once_with(
-        schedule_id="expert-job", user_id=_USER
+        schedule_id="expert-job",
+        user_id=_USER,
+        organization_id=None,
+        team_ids=[],
     )

@@ -193,7 +193,7 @@ class TestRunAgentToolSessionDryRun:
 
         with (
             patch("backend.copilot.tools.run_agent.graph_db"),
-            patch("backend.copilot.tools.run_agent.library_db"),
+            patch("backend.copilot.tools.run_agent.library_db") as mock_library_db,
             patch(
                 "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
                 return_value=(mock_graph, None),
@@ -212,7 +212,14 @@ class TestRunAgentToolSessionDryRun:
             ),
             patch("backend.copilot.tools.run_agent.execution_utils") as mock_exec_utils,
             patch("backend.copilot.tools.run_agent.track_agent_run_success"),
+            patch(
+                "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+                new=AsyncMock(),
+            ),
         ):
+            mock_library_db.return_value.get_library_agent_by_graph_id = AsyncMock(
+                return_value=None
+            )
             mock_exec_utils.add_graph_execution = AsyncMock(return_value=mock_execution)
 
             await tool._execute(

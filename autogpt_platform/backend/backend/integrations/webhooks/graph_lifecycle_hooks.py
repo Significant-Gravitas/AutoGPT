@@ -8,6 +8,7 @@ from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from . import get_webhook_manager, supports_webhooks
+from .utils import prune_webhook_with_credential_lease
 
 if TYPE_CHECKING:
     from backend.data.graph import BaseGraph, GraphModel, Node, NodeModel
@@ -276,9 +277,10 @@ async def on_node_deactivate(
             f"Pruning{' and deregistering' if credentials else ''} "
             f"webhook #{webhook_id}"
         )
-        await webhooks_manager.prune_webhook_if_dangling(
-            user_id, webhook_id, credentials
-        )
+        if webhook.credentials_id:
+            await prune_webhook_with_credential_lease(user_id, webhook)
+        else:
+            await webhooks_manager.prune_webhook_if_dangling(user_id, webhook_id, None)
         if (
             cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials

@@ -6,6 +6,7 @@ from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import (
@@ -95,6 +96,10 @@ class CreateFolderTool(BaseTool):
         return True
 
     @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
+    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
@@ -148,6 +153,8 @@ class CreateFolderTool(BaseTool):
                 parent_id=parent_id,
                 icon=icon,
                 color=color,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
         except Exception as e:
             return ErrorResponse(
@@ -183,6 +190,10 @@ class ListFoldersTool(BaseTool):
         return True
 
     @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
+
+    @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
@@ -214,11 +225,17 @@ class ListFoldersTool(BaseTool):
         try:
             if parent_id:
                 folders = await library_db().list_folders(
-                    user_id=user_id, parent_id=parent_id
+                    user_id=user_id,
+                    parent_id=parent_id,
+                    organization_id=session.organization_id,
+                    team_id_restriction=session.team_id,
                 )
                 raw_map = (
                     await library_db().get_folder_agents_map(
-                        user_id, [f.id for f in folders]
+                        user_id,
+                        [f.id for f in folders],
+                        session.organization_id,
+                        session.team_id,
                     )
                     if include_agents
                     else None
@@ -234,15 +251,26 @@ class ListFoldersTool(BaseTool):
                     session_id=session_id,
                 )
             else:
-                tree = await library_db().get_folder_tree(user_id=user_id)
+                tree = await library_db().get_folder_tree(
+                    user_id=user_id,
+                    organization_id=session.organization_id,
+                    team_id_restriction=session.team_id,
+                )
                 all_ids = collect_tree_ids(tree)
                 agents_map = None
                 root_agents = None
                 if include_agents:
-                    raw_map = await library_db().get_folder_agents_map(user_id, all_ids)
+                    raw_map = await library_db().get_folder_agents_map(
+                        user_id,
+                        all_ids,
+                        session.organization_id,
+                        session.team_id,
+                    )
                     agents_map = _to_agent_summaries_map(raw_map)
                     root_agents = _to_agent_summaries(
-                        await library_db().get_root_agent_summaries(user_id)
+                        await library_db().get_root_agent_summaries(
+                            user_id, session.organization_id, session.team_id
+                        )
                     )
                 return FolderListResponse(
                     message=f"Found {len(all_ids)} folder(s) in your library.",
@@ -273,6 +301,10 @@ class UpdateFolderTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -328,6 +360,8 @@ class UpdateFolderTool(BaseTool):
                 name=name,
                 icon=icon,
                 color=color,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
         except Exception as e:
             return ErrorResponse(
@@ -357,6 +391,10 @@ class MoveFolderTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -400,6 +438,8 @@ class MoveFolderTool(BaseTool):
                 folder_id=folder_id,
                 user_id=user_id,
                 target_parent_id=target_parent_id,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
         except Exception as e:
             return ErrorResponse(
@@ -431,6 +471,10 @@ class DeleteFolderTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "delete"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -469,6 +513,8 @@ class DeleteFolderTool(BaseTool):
                 folder_id=folder_id,
                 user_id=user_id,
                 soft_delete=True,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
         except Exception as e:
             return ErrorResponse(
@@ -498,6 +544,10 @@ class MoveAgentsToFolderTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -543,6 +593,8 @@ class MoveAgentsToFolderTool(BaseTool):
                 agent_ids=agent_ids,
                 folder_id=folder_id,
                 user_id=user_id,
+                organization_id=session.organization_id,
+                team_id_restriction=session.team_id,
             )
         except Exception as e:
             return ErrorResponse(

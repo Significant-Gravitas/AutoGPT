@@ -95,7 +95,9 @@ export function AddToLibraryButton({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const teams = useOrgTeamStore((s) => s.teams);
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const isLoaded = useOrgTeamStore((s) => s.isLoaded);
+  const currentTeams = teams.filter((team) => team.orgId === activeOrgID);
   const [justAdded, setJustAdded] = useState(false);
 
   // Only fetch library list if isInLibrary wasn't provided by parent
@@ -148,7 +150,9 @@ export function AddToLibraryButton({
       // Only remember this target once the add actually succeeds, so a failed
       // request can't leave the split button defaulting to a team/Organization
       // that never received the agent.
-      setLastUsedTeam(CreateSurface.MarketplaceAdd, teamId);
+      if (activeOrgID) {
+        setLastUsedTeam(activeOrgID, CreateSurface.MarketplaceAdd, teamId);
+      }
       setJustAdded(true);
 
       await queryClient.invalidateQueries({
@@ -208,7 +212,7 @@ export function AddToLibraryButton({
   // While the org/team store is still loading we render the same control but
   // disable it, so a team member can't click the solo button during the async
   // load window and accidentally add to org context instead of a team.
-  if (!isLoaded || teams.length === 0) {
+  if (!isLoaded || currentTeams.length === 0) {
     return (
       <Button
         variant="ghost"
@@ -226,14 +230,16 @@ export function AddToLibraryButton({
   }
 
   // Primary target = last-used, clamped to a still-valid team (else Organization).
-  const lastUsedId = getLastUsedTeam(CreateSurface.MarketplaceAdd);
-  const primaryTeam = teams.find((t) => t.id === lastUsedId) ?? null;
+  const lastUsedId = activeOrgID
+    ? getLastUsedTeam(activeOrgID, CreateSurface.MarketplaceAdd)
+    : null;
+  const primaryTeam = currentTeams.find((t) => t.id === lastUsedId) ?? null;
   const primaryTeamId = primaryTeam?.id ?? null;
   const primaryLabelName = primaryTeam?.name ?? ORG_TARGET_LABEL;
 
   const targets: { id: string | null; name: string }[] = [
     { id: null, name: ORG_TARGET_LABEL },
-    ...teams.map((t) => ({ id: t.id, name: t.name })),
+    ...currentTeams.map((t) => ({ id: t.id, name: t.name })),
   ];
 
   const menuItems: SplitButtonItem[] = targets

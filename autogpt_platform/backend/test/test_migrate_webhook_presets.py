@@ -4,6 +4,7 @@ Mocks prisma to avoid needing a running database.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,6 +34,21 @@ def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
 _PRISMA_PATCH_TARGET = "prisma.models.AgentPreset.prisma"
 
 
+def _patch_library_write_barriers(mocker, library_db) -> None:
+    @asynccontextmanager
+    async def allow_live_scope(*_args, **_kwargs):
+        yield True
+
+    @asynccontextmanager
+    async def allow_graph_attachment(*_args, **_kwargs):
+        yield
+
+    mocker.patch.object(library_db, "live_resource_access_barrier", allow_live_scope)
+    mocker.patch.object(
+        library_db, "agent_graph_attachment_barrier", allow_graph_attachment
+    )
+
+
 @pytest.fixture
 def mock_prisma():
     with patch(_PRISMA_PATCH_TARGET) as mock:
@@ -53,6 +69,8 @@ def _make_graph(
     graph = MagicMock()
     graph.id = graph_id
     graph.version = version
+    graph.organization_id = "test-org"
+    graph.team_id = None
     if not has_trigger:
         graph.webhook_input_node = None
     elif not has_config:
@@ -83,7 +101,15 @@ def _patch_old_graphs(mocker, block_id_by_version: dict[int, str | None]):
     A ``None`` value simulates a version that is missing or has no trigger node.
     """
 
-    async def fake_get_graph(graph_id, version, user_id):
+    async def fake_get_graph(
+        graph_id,
+        version,
+        user_id,
+        organization_id,
+        team_id,
+    ):
+        assert organization_id == "test-org"
+        assert team_id is None
         block_id = block_id_by_version.get(version)
         if block_id is None:
             return None
@@ -117,6 +143,8 @@ async def test_migrate_updates_compatible_presets(mock_prisma, mocker):
             "agentGraphVersion": {"lt": 5},
             "webhookId": {"not": None},
             "isDeleted": False,
+            "organizationId": "test-org",
+            "teamId": None,
         },
     )
     mock_prisma.update_many.assert_called_once_with(
@@ -125,6 +153,8 @@ async def test_migrate_updates_compatible_presets(mock_prisma, mocker):
             "userId": "user-123",
             "agentGraphVersion": {"lt": 5},
             "isDeleted": False,
+            "organizationId": "test-org",
+            "teamId": None,
         },
         data={"agentGraphVersion": 5},
     )
@@ -190,6 +220,8 @@ async def test_migrate_only_updates_compatible_in_mixed_set(mock_prisma, mocker)
             "userId": "user-123",
             "agentGraphVersion": {"lt": 7},
             "isDeleted": False,
+            "organizationId": "test-org",
+            "teamId": None,
         },
         data={"agentGraphVersion": 7},
     )
@@ -335,6 +367,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     """``update_graph_in_library`` should call the migration helper."""
     from backend.api.features.library import db as library_db
 
+    _patch_library_write_barriers(mocker, library_db)
     new_graph = _make_graph_mock(has_webhook=True)
     incoming = AsyncMock()
     incoming.id = new_graph.id
@@ -374,6 +407,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
     """No migration call when the new graph has no webhook input node."""
     from backend.api.features.library import db as library_db
 
+    _patch_library_write_barriers(mocker, library_db)
     new_graph = _make_graph_mock(has_webhook=False)
     incoming = AsyncMock()
     incoming.id = new_graph.id
@@ -457,6 +491,7 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
         graph=incoming,
         user_id="user-1",
         ctx=_make_test_ctx(),
+        target_team_id=None,
     )
 
     migrate_mock.assert_awaited_once_with(
@@ -513,6 +548,7 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
         graph=incoming,
         user_id="user-1",
         ctx=_make_test_ctx(),
+        target_team_id=None,
     )
 
     migrate_mock.assert_not_awaited()
@@ -559,6 +595,7 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
         request_body=body,
         user_id="user-1",
         ctx=_make_test_ctx(),
+        target_team_id=None,
     )
 
     migrate_mock.assert_awaited_once_with(
@@ -601,6 +638,7 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
         request_body=body,
         user_id="user-1",
         ctx=_make_test_ctx(),
+        target_team_id=None,
     )
 
     migrate_mock.assert_not_awaited()

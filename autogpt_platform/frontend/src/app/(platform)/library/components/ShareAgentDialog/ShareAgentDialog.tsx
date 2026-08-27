@@ -26,6 +26,7 @@ interface Props {
 export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
   const {
     teams,
+    isLoadingTeams,
     teamId,
     setTeamId,
     capability,
@@ -62,6 +63,7 @@ export function ShareAgentDialog({ agent, isOpen, setIsOpen }: Props) {
             value={teamId ?? ""}
             onValueChange={(value) => setTeamId(value || null)}
             placeholder="Select a team"
+            disabled={isLoadingTeams}
             options={teams.map((team) => ({
               value: team.id,
               label: team.name,

@@ -515,11 +515,15 @@ export function AgentActivityPanel() {
 Protect a route or page component:
 
 ```tsx
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { notFound } from "next/navigation";
 
-export const MyFeaturePage = withFeatureFlag(function Page() {
+export default function MyFeaturePage() {
+  const { enabled, ready } = useFlagStatus(Flag.MY_FEATURE);
+  if (!ready) return <div>Loading…</div>;
+  if (!enabled) notFound();
   return <div>My feature page</div>;
-}, "my-feature-flag");
+}
 ```
 
 Local dev and Playwright:

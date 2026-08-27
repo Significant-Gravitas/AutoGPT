@@ -16,7 +16,6 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry
-from backend.copilot.model import get_chat_session
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
@@ -51,6 +50,7 @@ from .prompt import clamp_prompt
 # up. Covers the case where the backend crashes mid-stream and never sends
 # ``StreamFinish`` — without this, the bot would hang forever on ``queue.get()``.
 STREAM_CHUNK_TIMEOUT_SECONDS = 120
+PLATFORM_LINK_REVOKED_CANCEL_MESSAGE = "platform_link_revoked"
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,10 @@ class BotStreamError(Exception):
     def __init__(self, error_kind: str, message: str):
         super().__init__(message)
         self.error_kind = error_kind
+
+
+class PlatformLinkRevokedError(Exception):
+    pass
 
 
 class ChatTurnDeniedError(Exception):
@@ -265,6 +269,53 @@ class BotBackend:
             user_id=user_id,
         )
 
+    async def acquire_platform_link_lease(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        platform_user_id: str,
+    ) -> str:
+        return await self._client.acquire_platform_link_lease(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            platform_user_id=platform_user_id,
+        )
+
+    async def release_platform_link_lease(self, lease_id: str) -> bool:
+        return await self._client.release_platform_link_lease(lease_id=lease_id)
+
+    async def is_platform_link_lease_active(self, lease_id: str) -> bool:
+        return await self._client.is_platform_link_lease_active(lease_id=lease_id)
+
+    async def is_platform_link_owner(
+        self,
+        platform: str,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        expected_owner_user_id: str,
+    ) -> bool:
+        return await self._client.is_platform_link_owner(
+            platform=Platform(platform.upper()),
+            platform_server_id=platform_server_id,
+            platform_user_id=platform_user_id,
+            expected_owner_user_id=expected_owner_user_id,
+        )
+
+    async def _cancel_on_platform_link_loss(
+        self,
+        lease_id: str,
+        delivery_task: asyncio.Task,
+    ) -> None:
+        while True:
+            await asyncio.sleep(0.1)
+            try:
+                active = await self.is_platform_link_lease_active(lease_id)
+            except Exception:
+                active = False
+            if not active:
+                delivery_task.cancel(PLATFORM_LINK_REVOKED_CANCEL_MESSAGE)
+                return
+
     async def refresh_server_name(
         self, platform: str, platform_server_id: str, server_name: str
     ) -> None:
@@ -327,10 +378,6 @@ class BotBackend:
             link_url=resp.link_url,
             expires_at=resp.expires_at.isoformat(),
         )
-
-    async def get_session_title(self, session_id: str) -> str | None:
-        session = await get_chat_session(session_id)
-        return session.title if session else None
 
     async def list_user_chats(
         self, platform: str, platform_user_id: str, limit: int = 25
@@ -437,8 +484,10 @@ class BotBackend:
         platform_server_id: Optional[str] = None,
         file_ids: Optional[list[str]] = None,
         on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_owner_user_id: Optional[Callable[[str], Awaitable[None]]] = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
+        on_finish: Callable[[], Awaitable[None]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Start a copilot turn and yield text deltas from the stream.
 
@@ -462,6 +511,8 @@ class BotBackend:
             # Refused before running (paywall / rate limit) — no stream exists
             # to subscribe to. Surface the denial for the handler to render.
             raise ChatTurnDeniedError(handle.denial)
+        if on_owner_user_id:
+            await on_owner_user_id(handle.user_id)
         if on_session_id:
             await on_session_id(handle.session_id)
 
@@ -502,44 +553,77 @@ class BotBackend:
                         "stream_timeout",
                         "response timed out",
                     )
-                if isinstance(chunk, StreamTextDelta):
-                    if chunk.delta:
-                        if (
-                            last_text_block_id is not None
-                            and chunk.id != last_text_block_id
-                        ):
-                            yield "\n\n"
-                        last_text_block_id = chunk.id
-                        yield chunk.delta
-                elif isinstance(chunk, StreamToolOutputAvailable):
-                    setup_output = _extract_setup_requirements(chunk.output)
-                    if setup_output and on_setup_required and not setup_notified:
-                        setup_notified = True
-                        await on_setup_required(
-                            handle.session_id,
-                            setup_output,
-                            chunk.toolName,
-                        )
-                    elif (
-                        setup_output is None
-                        and not setup_notified
-                        and not setup_drop_notified
-                        and on_setup_dropped
-                        and _is_corrupted_setup_requirements(chunk.output)
+                lease_id = await self.acquire_platform_link_lease(
+                    platform,
+                    platform_server_id,
+                    platform_user_id,
+                )
+                try:
+                    if not await self.is_platform_link_owner(
+                        platform,
+                        platform_server_id,
+                        platform_user_id,
+                        handle.user_id,
                     ):
-                        # The link was dropped (corrupted payload). Tell the
-                        # user once so they aren't left waiting on a sign-in
-                        # prompt that will never arrive.
-                        setup_drop_notified = True
-                        await on_setup_dropped(handle.session_id, chunk.toolName)
-                elif isinstance(chunk, StreamFinish):
-                    return
-                elif isinstance(chunk, StreamError):
-                    logger.error("Stream error from backend: %s", chunk.errorText)
-                    raise BotStreamError(
-                        "backend_stream_error",
-                        chunk.errorText,
+                        raise PlatformLinkRevokedError
+                    delivery_task = asyncio.current_task()
+                    assert delivery_task is not None
+                    loss_monitor = asyncio.create_task(
+                        self._cancel_on_platform_link_loss(lease_id, delivery_task)
                     )
+                    try:
+                        if isinstance(chunk, StreamTextDelta):
+                            if chunk.delta:
+                                if (
+                                    last_text_block_id is not None
+                                    and chunk.id != last_text_block_id
+                                ):
+                                    yield "\n\n"
+                                last_text_block_id = chunk.id
+                                yield chunk.delta
+                        elif isinstance(chunk, StreamToolOutputAvailable):
+                            setup_output = _extract_setup_requirements(chunk.output)
+                            if (
+                                setup_output
+                                and on_setup_required
+                                and not setup_notified
+                            ):
+                                setup_notified = True
+                                await on_setup_required(
+                                    handle.session_id,
+                                    setup_output,
+                                    chunk.toolName,
+                                )
+                            elif (
+                                setup_output is None
+                                and not setup_notified
+                                and not setup_drop_notified
+                                and on_setup_dropped
+                                and _is_corrupted_setup_requirements(chunk.output)
+                            ):
+                                setup_drop_notified = True
+                                await on_setup_dropped(
+                                    handle.session_id, chunk.toolName
+                                )
+                        elif isinstance(chunk, StreamFinish):
+                            if on_finish is not None:
+                                await on_finish()
+                            return
+                        elif isinstance(chunk, StreamError):
+                            logger.error(
+                                "Stream error from backend: %s", chunk.errorText
+                            )
+                            raise BotStreamError(
+                                "backend_stream_error",
+                                chunk.errorText,
+                            )
+                    finally:
+                        loss_monitor.cancel()
+                        await asyncio.gather(loss_monitor, return_exceptions=True)
+                finally:
+                    released = await self.release_platform_link_lease(lease_id)
+                    if not released:
+                        raise PlatformLinkRevokedError
                 # Other StreamX types (StreamStart, StreamTextStart, tool events,
                 # etc.) are emitted by the executor for the frontend UI and
                 # aren't useful for the plain-text bot transcript.
