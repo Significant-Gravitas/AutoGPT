@@ -11,6 +11,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from backend.util.request import Requests
 
 from ._api import get_api, get_paginated
 from ._auth import (
@@ -131,7 +132,9 @@ class GithubListDiscussionsBlock(Block):
             placeholder="https://github.com/owner/repo",
         )
         num_discussions: int = SchemaField(
-            description="Maximum number of discussions to fetch", default=5
+            title="Limit",
+            description="Maximum number of discussions to fetch",
+            default=5,
         )
         category: str = SchemaField(
             description="Only include discussions in the category with this name",
@@ -148,8 +151,13 @@ class GithubListDiscussionsBlock(Block):
             advanced=True,
         )
         order_by: Literal["created", "updated"] = SchemaField(
-            description="What to sort the discussions by (most recent first)",
+            description="What to sort the discussions by",
             default="updated",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction",
+            default="desc",
             advanced=True,
         )
 
@@ -220,19 +228,17 @@ class GithubListDiscussionsBlock(Block):
         query = """
         query(
             $owner: String!, $repo: String!, $num: Int!, $after: String,
-            $answered: Boolean, $states: [DiscussionState!], $orderBy: DiscussionOrder
+            $categoryId: ID, $answered: Boolean,
+            $states: [DiscussionState!], $orderBy: DiscussionOrder
         ) {
             repository(owner: $owner, name: $repo) {
                 discussions(
-                    first: $num, after: $after,
+                    first: $num, after: $after, categoryId: $categoryId,
                     answered: $answered, states: $states, orderBy: $orderBy
                 ) {
                     nodes {
                         title
                         url
-                        category {
-                            name
-                        }
                     }
                     pageInfo {
                         hasNextPage
@@ -243,14 +249,18 @@ class GithubListDiscussionsBlock(Block):
         }
         """
         limit = input_data.num_discussions
-        # The category filter is applied client-side, so in that case we fetch
-        # full pages to reduce the number of round trips needed to reach `limit`
-        page_size = 100 if input_data.category else min(limit, 100)
         variables = {
             "owner": owner,
             "repo": repo,
-            "num": page_size,
+            "num": min(limit, 100),
             "after": None,
+            "categoryId": (
+                await GithubListDiscussionsBlock._get_category_id(
+                    api, owner, repo, input_data.category
+                )
+                if input_data.category
+                else None
+            ),
             "answered": {"all": None, "answered": True, "unanswered": False}[
                 input_data.answered
             ],
@@ -261,7 +271,7 @@ class GithubListDiscussionsBlock(Block):
                 "field": {"created": "CREATED_AT", "updated": "UPDATED_AT"}[
                     input_data.order_by
                 ],
-                "direction": "DESC",
+                "direction": input_data.direction.upper(),
             },
         }
 
@@ -275,13 +285,41 @@ class GithubListDiscussionsBlock(Block):
             discussions.extend(
                 {"title": discussion["title"], "url": discussion["url"]}
                 for discussion in data["nodes"]
-                if not input_data.category
-                or discussion["category"]["name"].lower() == input_data.category.lower()
             )
             if not data["pageInfo"]["hasNextPage"]:
                 break
             variables["after"] = data["pageInfo"]["endCursor"]
         return discussions[:limit]
+
+    @staticmethod
+    async def _get_category_id(
+        api: Requests, owner: str, repo: str, category_name: str
+    ) -> str:
+        query = """
+        query($owner: String!, $repo: String!) {
+            repository(owner: $owner, name: $repo) {
+                discussionCategories(first: 100) {
+                    nodes {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
+        response = await api.post(
+            "https://api.github.com/graphql",
+            json={"query": query, "variables": {"owner": owner, "repo": repo}},
+        )
+        categories = response.json()["data"]["repository"]["discussionCategories"][
+            "nodes"
+        ]
+        for category in categories:
+            if category["name"].lower() == category_name.lower():
+                return category["id"]
+        raise ValueError(
+            f"Discussion category '{category_name}' does not exist in {owner}/{repo}"
+        )
 
     async def run(
         self,
