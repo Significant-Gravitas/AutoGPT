@@ -5,11 +5,7 @@ import pytest
 
 from backend.api.features.experts.models import ExpertWorkArtifact, ExpertWorkItem
 
-from .models import (
-    DelegatedWorkReportedResponse,
-    ErrorResponse,
-    WorkspaceFileInfoData,
-)
+from .models import DelegatedWorkReportedResponse, ErrorResponse, WorkspaceFileInfoData
 from .report_delegated_result import ReportDelegatedResultTool
 
 NOW = datetime(2026, 8, 27, tzinfo=timezone.utc)
