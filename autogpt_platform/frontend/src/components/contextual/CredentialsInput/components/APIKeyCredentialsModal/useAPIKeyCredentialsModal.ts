@@ -53,13 +53,24 @@ export function useAPIKeyCredentialsModal({
     },
   });
 
-  const mcpServerUrl =
-    credentials && !credentials.isLoading && credentials.provider === "mcp"
-      ? normalizeMCPUrl(credentials.discriminatorValue ?? "")
-      : "";
+  const isMCP =
+    !!credentials && !credentials.isLoading && credentials.provider === "mcp";
+  const mcpServerUrl = isMCP
+    ? normalizeMCPUrl(credentials.discriminatorValue ?? "")
+    : "";
 
   async function onSubmit(values: APIKeyFormValues) {
     if (!credentials || credentials.isLoading) return;
+    // An MCP credential is only ever found again by its server URL, so
+    // creating one before the node has a `server_url` would produce a row with
+    // `host: null` that the picker can never match — the user would see it
+    // selected and the block would still 401 with nothing explaining why.
+    if (isMCP && !mcpServerUrl) {
+      form.setError("root", {
+        message: "Enter the MCP server URL on the block before adding a key.",
+      });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const expiresAt = values.expiresAt

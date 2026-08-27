@@ -8,7 +8,9 @@ import {
   type ConnectableProvider,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
 import { getConnectableCredentialTypes } from "@/hooks/useCredentials";
+import { getDiscriminatorValue } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
 import { useConnectCredentialDialog } from "./useConnectCredentialDialog";
 
@@ -22,6 +24,7 @@ interface Props {
   displayName: string;
   open: boolean;
   onClose: () => void;
+  siblingInputs?: Record<string, unknown>;
 }
 
 /** The onboarding connect flow (logo pair, "Connect AutoGPT to X",
@@ -34,7 +37,18 @@ export function ConnectCredentialDialog({
   displayName,
   open,
   onClose,
+  siblingInputs,
 }: Props) {
+  // An MCP token authenticates one specific server, so it has to be tagged
+  // with that URL — every lookup, in the picker and in the backend, matches
+  // on it.
+  const mcpServerUrl =
+    provider === "mcp"
+      ? normalizeMCPUrl(
+          getDiscriminatorValue(siblingInputs ?? {}, schema) ?? "",
+        )
+      : "";
+
   const {
     selectedMethod,
     setSelectedMethod,
@@ -45,7 +59,11 @@ export function ConnectCredentialDialog({
     isConnecting,
     handleContinue,
     reset,
-  } = useConnectCredentialDialog({ provider, onConnected: onClose });
+  } = useConnectCredentialDialog({
+    provider,
+    onConnected: onClose,
+    metadata: mcpServerUrl ? { mcp_server_url: mcpServerUrl } : undefined,
+  });
 
   function handleClose() {
     reset();

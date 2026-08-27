@@ -366,24 +366,36 @@ async def mcp_oauth_callback(
     hostname = server_host(meta["server_url"])
     credentials.title = f"MCP: {hostname}"
 
-    # Remove old MCP credentials for the same server to prevent stale token
-    # buildup — covers both OAuth tokens and previously-stored bearer tokens.
+    # Collect IDs of old credentials for the same server — covers both OAuth
+    # tokens and previously-stored bearer tokens. Deleting them only *after*
+    # the new credential is stored (mirroring ``mcp_store_token``) means a
+    # failed ``create`` leaves the user with their working credential rather
+    # than none at all.
+    old_cred_ids: list[str] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        for old in old_creds:
-            if is_mcp_credential_for_server(old, normalize_mcp_url(meta["server_url"])):
-                await creds_manager.store.delete_creds_by_id(user_id, old.id)
-                logger.info(
-                    "Removed old MCP credential %s for %s",
-                    old.id,
-                    server_host(meta["server_url"]),
-                )
+        old_cred_ids = [
+            old.id
+            for old in old_creds
+            if is_mcp_credential_for_server(old, normalize_mcp_url(meta["server_url"]))
+        ]
     except Exception:
-        logger.debug("Could not clean up old MCP credentials", exc_info=True)
+        logger.debug("Could not query old MCP credentials", exc_info=True)
 
     await creds_manager.create(user_id, credentials)
+
+    for old_id in old_cred_ids:
+        try:
+            await creds_manager.store.delete_creds_by_id(user_id, old_id)
+            logger.info(
+                "Removed old MCP credential %s for %s",
+                old_id,
+                server_host(meta["server_url"]),
+            )
+        except Exception:
+            logger.debug("Could not clean up old MCP credential", exc_info=True)
 
     return CredentialsMetaResponse(
         id=credentials.id,

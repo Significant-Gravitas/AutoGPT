@@ -17,6 +17,8 @@ import { apiKeyConnectSchema, type ApiKeyConnectFormValues } from "./schema";
 interface Args {
   provider: string;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** Extra credential metadata, e.g. the `mcp_server_url` an MCP token is for. */
+  metadata?: Record<string, unknown>;
 }
 
 function toUnixSeconds(value: string | undefined): number | undefined {
@@ -26,7 +28,7 @@ function toUnixSeconds(value: string | undefined): number | undefined {
   return Math.floor(ms / 1000);
 }
 
-export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
+export function useApiKeyConnectForm({ provider, onSuccess, metadata }: Args) {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
@@ -49,6 +51,10 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
         title: values.title,
         api_key: values.apiKey,
         expires_at: toUnixSeconds(values.expiresAt),
+        // MCP credentials are only ever found again by the server URL held
+        // here — without it the row comes back with `host: null`, no picker
+        // can match it, and the block 401s with nothing explaining why.
+        ...(metadata && { metadata }),
       });
 
       toast({ title: "API key saved", variant: "success" });

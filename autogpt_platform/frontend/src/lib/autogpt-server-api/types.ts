@@ -673,7 +673,7 @@ export type APIKeyCredentials = BaseCredentials & {
   title: string;
   api_key: string;
   expires_at?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 };
 
 export type UserPasswordCredentials = BaseCredentials & {

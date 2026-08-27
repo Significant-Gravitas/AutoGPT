@@ -19,7 +19,13 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
-from backend.blocks.mcp.helpers import MCPCredential, mcp_auth_token, parse_mcp_content
+from backend.blocks.mcp.helpers import (
+    MCPCredential,
+    auto_lookup_mcp_credential,
+    mcp_auth_token,
+    normalize_mcp_url,
+    parse_mcp_content,
+)
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
@@ -219,11 +225,22 @@ class MCPToolBlock(Block):
                 )
                 return
 
-        # No auto-lookup fallback here: the executor injects whatever the node
-        # has selected, so `credentials is None` means the user picked "None
-        # (skip this credential)" or the server needs no auth. Silently
-        # substituting a stored token would override that explicit choice —
-        # the two cases are indistinguishable by the time they reach `run`.
+        # `credentials is None` reaches here for three different reasons and
+        # the executor collapses them all into the same value: the user picked
+        # "None (skip this credential)", the node never had one configured, or
+        # the node's credential ID points at a row that has since been deleted
+        # (executor/manager.py runs the block anyway because the field has a
+        # default). Reconnecting a server replaces its credential with a new
+        # ID, so that last case is a normal flow, not an edge case — without
+        # this fallback every subsequent run goes out unauthenticated and 401s.
+        # Falling back therefore fixes a broken run at the cost of possibly
+        # overriding an explicit "None" on a server the user also has a token
+        # for, which is the far milder failure of the two.
+        if credentials is None:
+            credentials = await auto_lookup_mcp_credential(
+                user_id, normalize_mcp_url(input_data.server_url)
+            )
+
         auth_token = mcp_auth_token(credentials) if credentials else None
 
         try:

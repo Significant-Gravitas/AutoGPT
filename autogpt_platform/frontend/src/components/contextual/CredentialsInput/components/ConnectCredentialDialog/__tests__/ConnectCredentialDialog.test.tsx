@@ -287,4 +287,32 @@ describe("ConnectCredentialDialog", () => {
     expect(onClose).toHaveBeenCalledOnce();
     expect(apiKey.form.reset).toHaveBeenCalledOnce();
   });
+  it("tags an MCP API key with the normalized server URL", () => {
+    // Without `metadata.mcp_server_url` the backend returns `host: null`, no
+    // picker can match the credential, and the block 401s at run time.
+    renderDialog({
+      schema: {
+        credentials_provider: ["mcp"],
+        credentials_types: ["oauth2", "api_key"],
+        discriminator: "server_url",
+      } as unknown as BlockIOCredentialsSubSchema,
+      provider: "mcp",
+      displayName: "MCP",
+      siblingInputs: { server_url: "https://mcp.datafa.st/mcp/" },
+    });
+
+    expect(mockUseApiKeyConnectForm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: { mcp_server_url: "https://mcp.datafa.st/mcp" },
+      }),
+    );
+  });
+
+  it("sends no metadata for a non-MCP provider", () => {
+    renderDialog();
+
+    expect(mockUseApiKeyConnectForm).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: undefined }),
+    );
+  });
 });

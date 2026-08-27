@@ -9,7 +9,11 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import {
+  postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
+} from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
@@ -45,6 +49,11 @@ export type CredentialsProviderData = {
   mcpOAuthCallback: (
     code: string,
     state_token: string,
+  ) => Promise<CredentialsMetaResponse>;
+  /** Stores a static API key / bearer token for an MCP server that has no OAuth. */
+  mcpStoreToken: (
+    server_url: string,
+    token: string,
   ) => Promise<CredentialsMetaResponse>;
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
@@ -96,6 +105,36 @@ export function upsertProviderCredentials(
     [provider]: {
       ...prev[provider],
       savedCredentials: updated,
+    },
+  };
+}
+
+/**
+ * Drop MCP credentials the backend has just replaced for `serverUrl`, then add
+ * the new one.  Both MCP connect paths delete every prior credential for the
+ * server before returning a fresh ID, so upserting alone would leave the
+ * deleted rows in the cached list — the picker would then keep re-selecting a
+ * credential that no longer exists and the node would 401 until a page reload.
+ */
+export function replaceMCPServerCredentials(
+  prev: CredentialsProvidersContextType | null,
+  serverUrl: string,
+  credentials: CredentialsMetaResponse,
+): CredentialsProvidersContextType | null {
+  if (!prev || !prev["mcp"]) return prev;
+
+  const server = normalizeMCPUrl(serverUrl);
+  const kept = prev["mcp"].savedCredentials.filter(
+    (c) =>
+      c.id !== credentials.id &&
+      !(c.host != null && normalizeMCPUrl(c.host) === server),
+  );
+
+  return {
+    ...prev,
+    mcp: {
+      ...prev["mcp"],
+      savedCredentials: [...kept, credentials],
     },
   };
 }
@@ -157,6 +196,16 @@ export default function CredentialsProvider({
     [api, upsertCredentials, onFailToast],
   );
 
+  /** Replaces the cached MCP credentials for the server the new one belongs to. */
+  const storeMCPCredentials = useCallback(
+    (serverUrl: string, credentials: CredentialsMetaResponse) => {
+      setProviders((prev) =>
+        replaceMCPServerCredentials(prev, serverUrl, credentials),
+      );
+    },
+    [setProviders],
+  );
+
   /** Exchanges an MCP OAuth code for tokens and adds the result to the internal credentials store. */
   const mcpOAuthCallback = useCallback(
     async (
@@ -176,14 +225,47 @@ export default function CredentialsProvider({
           username: response.data.username ?? undefined,
           host: response.data.host ?? undefined,
         };
-        upsertCredentials("mcp", credsMeta);
+        if (credsMeta.host) {
+          storeMCPCredentials(credsMeta.host, credsMeta);
+        } else {
+          upsertCredentials("mcp", credsMeta);
+        }
         return credsMeta;
       } catch (error) {
         onFailToast("complete MCP OAuth authentication")(error);
         throw error;
       }
     },
-    [upsertCredentials, onFailToast],
+    [upsertCredentials, storeMCPCredentials, onFailToast],
+  );
+
+  /** Stores a static bearer token for an MCP server and refreshes the cached list. */
+  const mcpStoreToken = useCallback(
+    async (
+      server_url: string,
+      token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      try {
+        const response = await postV2StoreABearerTokenForAnMcpServer({
+          server_url,
+          token,
+        });
+        if (response.status !== 200) throw response.data;
+        const credsMeta: CredentialsMetaResponse = {
+          ...response.data,
+          title: response.data.title ?? undefined,
+          scopes: response.data.scopes ?? undefined,
+          username: response.data.username ?? undefined,
+          host: response.data.host ?? undefined,
+        };
+        storeMCPCredentials(credsMeta.host ?? server_url, credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("save MCP API token")(error);
+        throw error;
+      }
+    },
+    [storeMCPCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -336,6 +418,7 @@ export default function CredentialsProvider({
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
+                  mcpStoreToken,
                   createAPIKeyCredentials: (
                     credentials: APIKeyCredentialsCreatable,
                   ) => createAPIKeyCredentials(provider, credentials),
@@ -366,6 +449,7 @@ export default function CredentialsProvider({
     deleteCredentials,
     oAuthCallback,
     mcpOAuthCallback,
+    mcpStoreToken,
     onFailToast,
   ]);
 

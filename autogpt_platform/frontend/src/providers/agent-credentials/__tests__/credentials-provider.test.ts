@@ -35,6 +35,7 @@ function makeProviderMap(
       isSystemProvider: false,
       oAuthCallback: async () => makeCred({}),
       mcpOAuthCallback: async () => makeCred({}),
+      mcpStoreToken: async () => makeCred({}),
       createAPIKeyCredentials: async () => makeCred({}),
       createUserPasswordCredentials: async () => makeCred({}),
       createHostScopedCredentials: async () => makeCred({}),

@@ -13,7 +13,11 @@ from backend.blocks.mcp.helpers import (
     parse_mcp_content,
     server_host,
 )
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    HostScopedCredentials,
+    OAuth2Credentials,
+)
 
 # ---------------------------------------------------------------------------
 # normalize_mcp_url
@@ -165,8 +169,6 @@ def test_is_mcp_credential_for_server_rejects_other_server():
 def test_is_mcp_credential_for_server_rejects_non_oauth_non_apikey():
     """The TypeGuard must reject credential types that aren't OAuth2/APIKey
     even when the provider is MCP (e.g. a host-scoped credential)."""
-    from backend.data.model import HostScopedCredentials
-
     cred = HostScopedCredentials(
         provider="mcp",
         host="mcp.example.com",
@@ -253,6 +255,32 @@ async def test_auto_lookup_returns_none_when_no_match():
 
     assert result is None
     mgr.refresh_if_needed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_lookup_prefers_fresh_oauth_over_older_api_key():
+    """A static key must not outrank a *newer* OAuth token for the same server.
+
+    The generic ``POST /{provider}/credentials`` endpoint does no per-server
+    cleanup, so the two coexist through an ordinary user flow — ranking the
+    non-expiring key highest would make re-authenticating via OAuth
+    permanently ineffective.
+    """
+    api_key = _api_key_cred(_MCP_URL)
+    fresh_oauth = OAuth2Credentials(
+        provider="mcp",
+        access_token=SecretStr("new"),
+        scopes=[],
+        access_token_expires_at=9999999999,
+        title="MCP",
+        metadata={"mcp_server_url": _MCP_URL},
+    )
+
+    ctx, _ = _patched_manager([api_key, fresh_oauth])
+    with ctx:
+        result = await auto_lookup_mcp_credential("user", _MCP_URL)
+
+    assert result is fresh_oauth
 
 
 @pytest.mark.asyncio

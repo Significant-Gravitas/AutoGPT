@@ -1,4 +1,5 @@
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { filterSystemCredentials, getSystemCredentials } from "../../helpers";
 
 export type CredentialField = [string, any];
@@ -36,9 +37,12 @@ function matchesDiscriminatorValues(
     credential.provider === "mcp"
   ) {
     if (!discriminatorValues || discriminatorValues.length === 0) return false;
-    return (
-      credential.host != null && discriminatorValues.includes(credential.host)
-    );
+    // Normalized on both sides, matching `classifyCredentials`: the builder
+    // picker and this auto-assign path must agree, or a node whose
+    // `server_url` carries a trailing slash matches in one and not the other.
+    if (credential.host == null) return false;
+    const host = normalizeMCPUrl(credential.host);
+    return discriminatorValues.some((v) => normalizeMCPUrl(v) === host);
   }
   // Host-scoped credentials match by host
   if (credential.type === "host_scoped" && credential.host) {

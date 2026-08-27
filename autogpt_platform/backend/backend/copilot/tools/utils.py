@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.blocks.mcp.helpers import normalize_mcp_url
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
@@ -531,7 +532,17 @@ def _credential_is_for_mcp_server(
         if isinstance(credential, (OAuth2Credentials, APIKeyCredentials))
         else None
     )
-    return server_url in requirements.discriminator_values if server_url else False
+    if not server_url:
+        return False
+    # Normalized on both sides, like `is_mcp_credential_for_server`: a node
+    # whose `server_url` carries a trailing slash must still match the
+    # credential stored under the normalized URL, or CoPilot reports a
+    # connected server as missing its credential.
+    normalized = normalize_mcp_url(server_url)
+    return any(
+        normalize_mcp_url(value) == normalized
+        for value in requirements.discriminator_values
+    )
 
 
 async def check_user_has_required_credentials(

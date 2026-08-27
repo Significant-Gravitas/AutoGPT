@@ -109,71 +109,93 @@ export function MCPToolDialog({
     onClose();
   }, [reset, onClose]);
 
-  const discoverTools = useCallback(async (url: string, authToken?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
-        server_url: url,
-        auth_token: authToken || null,
-      });
-      if (response.status !== 200) throw response.data;
-
-      // When the user authenticated with a static API key / bearer token,
-      // persist it so the block can authenticate at runtime — discovery only
-      // uses the token transiently and would otherwise be discarded, leaving
-      // the placed block with no credentials and failing on the next run.
-      if (authToken) {
-        const tokenRes = await postV2StoreABearerTokenForAnMcpServer({
+  const discoverTools = useCallback(
+    async (url: string, authToken?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await postV2DiscoverAvailableToolsOnAnMcpServer({
           server_url: url,
-          token: authToken,
+          auth_token: authToken || null,
         });
-        if (tokenRes.status !== 200)
-          throw new Error(
-            "Discovered the server, but saving your API token failed. Please try again.",
-          );
-        setCredentials({
-          id: tokenRes.data.id,
-          provider: tokenRes.data.provider,
-          type: tokenRes.data.type,
-          title: tokenRes.data.title,
-        });
-      }
+        if (response.status !== 200) throw response.data;
 
-      setTools(response.data.tools);
-      setServerName(response.data.server_name ?? null);
-      setAuthRequired(false);
-      setShowManualToken(false);
-      setStep("tool");
-    } catch (e: unknown) {
-      const err = e as { status?: number; message?: string; detail?: string };
-      if (err?.status === 401 || err?.status === 403) {
-        setLoading(false);
-        // If the user supplied a token and the server still rejected it, the
-        // token is wrong — don't bounce them into an OAuth flow that will just
-        // fail again. Surface a clear "check your token" message instead.
+        // When the user authenticated with a static API key / bearer token,
+        // persist it so the block can authenticate at runtime — discovery only
+        // uses the token transiently and would otherwise be discarded, leaving
+        // the placed block with no credentials and failing on the next run.
+        //
+        // Routed through the credentials provider (like the OAuth path) rather
+        // than the generated endpoint: storing a token deletes the server's
+        // previous credential, so the cached list has to be updated too or the
+        // picker keeps re-selecting the row that no longer exists.
         if (authToken) {
-          setError(
-            "Authentication failed. Please check your API key / bearer token and try again.",
-          );
-          return;
+          const mcpProvider = allProviders?.["mcp"];
+          let stored;
+          try {
+            if (mcpProvider) {
+              stored = await mcpProvider.mcpStoreToken(url, authToken);
+            } else {
+              const tokenRes = await postV2StoreABearerTokenForAnMcpServer({
+                server_url: url,
+                token: authToken,
+              });
+              if (tokenRes.status !== 200) throw tokenRes.data;
+              stored = tokenRes.data;
+            }
+          } catch {
+            throw new Error(
+              "Discovered the server, but saving your API token failed. Please try again.",
+            );
+          }
+          setCredentials({
+            id: stored.id,
+            provider: stored.provider,
+            type: stored.type,
+            title: stored.title,
+          });
         }
-        setAuthRequired(true);
-        setError(null);
-        // Automatically start OAuth sign-in instead of requiring a second click
-        startOAuthRef.current = true;
-        return;
-      } else {
-        const message =
-          err?.message || err?.detail || "Failed to connect to MCP server";
-        setError(
-          typeof message === "string" ? message : JSON.stringify(message),
-        );
+
+        setTools(response.data.tools);
+        setServerName(response.data.server_name ?? null);
+        setAuthRequired(false);
+        setShowManualToken(false);
+        // The token is persisted server-side now; keeping it in state would
+        // let it ride along to a *different* server if the user goes Back and
+        // types another URL — the field is hidden, so nothing would show it.
+        setManualToken("");
+        setStep("tool");
+      } catch (e: unknown) {
+        const err = e as { status?: number; message?: string; detail?: string };
+        if (err?.status === 401 || err?.status === 403) {
+          setLoading(false);
+          // If the user supplied a token and the server still rejected it, the
+          // token is wrong — don't bounce them into an OAuth flow that will
+          // just fail again. Surface a clear "check your token" message.
+          if (authToken) {
+            setError(
+              "Authentication failed. Please check your API key / bearer token and try again.",
+            );
+            return;
+          }
+          setAuthRequired(true);
+          setError(null);
+          // Automatically start OAuth sign-in instead of requiring a second click
+          startOAuthRef.current = true;
+          return;
+        } else {
+          const message =
+            err?.message || err?.detail || "Failed to connect to MCP server";
+          setError(
+            typeof message === "string" ? message : JSON.stringify(message),
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [allProviders],
+  );
 
   const handleDiscoverTools = useCallback(() => {
     if (!serverUrl.trim()) return;
@@ -419,6 +441,14 @@ export function MCPToolDialog({
               onClick={() => {
                 setStep("url");
                 setSelectedTool(null);
+                // Everything below is scoped to the server just connected. The
+                // user may now type a different URL, and carrying any of it
+                // over would authenticate server B with server A's secret.
+                setManualToken("");
+                setShowManualToken(false);
+                setCredentials(null);
+                setAuthRequired(false);
+                setError(null);
               }}
             >
               Back

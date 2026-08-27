@@ -600,10 +600,6 @@ class TestMCPToolBlock:
     async def test_run_with_api_key_credentials(self):
         """Verify the block accepts a static API-key / bearer token and pulls
         the token from ``api_key`` (not ``access_token``)."""
-        from pydantic import SecretStr
-
-        from backend.data.model import APIKeyCredentials
-
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
             server_url="https://mcp.example.com/mcp",
@@ -658,12 +654,14 @@ class TestMCPToolBlock:
         assert outputs == [("result", "ok")]
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_run_without_credentials_ignores_stored_token(self):
-        """Selecting "None (skip this credential)" must send no auth token.
+    async def test_run_without_credentials_falls_back_to_stored_token(self):
+        """No injected credential must fall back to the stored one.
 
-        A stored credential for the same server exists here — the block must
-        not silently fall back to it, which would override the explicit
-        user choice made in the node's credentials picker.
+        The executor nulls the field for three different reasons — the user
+        picked "None", the node never had one, or its credential ID points at
+        a row that has since been deleted (which is what reconnecting a server
+        does). Without the fallback that last case sends no Authorization
+        header and 401s on every run.
         """
         block = MCPToolBlock()
         input_data = MCPToolBlock.Input(
@@ -695,5 +693,5 @@ class TestMCPToolBlock:
             async for _ in block.run(input_data, user_id=MOCK_USER_ID):
                 pass
 
-        assert captured_tokens == [None]
-        mgr.store.get_creds_by_provider.assert_not_awaited()
+        assert captured_tokens == ["stored-token"]
+        mgr.store.get_creds_by_provider.assert_awaited()

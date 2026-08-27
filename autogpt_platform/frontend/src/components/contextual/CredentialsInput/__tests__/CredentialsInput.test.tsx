@@ -103,6 +103,7 @@ function makeCredentialsReturn(overrides: Partial<CredentialsReturn> = {}) {
       scopes: ["drive.file", "drive.metadata"],
     }),
     mcpOAuthCallback: vi.fn(),
+    mcpStoreToken: vi.fn(),
     createAPIKeyCredentials: vi.fn(),
     createUserPasswordCredentials: vi.fn(),
     createHostScopedCredentials: vi.fn(),
@@ -530,6 +531,9 @@ describe("CredentialsInput – MCP API key creation", () => {
         onSelectCredentials={vi.fn()}
         siblingInputs={{ server_url: "https://mcp.datafa.st/mcp/" }}
         showTitle={false}
+        // The builder node keeps the per-type tab flow; the default variant
+        // goes through ConnectCredentialDialog instead.
+        variant="node"
       />,
     );
   }

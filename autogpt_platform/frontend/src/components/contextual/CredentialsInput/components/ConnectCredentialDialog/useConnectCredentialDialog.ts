@@ -11,13 +11,23 @@ import { useState } from "react";
 interface Args {
   provider: string;
   onConnected: () => void;
+  /** Extra credential metadata, e.g. the `mcp_server_url` an MCP token is for. */
+  metadata?: Record<string, unknown>;
 }
 
-export function useConnectCredentialDialog({ provider, onConnected }: Args) {
+export function useConnectCredentialDialog({
+  provider,
+  onConnected,
+  metadata,
+}: Args) {
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
 
   const oauth = useOAuthConnect({ provider, onSuccess: handleConnected });
-  const apiKey = useApiKeyConnectForm({ provider, onSuccess: handleConnected });
+  const apiKey = useApiKeyConnectForm({
+    provider,
+    onSuccess: handleConnected,
+    metadata,
+  });
 
   // The dialog stays mounted while closed, so a half-filled key or a
   // picked method would still be there the next time it opens.

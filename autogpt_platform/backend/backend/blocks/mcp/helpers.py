@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
+import time
 from typing import Any, TypeGuard
 from urllib.parse import urlparse
 
@@ -59,17 +59,27 @@ def is_mcp_credential_for_server(
 def _mcp_credential_rank(cred: MCPCredential) -> int:
     """Ranking key for picking the best MCP credential when several match.
 
-    Non-expiring credentials rank highest (they never go stale); among
-    expiring ones, the later expiry wins. Returning 0 for non-expiring — the
-    naive approach — would make a valid static bearer token lose to any stale
-    row that merely once had an expiry set.
+    Ranks on *usability*, not on expiry timestamp: 1 for a credential that can
+    still authenticate, 0 for one whose token has lapsed. Ties are broken by
+    the caller on store order (most recently created wins).
+
+    Ranking by expiry instead — treating a non-expiring credential as
+    infinitely far in the future — gets both ends wrong. A stale row that
+    merely once had an expiry set would beat a valid static bearer token, and
+    a static key would then outrank a freshly obtained OAuth token *forever*:
+    the generic ``POST /{provider}/credentials`` endpoint does no per-server
+    cleanup, so the two coexist through an ordinary user flow, and
+    re-authenticating via OAuth could never take effect.
     """
-    expiry = (
-        cred.expires_at
-        if isinstance(cred, APIKeyCredentials)
-        else cred.access_token_expires_at
-    )
-    return expiry if expiry is not None else sys.maxsize
+    if isinstance(cred, APIKeyCredentials):
+        expiry = cred.expires_at
+    elif cred.refresh_token is not None:
+        # An expired access token that carries a refresh token is still
+        # usable — ``refresh_if_needed`` renews it before use.
+        return 1
+    else:
+        expiry = cred.access_token_expires_at
+    return 1 if expiry is None or expiry > time.time() else 0
 
 
 def server_host(server_url: str) -> str:
@@ -173,11 +183,11 @@ async def auto_lookup_mcp_credential(
             user_id, ProviderName.MCP.value
         )
         # Collect all matching credentials and pick the best one.
-        # Primary sort: rank (non-expiring credentials highest, then latest
-        # expiry — see _mcp_credential_rank).  Secondary sort: last in
-        # iteration order, which corresponds to the most recently created row —
-        # this acts as a tiebreaker when several equally-ranked tokens exist
-        # (e.g. after a failed old-credential cleanup).
+        # Primary sort: rank (still-usable credentials beat lapsed ones — see
+        # _mcp_credential_rank).  Secondary sort: last in iteration order,
+        # which corresponds to the most recently created row — so
+        # re-authenticating a server always wins over whatever was there
+        # before, whether or not the old row was cleaned up.
         best: MCPCredential | None = None
         for cred in mcp_creds:
             if is_mcp_credential_for_server(cred, server_url):

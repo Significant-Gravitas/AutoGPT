@@ -3,8 +3,14 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
-from backend.data.model import CredentialsFieldInfo
+from backend.copilot.tools.utils import _credential_is_for_mcp_server
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsFieldInfo,
+    OAuth2Credentials,
+)
 
 
 def _make_regular_field() -> CredentialsFieldInfo:
@@ -34,11 +40,6 @@ def _make_mcp_field(server_url: str) -> CredentialsFieldInfo:
 def test_credential_is_for_mcp_server_matches_both_credential_types():
     """A static API-key MCP token must match the server URL just like an
     OAuth2 token — otherwise copilot reports the credential as missing."""
-    from pydantic import SecretStr
-
-    from backend.copilot.tools.utils import _credential_is_for_mcp_server
-    from backend.data.model import APIKeyCredentials, OAuth2Credentials
-
     server_url = "https://mcp.example.com/mcp"
     field = _make_mcp_field(server_url)
 
@@ -65,6 +66,21 @@ def test_credential_is_for_mcp_server_matches_both_credential_types():
     assert _credential_is_for_mcp_server(oauth_cred, field)
     assert _credential_is_for_mcp_server(api_key_cred, field)
     assert not _credential_is_for_mcp_server(other_server, field)
+
+
+def test_credential_is_for_mcp_server_normalizes_trailing_slash():
+    """The node's `server_url` may carry a trailing slash while the credential
+    is stored under the normalized URL — both sides must be normalized or
+    copilot reports a connected server as missing its credential."""
+    field = _make_mcp_field("https://mcp.example.com/mcp/")
+    cred = APIKeyCredentials(
+        provider="mcp",
+        api_key=SecretStr("t"),
+        title="MCP",
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+
+    assert _credential_is_for_mcp_server(cred, field)
 
 
 def test_build_missing_credentials_excludes_auto_creds():
