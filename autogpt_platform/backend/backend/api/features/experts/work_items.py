@@ -13,7 +13,6 @@ from backend.api.features.experts.models import (
     ExpertWorkItem,
     ExpertWorkStatus,
 )
-from backend.data.db import transaction
 from backend.util.json import SafeJson
 
 _TERMINAL_STATUSES = {
@@ -266,24 +265,15 @@ async def list_user_work(user_id: str) -> list[ExpertWorkItem]:
 
 
 async def should_enqueue_parent_wake(work_item_id: str, user_id: str) -> bool:
-    async with transaction() as tx:
-        row = await prisma.models.ExpertWorkItem.prisma(tx).find_first(
-            where={"id": work_item_id, "ownerUserId": user_id}
-        )
-        if row is None or row.status not in _TERMINAL_STATUSES:
-            return False
-        now = datetime.now(timezone.utc)
-        claimed = await prisma.models.ExpertWorkItem.prisma(tx).update_many(
-            where={
-                "id": work_item_id,
-                "ownerUserId": user_id,
-                "parentWokenAt": None,
-            },
-            data={"parentWokenAt": now},
-        )
-        if claimed == 0:
-            return False
-        return row.managerWaitExpiresAt is None or row.managerWaitExpiresAt <= now
+    """Atomically claim the single manager continuation for terminal work.
+
+    The expert reports before its final assistant message is persisted. Even
+    when AutoPilot is currently waiting inline, that wait can expire between
+    the report and the final message. Always enqueue the claimed continuation
+    so a result cannot be stranded in that race; the active manager turn and
+    the queued notice are serialized by the normal session queue.
+    """
+    return await claim_parent_wake(work_item_id, user_id)
 
 
 def _to_model(row: prisma.models.ExpertWorkItem) -> ExpertWorkItem:
