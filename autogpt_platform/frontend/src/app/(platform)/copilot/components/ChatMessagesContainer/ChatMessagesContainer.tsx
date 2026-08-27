@@ -311,6 +311,7 @@ export function ChatMessagesContainer({
   );
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+  const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -624,6 +625,7 @@ export function ChatMessagesContainer({
                       compactionPhase={compactionPhase}
                       liveCompactionCallId={liveCompactionCallId}
                       liveCompactionStats={liveCompactionStats}
+                      founderMode={isFounderMode}
                     />
                   ) : (
                     <UserMessageClamp>

@@ -50,9 +50,15 @@ interface Props {
    *  cards and the Proceed draft are the owner's work — a reader gets no
    *  Connect prompt and no write into the composer store. */
   readOnly?: boolean;
+  founderMode?: boolean;
 }
 
-export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
+export function ToolChain({
+  parts,
+  isStreaming,
+  readOnly = false,
+  founderMode = false,
+}: Props) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
@@ -101,26 +107,23 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [sentMessageCount, actionEntries],
   );
 
-  const rows = useMemo(
-    () =>
-      groupTeamProposalRows(
-        markSupersededSubSessionRows(
-          parts
-            .map((part, i) => toChainRow(part, i))
-            .filter((row): row is ChainRow => row !== null)
-            // Unanswered clarifying questions and setup cards render their work
-            // in the card below the chain — their rows are lifted out of view.
-            .map((row) =>
-              pendingQuestions?.callIds.includes(row.key)
-                ? { ...row, requiresAction: true, lifted: true }
-                : isLiftedSetupRow(row)
-                  ? { ...row, lifted: true }
-                  : row,
-            ),
+  const rows = useMemo(() => {
+    const mapped = markSupersededSubSessionRows(
+      parts
+        .map((part, i) => toChainRow(part, i))
+        .filter((row): row is ChainRow => row !== null)
+        // Unanswered clarifying questions and setup cards render their work
+        // in the card below the chain — their rows are lifted out of view.
+        .map((row) =>
+          pendingQuestions?.callIds.includes(row.key)
+            ? { ...row, requiresAction: true, lifted: true }
+            : isLiftedSetupRow(row)
+              ? { ...row, lifted: true }
+              : row,
         ),
-      ),
-    [parts, pendingQuestions],
-  );
+    );
+    return founderMode ? groupTeamProposalRows(mapped) : mapped;
+  }, [parts, pendingQuestions, founderMode]);
   if (rows.length === 0) return null;
 
   const shownRows = rows.filter((row) => !row.lifted);

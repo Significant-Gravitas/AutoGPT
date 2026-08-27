@@ -43,7 +43,7 @@ const TEAM: Charter[] = [
 function renderTeam(onSend: (message: string) => void, team = TEAM) {
   return render(
     <CopilotChatActionsProvider onSend={onSend}>
-      <ToolChain parts={team.map(raisePart)} isStreaming={false} />
+      <ToolChain parts={team.map(raisePart)} isStreaming={false} founderMode />
     </CopilotChatActionsProvider>,
   );
 }
@@ -82,14 +82,22 @@ describe("TeamPreviewCard", () => {
     const onSend = vi.fn();
     const { rerender } = render(
       <CopilotChatActionsProvider onSend={onSend}>
-        <ToolChain parts={TEAM.slice(0, 2).map(raisePart)} isStreaming />
+        <ToolChain
+          parts={TEAM.slice(0, 2).map(raisePart)}
+          isStreaming
+          founderMode
+        />
       </CopilotChatActionsProvider>,
     );
     await user.click(screen.getByRole("button", { name: "Remove Scout" }));
 
     rerender(
       <CopilotChatActionsProvider onSend={onSend}>
-        <ToolChain parts={TEAM.map(raisePart)} isStreaming={false} />
+        <ToolChain
+          parts={TEAM.map(raisePart)}
+          isStreaming={false}
+          founderMode
+        />
       </CopilotChatActionsProvider>,
     );
     await user.click(screen.getByRole("button", { name: "Hire selected" }));

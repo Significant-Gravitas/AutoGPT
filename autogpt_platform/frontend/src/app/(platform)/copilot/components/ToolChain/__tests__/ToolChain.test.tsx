@@ -91,6 +91,28 @@ describe("ToolChain", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("groups team proposals only when hire-experts is enabled", () => {
+    const proposals = ["Kit", "Remy"].map((name, index) =>
+      toolPart("hire_expert", "output-available", {
+        toolCallId: `hire-${index}`,
+        output: {
+          type: "expert_change_proposed",
+          confirmation_id: `confirm-${index}`,
+          preview: { name, role: "Specialist" },
+        },
+      }),
+    );
+    const { rerender } = render(
+      <ToolChain parts={proposals} isStreaming={false} />,
+    );
+
+    expect(screen.queryByText("2 experts for your team")).toBeNull();
+
+    rerender(<ToolChain parts={proposals} isStreaming={false} founderMode />);
+
+    expect(screen.getByText("2 experts for your team")).toBeDefined();
+  });
+
   it("collapses a settled chain to a summary heading and expands on click", async () => {
     const user = userEvent.setup();
     render(

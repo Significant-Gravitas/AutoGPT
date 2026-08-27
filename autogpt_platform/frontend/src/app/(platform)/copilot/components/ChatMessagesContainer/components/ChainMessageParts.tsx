@@ -18,6 +18,7 @@ interface Props {
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
   liveCompactionStats?: CompactionStats;
+  founderMode?: boolean;
 }
 
 export function ChainMessageParts({
@@ -31,6 +32,7 @@ export function ChainMessageParts({
   compactionPhase,
   liveCompactionCallId,
   liveCompactionStats,
+  founderMode = false,
 }: Props) {
   const segments = buildChainSegments(parts, isChainableToolPart);
   const lastChainSegmentIndex = segments.findLastIndex(
@@ -47,6 +49,7 @@ export function ChainMessageParts({
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
           readOnly={readOnly}
+          founderMode={founderMode}
         />
       );
     }
