@@ -15,6 +15,9 @@ from backend.copilot.graphiti.memory_model import (
     SourceKind,
 )
 from backend.copilot.model import ChatSession
+from backend.api.features.experts.learned_notes_db import LearnedNoteCandidate
+from backend.data.db_accessors import expert_learned_notes_db
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .models import ErrorResponse, MemoryStoreResponse, ToolResponseBase
@@ -271,8 +274,42 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        if resolved_kind == MemoryKind.rule and resolved_source == SourceKind.user_asserted:
+            await _promote_explicit_expert_correction(
+                user_id=user_id,
+                session=session,
+                text=rule_model.instruction if rule_model else content,
+            )
+
         return MemoryStoreResponse(
             message=f"Memory '{name}' queued for storage.",
             session_id=session.session_id,
             memory_name=name,
+        )
+
+
+async def _promote_explicit_expert_correction(
+    *, user_id: str, session: ChatSession, text: str
+) -> None:
+    if not session.expert_id:
+        return
+    try:
+        if not await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        ):
+            return
+        await expert_learned_notes_db().promote_learned_notes(
+            user_id,
+            session.expert_id,
+            [
+                LearnedNoteCandidate(
+                    text=text,
+                    source_session_id=session.session_id,
+                )
+            ],
+        )
+    except Exception:
+        logger.warning(
+            "Explicit expert correction could not be promoted",
+            exc_info=True,
         )

@@ -71,6 +71,10 @@ def _post_run_result(
         return
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
         return
+    if status == ExecutionStatus.FAILED and _watcher_took_failure(
+        db_client, graph_exec, expert_id, exec_stats
+    ):
+        return
     # The key is captured once at admission and reused for release — a UTC
     # midnight rollover between the two must not decrement the new day's
     # counter (which would mint extra slots).
@@ -130,6 +134,30 @@ def _post_run_result(
         raise
     if posted_session is None:
         _release_cap_slot(cap_key, expert_id)
+
+
+def _watcher_took_failure(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    expert_id: str,
+    exec_stats: GraphExecutionStats,
+) -> bool:
+    try:
+        return db_client.deliver_run_failed_watcher(
+            user_id=graph_exec.user_id,
+            expert_id=expert_id,
+            graph_exec_id=graph_exec.graph_exec_id,
+            graph_id=graph_exec.graph_id,
+            trigger_source="workflow",
+            error=str(exec_stats.error) if exec_stats.error else None,
+        ) is True
+    except Exception as error_value:
+        logger.warning(
+            "Expert failure watcher unavailable for run #%s: %s",
+            graph_exec.graph_exec_id,
+            type(error_value).__name__,
+        )
+        return False
 
 
 def build_expert_run_message(

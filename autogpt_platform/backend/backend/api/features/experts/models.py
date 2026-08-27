@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError, field_validator
 
 from backend.data.expert_run_output import OutputType
 
@@ -105,6 +105,40 @@ class ExpertWorkflowRef(BaseModel):
     # created yet (e.g. missing credentials) — the workflow needs setup.
     schedule_cron: str | None = None
     schedule_id: str | None = None
+    _purpose: str | None = PrivateAttr(default=None)
+    _expected_inputs: str | None = PrivateAttr(default=None)
+    _expected_outputs: str | None = PrivateAttr(default=None)
+    _cadence: str | None = PrivateAttr(default=None)
+
+    @property
+    def purpose(self) -> str | None:
+        return self._purpose
+
+    @property
+    def expected_inputs(self) -> str | None:
+        return self._expected_inputs
+
+    @property
+    def expected_outputs(self) -> str | None:
+        return self._expected_outputs
+
+    @property
+    def cadence(self) -> str | None:
+        return self._cadence
+
+    def with_contract(
+        self,
+        *,
+        purpose: str | None,
+        expected_inputs: str | None,
+        expected_outputs: str | None,
+        cadence: str | None,
+    ) -> "ExpertWorkflowRef":
+        self._purpose = purpose
+        self._expected_inputs = expected_inputs
+        self._expected_outputs = expected_outputs
+        self._cadence = cadence
+        return self
 
 
 class ExpertIdentity(BaseModel):
@@ -113,6 +147,21 @@ class ExpertIdentity(BaseModel):
     avatar_url: str | None
     role: str
     is_archived: bool
+
+
+LearnedNoteStatus = Literal["active", "archived"]
+MAX_ACTIVE_LEARNED_NOTES = 20
+LEARNED_NOTE_TEXT_MAX_LENGTH = 500
+
+
+class ExpertLearnedNote(BaseModel):
+    id: str
+    expert_id: str
+    text: str
+    learned_at: datetime
+    source_session_id: str | None
+    source_rule_id: str | None
+    status: LearnedNoteStatus
 
 
 class Expert(BaseModel):

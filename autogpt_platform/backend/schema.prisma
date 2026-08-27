@@ -147,6 +147,7 @@ model User {
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
   ExpertWorkItems      ExpertWorkItem[]
+  ExpertLearnedNotes   ExpertLearnedNote[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -993,6 +994,7 @@ model Expert {
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
   WorkItems       ExpertWorkItem[]
+  LearnedNotes    ExpertLearnedNote[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1039,9 +1041,50 @@ model ExpertWorkflow {
   scheduleCron String?
   scheduleId   String?
 
+  // Why this workflow was adopted and the stable contract future turns use
+  // to decide whether it matches. These fields describe the attachment; the
+  // LibraryAgent's own inputs, credentials and settings remain untouched.
+  purpose         String?
+  expectedInputs  String?
+  expectedOutputs String?
+  cadence         String?
+
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
+  @@unique([expertId, libraryAgentId])
   @@index([expertId])
+}
+
+enum ExpertLearnedNoteStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// Machine-curated corrections kept separate from the user-authored Soul,
+// AutoPilot memory, shared project context and reusable procedure skills.
+model ExpertLearnedNote {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  text      String
+  dedupeKey String
+  learnedAt DateTime @default(now())
+
+  sourceSessionId String?
+  sourceRuleId    String?
+
+  status ExpertLearnedNoteStatus @default(ACTIVE)
+
+  @@index([userId, expertId, status])
+  @@index([userId, sourceRuleId])
+  @@unique([userId, expertId, dedupeKey])
 }
 
 model ExpertWorkItem {

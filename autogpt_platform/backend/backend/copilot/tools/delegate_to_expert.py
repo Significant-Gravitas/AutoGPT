@@ -83,14 +83,8 @@ class DelegateToExpertTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Hand a task to a DIFFERENT expert on the user's team when it "
-            "needs their skills, workflows, or integrations rather than "
-            "yours. The teammate answers in their own voice, memory, and "
-            "budget. Use run_sub_session instead for isolating your own "
-            f"work. Waits up to wait_for_result sec (max "
-            f"{MAX_SUB_SESSION_WAIT_SECONDS}); if not done, returns "
-            "status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "Assign work to a different hired expert. Use run_sub_session for your own "
+            "work. Unfinished work returns a session to check later."
         )
 
     @property
@@ -100,74 +94,58 @@ class DelegateToExpertTool(BaseTool):
             "properties": {
                 "expert_id": {
                     "type": "string",
-                    "description": (
-                        "Teammate to delegate to: their expert id from "
-                        "<team_context>, or their exact name if you don't "
-                        "have the id. Must not be you."
-                    ),
+                    "description": "Target teammate.",
                 },
                 "prompt": {
                     "type": "string",
-                    "description": (
-                        "The task, written for the teammate. Include the "
-                        "context they need — they cannot see this "
-                        "conversation."
-                    ),
+                    "description": "Assignment and context.",
                 },
                 "system_context": {
                     "type": "string",
-                    "description": "Optional context prepended to the prompt.",
+                    "description": "Extra context.",
                     "default": "",
                 },
                 "delegated_session_id": {
                     "type": "string",
-                    "description": (
-                        "Continue a prior delegation to this teammate; empty = new."
-                    ),
+                    "description": "Prior delegation.",
                     "default": "",
                 },
                 "wait_for_result": {
                     "type": "integer",
-                    "description": (
-                        "Seconds to wait inline. 0 = return immediately. "
-                        f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
-                    ),
+                    "description": "Inline wait seconds.",
                     "default": 60,
                 },
                 "deliverable_mode": {
                     "type": "string",
                     "enum": ["message", "workspace_files"],
-                    "description": (
-                        "Use workspace_files when completion requires one or "
-                        "more persistent files; otherwise use message."
-                    ),
+                    "description": "Required output form.",
                     "default": "message",
                 },
                 "task_title": {
                     "type": "string",
-                    "description": "Short founder-readable title for this work item.",
+                    "description": "Founder-facing title.",
                     "default": "",
                 },
                 "project_phase": {
                     "type": "string",
-                    "description": "Current project phase this work belongs to.",
+                    "description": "Project phase.",
                     "default": "",
                 },
                 "expected_deliverable": {
                     "type": "string",
-                    "description": "The concrete outcome or files the expert must return.",
+                    "description": "Concrete outcome.",
                     "default": "",
                 },
                 "success_criteria": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Observable conditions that define done.",
+                    "description": "Done conditions.",
                     "default": [],
                 },
                 "dependencies": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Work or decisions this task depends on.",
+                    "description": "Required prior work.",
                     "default": [],
                 },
                 "source_artifacts": {
@@ -182,26 +160,26 @@ class DelegateToExpertTool(BaseTool):
                         },
                         "required": ["name", "uri"],
                     },
-                    "description": "Persistent inputs the expert can open.",
+                    "description": "Accessible inputs.",
                     "default": [],
                 },
                 "constraints": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Scope, quality, timing, or implementation constraints.",
+                    "description": "Scope constraints.",
                     "default": [],
                 },
                 "approval_boundaries": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Actions that still require manager or founder approval.",
+                    "description": "Approval limits.",
                     "default": [],
                 },
                 "estimate_minutes": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 10080,
-                    "description": "Best estimate for this attempt in minutes.",
+                    "description": "Estimated minutes.",
                 },
             },
             "required": ["expert_id", "prompt"],

@@ -6218,6 +6218,85 @@
         }
       }
     },
+    "/api/experts/{expert_id}/learned-notes": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Learned Notes",
+        "operationId": "list_expert_learned_notes",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertLearnedNote" },
+                  "title": "Response List Expert Learned Notes"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found, or feature unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/learned-notes/{note_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Archive Expert Learned Note",
+        "operationId": "archive_expert_learned_note",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Note Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Learned note not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -19175,6 +19254,42 @@
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
       },
+      "ExpertLearnedNote": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "text": { "type": "string", "title": "Text" },
+          "learned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Learned At"
+          },
+          "source_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Session Id"
+          },
+          "source_rule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Rule Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "archived"],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expert_id",
+          "text",
+          "learned_at",
+          "source_session_id",
+          "source_rule_id",
+          "status"
+        ],
+        "title": "ExpertLearnedNote"
+      },
       "ExpertPod": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -19522,6 +19637,22 @@
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
+          },
+          "purpose": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Purpose"
+          },
+          "expected_inputs": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expected Inputs"
+          },
+          "expected_outputs": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expected Outputs"
+          },
+          "cadence": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cadence"
           }
         },
         "type": "object",
@@ -24785,6 +24916,7 @@
           "expert_change_proposed",
           "expert_change_applied",
           "expert_change_batch_applied",
+          "expert_workflow_installed",
           "team_roster"
         ],
         "title": "ResponseType",

@@ -43,6 +43,7 @@ from .llm import (
     StructuredCompletion,
     structured_completion,
 )
+from .learned_notes import promote_pass_learned_notes
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
@@ -974,6 +975,7 @@ async def _execute_dream_pass_async(
                 known_fact_uuids=input_bundle.known_fact_uuids,
                 lock_handle=dream_lock_handle,
             )
+            await promote_pass_learned_notes(user_id, expert_id, ops, apply_stats)
             # Apply succeeded (even as a no-op) — stamp the marker so the
             # next nightly pass can skip when nothing new has landed.
             # Stamped with the gather-window end so episodes that arrived

@@ -3,7 +3,13 @@ import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.experts import experts_db, scheduling, work_items
+from backend.api.features.experts import (
+    experts_db,
+    learned_notes_db,
+    scheduling,
+    work_items,
+)
+from backend.api.features.experts.learned_notes import invalidate_learned_rule
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -13,6 +19,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertDetachPreview,
     ExpertIdentity,
+    ExpertLearnedNote,
     ExpertPod,
     ExpertRun,
     ExpertSoulUpdate,
@@ -319,6 +326,48 @@ async def update_expert_soul(
         return await experts_db.update_soul(user_id, expert_id, request)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.get(
+    "/{expert_id}/learned-notes",
+    operation_id="list_expert_learned_notes",
+    responses={404: {"description": "Expert not found, or feature unavailable"}},
+)
+async def list_expert_learned_notes(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertLearnedNote]:
+    await _require_expert_learning(user_id, expert_id)
+    return await learned_notes_db.list_learned_notes(user_id, expert_id)
+
+
+@router.delete(
+    "/{expert_id}/learned-notes/{note_id}",
+    operation_id="archive_expert_learned_note",
+    status_code=204,
+    responses={404: {"description": "Learned note not found"}},
+)
+async def archive_expert_learned_note(
+    expert_id: str,
+    note_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> fastapi.Response:
+    await _require_expert_learning(user_id, expert_id)
+    try:
+        note = await learned_notes_db.archive_learned_note(
+            user_id, note_id, expert_id
+        )
+    except experts_db.ExpertNotFoundError:
+        raise fastapi.HTTPException(status_code=404, detail="Learned note not found")
+    await invalidate_learned_rule(user_id, expert_id, note.source_rule_id)
+    return fastapi.Response(status_code=204)
+
+
+async def _require_expert_learning(user_id: str, expert_id: str) -> None:
+    if not await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    ) or not await experts_db.owns_active_expert(user_id, expert_id):
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
 
 
 @router.post(

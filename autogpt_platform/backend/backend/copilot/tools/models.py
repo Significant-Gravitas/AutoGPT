@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.api.features.experts.models import ExpertWorkflowRef
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
@@ -128,6 +129,7 @@ class ResponseType(str, Enum):
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
     EXPERT_CHANGE_BATCH_APPLIED = "expert_change_batch_applied"
+    EXPERT_WORKFLOW_INSTALLED = "expert_workflow_installed"
     TEAM_ROSTER = "team_roster"
 
 
@@ -683,6 +685,16 @@ class ExpertChangeBatchAppliedResponse(ToolResponseBase):
     applied: bool
     results: list[ExpertChangeBatchResult]
     experts: list[ExpertSummary]
+
+
+class ExpertWorkflowInstalledResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.EXPERT_WORKFLOW_INSTALLED
+    expert: ExpertSummary
+    workflow: ExpertWorkflowRef
+    scheduled: bool = False
+    schedule_status: Literal["not_requested", "scheduled", "needs_setup"] = (
+        "not_requested"
+    )
 
 
 # Agent generation models

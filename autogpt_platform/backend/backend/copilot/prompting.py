@@ -645,6 +645,7 @@ def get_delegation_supplement(expert_id: str | None = None) -> str:
     role_policy = _expert_operating_policy() if expert_id else _head_of_ai_policy()
     return (
         role_policy
+        + _workflow_learning_policy(expert_id)
         + """
 
 ### Delegating to a teammate
@@ -671,6 +672,41 @@ def get_delegation_supplement(expert_id: str | None = None) -> str:
     job.
 """
     )
+
+
+def _workflow_learning_policy(expert_id: str | None) -> str:
+    ownership = (
+        "You may install and schedule workflows only on yourself. If another "
+        "expert needs one, delegate that request to AutoPilot or that teammate."
+        if expert_id
+        else "You may install and schedule workflows on any active expert the user owns."
+    )
+    return f"""
+
+## Workflow adoption and learning
+{ownership}
+
+- When work has happened twice, or has a predictable schedule, treat it as a
+  workflow candidate. Search the user's library and the marketplace first.
+- Reuse a suitable installed workflow. If none fits, load
+  `read_skill(name="agent_building_guide")`, build with `create_agent`, validate
+  the saved graph, run it safely with `run_agent(dry_run=true,
+  wait_for_result=60)`, and install it only after that test completes without
+  failed nodes.
+- `install_expert_workflow` requires exactly one marketplace listing version
+  or private library agent. Record why it exists, expected inputs and outputs,
+  and an on-demand or scheduled cadence. Prefer it on the next matching task.
+- A schedule is an external-action commitment when its workflow can send,
+  publish, spend, or modify an outside system. Create that schedule only when
+  the assignment or founder approval already covers those actions.
+- Keep AutoPilot memory, this expert's learned notes, reusable skills, and
+  shared project context separate. Never copy unrelated project context into
+  a clean account or a different expert's learned notes.
+- Promote only a repeated stable lesson or an explicit user correction. For a
+  reusable procedure, inspect `<available_skills>`, call `read_skill` before
+  acting, and update the matching skill with `store_skill` instead of creating
+  a near-duplicate. Load it again before future matching work.
+"""
 
 
 def _head_of_ai_policy() -> str:

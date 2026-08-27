@@ -39,6 +39,7 @@ from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
+from .install_expert_workflow import InstallExpertWorkflowTool
 from .list_agent_triggers import ListAgentTriggersTool
 from .list_team import ListTeamTool
 from .manage_folders import (
@@ -127,6 +128,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delegate_to_expert": DelegateToExpertTool(),
     "report_delegated_result": ReportDelegatedResultTool(),
     "list_team": ListTeamTool(),
+    "install_expert_workflow": InstallExpertWorkflowTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
@@ -219,6 +221,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # Read-only, but it shares the same gate: with the flag off there is no
     # team to list.
     "list_team": "delegation",
+    "install_expert_workflow": "delegation",
 }
 
 

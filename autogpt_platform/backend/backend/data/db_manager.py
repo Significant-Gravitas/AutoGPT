@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import learned_notes_db as experts_learned_notes_db
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
     add_store_agent_to_library,
@@ -49,6 +50,7 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
+from backend.copilot.watchers import deliver as expert_watchers
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
@@ -527,6 +529,12 @@ class DatabaseManager(AppService):
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
+    install_workflow = _(experts_db.install_workflow)
+    install_library_workflow = _(experts_db.install_library_workflow)
+    claim_workflow_schedule = _(experts_db.claim_workflow_schedule)
+    list_learned_notes = _(experts_learned_notes_db.list_learned_notes)
+    promote_learned_notes = _(experts_learned_notes_db.promote_learned_notes)
+    archive_notes_for_rules = _(experts_learned_notes_db.archive_notes_for_rules)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -540,6 +548,9 @@ class DatabaseManager(AppService):
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
+    deliver_run_failed_watcher = _(
+        expert_watchers.deliver_run_failed, name="deliver_run_failed_watcher"
+    )
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
@@ -646,6 +657,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
+    deliver_run_failed_watcher = _(d.deliver_run_failed_watcher)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
@@ -898,6 +910,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
     count_raised_experts = d.count_raised_experts
+    install_workflow = d.install_workflow
+    install_library_workflow = d.install_library_workflow
+    claim_workflow_schedule = d.claim_workflow_schedule
+    list_learned_notes = d.list_learned_notes
+    promote_learned_notes = d.promote_learned_notes
+    archive_notes_for_rules = d.archive_notes_for_rules
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
@@ -907,6 +925,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
     append_expert_run_message = d.append_expert_run_message
+    deliver_run_failed_watcher = d.deliver_run_failed_watcher
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question

@@ -294,6 +294,81 @@ class TestMemoryStoreTool:
         assert envelope["memory_kind"] == "rule"
 
     @pytest.mark.asyncio
+    async def test_explicit_expert_correction_becomes_learned_note(self):
+        tool = MemoryStoreTool()
+        session = _make_session(expert_id="expert-1")
+        notes_db = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.is_feature_enabled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.expert_learned_notes_db",
+                return_value=notes_db,
+            ),
+        ):
+            result = await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="draft_rule",
+                content="Always show me a draft before publishing.",
+                source_kind="user_asserted",
+                memory_kind="rule",
+            )
+
+        assert isinstance(result, MemoryStoreResponse)
+        _, expert_id, candidates = notes_db.promote_learned_notes.await_args.args
+        assert expert_id == "expert-1"
+        assert candidates[0].text == "Always show me a draft before publishing."
+        assert candidates[0].source_session_id == "test-session"
+
+    @pytest.mark.asyncio
+    async def test_autopilot_rule_does_not_enter_expert_learning(self):
+        tool = MemoryStoreTool()
+        session = _make_session()
+        notes_db = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "backend.copilot.tools.graphiti_store.expert_learned_notes_db",
+                return_value=notes_db,
+            ),
+        ):
+            await tool._execute(
+                user_id="user-1",
+                session=session,
+                name="founder_rule",
+                content="Always show a draft.",
+                source_kind="user_asserted",
+                memory_kind="rule",
+            )
+
+        notes_db.promote_learned_notes.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_store_queue_full_returns_retryable_error(self):
         tool = MemoryStoreTool()
         session = _make_session()

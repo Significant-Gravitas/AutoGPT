@@ -16,6 +16,7 @@ from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
+from backend.copilot.watchers import deliver as expert_watchers
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ExpertRunPausedError
@@ -357,6 +358,12 @@ async def _post_budget_message(
     Never raises — a failed post must not affect the run decision."""
     year, week, _ = datetime.now(timezone.utc).isocalendar()
     kind = "pause" if breached else "warn"
+    if breached and await expert_watchers.deliver_expert_paused(
+        user_id=user_id,
+        expert_id=expert.id,
+        expert_name=expert.name,
+    ):
+        return
     message_id = str(
         uuid.uuid5(_POST_NAMESPACE, f"budget-{kind}:{expert.id}:{year}-W{week:02d}")
     )

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.enums
 import prisma.errors
@@ -159,6 +159,36 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
             user_id=admin.id,
         )
     return slv_id
+
+
+async def _seed_private_library_agent(server: SpinTestServer, user):
+    graph = Graph(
+        name=f"Private expert workflow {uuid.uuid4().hex[:8]}",
+        description="User-owned private workflow",
+        nodes=[
+            Node(
+                block_id=AgentInputBlock().id,
+                input_default={"name": "input_1"},
+            )
+        ],
+        links=[],
+    )
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), user.id
+    )
+    organization_id, team_id = await experts_db.get_user_default_team(user.id)
+    await prisma.models.AgentGraph.prisma().update_many(
+        where={"id": created.id, "version": created.version},
+        data={"organizationId": organization_id, "teamId": team_id},
+    )
+    return (
+        await library_db.create_library_agent(
+            created,
+            user.id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+    )[0]
 
 
 async def _load_roster_store_assets() -> dict[str, str]:
@@ -2017,6 +2047,121 @@ async def test_install_workflow_rejects_unapproved_store_version(
 
     with pytest.raises(NotFoundError):
         await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_private_workflow_is_idempotent_and_preserves_settings(
+    server: SpinTestServer, test_user
+):
+    library_agent = await _seed_private_library_agent(server, test_user)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    settings = GraphSettings(
+        human_in_the_loop_safe_mode=False,
+        sensitive_action_safe_mode=True,
+        builder_chat_session_id="private-builder-session",
+    )
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent.id},
+        data={"settings": SafeJson(settings.model_dump())},
+    )
+
+    first = await experts_db.install_library_workflow(
+        test_user.id,
+        hired.expert.id,
+        library_agent.id,
+        purpose="Research leads",
+    )
+    second = await experts_db.install_library_workflow(
+        test_user.id,
+        hired.expert.id,
+        library_agent.id,
+        purpose="A later duplicate must not replace the contract",
+    )
+
+    persisted = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent.id}
+    )
+    assert persisted is not None
+    assert first.id == second.id
+    assert second.purpose == "Research leads"
+    assert GraphSettings.model_validate(persisted.settings) == settings
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_private_workflow_installs_return_one_row(
+    server: SpinTestServer, test_user
+):
+    library_agent = await _seed_private_library_agent(server, test_user)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    first, second = await asyncio.gather(
+        experts_db.install_library_workflow(
+            test_user.id, hired.expert.id, library_agent.id
+        ),
+        experts_db.install_library_workflow(
+            test_user.id, hired.expert.id, library_agent.id
+        ),
+    )
+
+    assert first.id == second.id
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={
+                "expertId": hired.expert.id,
+                "libraryAgentId": library_agent.id,
+            }
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_private_workflow_rejects_another_users_library_agent(
+    server: SpinTestServer, test_user, other_user
+):
+    library_agent = await _seed_private_library_agent(server, other_user)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertWorkflowUnavailableError):
+        await experts_db.install_library_workflow(
+            test_user.id, hired.expert.id, library_agent.id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_private_workflow_validation_failure_prevents_attachment(
+    server: SpinTestServer, test_user
+):
+    library_agent = await _seed_private_library_agent(server, test_user)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    invalid_graph = SimpleNamespace(is_active=True)
+    invalid_graph.validate_graph = MagicMock(side_effect=ValueError("invalid"))
+
+    with (
+        patch.object(
+            experts_db.graph_data,
+            "get_graph",
+            new=AsyncMock(return_value=invalid_graph),
+        ),
+        pytest.raises(experts_db.ExpertWorkflowUnavailableError),
+    ):
+        await experts_db.install_library_workflow(
+            test_user.id, hired.expert.id, library_agent.id
+        )
+
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={
+                "expertId": hired.expert.id,
+                "libraryAgentId": library_agent.id,
+            }
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -29,7 +29,9 @@ interface SessionChatMessage {
 function getRunMetadata(metadata: unknown): Record<string, unknown> | null {
   return metadata &&
     typeof metadata === "object" &&
-    (metadata as Record<string, unknown>).kind === "expert_run"
+    ["expert_run", "copilot_watcher"].includes(
+      String((metadata as Record<string, unknown>).kind),
+    )
     ? (metadata as Record<string, unknown>)
     : null;
 }

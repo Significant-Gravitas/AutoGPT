@@ -6,6 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -21,6 +22,7 @@ from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
     ExpertIdentity,
+    ExpertLearnedNote,
     ExpertPod,
     ExpertRun,
     ExpertSoulUpdate,
@@ -1369,3 +1371,94 @@ def test_assign_pod_unknown_pod_returns_404(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Expert or pod not found"
+
+
+def _learned_note(status: str = "active") -> ExpertLearnedNote:
+    return ExpertLearnedNote(
+        id="note-1",
+        expert_id="expert-1",
+        text="Always send drafts before publishing.",
+        learned_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        source_session_id="session-1",
+        source_rule_id="rule-1",
+        status=status,
+    )
+
+
+def test_list_learned_notes_is_flag_and_owner_gated(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    owns = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    listed = mocker.patch(
+        "backend.api.features.experts.routes.learned_notes_db.list_learned_notes",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/experts/expert-1/learned-notes")
+
+    assert response.status_code == 404
+    owns.assert_not_awaited()
+    listed.assert_not_awaited()
+
+
+def test_list_learned_notes_returns_owned_expert_notes(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.learned_notes_db.list_learned_notes",
+        new_callable=AsyncMock,
+        return_value=[_learned_note()],
+    )
+
+    response = client.get("/experts/expert-1/learned-notes")
+
+    assert response.status_code == 200
+    assert response.json()[0]["text"] == "Always send drafts before publishing."
+
+
+def test_archive_learned_note_invalidates_underlying_rule(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.owns_active_expert",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.learned_notes_db.archive_learned_note",
+        new_callable=AsyncMock,
+        return_value=_learned_note("archived"),
+    )
+    invalidate = mocker.patch(
+        "backend.api.features.experts.routes.invalidate_learned_rule",
+        new_callable=AsyncMock,
+    )
+
+    response = client.delete("/experts/expert-1/learned-notes/note-1")
+
+    assert response.status_code == 204
+    invalidate.assert_awaited_once_with(test_user_id, "expert-1", "rule-1")

@@ -42,6 +42,7 @@ from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.data.db import prisma as db_client
+from backend.data import graph as graph_data
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
     resolve_attributable_expert as resolve_attributable_expert_row,
@@ -78,6 +79,10 @@ _MAX_EXPERT_RUNS = 20
 FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 
 
+class ExpertWorkflowUnavailableError(ValueError):
+    pass
+
+
 def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     listing = row.StoreListingVersion
     library_agent = row.LibraryAgent
@@ -99,6 +104,11 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
+    ).with_contract(
+        purpose=row.purpose,
+        expected_inputs=row.expectedInputs,
+        expected_outputs=row.expectedOutputs,
+        cadence=row.cadence,
     )
 
 
@@ -1037,7 +1047,14 @@ async def _install_preloads(
 
 
 async def install_workflow(
-    user_id: str, expert_id: str, store_listing_version_id: str
+    user_id: str,
+    expert_id: str,
+    store_listing_version_id: str,
+    *,
+    purpose: str | None = None,
+    expected_inputs: str | None = None,
+    expected_outputs: str | None = None,
+    cadence: str | None = None,
 ) -> ExpertWorkflowRef:
     expert = await prisma.models.Expert.prisma().find_first(
         where={
@@ -1059,7 +1076,15 @@ async def install_workflow(
         include=_WORKFLOW_ROW_INCLUDE,
     )
     if existing is not None:
-        return _to_workflow_ref(existing)
+        return _to_workflow_ref(
+            await _record_workflow_contract(
+                existing,
+                purpose=purpose,
+                expected_inputs=expected_inputs,
+                expected_outputs=expected_outputs,
+                cadence=cadence,
+            )
+        )
 
     library_agent = await library_db.add_store_agent_to_library(
         store_listing_version_id, user_id
@@ -1084,8 +1109,187 @@ async def install_workflow(
         )
         if raced is None:
             raise
-        return _to_workflow_ref(raced)
-    return _to_workflow_ref(row)
+        row = raced
+    return _to_workflow_ref(
+        await _record_workflow_contract(
+            row,
+            purpose=purpose,
+            expected_inputs=expected_inputs,
+            expected_outputs=expected_outputs,
+            cadence=cadence,
+        )
+    )
+
+
+async def install_library_workflow(
+    user_id: str,
+    expert_id: str,
+    library_agent_id: str,
+    *,
+    purpose: str | None = None,
+    expected_inputs: str | None = None,
+    expected_outputs: str | None = None,
+    cadence: str | None = None,
+) -> ExpertWorkflowRef:
+    """Attach one active, private workflow the user created to an expert.
+
+    The LibraryAgent, its graph, and the target expert must all belong to the
+    same private tenancy. A duplicate or concurrent install returns the row
+    that already won and only fills missing contract metadata; it never
+    rewrites the LibraryAgent's settings, inputs, or credentials.
+    """
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
+    )
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={
+            "id": library_agent_id,
+            "userId": user_id,
+            "isCreatedByUser": True,
+            "isArchived": False,
+            "isDeleted": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        include={"AgentGraph": True},
+    )
+    if library_agent is None or library_agent.AgentGraph is None:
+        raise ExpertWorkflowUnavailableError(
+            "That private workflow is unavailable or no longer active."
+        )
+    graph_row = library_agent.AgentGraph
+    organization_id, team_id = await get_user_default_team(user_id)
+    if organization_id is None:
+        raise ExpertWorkflowUnavailableError(
+            "That private workflow has no active personal workspace."
+        )
+    same_tenancy = (
+        library_agent.organizationId == organization_id
+        and library_agent.teamId == team_id
+        and graph_row.organizationId == organization_id
+        and graph_row.teamId == team_id
+    )
+    if (
+        not same_tenancy
+        or graph_row.userId != user_id
+        or graph_row.visibility != ResourceVisibility.PRIVATE
+        or not graph_row.isActive
+    ):
+        raise ExpertWorkflowUnavailableError(
+            "That private workflow is outside this expert's active workspace."
+        )
+
+    graph = await graph_data.get_graph(
+        library_agent.agentGraphId,
+        library_agent.agentGraphVersion,
+        user_id=user_id,
+        include_subgraphs=True,
+    )
+    if graph is None or not graph.is_active:
+        raise ExpertWorkflowUnavailableError(
+            "That private workflow's graph is unavailable."
+        )
+    try:
+        graph.validate_graph(for_run=False)
+    except Exception as error:
+        raise ExpertWorkflowUnavailableError(
+            "That private workflow did not pass graph validation."
+        ) from error
+
+    row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"expertId": expert_id, "libraryAgentId": library_agent_id},
+        include=_WORKFLOW_ROW_INCLUDE,
+    )
+    if row is None:
+        try:
+            row = await prisma.models.ExpertWorkflow.prisma().create(
+                data={
+                    "expertId": expert_id,
+                    "libraryAgentId": library_agent_id,
+                },
+                include=_WORKFLOW_ROW_INCLUDE,
+            )
+        except prisma.errors.UniqueViolationError:
+            row = await prisma.models.ExpertWorkflow.prisma().find_first(
+                where={
+                    "expertId": expert_id,
+                    "libraryAgentId": library_agent_id,
+                },
+                include=_WORKFLOW_ROW_INCLUDE,
+            )
+            if row is None:
+                raise
+
+    return _to_workflow_ref(
+        await _record_workflow_contract(
+            row,
+            purpose=purpose,
+            expected_inputs=expected_inputs,
+            expected_outputs=expected_outputs,
+            cadence=cadence,
+        )
+    )
+
+
+async def _record_workflow_contract(
+    row: prisma.models.ExpertWorkflow,
+    *,
+    purpose: str | None,
+    expected_inputs: str | None,
+    expected_outputs: str | None,
+    cadence: str | None,
+) -> prisma.models.ExpertWorkflow:
+    values = {
+        "purpose": purpose,
+        "expectedInputs": expected_inputs,
+        "expectedOutputs": expected_outputs,
+        "cadence": cadence,
+    }
+    for field, value in values.items():
+        cleaned = value.strip() if value else ""
+        if not cleaned:
+            continue
+        await prisma.models.ExpertWorkflow.prisma().update_many(
+            where={"id": row.id, field: None},
+            data={field: cleaned},
+        )
+    refreshed = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": row.id},
+        include=_WORKFLOW_ROW_INCLUDE,
+    )
+    if refreshed is None:
+        raise ExpertWorkflowUnavailableError("The workflow attachment disappeared.")
+    return refreshed
+
+
+async def claim_workflow_schedule(
+    user_id: str,
+    expert_id: str,
+    workflow_id: str,
+    schedule_id: str,
+    schedule_cron: str,
+) -> bool:
+    if not await owns_active_expert(user_id, expert_id):
+        raise ExpertNotFoundError(expert_id)
+    return (
+        await prisma.models.ExpertWorkflow.prisma().update_many(
+            where={
+                "id": workflow_id,
+                "expertId": expert_id,
+                "scheduleId": None,
+            },
+            data={"scheduleId": schedule_id, "scheduleCron": schedule_cron},
+        )
+        == 1
+    )
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:

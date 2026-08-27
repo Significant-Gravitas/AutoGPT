@@ -38,6 +38,8 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
+import { WatcherCard } from "../WatcherCard/WatcherCard";
+import { getWatcherMetadata } from "../WatcherCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
 import { CopyButton } from "./components/CopyButton";
@@ -514,6 +516,21 @@ export function ChatMessagesContainer({
             </div>
           )}
           {messages.map((message, messageIndex) => {
+            const watcherMetadata = getWatcherMetadata(message.metadata);
+            if (watcherMetadata) {
+              return (
+                <Message
+                  from={message.role}
+                  key={message.id}
+                  data-message-id={message.id}
+                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                >
+                  <MessageContent className="group-[.is-assistant]:bg-transparent">
+                    <WatcherCard metadata={watcherMetadata} />
+                  </MessageContent>
+                </Message>
+              );
+            }
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
             // and fall through to normal rendering).

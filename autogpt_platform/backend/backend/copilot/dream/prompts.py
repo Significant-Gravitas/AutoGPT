@@ -162,7 +162,10 @@ RECOMBINE_SYSTEM = (
     ' * ``memory_kind`` MUST be one of: "finding", "rule", '
     '"preference", "plan". Do NOT invent new values (e.g. '
     '"inferred_fact", "recommendation", "insight") — those '
-    "proposals are silently dropped.\n\n"
+    "proposals are silently dropped.\n"
+    ' * Use "rule" only for an explicit standing correction from the user '
+    '(for example, "always show me a draft before publishing"). One-off '
+    "requests and inferred preferences are findings, not rules.\n\n"
     "JSON SCHEMA (your response MUST match this shape):\n"
     '{ "proposals": [ { "content": str, "scope": str, "memory_kind": str, '
     '"confidence": float, "rationale": str, "source_episode_uuids": [str, ...], '
@@ -242,6 +245,9 @@ SANITIZE_SYSTEM = (
     "are not memories ABOUT THE USER. Keep a fact only when its subject "
     "is the user, their projects, the people/orgs they work with, or "
     "their stated preferences.\n"
+    ' * A memory_kind="rule" becomes expert learning shown on future turns. '
+    "Keep it only when the source clearly records a user correction; downgrade "
+    'anything inferred or one-off to "finding".\n'
     " * Write a short ``summary_for_user`` (1-3 sentences) describing "
     "what the pass found.\n"
     " * ``summary_for_user`` MUST ALWAYS be non-empty — even when there "

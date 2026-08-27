@@ -36,9 +36,8 @@ class ReportDelegatedResultTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Report a delegated work item to AutoPilot. Only use this inside "
-            "an expert thread created by delegate_to_expert. Report delivered, "
-            "partial, blocked_manager, or failed; never ask the founder directly."
+            "Report delegated work to AutoPilot from its assigned expert "
+            "thread. Never ask the founder directly."
         )
 
     @property
@@ -48,20 +47,20 @@ class ReportDelegatedResultTool(BaseTool):
             "properties": {
                 "work_item_id": {
                     "type": "string",
-                    "description": "Assigned work item id from the delegation message.",
+                    "description": "Assigned work.",
                 },
                 "status": {
                     "type": "string",
                     "enum": ["delivered", "partial", "blocked_manager", "failed"],
-                    "description": "Terminal handoff state reported to AutoPilot.",
+                    "description": "Handoff state.",
                 },
                 "summary": {
                     "type": "string",
-                    "description": "Concise outcome, attempts, and recommended next step.",
+                    "description": "Outcome and next step.",
                 },
                 "blocker": {
                     "type": "string",
-                    "description": "What AutoPilot must resolve; required for blocked_manager.",
+                    "description": "Manager blocker.",
                     "default": "",
                 },
                 "progress": {
@@ -69,13 +68,13 @@ class ReportDelegatedResultTool(BaseTool):
                     "minimum": 0,
                     "maximum": 100,
                     "default": 100,
-                    "description": "Estimated percent complete.",
+                    "description": "Percent complete.",
                 },
                 "confidence": {
                     "type": "string",
                     "enum": ["verified", "likely", "unknown", "disqualified"],
                     "default": "unknown",
-                    "description": "Evidence strength for the reported result.",
+                    "description": "Evidence strength.",
                 },
                 "success_criteria": {
                     "type": "array",
@@ -92,7 +91,7 @@ class ReportDelegatedResultTool(BaseTool):
                         "required": ["criterion", "status"],
                     },
                     "default": [],
-                    "description": "Definition-of-done checks and supporting evidence.",
+                    "description": "Done checks.",
                 },
                 "artifacts": {
                     "type": "array",
@@ -107,7 +106,7 @@ class ReportDelegatedResultTool(BaseTool):
                         "required": ["name", "uri"],
                     },
                     "default": [],
-                    "description": "Persistent outputs AutoPilot can open.",
+                    "description": "Persistent outputs.",
                 },
             },
             "required": ["work_item_id", "status", "summary"],

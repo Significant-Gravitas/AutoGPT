@@ -28,6 +28,7 @@ from backend.copilot.constants import (
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
+from backend.copilot.watchers import deliver as expert_watchers
 from backend.data.execution import get_graph_execution_meta
 from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
@@ -258,7 +259,16 @@ async def get_or_create_human_review(
     if review.status == ReviewStatus.WAITING:
         # Nothing sends until a human acts, which is exactly the shape of an
         # Alert. The engine debounces and coalesces from here.
-        await _sync_awaiting_review_safely(user_id, graph_id)
+        watcher_handled = False
+        if review.createdAt == review.updatedAt:
+            watcher_handled = await expert_watchers.deliver_review_waiting(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                node_exec_id=node_exec_id,
+                instructions=message,
+            )
+        if not watcher_handled:
+            await _sync_awaiting_review_safely(user_id, graph_id)
         return None
     else:
         return ReviewResult(
