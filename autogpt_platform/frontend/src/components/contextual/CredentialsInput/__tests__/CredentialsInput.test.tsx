@@ -512,6 +512,7 @@ describe("CredentialsInput – MCP API key creation", () => {
 
   function renderMCPApiKeyTab(
     createAPIKeyCredentials: ReturnType<typeof vi.fn>,
+    discriminatorValue: string | undefined,
   ) {
     mockUseCredentials.mockReturnValue(
       makeCredentialsReturn({
@@ -520,7 +521,7 @@ describe("CredentialsInput – MCP API key creation", () => {
         schema: mcpSchema,
         supportsApiKey: true,
         supportsOAuth2: true,
-        discriminatorValue: "https://mcp.datafa.st/mcp/",
+        discriminatorValue,
         createAPIKeyCredentials,
       } as unknown as Partial<CredentialsReturn>) as unknown as CredentialsReturn,
     );
@@ -548,7 +549,7 @@ describe("CredentialsInput – MCP API key creation", () => {
       provider: "mcp",
       type: "api_key",
     });
-    renderMCPApiKeyTab(createAPIKeyCredentials);
+    renderMCPApiKeyTab(createAPIKeyCredentials, "https://mcp.datafa.st/mcp/");
 
     fireEvent.click(
       await screen.findByRole("button", { name: /add .*credential/i }),
@@ -575,6 +576,32 @@ describe("CredentialsInput – MCP API key creation", () => {
         }),
       );
     });
+  });
+
+  it("refuses to create a credential before the node has a server URL", async () => {
+    // Creating one now yields `host: null` — unmatchable by the picker and by
+    // the backend — so the user sees it selected and the block still 401s.
+    const createAPIKeyCredentials = vi.fn();
+    renderMCPApiKeyTab(createAPIKeyCredentials, undefined);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add .*credential/i }),
+    );
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /api key/i }));
+
+    fireEvent.change(await screen.findByLabelText(/^name$/i), {
+      target: { value: "My token" },
+    });
+    fireEvent.change(
+      screen.getByLabelText(/^api key$/i, { selector: "input" }),
+      { target: { value: "some-token" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /add api key/i }));
+
+    expect(
+      await screen.findByText(/enter the mcp server url on the block/i),
+    ).toBeDefined();
+    expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 });
 

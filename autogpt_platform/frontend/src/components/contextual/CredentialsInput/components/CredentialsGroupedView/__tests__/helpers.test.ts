@@ -44,4 +44,39 @@ describe("findSavedUserCredentialByProviderAndType — MCP api_key host matching
 
     expect(result?.id).toBe("a");
   });
+
+  it("matches when only the node's server URL carries a trailing slash", () => {
+    // `classifyCredentials` normalizes both sides, so this matcher must too —
+    // otherwise the builder picker finds the credential and the run dialog's
+    // auto-assign reports the same server as unconnected.
+    const providers = makeProviders([
+      APIKeyCred("a", "https://mcp.serverA.com/mcp"),
+    ]);
+
+    const result = findSavedUserCredentialByProviderAndType(
+      ["mcp"],
+      ["oauth2", "api_key"],
+      undefined,
+      providers,
+      ["https://mcp.serverA.com/mcp/"],
+    );
+
+    expect(result?.id).toBe("a");
+  });
+
+  it("matches when only the stored credential's host carries a trailing slash", () => {
+    const providers = makeProviders([
+      APIKeyCred("a", "https://mcp.serverA.com/mcp/"),
+    ]);
+
+    const result = findSavedUserCredentialByProviderAndType(
+      ["mcp"],
+      ["oauth2", "api_key"],
+      undefined,
+      providers,
+      ["https://mcp.serverA.com/mcp"],
+    );
+
+    expect(result?.id).toBe("a");
+  });
 });

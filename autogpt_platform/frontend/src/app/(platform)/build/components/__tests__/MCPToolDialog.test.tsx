@@ -6,6 +6,7 @@ import {
   cleanup,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPToolDialog } from "../MCPToolDialog";
 
 vi.mock("@/lib/oauth-popup", () => ({
@@ -203,6 +204,103 @@ describe("MCPToolDialog — static API key / bearer token", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("stores the token through the credentials provider so the picker cache updates", async () => {
+    // Going straight to the generated endpoint leaves the cached credentials
+    // list holding the row the backend just deleted, so the picker
+    // re-selects a nonexistent ID and the node 401s until a page refresh.
+    mockDiscover.mockResolvedValue(discoverOk());
+    const mcpStoreToken = vi.fn().mockResolvedValue({
+      id: "cred-provider",
+      provider: "mcp",
+      type: "api_key",
+      title: "MCP: datafa.st",
+      host: SERVER_URL,
+    });
+    const onConfirm = vi.fn();
+
+    render(
+      <CredentialsProvidersContext.Provider
+        value={{ mcp: { mcpStoreToken } } as never}
+      >
+        <MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    fireEvent.change(screen.getByLabelText(/api key \/ bearer token/i), {
+      target: { value: "df_live_secret" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect with token/i }),
+    );
+
+    await waitFor(() =>
+      expect(mcpStoreToken).toHaveBeenCalledWith(SERVER_URL, "df_live_secret"),
+    );
+    // The provider path replaces the generated-endpoint call entirely.
+    expect(mockStoreToken).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByText("get_analytics"));
+    fireEvent.click(screen.getByRole("button", { name: /add block/i }));
+    expect(onConfirm.mock.calls[0][0].credentials.id).toBe("cred-provider");
+  });
+
+  it("does not carry a token from one server over to the next after Back", async () => {
+    // The token field is hidden on the tool step, so nothing would tell the
+    // user server A's secret is still loaded and about to authenticate B.
+    mockDiscover.mockResolvedValue(discoverOk());
+    mockStoreToken.mockResolvedValue({
+      status: 200,
+      data: {
+        id: "cred-abc",
+        provider: "mcp",
+        type: "api_key",
+        title: "MCP: datafa.st",
+        host: SERVER_URL,
+      },
+    });
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: SERVER_URL },
+    });
+    fireEvent.click(
+      screen.getByText(/use an api key \/ bearer token instead/i),
+    );
+    fireEvent.change(screen.getByLabelText(/api key \/ bearer token/i), {
+      target: { value: "secret_for_server_A" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect with token/i }),
+    );
+
+    await screen.findByText("get_analytics");
+    fireEvent.click(screen.getByRole("button", { name: /back/i }));
+
+    const otherServer = "https://mcp.other.com/mcp";
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: otherServer },
+    });
+    mockDiscover.mockClear();
+    mockStoreToken.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /discover tools/i }));
+
+    await waitFor(() =>
+      expect(mockDiscover).toHaveBeenCalledWith({
+        server_url: otherServer,
+        auth_token: null,
+      }),
+    );
+    // Server A's secret must not be re-persisted as server B's credential.
+    expect(mockStoreToken).not.toHaveBeenCalled();
+  });
+
   it("can switch back from token entry to OAuth sign-in", () => {
     render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
 
@@ -276,6 +374,20 @@ describe("MCPToolDialog — tool cards", () => {
     expect(screen.getByRole("button", { name: /add block/i })).toHaveProperty(
       "disabled",
       true,
+    );
+  });
+
+  it("selects a tool from the keyboard", async () => {
+    // The card is a div with role="button" (a native button would nest one
+    // inside another), so it has to implement Enter/Space itself.
+    await discoverAndGetToggle();
+    const card = screen.getByText("ask_question").closest('[role="button"]')!;
+
+    fireEvent.keyDown(card, { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: /add block/i })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 });
