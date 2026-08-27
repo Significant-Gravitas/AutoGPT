@@ -478,6 +478,11 @@ class TelegramAdapter(WebhookAdapter):
             return str(chat.get("id"))
         return None
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        # A Telegram private chat's ID is the user's own numeric ID — no open
+        # call exists or is needed.
+        return platform_user_id
+
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:

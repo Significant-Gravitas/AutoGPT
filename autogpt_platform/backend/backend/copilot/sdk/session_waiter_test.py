@@ -25,6 +25,18 @@ _QR = type(
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_session_lookup():
+    session = MagicMock()
+    session.metadata.llm_auth_provider = "platform"
+    session.metadata.llm_credential_id = None
+    with patch(
+        "backend.copilot.sdk.session_waiter.get_chat_session",
+        new=AsyncMock(return_value=session),
+    ) as lookup:
+        yield lookup
+
+
 @pytest.mark.asyncio
 async def test_queue_branch_timeout_zero_returns_immediately():
     """Busy + timeout=0 → no registry, no enqueue, no wait, queued result."""

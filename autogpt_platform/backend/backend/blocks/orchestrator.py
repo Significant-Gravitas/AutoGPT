@@ -433,7 +433,7 @@ class OrchestratorBlock(Block):
             description="The prompt to send to the language model.",
             placeholder="Enter your prompt here...",
         )
-        model: llm.LlmModel = SchemaField(
+        model: llm.LLMModel = SchemaField(
             title="LLM Model",
             default=llm.DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",

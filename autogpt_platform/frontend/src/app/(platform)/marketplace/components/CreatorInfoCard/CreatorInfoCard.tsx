@@ -41,7 +41,7 @@ export const CreatorInfoCard = ({
             size={130}
             className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]"
           >
-            {username.charAt(0)}
+            {username}
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">

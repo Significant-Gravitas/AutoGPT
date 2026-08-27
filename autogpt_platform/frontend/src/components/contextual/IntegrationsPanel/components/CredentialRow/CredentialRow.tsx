@@ -1,12 +1,4 @@
 "use client";
-
-import {
-  CheckSquareIcon,
-  SpinnerIcon,
-  SquareIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +11,13 @@ import {
   typeBadgeLabel,
   type CredentialView,
 } from "../../helpers";
+import {
+  CheckmarkSquare02Icon,
+  Delete02Icon,
+  Loading03Icon,
+  SquareIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   credential: CredentialView;
@@ -57,9 +56,9 @@ export function CredentialRow({
             }`}
           >
             {selected ? (
-              <CheckSquareIcon size={20} weight="fill" />
+              <Icon icon={CheckmarkSquare02Icon} size={20} />
             ) : (
-              <SquareIcon size={20} />
+              <Icon icon={SquareIcon} size={20} />
             )}
           </button>
         )}
@@ -107,9 +106,9 @@ export function CredentialRow({
           className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
         >
           {isDeleting ? (
-            <SpinnerIcon size={20} className="animate-spin" />
+            <Icon icon={Loading03Icon} size={20} className="animate-spin" />
           ) : (
-            <TrashIcon size={20} />
+            <Icon icon={Delete02Icon} size={20} />
           )}
         </button>
       )}

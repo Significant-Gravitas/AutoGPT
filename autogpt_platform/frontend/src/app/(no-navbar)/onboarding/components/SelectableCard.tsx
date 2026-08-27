@@ -2,7 +2,8 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check } from "@phosphor-icons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   icon: React.ReactNode;
@@ -34,7 +35,7 @@ export function SelectableCard({
     >
       {selected && (
         <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
-          <Check size={12} weight="bold" className="text-white" />
+          <Icon icon={Tick02Icon} size={12} className="text-white" />
         </span>
       )}
       <Text

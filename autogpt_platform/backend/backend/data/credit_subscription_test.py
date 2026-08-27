@@ -904,6 +904,49 @@ async def test_create_subscription_checkout_returns_url():
 
 
 @pytest.mark.asyncio
+async def test_create_subscription_checkout_offers_saved_payment_methods():
+    """Returning subscribers must see their saved cards in Checkout.
+
+    Cards attached by a previous subscription-mode Checkout get
+    ``allow_redisplay=limited``, so the filters must include ``limited`` —
+    the default (``always`` only) would hide every card saved this way and
+    force the user to re-enter card details.
+    """
+    mock_session = MagicMock()
+    mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit._expire_open_subscription_sessions",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create",
+            return_value=mock_session,
+        ) as mock_create,
+    ):
+        await create_subscription_checkout(
+            user_id="user-1",
+            tier=SubscriptionTier.PRO,
+            success_url="https://app.example.com/success",
+            cancel_url="https://app.example.com/cancel",
+        )
+    assert mock_create.call_args.kwargs["saved_payment_method_options"] == {
+        "payment_method_save": "enabled",
+        "allow_redisplay_filters": ["always", "limited"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_create_subscription_checkout_no_price_raises():
     with patch(
         "backend.data.credit.get_subscription_price_id",

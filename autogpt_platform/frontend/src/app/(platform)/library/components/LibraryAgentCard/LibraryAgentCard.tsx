@@ -1,7 +1,6 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { EyeIcon, ChatCircleDotsIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,6 +20,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agent: LibraryAgent;
@@ -132,7 +133,7 @@ export function LibraryAgentCard({
               data-testid="library-agent-card-see-runs-link"
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >
-              <EyeIcon size={14} className="shrink-0" />
+              <Icon icon={EyeIcon} size={14} className="shrink-0" />
               See tasks
             </button>
             <ContextualActionButton
@@ -150,7 +151,7 @@ export function LibraryAgentCard({
               }}
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >
-              <ChatCircleDotsIcon size={14} className="shrink-0" />
+              <Icon icon={Chatting01Icon} size={14} className="shrink-0" />
               Chat
             </button>
           </div>

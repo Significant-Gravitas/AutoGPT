@@ -14,7 +14,6 @@ settings = Settings()
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
     from openai import AsyncOpenAI
-    from supabase import AClient, Client
 
     from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
@@ -157,29 +156,6 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
     return IntegrationCredentialsStore()
 
 
-# ============ Supabase Clients ============ #
-
-
-@cached(ttl_seconds=3600)
-def get_supabase() -> "Client":
-    """Get a process-cached synchronous Supabase client instance."""
-    from supabase import create_client
-
-    return create_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
-
-
-@cached(ttl_seconds=3600)
-async def get_async_supabase() -> "AClient":
-    """Get a process-cached asynchronous Supabase client instance."""
-    from supabase import create_async_client
-
-    return await create_async_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
-
-
 # ============ OpenAI Client ============ #
 
 
@@ -317,7 +293,7 @@ def openrouter_helper_cost_provider() -> str:
 def get_notification_queue() -> "SyncRabbitMQ":
     """Get a thread-cached SyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = SyncRabbitMQ(create_notification_config())
     client.connect()
@@ -328,7 +304,7 @@ def get_notification_queue() -> "SyncRabbitMQ":
 async def get_async_notification_queue() -> "AsyncRabbitMQ":
     """Get a thread-cached AsyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import AsyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = AsyncRabbitMQ(create_notification_config())
     await client.connect()

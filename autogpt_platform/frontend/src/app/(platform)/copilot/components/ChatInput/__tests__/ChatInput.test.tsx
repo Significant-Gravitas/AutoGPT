@@ -2,7 +2,6 @@ import {
   render,
   screen,
   fireEvent,
-  cleanup,
   act,
   waitFor,
 } from "@/tests/integrations/test-utils";
@@ -11,15 +10,39 @@ import {
   NEW_SKILL_PROMPT,
 } from "@/components/contextual/guidedPrompts";
 import type { UIMessage } from "ai";
+import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProviderData,
+} from "@/providers/agent-credentials/credentials-provider";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 import { useCopilotStop } from "../../../useCopilotStop";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 const mockCancel =
   vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
+  useGetV2ListChatTransports: () => ({
+    data: {
+      status: 200,
+      data: {
+        transports: [
+          {
+            auth_provider: "platform",
+            credential_id: null,
+            label: "AutoGPT Platform",
+            available: true,
+            default: true,
+          },
+        ],
+      },
+    },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 let mockCopilotMode = "extended_thinking";
@@ -32,6 +55,8 @@ let mockCopilotLlmModel = "standard";
 const mockSetCopilotLlmModel = vi.fn((model: string) => {
   mockCopilotLlmModel = model;
 });
+
+let mockCopilotLlmAuthProvider = "platform";
 
 let mockInitialPrompt: string | null = null;
 const mockSetInitialPrompt = vi.fn((value: string | null) => {
@@ -47,10 +72,17 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     copilotModePinned: mockCopilotModePinned,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
+    copilotLlmAuth: {
+      authProvider: mockCopilotLlmAuthProvider,
+      credentialId: null,
+    },
+    setCopilotLlmAuth: vi.fn(),
     isDryRun: false,
     setIsDryRun: vi.fn(),
     initialPrompt: mockInitialPrompt,
     setInitialPrompt: mockSetInitialPrompt,
+    sentMessageCount: 0,
+    notifyMessageSent: vi.fn(),
   }),
 }));
 
@@ -58,6 +90,12 @@ let mockFlagValue = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION" },
   useGetFlag: () => mockFlagValue,
+}));
+
+// Off by default so the rest of the suite sees the production-build behaviour.
+let mockTokenDevtoolEnabled = false;
+vi.mock("../../../tokenDevtool/gate", () => ({
+  isTokenDevtoolEnabled: () => mockTokenDevtoolEnabled,
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -108,22 +146,26 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
         Send
       </button>
     ),
-  PromptInputTextarea: (props: {
+  PromptInputTextarea: function PromptInputTextarea(props: {
     id?: string;
     value?: string;
     onChange?: React.ChangeEventHandler<HTMLTextAreaElement>;
+    onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
     disabled?: boolean;
     placeholder?: string;
-  }) => (
-    <textarea
-      id={props.id}
-      value={props.value}
-      onChange={props.onChange}
-      disabled={props.disabled}
-      placeholder={props.placeholder}
-      data-testid="textarea"
-    />
-  ),
+  }) {
+    return (
+      <textarea
+        id={props.id}
+        value={props.value}
+        onChange={props.onChange}
+        onPaste={props.onPaste}
+        disabled={props.disabled}
+        placeholder={props.placeholder}
+        data-testid="textarea"
+      />
+    );
+  },
   PromptInputTools: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="tools">{children}</div>
   ),
@@ -191,14 +233,69 @@ vi.mock("../components/DryRunToggleButton", () => ({
 
 const mockOnSend = vi.fn();
 
+const codexCredential: CredentialsMetaResponse = {
+  id: "codex-credential-1",
+  provider: "codex",
+  type: "oauth2",
+  title: "Personal ChatGPT",
+  scopes: [],
+};
+
+const codexProvider: CredentialsProviderData = {
+  provider: "codex",
+  providerName: "Codex",
+  savedCredentials: [codexCredential],
+  isSystemProvider: false,
+  oAuthCallback: async () => codexCredential,
+  mcpOAuthCallback: async () => codexCredential,
+  createAPIKeyCredentials: async () => codexCredential,
+  createUserPasswordCredentials: async () => codexCredential,
+  createHostScopedCredentials: async () => codexCredential,
+  deleteCredentials: async () => ({ deleted: true, revoked: null }),
+};
+
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
   mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
+  mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
+  mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+});
+
+describe("ChatInput token devtool badge", () => {
+  it("renders the badge while the brain-dump tray is disabled", () => {
+    // The tray is brain-dump-only; the badge must not depend on that flag.
+    mockFlagValue = false;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+  });
+
+  it("renders the badge inside the tray when brain dump is enabled", () => {
+    mockFlagValue = true;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+  });
+
+  it("stays hidden when the devtool gate is off", () => {
+    mockTokenDevtoolEnabled = false;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+  });
+
+  it("stays hidden before a session exists", () => {
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId={null} />);
+
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+  });
 });
 
 describe("ChatInput mode toggle", () => {
@@ -212,6 +309,53 @@ describe("ChatInput mode toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
     expect(screen.getByLabelText(/switch to fast mode/i)).toBeDefined();
+  });
+
+  it("shows Codex mode and model controls backed by the model catalog", () => {
+    mockFlagValue = true;
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByLabelText(/switch to fast mode/i)).toBeTruthy();
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeTruthy();
+  });
+
+  it("keeps Claude SDK file attachments available for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.getByTestId("attachment-menu")).toBeTruthy();
+  });
+
+  it("does not report empty dropped files as consumed for the Codex route", () => {
+    mockCopilotLlmAuthProvider = "codex";
+    const onDroppedFilesConsumed = vi.fn();
+    render(
+      <ChatInput
+        onSend={mockOnSend}
+        droppedFiles={[]}
+        onDroppedFilesConsumed={onDroppedFilesConsumed}
+      />,
+    );
+
+    expect(onDroppedFilesConsumed).not.toHaveBeenCalled();
+  });
+
+  it("hides the route selector when only one subsidized transport is connected", () => {
+    mockFlagValue = true;
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
+
+    rerender(
+      <CredentialsProvidersContext.Provider value={{ codex: codexProvider }}>
+        <ChatInput onSend={mockOnSend} hasSession />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
   });
 
   it("shows Thinking label in extended_thinking mode", () => {
@@ -583,6 +727,66 @@ describe("ChatInput submit behavior", () => {
     });
   });
 
+  it("clears the textarea on submit, without waiting for the stream to end", async () => {
+    // onSend resolves only when the whole assistant turn finishes, so a
+    // clear-after-await left the sent message sitting in the composer for
+    // the entire stream.
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    expect(onSend).toHaveBeenCalledWith("hello", undefined, undefined);
+    await act(async () => {
+      finishStream?.();
+    });
+  });
+
+  it("clears attachment chips on submit, without waiting for the stream to end", async () => {
+    let finishStream: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        files: [new File(["png"], "shot.png", { type: "image/png" })],
+      },
+    });
+    // An attachment alone makes the message sendable, so the submit button
+    // going back to disabled is proof the chips were dropped.
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect((screen.getByTestId("submit") as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+    expect(onSend).toHaveBeenCalledWith("", [expect.any(File)], undefined);
+    await act(async () => {
+      finishStream?.();
+    });
+  });
+
   it("does not call onSend when disabled", () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} disabled />);
@@ -614,36 +818,241 @@ describe("ChatInput submit behavior", () => {
   });
 
   it("allows sending again after a failed send", async () => {
-    const swallowWindow = (e: PromiseRejectionEvent) => e.preventDefault();
-    const swallowProcess = () => undefined;
-    window.addEventListener("unhandledrejection", swallowWindow);
-    process.on("unhandledRejection", swallowProcess);
+    let failNext = true;
+    const onSend = vi.fn(async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("fail");
+      }
+    });
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalled();
+    });
+    fireEvent.change(textarea, { target: { value: "retry" } });
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(2);
+    });
+    expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
+  });
+});
+
+describe("ChatInput send failure", () => {
+  it("toasts and puts the failed message back in the composer", async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error("Backend exploded"));
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("hello");
+    });
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't send message",
+        description: expect.stringContaining("Backend exploded"),
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("keeps a draft typed during the stream alongside the failed message", async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first message" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+    fireEvent.change(textarea, { target: { value: "second thought" } });
+    await act(async () => {
+      rejectSend?.(new Error("nope"));
+    });
+
+    expect(textarea.value).toContain("first message");
+    expect(textarea.value).toContain("second thought");
+  });
+
+  it("does not toast when the send succeeds", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(textarea.value).toBe("");
+    expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChatInput clipboard paste", () => {
+  function pasteFiles(target: HTMLElement, files: File[]) {
+    return fireEvent.paste(target, { clipboardData: { files } });
+  }
+
+  it("attaches a pasted image and sends it with the message", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+
+    fireEvent.change(textarea, { target: { value: "see screenshot" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    const [message, files, workspaceFiles] = onSend.mock.calls[0];
+    expect(message).toBe("see screenshot");
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toMatch(/^pasted-image-.+\.png$/);
+    expect(files[0].type).toBe("image/png");
+    expect(workspaceFiles).toBeUndefined();
+  });
+
+  it("allows sending a pasted image without any text", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    const [message, files] = onSend.mock.calls[0];
+    expect(message).toBe("");
+    expect(files).toHaveLength(1);
+  });
+
+  it("keeps the original name of pasted non-generic files", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    const pdf = new File(["pdf-bytes"], "report.pdf", {
+      type: "application/pdf",
+    });
+    pasteFiles(textarea, [pdf]);
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(onSend.mock.calls[0][1][0].name).toBe("report.pdf");
+  });
+
+  it("does not rename non-image files with generic image names", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    pasteFiles(textarea, [
+      new File(["pdf-bytes"], "image.pdf", { type: "application/pdf" }),
+    ]);
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(onSend.mock.calls[0][1][0].name).toBe("image.pdf");
+  });
+
+  it("gives images from separate pastes in the same second distinct names", async () => {
+    vi.useFakeTimers();
     try {
-      let failNext = true;
-      const onSend = vi.fn(async () => {
-        if (failNext) {
-          failNext = false;
-          throw new Error("fail");
-        }
-      });
+      const baseTime = new Date("2026-01-01T10:00:00.100Z");
+      vi.setSystemTime(baseTime);
+      const onSend = vi.fn().mockResolvedValue(undefined);
       render(<ChatInput onSend={onSend} />);
       const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
-      fireEvent.change(textarea, { target: { value: "hello" } });
-      const form = textarea.closest("form")!;
-      fireEvent.submit(form);
+
+      pasteFiles(textarea, [
+        new File(["a"], "image.png", { type: "image/png" }),
+      ]);
+      vi.setSystemTime(new Date("2026-01-01T10:00:00.900Z"));
+      pasteFiles(textarea, [
+        new File(["b"], "image.png", { type: "image/png" }),
+      ]);
+
+      vi.useRealTimers();
+      fireEvent.submit(textarea.closest("form")!);
       await waitFor(() => {
         expect(onSend).toHaveBeenCalledTimes(1);
       });
-      fireEvent.change(textarea, { target: { value: "retry" } });
-      fireEvent.submit(form);
-      await waitFor(() => {
-        expect(onSend).toHaveBeenCalledTimes(2);
-      });
-      expect(onSend).toHaveBeenLastCalledWith("retry", undefined, undefined);
+      const files = onSend.mock.calls[0][1] as File[];
+      expect(files).toHaveLength(2);
+      expect(files[0].name).not.toBe(files[1].name);
     } finally {
-      window.removeEventListener("unhandledrejection", swallowWindow);
-      process.off("unhandledRejection", swallowProcess);
+      vi.useRealTimers();
     }
+  });
+
+  it("gives multiple generic pasted images distinct names", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+
+    pasteFiles(textarea, [
+      new File(["a"], "image.png", { type: "image/png" }),
+      new File(["b"], "image.png", { type: "image/png" }),
+    ]);
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    const files = onSend.mock.calls[0][1] as File[];
+    expect(files).toHaveLength(2);
+    expect(files[0].name).not.toBe(files[1].name);
+  });
+
+  it("prevents the default paste when files are attached", () => {
+    render(<ChatInput onSend={mockOnSend} />);
+    const textarea = screen.getByTestId("textarea");
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    const notCancelled = pasteFiles(textarea, [image]);
+    expect(notCancelled).toBe(false);
+  });
+
+  it("leaves plain-text paste untouched", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea");
+    const notCancelled = pasteFiles(textarea, []);
+    expect(notCancelled).toBe(true);
+    fireEvent.submit(textarea.closest("form")!);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not attach pasted files while uploading", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} isUploadingFiles />);
+    const textarea = screen.getByTestId("textarea");
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    const notCancelled = pasteFiles(textarea, [image]);
+    expect(notCancelled).toBe(true);
   });
 });
 

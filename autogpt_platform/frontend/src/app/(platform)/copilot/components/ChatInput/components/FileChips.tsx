@@ -1,15 +1,13 @@
 "use client";
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
-import {
-  CircleNotch as CircleNotchIcon,
-  X as XIcon,
-} from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   type Attachment,
   attachmentName,
 } from "../../../helpers/workspaceAttachments";
+import { Cancel01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function attachmentMimeType(attachment: Attachment): string {
   return attachment.kind === "local"
@@ -55,7 +53,9 @@ export function FileChips({ attachments, onRemove, isUploading }: Props) {
             <AnimatePresence initial={false} mode="popLayout">
               {attachments.map((attachment, index) => {
                 const name = attachmentName(attachment);
-                const Icon = getFileTypeIcon(attachmentMimeType(attachment));
+                const fileIcon = getFileTypeIcon(
+                  attachmentMimeType(attachment),
+                );
                 // Workspace files are already stored — only local files show
                 // the upload spinner while a send is in flight.
                 const showSpinner = isUploading && attachment.kind === "local";
@@ -88,12 +88,15 @@ export function FileChips({ attachments, onRemove, isUploading }: Props) {
                     className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700"
                   >
                     <Icon
-                      weight="regular"
+                      icon={fileIcon}
                       className="h-3.5 w-3.5 shrink-0 text-zinc-900"
                     />
                     <span className="max-w-[160px] truncate">{name}</span>
                     {showSpinner ? (
-                      <CircleNotchIcon className="ml-0.5 h-3 w-3 animate-spin text-zinc-400" />
+                      <Icon
+                        icon={Loading03Icon}
+                        className="ml-0.5 h-3 w-3 animate-spin text-zinc-400"
+                      />
                     ) : (
                       <button
                         type="button"
@@ -101,7 +104,7 @@ export function FileChips({ attachments, onRemove, isUploading }: Props) {
                         onClick={() => onRemove(index)}
                         className="ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
                       >
-                        <XIcon className="h-3 w-3" weight="bold" />
+                        <Icon icon={Cancel01Icon} className="h-3 w-3" />
                       </button>
                     )}
                   </motion.span>

@@ -25,6 +25,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+_init_attempted = False
 
 
 class Flag(str, Enum):
@@ -64,6 +65,12 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
+    # Gates the onboarding voice "brain dump" end-to-end.  The upload /
+    # finalize / status / download endpoints 404 when off so a stale
+    # frontend can't start writing recordings, and the wizard keeps
+    # rendering the pillbox step.  Fail-closed (default False).
+    ONBOARDING_BRAIN_DUMP = "onboarding-brain-dump"
+
     # Gates the per-user weekly community rebuild registered by
     # ``add_community_rebuild_schedule``. Off by default; opt-in canary
     # so the Leiden + LLM-summarization cost doesn't ramp before
@@ -85,6 +92,14 @@ class Flag(str, Enum):
     # consumer pickup, no ratification loop. Defaults False; opt-in
     # only.
     DREAM_PASS_ENABLED = "dream-pass-enabled"
+
+    # Mirror of the frontend `hire-experts` flag (same LaunchDarkly key,
+    # so both sides evaluate one cohort switch). Gates the experts
+    # surface, including the scheduled morning-briefing job end-to-end:
+    # schedule registration, generation, and delivery. Deliberately no
+    # independent briefing kill switch — briefings ship to exactly the
+    # experts cohort.
+    HIRE_EXPERTS = "hire-experts"
 
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
@@ -162,12 +177,19 @@ def is_configured() -> bool:
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
-    if not _is_initialized:
+    # Gate on "did we try" rather than "did it work". Without a key
+    # `_is_initialized` never becomes True, so gating on it re-entered
+    # `initialize_launchdarkly` on every flag evaluation -- a warning and a
+    # raise per call on the unconfigured deployments this appliance ships as.
+    if not _init_attempted:
         initialize_launchdarkly()
     return ldclient.get()
 
 
 def initialize_launchdarkly() -> None:
+    global _init_attempted
+    _init_attempted = True
+
     sdk_key = settings.secrets.launch_darkly_sdk_key
     logger.debug(
         f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
@@ -180,9 +202,15 @@ def initialize_launchdarkly() -> None:
     config = Config(sdk_key)
     ldclient.set_config(config)
 
+    # Read the client before recording that one exists: if constructing it
+    # raised, `shutdown_launchdarkly` would otherwise build a fresh one purely
+    # to close it. Being unreachable is not a construction failure -- that
+    # returns an uninitialized client rather than raising -- so this only
+    # covers the abnormal case.
     global _is_initialized
+    connected = ldclient.get().is_initialized()
     _is_initialized = True
-    if ldclient.get().is_initialized():
+    if connected:
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -190,22 +218,41 @@ def initialize_launchdarkly() -> None:
 
 def shutdown_launchdarkly() -> None:
     """Shutdown the LaunchDarkly client."""
-    if ldclient.get().is_initialized():
-        ldclient.get().close()
-        logger.info("LaunchDarkly client closed successfully")
+    if not _is_initialized:
+        # `initialize_launchdarkly` returns early when no SDK key is configured,
+        # so `ldclient.set_config` was never called and `ldclient.get()` would
+        # raise "set_config was not called". Callers pair init/shutdown on
+        # app_env alone (see `rest_api.launch_darkly_context` and
+        # `scheduler._shutdown_launchdarkly_for_scheduler`), so an unconfigured
+        # non-LOCAL deployment would otherwise raise out of service teardown and
+        # leave the process alive instead of exiting.
+        return
+
+    # Close whenever a client was constructed, not just when it connected, so
+    # buffered events are flushed and sockets are torn down in order. This is
+    # not about keeping the process alive: every SDK thread is a daemon, so
+    # they never blocked interpreter exit -- it was the escaping exception that
+    # did. Note `close()` flushes synchronously, so an unreachable
+    # LaunchDarkly can make it wait on the SDK's HTTP timeouts.
+    #
+    # `_is_initialized` is deliberately left set: `get_client` reads a false
+    # value as "never started", and clearing it here would let a flag
+    # evaluation arriving during shutdown -- an in-flight request served through
+    # FastAPI's lifespan teardown -- rebuild the client we just closed.
+    ldclient.get().close()
+    logger.info("LaunchDarkly client closed successfully")
 
 
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
-    Fetch user context for LaunchDarkly from Supabase.
+    Fetch user context for LaunchDarkly from the auth user table.
 
-    Successful lookups are cached for 24h (see
-    ``_fetch_supabase_user_context``).  Failed lookups are NOT cached: the
-    degraded anonymous fallback is built outside the cache so the next
-    evaluation retries Supabase instead of pinning this process to an
-    email-less context for a full TTL — which would make its
-    email/role-targeted flag evaluations silently diverge from peer
-    processes.  The degraded path costs one failed Supabase call per
+    Successful lookups are cached for 24h (see ``_fetch_user_context``).
+    Failed lookups are NOT cached: the degraded anonymous fallback is built
+    outside the cache so the next evaluation retries the lookup instead of
+    pinning this process to an email-less context for a full TTL — which
+    would make its email/role-targeted flag evaluations silently diverge
+    from peer processes.  The degraded path costs one failed lookup per
     evaluation; bounded, and acceptable versus a 24h-poisoned cache.
 
     Args:
@@ -217,11 +264,11 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     try:
         uuid.UUID(user_id)
     except ValueError:
-        # Non-UUID key (e.g. "system") — skip Supabase lookup, return anonymous context.
+        # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
         return _anonymous_context(user_id)
 
     try:
-        return await _fetch_supabase_user_context(user_id)
+        return await _fetch_user_context(user_id)
     except Exception as e:
         logger.warning(
             f"Failed to fetch user context for {user_id}: {e} — "
@@ -238,34 +285,43 @@ def _anonymous_context(user_id: str) -> Context:
 
 
 @cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
-async def _fetch_supabase_user_context(user_id: str) -> Context:
+async def _fetch_user_context(user_id: str) -> Context:
     """
-    Build the full LaunchDarkly context for ``user_id`` from Supabase.
+    Build the full LaunchDarkly context for ``user_id`` from the auth user
+    table.
 
-    Raises on Supabase lookup failure: ``@cached`` never stores results
-    of calls that raise, so a degraded context can't be cached here —
-    the caller handles the fallback outside the cache.
+    Raises on lookup failure: ``@cached`` never stores results of calls
+    that raise, so a degraded context can't be cached here — the caller
+    handles the fallback outside the cache.
     """
-    from backend.util.clients import get_supabase
+    # Local import to avoid a util <-> data import cycle.
+    from backend.data.db_accessors import user_db
 
-    builder = Context.builder(user_id).kind("user").anonymous(True)
+    # user_db() falls back to the DatabaseManager RPC client in processes
+    # without a locally-connected Prisma client (scheduler, executors, ...).
+    fields = await user_db().get_auth_user_flag_fields(user_id)
 
-    # If we have user data, update context
-    response = get_supabase().auth.admin.get_user_by_id(user_id)
-    if response and response.user:
-        user = response.user
-        builder.anonymous(False)
-        if user.role:
-            builder.set("role", user.role)
-            # It's weird, I know, but it is what it is.
-            builder.set("custom", {"role": user.role})
-        if user.email:
-            builder.set("email", user.email)
-            builder.set("email_domain", user.email.split("@")[-1])
-        if user.created_at:
-            # ISO-8601 string — LD supports RFC3339 date targeting on
-            # this attribute (e.g. cohort users by signup window).
-            builder.set("created_at", user.created_at.isoformat())
+    if fields is None:
+        # Raise instead of returning an anonymous context: @cached would pin
+        # the anonymous result for 24h even after the user's row appears
+        # (possible during the auth-migration copy window). The caller falls
+        # back to an uncached anonymous context.
+        raise LookupError(f"No auth user row for {user_id}")
+
+    builder = Context.builder(user_id).kind("user").anonymous(False)
+    # Keep the same role values previously issued in JWTs so existing
+    # LaunchDarkly targeting rules keep matching.
+    role = "admin" if fields.role == "admin" else "authenticated"
+    builder.set("role", role)
+    # It's weird, I know, but it is what it is.
+    builder.set("custom", {"role": role})
+    if fields.email:
+        builder.set("email", fields.email)
+        builder.set("email_domain", fields.email.split("@")[-1])
+    if fields.created_at:
+        # ISO-8601 string — LD supports RFC3339 date targeting on
+        # this attribute (e.g. cohort users by signup window).
+        builder.set("created_at", fields.created_at.isoformat())
 
     return builder.build()
 
@@ -299,7 +355,7 @@ async def get_feature_flag_value(
             )
             return default
 
-        # Get user context from Supabase
+        # Get user context (role/email) from the Better Auth user table
         context = await _fetch_user_context_data(user_id)
 
         # Evaluate flag

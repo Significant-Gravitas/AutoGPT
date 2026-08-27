@@ -362,6 +362,16 @@ class PlatformAdapter(ABC):
         """
         ...
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        """Open (or fetch) the bot's 1:1 DM channel with ``platform_user_id``.
+
+        Returns a channel ID usable with ``post_channel_message``, or ``None``
+        when the platform/configuration can't DM this user. Default:
+        unsupported — the proactive DM path then reports the platform can't
+        deliver DMs rather than attempting a send.
+        """
+        return None
+
     @abstractmethod
     async def post_channel_message(
         self, channel_id: str, text: str

@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { PlusIcon } from "@phosphor-icons/react";
-
 import type { ConnectableProvider } from "../helpers";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   provider: ConnectableProvider;
@@ -52,7 +52,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
         aria-hidden
         className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-white transition-transform group-hover:bg-zinc-800 group-active:scale-[0.96]"
       >
-        <PlusIcon size={18} weight="bold" />
+        <Icon icon={PlusSignIcon} size={18} />
       </span>
     </button>
   );

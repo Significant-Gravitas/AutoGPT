@@ -8,14 +8,20 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Select } from "@/components/atoms/Select/Select";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useEditScheduleModal } from "./useEditScheduleModal";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   graphId: string;
   schedule: GraphExecutionJobInfo;
+  triggerClassName?: string;
 };
 
-export function EditScheduleModal({ graphId, schedule }: Props) {
+export function EditScheduleModal({
+  graphId,
+  schedule,
+  triggerClassName,
+}: Props) {
   const {
     isOpen,
     setIsOpen,
@@ -44,9 +50,9 @@ export function EditScheduleModal({ graphId, schedule }: Props) {
         <Button
           variant="ghost"
           size="small"
-          className="absolute -right-2 -top-2"
+          className={triggerClassName ?? "absolute -right-2 -top-2"}
         >
-          <PencilSimpleIcon className="size-4" /> Edit schedule
+          <Icon icon={PencilIcon} className="size-4" /> Edit schedule
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>

@@ -12,14 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  ArrowSquareOutIcon,
-  CircleNotchIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  FolderIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -39,6 +31,15 @@ import {
   getFileTypeLabel,
 } from "../helpers";
 import { CardPreview } from "./CardPreview";
+import {
+  Delete02Icon,
+  Download04Icon,
+  Folder01Icon,
+  LinkSquare01Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -64,7 +65,7 @@ const REDUCED_CARD_VARIANTS: Variants = {
 export function ArtifactCard({ file, onOpen }: Props) {
   const origin = deriveFileOrigin(file.path);
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
-  const TypeIcon = getFileTypeIcon(file.mime_type, file.name);
+  const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const dragImageRef = useRef<HTMLElement | null>(null);
@@ -116,11 +117,7 @@ export function ArtifactCard({ file, onOpen }: Props) {
       <div className="pointer-events-none relative z-10">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
-          <TypeIcon
-            size={20}
-            weight="regular"
-            className="shrink-0 text-zinc-500"
-          />
+          <Icon icon={typeIcon} size={20} className="shrink-0 text-zinc-500" />
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
               variant="body-medium"
@@ -225,7 +222,7 @@ function CardMenu({
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
           data-testid="artifacts-card-menu"
         >
-          <DotsThreeIcon size={20} weight="bold" />
+          <Icon icon={MoreHorizontalIcon} size={20} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -238,15 +235,19 @@ function CardMenu({
           data-testid="artifacts-download"
         >
           {isDownloading ? (
-            <CircleNotchIcon size={16} className="mr-2 animate-spin" />
+            <Icon
+              icon={Loading03Icon}
+              size={16}
+              className="mr-2 animate-spin"
+            />
           ) : (
-            <DownloadSimpleIcon size={16} className="mr-2" />
+            <Icon icon={Download04Icon} size={16} className="mr-2" />
           )}
           {isDownloading ? "Downloading…" : "Download"}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href={goHref} data-testid="artifacts-origin-link">
-            <ArrowSquareOutIcon size={16} className="mr-2" />
+            <Icon icon={LinkSquare01Icon} size={16} className="mr-2" />
             {goLabel}
           </Link>
         </DropdownMenuItem>
@@ -257,7 +258,7 @@ function CardMenu({
           }}
           data-testid="artifacts-move-to-folder"
         >
-          <FolderIcon size={16} className="mr-2" />
+          <Icon icon={Folder01Icon} size={16} className="mr-2" />
           Move to folder
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -271,9 +272,13 @@ function CardMenu({
           data-testid="artifacts-delete"
         >
           {isDeleting ? (
-            <CircleNotchIcon size={16} className="mr-2 animate-spin" />
+            <Icon
+              icon={Loading03Icon}
+              size={16}
+              className="mr-2 animate-spin"
+            />
           ) : (
-            <TrashIcon size={16} className="mr-2" />
+            <Icon icon={Delete02Icon} size={16} className="mr-2" />
           )}
           {isDeleting ? "Deleting…" : "Delete"}
         </DropdownMenuItem>

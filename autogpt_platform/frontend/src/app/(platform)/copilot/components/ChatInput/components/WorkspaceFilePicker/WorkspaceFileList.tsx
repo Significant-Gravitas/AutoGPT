@@ -12,8 +12,9 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { CheckCircle as CheckCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   files: WorkspaceFileItem[];
@@ -103,7 +104,7 @@ export function WorkspaceFileList({
         <div className="grid grid-cols-2 gap-2">
           {files.map((file) => {
             const isSelected = selectedIds.has(file.id);
-            const Icon = getFileTypeIcon(file.mime_type);
+            const fileIcon = getFileTypeIcon(file.mime_type);
             return (
               <button
                 key={file.id}
@@ -118,8 +119,8 @@ export function WorkspaceFileList({
                 )}
               >
                 <Icon
+                  icon={fileIcon}
                   size={20}
-                  weight="bold"
                   className="shrink-0 text-zinc-500"
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
@@ -137,8 +138,8 @@ export function WorkspaceFileList({
                   </Text>
                 </div>
                 {isSelected && (
-                  <CheckCircleIcon
-                    weight="fill"
+                  <Icon
+                    icon={CheckmarkCircle02Icon}
                     className="h-5 w-5 shrink-0 text-violet-600"
                   />
                 )}

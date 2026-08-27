@@ -13,6 +13,11 @@ import type { SubscriptionTierRequestBillingCycle } from "@/app/api/__generated_
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  centsToUSD,
+  getSubscriptionValue,
+  trackAdsConversion,
+} from "@/services/analytics/google-ads";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 
@@ -187,7 +192,10 @@ export function useYourPlanCard() {
     tier: SubscriptionTierRequestTier,
     billingCycle?: SubscriptionTierRequestBillingCycle,
   ) {
-    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
+    const cycle = billingCycle ?? "monthly";
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription to Google Ads.
+    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
     try {
       const result = await updateTier({
@@ -200,6 +208,16 @@ export function useYourPlanCard() {
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
       if (url) {
+        // A Checkout URL is the only proof that Stripe Checkout actually
+        // starts: paid users are modified in place and get no URL, which is
+        // not a checkout start.
+        // /credits/subscription returns what Stripe actually charges; the
+        // plan-card figure is only the fallback when the tier isn't priced there.
+        const cents =
+          cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
+        trackAdsConversion("begin_checkout", {
+          value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
+        });
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
         window.location.href = url;

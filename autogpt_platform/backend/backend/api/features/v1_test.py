@@ -98,21 +98,54 @@ def test_get_or_create_user_route(
         "email": "test@example.com",
         "name": "Test User",
     }
+    mock_result = Mock(user=mock_user, was_created=False)
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user",
-        return_value=mock_user,
+        "backend.api.features.v1.get_or_create_user_with_status",
+        return_value=mock_result,
     )
 
     response = client.post("/auth/user")
 
     assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "false"
     response_data = response.json()
 
     configured_snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_user",
     )
+
+
+def test_get_or_create_user_route_reports_creation(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_user = Mock()
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {
+        "id": test_user_id,
+        "email": "test@example.com",
+    }
+
+    mocker.patch(
+        "backend.api.features.v1.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=True),
+    )
+
+    response = client.post("/auth/user")
+
+    assert response.status_code == 200
+    assert response.headers["X-AutoGPT-User-Created"] == "true"
+
+
+def test_get_or_create_user_route_documents_creation_header() -> None:
+    response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
+
+    assert response_schema["headers"]["X-AutoGPT-User-Created"] == {
+        "description": "Whether this request created a new user",
+        "schema": {"type": "string", "enum": ["true", "false"]},
+    }
 
 
 def test_update_user_email_route(

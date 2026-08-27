@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { http, HttpResponse } from "msw";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
@@ -23,8 +28,8 @@ vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
   SubscriptionStep: () => <div data-testid="step-subscription" />,
 }));
 vi.mock("../steps/PreparingStep", () => ({
-  PreparingStep: ({ onComplete: _onComplete }: { onComplete: () => void }) => (
-    <div data-testid="step-preparing" />
+  PreparingStep: ({ onComplete }: { onComplete: () => void }) => (
+    <button data-testid="step-preparing" onClick={onComplete} />
   ),
 }));
 
@@ -40,19 +45,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/onboarding",
 }));
 
-let mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+let mockAuthState = { isLoggedIn: true, isUserLoading: false };
 const mockRefreshSession = vi.fn(() => Promise.resolve({ user: null }));
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
-    ...mockSupabaseState,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
+    ...mockAuthState,
     user: null,
     refreshSession: mockRefreshSession,
   }),
 }));
 
-// The onboarding page writes preferred_name through the server route (the
-// browser Supabase client has no session — persistSession: false — so
-// client-side auth.updateUser silently fails; regression caught in manual QA).
+// The onboarding page writes preferred_name through the server route,
+// which is the only holder of the Better Auth session cookie context
+// (client-side updateUser was a silent no-op; regression caught in manual QA).
 const authUserPutBodies: unknown[] = [];
 function mockAuthUserRoute() {
   server.use(
@@ -63,13 +68,20 @@ function mockAuthUserRoute() {
   );
 }
 
+let mockCompletedSteps: string[] = [];
+const completeOnboardingStep = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ status: 200 })),
+);
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+    Promise.resolve({
+      status: 200,
+      data: { completedSteps: mockCompletedSteps },
+    }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
-  postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
+  postV1CompleteOnboardingStep: completeOnboardingStep,
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
 
@@ -90,10 +102,18 @@ vi.mock("@/app/api/helpers", () => ({
   resolveResponse: (p: Promise<{ data: unknown }>) => p.then((r) => r.data),
 }));
 
+// Answers per-flag rather than returning one shared boolean: these tests
+// only mean to toggle the paywall, and a blanket `true` would also switch
+// on every other gated flag — including the brain dump, which replaces
+// the pillbox step this file asserts on.
 let mockFlagValue = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT" },
-  useGetFlag: () => mockFlagValue,
+  Flag: {
+    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
+    ONBOARDING_BRAIN_DUMP: "ONBOARDING_BRAIN_DUMP",
+  },
+  useGetFlag: (flag: string) =>
+    flag === "ENABLE_PLATFORM_PAYMENT" ? mockFlagValue : false,
 }));
 
 vi.mock("launchdarkly-react-client-sdk", () => ({
@@ -108,17 +128,24 @@ beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
   mockSubscriptionTier = "NO_TIER";
-  mockSupabaseState = { isLoggedIn: true, isUserLoading: false };
+  mockAuthState = { isLoggedIn: true, isUserLoading: false };
   authUserPutBodies.length = 0;
   mockAuthUserRoute();
   mockRefreshSession.mockClear();
+  mockCompletedSteps = [];
   routerReplace.mockClear();
+  completeOnboardingStep.mockReset();
+  completeOnboardingStep.mockResolvedValue({ status: 200 });
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
 
 afterEach(() => {
   cleanup();
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim and NEXT_PUBLIC_GOOGLE_ADS_ID into every later test here.
+  removeGtagShim();
+  vi.unstubAllEnvs();
 });
 
 describe("OnboardingPage — flag-gated SubscriptionStep", () => {
@@ -232,7 +259,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("skips SubscriptionStep when the user is already on a paid tier", async () => {
     // Regression for paying users (admin-granted Pro, or accounts that
-    // pre-date VISIT_COPILOT) being kicked through onboarding and asked to
+    // pre-date ONBOARDING_COMPLETE) being kicked through onboarding and asked to
     // pay again to escape. With ENABLE_PLATFORM_PAYMENT on and tier=PRO,
     // step 4 must render Preparing — not SubscriptionStep.
     mockFlagValue = true;
@@ -266,7 +293,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(screen.queryByTestId("step-preparing")).toBeNull();
   });
 
-  it("waits for Supabase auth before initialising (no premature step lock)", async () => {
+  it("waits for auth before initialising (no premature step lock)", async () => {
     // Regression: LD can resolve while auth is still loading. Without
     // gating on isUserLoading, isReady flips true (the !isLoggedIn branch
     // short-circuits), init runs against the pre-tier preparingStep (5)
@@ -276,7 +303,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     // no matching step guard (blank page).
     mockFlagValue = true;
     mockSubscriptionTier = "PRO";
-    mockSupabaseState = { isLoggedIn: false, isUserLoading: true };
+    mockAuthState = { isLoggedIn: false, isUserLoading: true };
     window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     render(<OnboardingPage />);
     // Nothing should render while auth is still loading.
@@ -318,6 +345,82 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(authUserPutBodies).toEqual([]);
   });
+
+  it("redirects straight to /copilot when onboarding is already complete", async () => {
+    mockCompletedSteps = ["ONBOARDING_COMPLETE"];
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    render(<OnboardingPage />);
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    // The wizard never renders and the resume ceiling is cleared.
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("marks ONBOARDING_COMPLETE and redirects when Preparing finishes", async () => {
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+    expect(completeOnboardingStep).toHaveBeenCalledWith({
+      step: "ONBOARDING_COMPLETE",
+    });
+    expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("reports onboarding_complete to Google Ads when Preparing finishes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+
+    expect(gtagCalls).toContainEqual([
+      "event",
+      "conversion",
+      { send_to: "AW-123/OC" },
+    ]);
+  });
+
+  it("reports no onboarding_complete when the API never confirms", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    // All three attempts fail: the user still lands on the copilot, but the
+    // backend never recorded the milestone, so nothing converted.
+    completeOnboardingStep.mockRejectedValue(new Error("500"));
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(
+      () => {
+        expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      },
+      { timeout: 5000 },
+    );
+
+    expect(completeOnboardingStep).toHaveBeenCalledTimes(3);
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+  }, 10000);
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
     // Regression test for the 422 caused by init's old `reset()` wiping

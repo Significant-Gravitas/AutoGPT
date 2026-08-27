@@ -41,7 +41,7 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 # Configurable via ``ChatConfig.simulation_model``
 # (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
 # constraints (1) and (2).
-_DEFAULT_SIMULATOR_MODEL = LlmModel.GEMINI_2_5_FLASH_LITE.value
+_DEFAULT_SIMULATOR_MODEL = LLMModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
 # the response usage object.  Same shape used by the baseline copilot service
@@ -522,12 +522,12 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         max_iters = min(original, 10) if original != 0 else 0
         # Resolve the configured simulator model (typically an OpenRouter
         # slug like "anthropic/claude-haiku-4-5") to its canonical
-        # ``LlmModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
+        # ``LLMModel.value`` (e.g. "claude-haiku-4-5-20251001").  We have
         # to do this BEFORE injecting into ``input["model"]`` because the
         # block runs through ``validate_data`` → ``jsonschema.validate``
         # before Pydantic gets the value, and the JSON Schema's ``enum``
-        # is the literal list of ``LlmModel.value``s — the
-        # ``_OPENROUTER_ALIASES`` map in ``LlmModel._missing_`` does NOT
+        # is the literal list of ``LLMModel.value``s — the
+        # ``_OPENROUTER_ALIASES`` map in ``LLMModel._missing_`` does NOT
         # surface in the generated schema, so the OR-slug is rejected
         # with ``"'<slug>' is not one of [...]"``.  After this
         # translation, the OrchestratorBlock receives a model identifier
@@ -539,19 +539,19 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # Fall back to the default if the configured override is malformed
         # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
         # shouldn't take out every dry-run.  The default is asserted as
-        # ``LlmModel``-parseable by ``TestDefaultSimulatorModel``, so the
-        # fallback ``LlmModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
+        # ``LLMModel``-parseable by ``TestDefaultSimulatorModel``, so the
+        # fallback ``LLMModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise
         # unless someone breaks that pin too.
         configured_sim_model = _simulator_model()
         try:
-            sim_model = LlmModel(configured_sim_model).value
+            sim_model = LLMModel(configured_sim_model).value
         except ValueError:
             logger.warning(
                 "Dry-run: invalid simulation model %r; falling back to default %r",
                 configured_sim_model,
                 _DEFAULT_SIMULATOR_MODEL,
             )
-            sim_model = LlmModel(_DEFAULT_SIMULATOR_MODEL).value
+            sim_model = LLMModel(_DEFAULT_SIMULATOR_MODEL).value
 
         # Keep the original credentials dict in input_data so the block's
         # JSON schema validation passes (validate_data strips None values,

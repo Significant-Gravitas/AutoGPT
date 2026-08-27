@@ -5,8 +5,8 @@ import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { CircleNotchIcon } from "@phosphor-icons/react";
-import { PlusIcon } from "@phosphor-icons/react/dist/ssr";
+import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -97,9 +97,16 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
         )}
       >
         {isLoading ? (
-          <CircleNotchIcon className="h-5 w-5 animate-spin text-zinc-50" />
+          <Icon
+            icon={Loading03Icon}
+            className="h-5 w-5 animate-spin text-zinc-50"
+          />
         ) : (
-          <PlusIcon className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+          <Icon
+            icon={PlusSignIcon}
+            className="h-5 w-5 text-zinc-50"
+            strokeWidth={2}
+          />
         )}
       </div>
     </Button>

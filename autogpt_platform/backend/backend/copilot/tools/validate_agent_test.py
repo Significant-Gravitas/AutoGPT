@@ -195,11 +195,13 @@ async def test_agent_json_as_json_string(tool, session):
 
 @pytest.mark.asyncio
 async def test_agent_json_unresolved_file_ref_string_returns_error(tool, session):
-    """An unexpanded @@agptfile reference (not valid JSON) returns a clear error."""
+    """An unexpanded @@agptfile reference to an unreadable path returns a
+    sanitized error (resolved server-side, path never echoed back)."""
     result = await tool._execute(
         user_id=_TEST_USER_ID,
         session=session,
         agent_json="@@agptfile:/home/user/agent.json",
     )
     assert isinstance(result, ErrorResponse)
-    assert "@@agptfile" in result.message
+    assert "agent.json" in result.message
+    assert "/home/user" not in result.message

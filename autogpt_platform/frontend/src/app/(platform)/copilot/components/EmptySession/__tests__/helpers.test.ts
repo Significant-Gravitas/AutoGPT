@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 import { describe, expect, it } from "vitest";
 import { getGreetingName } from "../helpers";
 

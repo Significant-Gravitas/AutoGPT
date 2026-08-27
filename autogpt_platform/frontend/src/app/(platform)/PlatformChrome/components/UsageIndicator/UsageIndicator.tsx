@@ -1,8 +1,9 @@
 "use client";
 
 import { UsagePopover } from "@/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover";
-import { GaugeIcon } from "@phosphor-icons/react";
 import { useUsageIndicator } from "./useUsageIndicator";
+import { GaugeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function UsageIndicator() {
   const { percent } = useUsageIndicator();
@@ -18,7 +19,7 @@ export function UsageIndicator() {
           aria-label={label}
           className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-zinc-100"
         >
-          <GaugeIcon className="size-5 text-black" />
+          <Icon icon={GaugeIcon} className="size-5 text-black" />
 
           {percent ? (
             <svg

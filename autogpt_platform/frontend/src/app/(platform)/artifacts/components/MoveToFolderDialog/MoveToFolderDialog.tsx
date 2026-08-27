@@ -1,11 +1,11 @@
 "use client";
-
-import { FolderIcon, HouseIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useArtifactsFolders } from "../../useArtifactsFolders";
 import { FOLDER_STYLE } from "../WorkspaceFolders/folder-constants";
+import { Folder01Icon, Home01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   fileId: string;
@@ -51,7 +51,7 @@ export function MoveToFolderDialog({
               onClick={() => handleMove(null)}
               data-testid="move-to-root"
             >
-              <HouseIcon size={18} className="text-zinc-500" />
+              <Icon icon={Home01Icon} size={18} className="text-zinc-500" />
               <Text variant="small-medium">Files (root)</Text>
             </Button>
           )}
@@ -72,7 +72,7 @@ export function MoveToFolderDialog({
                   onClick={() => handleMove(folder.id)}
                   data-testid="move-to-folder-option"
                 >
-                  <FolderIcon size={18} weight="fill" className={style.icon} />
+                  <Icon icon={Folder01Icon} size={18} className={style.icon} />
                   <Text variant="small-medium">{folder.name}</Text>
                 </Button>
               );

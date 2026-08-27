@@ -8,8 +8,13 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { useOrgTeamSwitcher } from "./useOrgTeamSwitcher";
-import { CaretDown, Check, GearSix } from "@phosphor-icons/react";
 import Link from "next/link";
+import {
+  ArrowDown01Icon,
+  Settings02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function OrgTeamSwitcher() {
   const {
@@ -46,7 +51,7 @@ export function OrgTeamSwitcher() {
             </AvatarFallback>
           </Avatar>
           <span className="max-w-[8rem] truncate">{activeOrg?.name}</span>
-          <CaretDown size={12} />
+          <Icon icon={ArrowDown01Icon} size={12} />
         </button>
       </PopoverTrigger>
 
@@ -78,7 +83,7 @@ export function OrgTeamSwitcher() {
                 <span className="text-xs text-neutral-400">Personal</span>
               )}
               {org.id === activeOrg?.id && (
-                <Check size={14} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={14} className="text-green-600" />
               )}
             </button>
           ))}
@@ -107,7 +112,11 @@ export function OrgTeamSwitcher() {
                     <span className="text-xs text-neutral-400">Private</span>
                   )}
                   {ws.id === activeTeam?.id && (
-                    <Check size={14} className="text-green-600" />
+                    <Icon
+                      icon={Tick02Icon}
+                      size={14}
+                      className="text-green-600"
+                    />
                   )}
                 </button>
               ))}
@@ -115,7 +124,7 @@ export function OrgTeamSwitcher() {
                 href="/org/teams"
                 className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
               >
-                <GearSix size={14} />
+                <Icon icon={Settings02Icon} size={14} />
                 <span>Manage teams</span>
               </Link>
             </div>

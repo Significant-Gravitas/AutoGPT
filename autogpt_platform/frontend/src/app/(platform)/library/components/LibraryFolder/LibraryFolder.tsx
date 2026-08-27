@@ -4,9 +4,10 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { FolderIcon, FolderColor } from "./FolderIcon";
 import { useState } from "react";
-import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import type { AgentStatus } from "../../types";
 import { StatusBadge } from "../StatusBadge/StatusBadge";
+import { Delete02Icon, PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   id: string;
@@ -119,7 +120,7 @@ export function LibraryFolder({
           }}
           className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
         >
-          <PencilSimpleIcon className="h-4 w-4" />
+          <Icon icon={PencilIcon} className="h-4 w-4" />
         </Button>
         <Button
           variant="icon"
@@ -131,7 +132,7 @@ export function LibraryFolder({
           }}
           className="h-8 w-8 border border-neutral-200 bg-white/80 p-2 text-neutral-500 hover:bg-white hover:text-neutral-700"
         >
-          <TrashIcon className="h-4 w-4" />
+          <Icon icon={Delete02Icon} className="h-4 w-4" />
         </Button>
       </div>
     </div>

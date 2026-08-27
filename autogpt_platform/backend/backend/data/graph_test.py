@@ -11,10 +11,11 @@ from pytest_snapshot.plugin import Snapshot
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
     Graph,
     GraphModel,
@@ -2184,7 +2185,7 @@ async def test_migrate_llm_models_uses_schema_prefix_placeholder():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     for call in mock_execute.await_args_list:
         query_template = call.args[0]
@@ -2202,7 +2203,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     values (e.g. ``anthropic/claude-sonnet-4-20250514``) to the family-aware
     replacement, not let them fall through to the global ``fallback`` model.
 
-    ``LlmModel._missing_`` accepts prefixed inputs at write time, so historical
+    ``LLMModel._missing_`` accepts prefixed inputs at write time, so historical
     rows may carry either the bare or prefixed form."""
     bare_legacy_value = "claude-sonnet-4-20250514"
     expected_replacement = LEGACY_MODEL_MAPPINGS[bare_legacy_value].value
@@ -2212,7 +2213,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     # Targeted query has 5 SQL params ($1..$5), so its call has 6 positional
     # args: (query, [path], replacement, block_id, path, stored_value).
@@ -2244,7 +2245,7 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     queries = [call.args[0] for call in mock_execute.await_args_list]
     assert any(
@@ -2373,3 +2374,380 @@ async def test_get_graph_without_org_keeps_strict_ownership(mocker):
     where = mock_client.find_first.call_args.kwargs["where"]
     assert where["userId"] == "u-1"
     assert "AND" not in where
+
+
+# ============================================================================
+# Tests for discriminated credentials aggregation (codex transport hotfix)
+#
+# A node that has not pinned its discriminator still resolves it at execution
+# time: blocks/_base.py builds `self.input_schema(**input_default)`, so pydantic
+# fills the schema default. Aggregation must resolve it the same way, or the
+# graph advertises credentials the node can never actually use.
+#
+# The fallback is scoped to fields whose credential TYPE depends on the
+# discriminator (discriminator_type_mapping). For those, the un-discriminated
+# union is a cross-product that asserts invalid pairs — e.g. (codex, api_key)
+# and (openai, oauth2) — neither of which exists. For mapping-only
+# discriminators the type set is a singleton, so the union is faithful and is
+# deliberately left alone: its aggregated slot key is load-bearing for
+# persisted preset and schedule credentials.
+# ============================================================================
+
+CODEX_CODEGEN_BLOCK_ID = "86a2a099-30df-47b4-b7e4-34ae5f83e0d5"
+AI_STRUCTURED_RESPONSE_BLOCK_ID = "ed55ac19-356e-4243-a6cb-bc599e9b716f"
+
+
+def _graph_with(nodes: list[NodeModel]) -> GraphModel:
+    from datetime import datetime, timezone
+
+    return GraphModel(
+        id="agg-graph",
+        version=1,
+        name="Aggregation",
+        description="",
+        user_id="u-1",
+        created_at=datetime.now(timezone.utc),
+        nodes=nodes,
+        links=[],
+    )
+
+
+def _node(node_id: str, block_id: str, input_default: dict[str, Any]) -> NodeModel:
+    return NodeModel(
+        id=node_id,
+        block_id=block_id,
+        input_default=input_default,
+        graph_id="agg-graph",
+        graph_version=1,
+    )
+
+
+def _slots(graph: GraphModel) -> dict[str, tuple[set[str], set[str], bool]]:
+    schema = graph.credentials_input_schema
+    required = set(schema["required"])
+    return {
+        key: (
+            {getattr(p, "value", p) for p in prop["credentials_provider"]},
+            set(prop["credentials_types"]),
+            key in required,
+        )
+        for key, prop in schema["properties"].items()
+    }
+
+
+def test_codegen_without_transport_resolves_to_schema_default():
+    """The discriminator defaults to openai_api, so the slot must be OpenAI
+    only. Advertising codex here let a non-entitled user see a required
+    credential for a plan-gated provider they cannot connect."""
+    graph = _graph_with([_node("n1", CODEX_CODEGEN_BLOCK_ID, {"prompt": "hi"})])
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_codegen_with_linked_transport_does_not_assume_schema_default():
+    graph = _graph_with([_node("n1", CODEX_CODEGEN_BLOCK_ID, {"prompt": "hi"})])
+    graph.links = [
+        Link(
+            source_id="source",
+            sink_id="n1",
+            source_name="value",
+            sink_name="transport",
+        )
+    ]
+
+    assert _slots(graph) == {
+        "codex-openai_api_key-oauth2_credentials": (
+            {"codex", "openai"},
+            {"api_key", "oauth2"},
+            True,
+        )
+    }
+
+
+def test_codegen_with_explicit_openai_transport_matches_default_case():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "openai_api"},
+            )
+        ]
+    )
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_codegen_with_codex_transport_yields_codex_slot():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            )
+        ]
+    )
+
+    assert _slots(graph) == {"codex_oauth2_credentials": ({"codex"}, {"oauth2"}, True)}
+
+
+def test_autopilot_codex_credentials_slot_is_not_required():
+    """AutoPilot's codex_credentials declares default=None, so the graph must
+    not demand it — the block falls back to the platform transport."""
+    graph = _graph_with([_node("n1", AUTOPILOT_BLOCK_ID, {"prompt": "hi"})])
+
+    assert _slots(graph) == {"codex_oauth2_credentials": ({"codex"}, {"oauth2"}, False)}
+
+
+def test_codex_transport_node_merges_with_autopilot_codex_slot():
+    """Both resolve to (codex, oauth2), so they share one slot instead of
+    presenting the user two separate codex rows."""
+    graph = _graph_with(
+        [
+            _node("n1", AUTOPILOT_BLOCK_ID, {"prompt": "hi"}),
+            _node(
+                "n2",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            ),
+        ]
+    )
+
+    slots = _slots(graph)
+    assert list(slots) == ["codex_oauth2_credentials"]
+    # Required because the CodeGen node requires it, even though AutoPilot's is optional.
+    assert slots["codex_oauth2_credentials"] == ({"codex"}, {"oauth2"}, True)
+
+
+def test_llm_block_union_is_left_intact_without_model():
+    """Regression guard: mapping-only discriminators keep their union slot key.
+    Persisted preset/schedule credentials are keyed by this name, so collapsing
+    it would silently orphan them."""
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with([_node("n1", AITextGeneratorBlock().id, {"prompt": "hi"})])
+
+    slots = _slots(graph)
+    assert list(slots) == [
+        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+    ]
+    providers, types, required = slots[list(slots)[0]]
+    assert len(providers) == 8
+    assert types == {"api_key"}
+    assert required is True
+
+
+def test_llm_block_with_model_discriminates_normally():
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with(
+        [_node("n1", AITextGeneratorBlock().id, {"prompt": "hi", "model": "gpt-4o"})]
+    )
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_only_known_blocks_use_discriminator_type_mapping():
+    """Guard on the fallback's trigger condition. If a new block adds
+    discriminator_type_mapping, it silently inherits schema-default
+    discrimination — this test forces that to be a conscious decision."""
+    from backend.blocks import load_all_blocks
+
+    users = set()
+    construction_failures: list[str] = []
+    for block_cls in load_all_blocks().values():
+        try:
+            block = block_cls()
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check, so the assertion below could pass while a new
+            # block quietly adopts schema-default discrimination.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        rendered = block.input_schema.get_credentials_fields()
+        for name, info in block.input_schema.get_credentials_fields_info().items():
+            if name in rendered and info.discriminator_type_mapping:
+                users.add((block.name, name))
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+    assert users == {("CodeGenerationBlock", "credentials")}
+
+
+def test_graph_credential_slots_agree_with_executor_defaults():
+    """The graph schema must not advertise a provider the executor cannot
+    select. For every discriminated credentials field, the providers offered
+    for an unpinned node must be reachable from the block's own default."""
+    from backend.blocks import load_all_blocks
+
+    construction_failures: list[str] = []
+    for block_cls in load_all_blocks().values():
+        try:
+            block = block_cls()
+        except Exception as e:
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        rendered = block.input_schema.get_credentials_fields()
+        info = block.input_schema.get_credentials_fields_info()
+        for name in rendered:
+            field = info[name]
+            if not field.discriminator_type_mapping:
+                continue
+            default = block.input_schema.jsonschema()["properties"][
+                field.discriminator
+            ].get("default")
+            expected = field.discriminate(default)
+            graph = _graph_with([_node("n1", block.id, {})])
+            for providers, types, _ in _slots(graph).values():
+                assert providers == {
+                    getattr(p, "value", p) for p in expected.provider
+                }, f"{block.name}.{name} advertises unreachable providers"
+                assert types == set(expected.supported_types)
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+
+
+def test_unmapped_discriminator_value_contributes_no_credential():
+    """AutoPilot's `platform` transport is deliberately absent from
+    `discriminator_mapping` because it needs no credential. Discriminating on
+    it raises ("is not supported. It may have been deprecated"), and this runs
+    inside the `credentials_input_schema` computed_field — so an unguarded
+    call crashed schema generation for any graph containing a node saved with
+    the default transport."""
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "platform"},
+            )
+        ]
+    )
+
+    slots = _slots(graph)
+
+    # The node asks for nothing, so it adds no credential slot at all.
+    assert slots == {}
+
+
+def test_unmapped_discriminator_on_a_required_credential_still_raises():
+    """The skip above is scoped to optional credentials fields on purpose.
+
+    A node pinned to a model since removed from the catalog also lands on an
+    unmapped discriminator value, but there the credential is required and the
+    node is simply broken. `discriminate()` raising is what surfaces the
+    actionable "may have been deprecated" message; skipping would drop the
+    slot silently, and the run form would never ask for the key.
+    """
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AI_STRUCTURED_RESPONSE_BLOCK_ID,
+                {"prompt": "hi", "model": "a-model-that-was-retired"},
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="may have been deprecated"):
+        _slots(graph)
+
+
+def test_mapped_discriminator_value_still_yields_its_slot():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            )
+        ]
+    )
+
+    providers = {p for providers, _, _ in _slots(graph).values() for p in providers}
+
+    assert providers == {"codex"}
+
+
+# ============================================================================
+# Tests for the credentials-discriminator dependency check
+# (a node saved before a block gained a discriminator carries a credential
+# and no discriminator value — that shape must stay valid)
+# ============================================================================
+
+
+_LEGACY_CODEX_META = {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "provider": "codex",
+    "type": "oauth2",
+    "title": "My ChatGPT",
+}
+
+
+def _autopilot_graph(input_default: dict) -> Graph:
+    """Build a 1-node AutoPilot graph with whatever input shape the test pins."""
+    node = Node(
+        id="00000000-0000-0000-0000-0000000000a1",
+        block_id=AUTOPILOT_BLOCK_ID,
+        input_default=input_default,
+    )
+    return Graph(
+        id="autopilot-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+
+@pytest.mark.parametrize("for_run", [False, True])
+def test_legacy_autopilot_node_without_transport_is_valid(for_run: bool):
+    """Every AutoPilot node saved before `transport` existed has a codex
+    connection and no transport. Making `codex_credentials` depend on
+    `transport` turned that shape into "Requires transport to be set" — a 400
+    on save *and* on execute, naming a field the user's exported JSON does not
+    contain. The startup backfill only repairs rows already in the database,
+    so imports and older API clients would have stayed broken permanently.
+
+    Both fields are optional, so "unset" is a legal state and the block
+    decides what it means (an attached connection is the choice).
+    """
+    graph = _autopilot_graph(
+        {"prompt": "do a thing", "codex_credentials": _LEGACY_CODEX_META}
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=for_run)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors
+
+
+@pytest.mark.parametrize(
+    "transport", [AutoPilotTransport.PLATFORM, AutoPilotTransport.CODEX_APP_SERVER]
+)
+def test_autopilot_node_with_an_explicit_transport_is_valid(
+    transport: AutoPilotTransport,
+):
+    """The migrated shape keeps validating, on both branches."""
+    graph = _autopilot_graph(
+        {
+            "prompt": "do a thing",
+            "transport": transport.value,
+            "codex_credentials": _LEGACY_CODEX_META,
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=True)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors

@@ -20,7 +20,7 @@ A reusable error card component that handles API query responses gracefully with
 - **User-friendly messages** - Non-technical, funny error messages for HTTP errors
 - **Loading state** - Supports custom loading slot or default spinner
 - **Action buttons** - Sentry error reporting with toast notifications and Discord help link
-- **Phosphor icons** - Uses phosphor icons throughout
+- **Hugeicons** - Uses Hugeicons via the Icon atom throughout
 - **TypeScript support** - Full TypeScript interface support
 
 ### 🎯 Magic Usage Pattern
@@ -176,7 +176,7 @@ export const HttpError403: Story = {
 };
 
 /**
- * Default loading state shows a spinning phosphor icon.
+ * Default loading state shows a spinning icon.
  */
 export const LoadingState: Story = {
   args: {

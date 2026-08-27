@@ -8,12 +8,14 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReasoningCollapse } from "../ReasoningCollapse";
 
-vi.mock("@phosphor-icons/react", () => ({
-  LightbulbIcon: ({ className }: { className?: string }) => (
-    <span data-testid="reasoning-bulb-icon" className={className} />
-  ),
-  CaretRightIcon: ({ className }: { className?: string }) => (
-    <span data-testid="reasoning-caret-icon" className={className} />
+vi.mock("@hugeicons/core-free-icons", () => ({
+  BulbIcon: "reasoning-bulb-icon",
+  ArrowRight01Icon: "reasoning-caret-icon",
+}));
+
+vi.mock("@/components/atoms/Icon/Icon", () => ({
+  Icon: ({ icon, className }: { icon: string; className?: string }) => (
+    <span data-testid={icon} className={className} />
   ),
 }));
 

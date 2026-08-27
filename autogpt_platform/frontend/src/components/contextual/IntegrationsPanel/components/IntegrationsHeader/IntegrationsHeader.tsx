@@ -1,8 +1,8 @@
 "use client";
-
-import { PlusIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onConnect: () => void;
@@ -28,7 +28,7 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
       <Button
         variant="primary"
         size="small"
-        leftIcon={<PlusIcon size={16} />}
+        leftIcon={<Icon icon={PlusSignIcon} size={16} />}
         onClick={onConnect}
         className="sm:hidden"
       >
@@ -37,7 +37,7 @@ export function IntegrationsHeader({ onConnect, withTitle = true }: Props) {
       <Button
         variant="primary"
         size="large"
-        leftIcon={<PlusIcon size={20} />}
+        leftIcon={<Icon icon={PlusSignIcon} size={20} />}
         onClick={onConnect}
         className="hidden sm:inline-flex"
       >

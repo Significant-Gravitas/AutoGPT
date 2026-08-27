@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
+import bcrypt
 import prisma.enums as prisma_enums
 import prisma.models as prisma_models
 from faker import Faker
@@ -39,7 +40,6 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
-from backend.util.clients import get_supabase
 from backend.util.encryption import JSONCryptor
 from backend.util.json import SafeJson
 
@@ -181,11 +181,12 @@ class TestDataCreator:
         print(f"Bootstrapped personal orgs for {created} seeded user(s)")
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
-        """Create test users using Supabase client."""
+        """Create test users with login-able Better Auth credential accounts."""
         print(f"Creating {NUM_USERS} test users...")
 
-        supabase = get_supabase()
         users = []
+        password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         for i in range(NUM_USERS):
             try:
@@ -195,21 +196,8 @@ class TestDataCreator:
                     email = SEEDED_TEST_EMAILS[i]
                 else:
                     email = faker.unique.email()
-                password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
-                user_id = f"test-user-{i}-{faker.uuid4()}"
 
-                # Create user in Supabase Auth (if needed)
-                try:
-                    auth_response = supabase.auth.admin.create_user(
-                        {"email": email, "password": password, "email_confirm": True}
-                    )
-                    if auth_response.user:
-                        user_id = auth_response.user.id
-                except Exception as supabase_error:
-                    print(
-                        f"Supabase user creation failed for {email}, using fallback: {supabase_error}"
-                    )
-                    # Fall back to direct database creation
+                user_id = await self._ensure_auth_user(email, password_hash)
 
                 # Create mock user data similar to what auth middleware would provide
                 user_data = {
@@ -227,6 +215,33 @@ class TestDataCreator:
 
         self.users = users
         return users
+
+    @staticmethod
+    async def _ensure_auth_user(email: str, password_hash: str) -> str:
+        """Create (or reuse) a Better Auth user + credential account, return its id."""
+        existing = await prisma.authuser.find_unique(where={"email": email})
+        if existing:
+            return existing.id
+
+        user_id = str(faker.uuid4())
+        await prisma.authuser.create(
+            data={
+                "id": user_id,
+                "name": email.split("@")[0],
+                "email": email,
+                "emailVerified": True,
+            }
+        )
+        await prisma.authaccount.create(
+            data={
+                "id": str(faker.uuid4()),
+                "accountId": user_id,
+                "providerId": "credential",
+                "userId": user_id,
+                "password": password_hash,
+            }
+        )
+        return user_id
 
     async def get_available_blocks(self) -> List[Dict[str, Any]]:
         """Get available agent blocks from database."""

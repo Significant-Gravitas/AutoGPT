@@ -1,9 +1,8 @@
 "use client";
-
-import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
+import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { PainPointsStep } from "./steps/PainPointsStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
@@ -11,6 +10,8 @@ import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
 import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
+import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function OnboardingPage() {
   const {
@@ -18,11 +19,13 @@ export default function OnboardingPage() {
     isLoading,
     handlePreparingComplete,
     isPaymentEnabled,
+    isBrainDumpEnabled,
     steps,
     preparingStep,
     totalSteps,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
+  const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
   if (isLoading) return null;
 
@@ -31,8 +34,11 @@ export default function OnboardingPage() {
   const showDots = currentStep <= totalSteps;
   // Back is hidden on Welcome (the first profile step): going back from there
   // when payments are on would return the user to the paywall they already
-  // paid through and let them re-trigger checkout.
-  const showBack = currentStep > steps.welcome && currentStep <= totalSteps;
+  // paid through and let them re-trigger checkout. Also hidden while the
+  // current step is mid-flight (brain dump processing) — there is nothing
+  // coherent to go back to.
+  const showBack =
+    currentStep > steps.welcome && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
@@ -48,7 +54,7 @@ export default function OnboardingPage() {
           onClick={prevStep}
           className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <CaretLeftIcon size={16} />
+          <Icon icon={ArrowLeft01Icon} size={16} />
           Back
         </button>
       )}
@@ -60,9 +66,13 @@ export default function OnboardingPage() {
           )}
         {currentStep === steps.welcome && <WelcomeStep />}
         {currentStep === steps.role && <RoleStep />}
-        {currentStep === steps.painPoints && <PainPointsStep />}
+        {currentStep === steps.painPoints &&
+          (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
         {currentStep === preparingStep && (
-          <PreparingStep onComplete={handlePreparingComplete} />
+          <PreparingStep
+            onComplete={handlePreparingComplete}
+            isBrainDumpEnabled={isBrainDumpEnabled}
+          />
         )}
       </div>
 
@@ -77,7 +87,7 @@ export default function OnboardingPage() {
           href="/logout"
           className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <SignOutIcon size={16} />
+          <Icon icon={Logout03Icon} size={16} />
           Log out
         </Link>
       )}

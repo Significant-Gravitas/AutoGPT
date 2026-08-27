@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Drives the devtool gate. Defaults to off so the bulk of these tests
+// exercise the plain fetch path rather than the usage-capturing wrapper.
+const isDevelopmentBuild = vi.fn(() => false);
 
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "http://test.local",
+    isDevelopmentBuild: () => isDevelopmentBuild(),
+    isDev: () => false,
   },
 }));
 
@@ -10,7 +16,24 @@ vi.mock("../helpers", () => ({
   getCopilotAuthHeaders: async () => ({ "x-test": "auth" }),
 }));
 
+const createUsageCapturingFetch = vi.fn((_sessionId: string) => vi.fn());
+
+vi.mock("../tokenDevtool/usageTap", () => ({
+  createUsageCapturingFetch: (sessionId: string) =>
+    createUsageCapturingFetch(sessionId),
+}));
+
 import { createCopilotTransport } from "../copilotStreamTransport";
+import { buildKickoffMessage } from "../expertKickoff";
+
+beforeEach(() => {
+  isDevelopmentBuild.mockReturnValue(false);
+  createUsageCapturingFetch.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,17 +45,69 @@ function makeRefs() {
   };
 }
 
-function lastMessage(text: string) {
+function lastMessage(text: string, metadata?: unknown) {
   return [
     {
       id: "ai-sdk-generated-id",
       role: "user" as const,
       parts: [{ type: "text" as const, text }],
+      metadata,
     },
   ];
 }
 
+describe("copilotStreamTransport devtool wiring", () => {
+  it("installs the usage-capturing fetch when the devtool gate is on", () => {
+    vi.stubEnv("NEXT_PUBLIC_TOKEN_DEVTOOL", "true");
+    isDevelopmentBuild.mockReturnValue(true);
+
+    createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
+
+    expect(createUsageCapturingFetch).toHaveBeenCalledWith("s-1");
+  });
+
+  it("leaves fetch alone when the devtool gate is off", () => {
+    createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
+
+    expect(createUsageCapturingFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
+  it("reaches fetch when crypto.randomUUID is unavailable on a LAN HTTP origin", async () => {
+    const originalCrypto = globalThis.crypto;
+    const fetchReached = new Error("fetch reached");
+    const fetchMock = vi.fn().mockRejectedValue(fetchReached);
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-lan-http",
+        ...makeRefs(),
+      });
+
+      await expect(
+        transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "sess-lan-http",
+          messageId: undefined,
+          messages: lastMessage("hello from a phone"),
+          abortSignal: undefined,
+        }),
+      ).rejects.toBe(fetchReached);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://test.local/api/chat/sessions/sess-lan-http/stream",
+        expect.objectContaining({ method: "POST" }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("attaches a freshly generated UUIDv4 as message_id on every body", async () => {
     const transport = createCopilotTransport({
       sessionId: "sess-1",
@@ -100,4 +175,59 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
       expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
     },
   );
+});
+
+describe("copilotStreamTransport — expert kickoff routing", () => {
+  const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+
+  function prep(transport: ReturnType<typeof createCopilotTransport>) {
+    return (
+      transport as unknown as {
+        prepareSendMessagesRequest: (args: {
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            parts: Array<{ type: "text"; text: string }>;
+            metadata?: unknown;
+          }>;
+        }) => Promise<{
+          body: { message_id?: string; expert_kickoff?: boolean };
+        }>;
+      }
+    ).prepareSendMessagesRequest;
+  }
+
+  it("marks kickoff requests while leaving the canonical id to the server", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+    const kickoff = buildKickoffMessage(EXPERT_ID);
+
+    const tabA = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
+    });
+    const tabB = await prep(transport)({
+      messages: lastMessage(kickoff.text, kickoff.metadata),
+    });
+
+    expect(tabA.body.expert_kickoff).toBe(true);
+    expect(tabA.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).toMatch(UUID_RE);
+    expect(tabB.body.message_id).not.toBe(tabA.body.message_id);
+  });
+
+  it("keeps random UUIDs for ordinary messages", async () => {
+    const transport = createCopilotTransport({
+      sessionId: "sess-1",
+      ...makeRefs(),
+    });
+
+    const out = await prep(transport)({
+      messages: lastMessage("You were just hired."),
+    });
+
+    expect(out.body.message_id).toMatch(UUID_RE);
+    expect(out.body.expert_kickoff).toBe(false);
+  });
 });

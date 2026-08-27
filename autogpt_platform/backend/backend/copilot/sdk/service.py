@@ -41,13 +41,31 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.copilot.model_router import (
+    ResolvedModel,
+    RoutingSource,
+    resolve_codex_model_route,
+    resolve_model_route,
+)
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
+from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
+from backend.integrations.codex.transport import PooledCodexRuntimeLease
+from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.prompt import (
+    DEFAULT_COMPRESSION_RESERVE,
+    estimate_token_count,
+    get_compression_target,
+)
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLlmModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -61,7 +79,8 @@ from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
-from ..model_router import resolve_model
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -69,6 +88,7 @@ from ..moonshot import (
 from ..model import (
     ChatMessage,
     ChatSession,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -89,7 +109,11 @@ from ..permissions import (
     all_known_tool_names,
     apply_tool_permissions,
 )
-from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..prompting import (
+    get_delegation_supplement,
+    get_graphiti_supplement,
+    get_sdk_supplement,
+)
 from ..rate_limit import (
     get_global_rate_limits,
     get_remaining_usd_budget,
@@ -97,6 +121,7 @@ from ..rate_limit import (
 )
 from ..response_model import (
     StreamBaseResponse,
+    StreamCompactionProgress,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -120,6 +145,7 @@ from ..builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
+from ..expert_context import build_expert_identity_suffix
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -129,7 +155,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
-from ..tools import ToolGroup, tool_names_in_groups
+from ..tools import ToolGroup, expert_tool_disabled_groups, tool_names_in_groups
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.session_context import build_session_context
@@ -151,7 +177,13 @@ from ..transcript import (
     validate_transcript,
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
-from .compaction import CompactionTracker, filter_compaction_messages
+from .compaction import (
+    CompactionStats,
+    CompactionTracker,
+    filter_compaction_messages,
+    sdk_compaction_stats,
+    transcript_stats,
+)
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
@@ -277,6 +309,54 @@ class _SDKLoopState:
     stream_error_code: str | None = None
 
 
+async def _open_sdk_compaction_row(
+    ctx: "_StreamContext", state: "_RetryState"
+) -> list[StreamBaseResponse]:
+    """Open the row for a CLI-side compaction the PreCompact hook announced.
+
+    Sized off our own mirror of the CLI context: the transcript builder
+    holds the entries the CLI is about to condense, so its token and turn
+    counts are the ``tokensBefore`` that paces the bar and the
+    ``messagesBefore`` the settled row reports.  Measured off the loop — a
+    full context is hundreds of thousands of characters.
+    """
+    if not ctx.compaction.has_pending_start:
+        return []
+    stats = await asyncio.to_thread(
+        transcript_stats,
+        state.transcript_builder.entries_as_dicts(),
+        model=_compression_model(),
+    )
+    return ctx.compaction.emit_start_if_ready(stats)
+
+
+async def _measure_sdk_compaction(
+    ctx: "_StreamContext", state: "_RetryState"
+) -> tuple[bool, list[dict] | None, CompactionStats | None]:
+    """Read what the CLI kept after compacting and size the row's payoff.
+
+    Runs before the row closes so the settled output carries the numbers.
+    Returns ``(measured, compacted, stats)``: ``measured`` is False when no
+    cycle was pending, and the compacted entries are handed back so the
+    caller can sync the transcript builder without a second read.
+    """
+    # Let a PreCompact hook that raced this message land before we look —
+    # ``emit_end_if_ready`` yields for the same reason.
+    await asyncio.sleep(0)
+    path = ctx.compaction.pending_transcript_path
+    if path is None:
+        return False, None, None
+    compacted = await asyncio.to_thread(read_compacted_entries, path)
+    stats = await asyncio.to_thread(
+        sdk_compaction_stats,
+        state.transcript_builder.entries_as_dicts(),
+        compacted,
+        model=_compression_model(),
+        start=ctx.compaction.start_stats,
+    )
+    return True, compacted, stats
+
+
 async def _consume_sdk_until_done(
     client: ClaudeSDKClient,
     ctx: "_StreamContext",
@@ -293,11 +373,11 @@ async def _consume_sdk_until_done(
     fires a synthetic re-prompt and invokes this again for the second
     pass — bounded to one re-prompt per turn.
     """
-    async for sdk_msg in _iter_sdk_messages(client):
+    async for sdk_msg in _iter_sdk_messages(client, wake=ctx.compaction.hook_fired):
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()
-            for ev in ctx.compaction.emit_start_if_ready():
+            for ev in await _open_sdk_compaction_row(ctx, state):
                 yield ev
             yield StreamHeartbeat()
 
@@ -587,7 +667,8 @@ async def _consume_sdk_until_done(
 
         # Emit compaction end if SDK finished compacting.
         # Sync TranscriptBuilder with the CLI's active context.
-        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session)
+        measured, compacted, end_stats = await _measure_sdk_compaction(ctx, state)
+        compact_result = await ctx.compaction.emit_end_if_ready(ctx.session, end_stats)
         if compact_result.events:
             # Compaction events end with StreamFinishStep, which maps to
             # Vercel AI SDK's "finish-step" — that clears activeTextParts.
@@ -607,10 +688,13 @@ async def _consume_sdk_until_done(
             yield ev
         entries_replaced = False
         if compact_result.just_ended:
-            compacted = await asyncio.to_thread(
-                read_compacted_entries,
-                compact_result.transcript_path,
-            )
+            if not measured and compact_result.transcript_path:
+                # The hook landed in the one yield between the measurement
+                # and the close: the row went out without numbers, but the
+                # builder must still mirror what the CLI kept.
+                compacted = await asyncio.to_thread(
+                    read_compacted_entries, compact_result.transcript_path
+                )
             if compacted is not None:
                 state.transcript_builder.replace_entries(
                     compacted, log_prefix=ctx.log_prefix
@@ -1054,6 +1138,9 @@ _EPHEMERAL_EVENT_TYPES = (
     StreamToolInputStart,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    # The compaction row's live progress phases ride along with those UI
+    # events on the SDK-internal path, inside the attempt loop.
+    StreamCompactionProgress,
     # Transient StreamError and StreamStatus are ephemeral notifications,
     # not content.  Counting them would prevent the backoff retry from
     # firing because _next_transient_backoff() returns None when
@@ -1199,7 +1286,7 @@ class _RetryState:
 
     options: ClaudeAgentOptions
     query_message: str
-    was_compacted: bool
+    compaction_stats: "CompactionStats | None"
     use_resume: bool
     resume_file: str | None
     transcript_msg_count: int
@@ -1540,6 +1627,7 @@ async def _apply_building_mode_restart(
     state: "_RetryState",
     sdk_options: "ClaudeAgentOptions",
     base_system_prompt: str,
+    delegation_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1562,11 +1650,23 @@ async def _apply_building_mode_restart(
             f"{log_prefix} Building-mode restart: guide suffix "
             f"empty — continuing without prompt upgrade"
         )
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+    # Same supplement order as the main assembly. The delegation tools stay
+    # registered across a restart (registration happens once, before it), so
+    # dropping their disclosure rules here would leave the model able to
+    # delegate silently for the rest of the turn.
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
+        + delegation_supplement
         + graphiti_supplement
         + building_suffix
+        + expert_session_suffix
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -1862,10 +1962,16 @@ async def _safe_close_sdk_client(
 
 async def _iter_sdk_messages(
     client: ClaudeSDKClient,
+    wake: asyncio.Event | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield SDK messages with heartbeat-based timeouts.
 
     Uses an explicit async iterator with non-cancelling heartbeats.
+
+    ``wake`` cuts a heartbeat short: when it is set, the generator yields
+    the heartbeat sentinel at once and clears the event instead of waiting
+    out ``_HEARTBEAT_INTERVAL``.  The PreCompact hook sets it so the
+    compaction row opens before the CLI's next message can close it.
 
     CRITICAL: we must NOT cancel `__anext__()` mid-flight — doing so
     (via `asyncio.timeout` or `wait_for`) corrupts the SDK's internal
@@ -1882,6 +1988,7 @@ async def _iter_sdk_messages(
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
+    wake_task: asyncio.Task[Any] | None = None
 
     async def _next_msg() -> Any:
         """Await the next SDK message, wrapped for use with `asyncio.Task`."""
@@ -1891,25 +1998,44 @@ async def _iter_sdk_messages(
         while True:
             if pending_task is None:
                 pending_task = asyncio.create_task(_next_msg())
+            waiters: set[asyncio.Task[Any]] = {pending_task}
+            if wake is not None:
+                if wake_task is None:
+                    wake_task = asyncio.create_task(wake.wait())
+                waiters.add(wake_task)
 
-            done, _ = await asyncio.wait({pending_task}, timeout=_HEARTBEAT_INTERVAL)
+            done, _ = await asyncio.wait(
+                waiters,
+                timeout=_HEARTBEAT_INTERVAL,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
 
-            if not done:
-                yield None  # heartbeat sentinel
+            if wake is not None and wake_task in done:
+                # Woken: hand the sentinel over BEFORE any message that
+                # landed in the same tick, or the row the hook announced
+                # would be closed by the very message meant to follow it.
+                wake_task = None
+                wake.clear()
+                yield None
                 continue
 
-            pending_task = None
+            if pending_task not in done:
+                yield None  # heartbeat sentinel: the interval elapsed
+                continue
+
+            msg_task, pending_task = pending_task, None
             try:
-                yield done.pop().result()
+                yield msg_task.result()
             except StopAsyncIteration:
                 return
     finally:
-        if pending_task is not None and not pending_task.done():
-            pending_task.cancel()
-            try:
-                await pending_task
-            except (asyncio.CancelledError, StopAsyncIteration):
-                pass
+        for task in (pending_task, wake_task):
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, StopAsyncIteration):
+                    pass
 
 
 def _normalize_model_name(raw_model: str) -> str:
@@ -1942,15 +2068,17 @@ def _resolve_sdk_model() -> str | None:
 
 
 async def _resolve_thinking_model_for_user(
-    tier: "CopilotLlmModel",
+    tier: "CopilotLLMModel",
     user_id: str | None,
-) -> str:
+) -> ResolvedModel:
     """LD-aware thinking-tier model pick for a specific user.
 
     Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
-    to the ``ChatConfig`` default on missing user / missing flag.
+    to the ``ChatConfig`` default on missing user / missing flag. Returns
+    the model together with which routing layer picked it, so persisted
+    assistant messages can be stamped for product-intelligence.
     """
-    return await resolve_model("thinking", tier, user_id, config=config)
+    return await resolve_model_route("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -1976,11 +2104,11 @@ def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str
 
 
 async def _resolve_sdk_model_for_request(
-    model: "CopilotLlmModel | None",
+    model: "CopilotLLMModel | None",
     session_id: str,
     user_id: str | None = None,
-) -> str | None:
-    """Resolve the SDK model string for a turn.
+) -> tuple[str | None, RoutingSource]:
+    """Resolve the SDK model string for a turn, plus which layer picked it.
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
@@ -1996,9 +2124,9 @@ async def _resolve_sdk_model_for_request(
     4. ``ChatConfig`` static default for the tier.
     """
     if config.claude_agent_model:
-        return config.claude_agent_model
+        return config.claude_agent_model, "env"
 
-    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -2020,7 +2148,7 @@ async def _resolve_sdk_model_for_request(
     # must be honoured.  Without this, a subscription-mode deployment
     # silently ignores the ``copilot-model-routing[thinking][standard]``
     # flag entirely, which defeats the point of cohort-based routing.
-    ld_overrides_default = resolved != tier_default
+    ld_overrides_default = resolved.model != tier_default
     if (
         not ld_overrides_default
         and tier_name == "standard"
@@ -2030,9 +2158,9 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
         )
-        return None
+        return None, "env"
     try:
-        sdk_model = _normalize_model_name(resolved)
+        sdk_model = _normalize_model_name(resolved.model)
     except ValueError as exc:
         # The per-user LD value didn't pass ``_normalize_model_name``'s
         # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
@@ -2054,19 +2182,27 @@ async def _resolve_sdk_model_for_request(
             "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
             "back to tier default %s",
             session_id[:12] if session_id else "?",
-            resolved,
+            resolved.model,
             tier_name,
             exc,
             sdk_model,
         )
-        return sdk_model
+        return sdk_model, "env"
     logger.info(
         "[SDK] [%s] Resolved model for tier=%s: %s",
         session_id[:12] if session_id else "?",
         tier_name,
         sdk_model,
     )
-    return sdk_model
+    return sdk_model, resolved.source
+
+
+def _codex_gateway_usage(
+    gateway: CodexAnthropicGateway,
+) -> CodexTokenUsage | None:
+    """Read authoritative aggregate usage from a completed Codex gateway."""
+    result = gateway.result
+    return result.usage if result is not None else None
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -2149,6 +2285,54 @@ def _is_fallback_stderr(line: str) -> bool:
     without wiring up the full ``_on_stderr`` closure.
     """
     return "fallback model" in line.lower()
+
+
+_CLI_STDERR_AUTH_RE = re.compile(
+    r"(?i)(?P<prefix>\b(?:authorization|proxy-authorization|x-api-key|"
+    r"anthropic[_-]auth[_-]token)\b[\"']?\s*[:=]\s*[\"']?)"
+    r"(?:(?:bearer|basic)\s+)?[^,\s;\"'}\]]+"
+)
+
+
+def _redact_cli_stderr(line: str, *, secrets: tuple[str, ...] = ()) -> str:
+    """Remove known capabilities and authorization values from CLI logs."""
+    redacted = _CLI_STDERR_AUTH_RE.sub(r"\g<prefix>[REDACTED]", line)
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
+async def _close_codex_gateway_for_finally(
+    gateway: CodexAnthropicGateway,
+    log_prefix: str,
+) -> BaseException | None:
+    """Finish gateway checkpointing and return any error for deferred raising."""
+    close_task = asyncio.create_task(gateway.close())
+    try:
+        await asyncio.shield(close_task)
+    except asyncio.CancelledError as cancellation:
+        try:
+            await close_task
+        except BaseException as cleanup_error:
+            logger.exception("%s Codex gateway cleanup failed", log_prefix)
+            return cleanup_error
+        return cancellation
+    except Exception as cleanup_error:
+        logger.exception("%s Codex gateway cleanup failed", log_prefix)
+        return cleanup_error
+    return None
+
+
+def _raise_deferred_codex_cleanup_error(
+    cleanup_error: BaseException | None,
+    turn_error: BaseException | None,
+) -> None:
+    if cleanup_error is None:
+        return
+    if turn_error is not None and turn_error is not cleanup_error:
+        raise cleanup_error from turn_error
+    raise cleanup_error
 
 
 def _build_system_prompt_value(
@@ -2510,10 +2694,250 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     return result
 
 
+def _compression_model() -> str:
+    """The model whose context window governs pre-query compression.
+
+    ``_compress_messages`` hands this to ``_run_compression``, and the
+    pre-query predictor sizes its estimate against the same name.  Both read
+    it here rather than naming a model each: the runtime model (Codex 400K,
+    Opus 120K) and the compressor's model have different windows, so any
+    call site that picks its own opens compaction rows for work the
+    compressor won't do — or does the work with no row open at all.
+    """
+    return config.thinking_standard_model
+
+
+def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
+    """One ``ChatMessage`` in the dict shape the compressor reads.
+
+    Shared by ``_compress_messages`` (what actually gets compressed) and
+    ``_will_compact`` (what gets estimated).  ``_msg_tokens`` counts the
+    serialized ``function.arguments`` of every tool call, and copilot
+    assistant rows carry whole graph JSON in ``create_agent``/``edit_agent``
+    payloads — an estimate built from ``role``/``content`` alone undercounts
+    the tool-heaviest sessions by the widest margin.
+    """
+    payload: dict[str, Any] = {"role": msg.role}
+    if msg.content:
+        payload["content"] = msg.content
+    if msg.tool_calls:
+        payload["tool_calls"] = msg.tool_calls
+    if msg.tool_call_id:
+        payload["tool_call_id"] = msg.tool_call_id
+    return payload
+
+
+# Characters per token, measured with ``o200k_base`` over the payload shapes
+# this history actually carries: base64-ish blobs 1.5, CJK 1.8, numeric IDs
+# 2.6, graph JSON 2.7, source code 4.6, English prose 4.9-6.5.
+# ``estimate_token_count`` then scales raw counts by up to 1.5x for the
+# Claude-5 tokenizer generation, which drags the dense end down to ~1.0
+# characters per *estimated* token.
+#
+# The two bounds bracket the estimate rather than replacing it: at or below
+# ``limit * _MIN_CHARS_PER_TOKEN`` no history can reach the threshold, above
+# ``limit * _MAX_CHARS_PER_TOKEN`` none can miss it, so both ends are decided
+# by arithmetic alone.  Only the band between them pays for a tokenizer pass,
+# and that band is bounded by construction — at the production limit (~138K
+# tokens) the widest input tiktoken can see is ~830K characters, ~80ms.  The
+# megabyte histories that made tokenizing expensive in the first place are
+# exactly the ones the upper cut answers for free.
+_MIN_CHARS_PER_TOKEN = 1.0
+_MAX_CHARS_PER_TOKEN = 6.0
+
+# Pacing hint only, never the decision: when the bounds settle the question
+# without tokenizing there is no estimate to report, and ``summarizing`` with
+# no ``tokens_before`` animates a 500K compaction exactly like a 20K one.  The
+# midpoint of the measured range is wrong by ~2x either way — good enough to
+# pick a progress curve, which is all the client does with it.
+_NOMINAL_CHARS_PER_TOKEN = 3.0
+
+
+@dataclass(frozen=True)
+class _CompactionForecast:
+    """Whether the upcoming turn compresses, and how big the input is.
+
+    ``tokens_before`` is the size the prediction was made from; it rides
+    the ``summarizing`` phase so the client can pace its progress curve.
+    ``None`` when no size was established at all.
+    """
+
+    expected: bool
+    tokens_before: int | None = None
+
+
+_NO_COMPACTION = _CompactionForecast(expected=False)
+
+
+def _payload_chars(rows: list[ChatMessage]) -> int:
+    """Characters the estimator would tokenize for *rows*.
+
+    Content plus tool-call names and serialized arguments — the fields
+    ``_to_compress_dict`` hands the estimator.  The per-message wrapper
+    tokens ``_msg_tokens`` adds are left out; they are absorbed by the
+    width of the bounds above.
+    """
+    total = 0
+    for msg in rows:
+        total += len(msg.content or "")
+        for call in msg.tool_calls or []:
+            function = call.get("function", {})
+            total += len(str(function.get("name") or ""))
+            total += len(str(function.get("arguments") or ""))
+    return total
+
+
+def _will_compact(messages: list[ChatMessage], model: str) -> _CompactionForecast:
+    """Cheap pre-check: would ``_compress_messages`` do real work?
+
+    Mirrors ``compress_context``'s early-return condition (``prompt.py``:
+    ``original_count + reserve <= target_tokens``) so the UI can open a
+    compaction row *before* the expensive LLM summarization starts instead of
+    announcing it afterwards.
+
+    A character count decides the clear-cut cases outright; only histories
+    that land in the ambiguous band near the threshold are tokenized, and
+    that band is bounded (see ``_MIN_CHARS_PER_TOKEN``), so the tokenizer
+    can never run on the huge histories that would make it expensive.
+
+    Being wrong is survivable in both directions — a false negative falls
+    back to a self-contained row, a false positive is retired by
+    ``abort_pre_query`` — but a false positive flashes a bar on screen, so
+    the tokenizer is spent exactly where the bounds cannot separate the two.
+    Any failure means no prediction: this is cosmetic, and a tiktoken
+    download failure or an unknown model must not take the stream with it.
+    """
+    rows = [m for m in filter_compaction_messages(messages) if m.role != "reasoning"]
+    if len(rows) < 2:
+        return _NO_COMPACTION
+    chars = _payload_chars(rows)
+    try:
+        # ``estimated > limit`` is ``estimated + reserve > target``, the
+        # negation of the compressor's early return.
+        limit = get_compression_target(model) - DEFAULT_COMPRESSION_RESERVE
+        if chars <= limit * _MIN_CHARS_PER_TOKEN:
+            return _NO_COMPACTION
+        if chars > limit * _MAX_CHARS_PER_TOKEN:
+            return _CompactionForecast(
+                expected=True,
+                tokens_before=int(chars / _NOMINAL_CHARS_PER_TOKEN),
+            )
+        estimated = estimate_token_count(
+            [_to_compress_dict(m) for m in rows], model=model
+        )
+    except Exception:
+        logger.warning(
+            "[SDK] Compaction pre-check failed on %d rows (%d chars) —"
+            " skipping the prediction (the row still opens after the fact)",
+            len(rows),
+            chars,
+            exc_info=True,
+        )
+        return _NO_COMPACTION
+    return _CompactionForecast(expected=estimated > limit, tokens_before=estimated)
+
+
+def _expect_pre_query_compaction(
+    messages: list[ChatMessage],
+    model: str,
+    *,
+    use_resume: bool,
+    transcript_msg_count: int,
+    session_msg_ceiling: int,
+    prior_messages: "list[ChatMessage] | None" = None,
+    target_tokens: int | None = None,
+) -> _CompactionForecast:
+    """Predict whether ``_build_query_message`` will compress on this turn.
+
+    Mirrors ``_build_query_message``'s branch selection so the compaction
+    row only opens when the branch actually taken feeds ``_compress_messages``
+    a slice that would compress.  On the steady-state resume path the
+    transcript covers the full history and nothing is compressed — running
+    ``_will_compact`` over the whole session there returns a false positive
+    on EVERY turn once cumulative history exceeds the compression target,
+    opening a row that is immediately aborted.
+
+    ``prior_messages`` must be the same value handed to
+    ``_build_query_message``: on the no-resume path it is the compacted
+    transcript + hole + gap, which is normally far smaller than the raw
+    session and is non-``None`` on essentially every turn with a baseline
+    transcript.  Predicting over the full session there is the mirror-image
+    error — the branch compresses a slice this function never looked at.
+
+    ``target_tokens`` must be the same value handed to
+    ``_build_query_message`` — the no-resume branch there abandons history
+    injection entirely once the budget falls to ``_BARE_MESSAGE_TOKEN_FLOOR``,
+    and a mirror that skips that guard predicts compression for a branch that
+    returns the bare message.
+
+    False negatives are safe: ``emit_pre_query_end`` emits a self-contained
+    row when compression happens without a prediction.  That covers slices
+    this estimator cannot see, like cap-engaged hole rows fetched from the DB.
+    """
+    prior = [
+        m for m in messages[: max(0, session_msg_ceiling - 1)] if m.role != "reasoning"
+    ]
+    if not use_resume:
+        if session_msg_ceiling <= 1:
+            return _NO_COMPACTION
+        if target_tokens is not None and target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
+            return _NO_COMPACTION
+        source = prior_messages if prior_messages is not None else prior
+        return _will_compact(source, model)
+    if transcript_msg_count <= 0:
+        # ``use_resume`` with no covered rows compresses nothing.
+        return _NO_COMPACTION
+    cap_engaged = transcript_msg_count >= len(prior) or (
+        bool(prior) and prior[0].sequence is not None and prior[0].sequence > 0
+    )
+    if cap_engaged and prior and prior[0].sequence is not None:
+        window_gap = [
+            m
+            for m in prior
+            if m.sequence is not None and m.sequence >= transcript_msg_count
+        ]
+        return _will_compact(window_gap, model)
+    if transcript_msg_count < session_msg_ceiling - 1:
+        if transcript_msg_count > len(prior):
+            return _NO_COMPACTION
+        if prior[transcript_msg_count - 1].role != "assistant":
+            # Misaligned watermark — _build_query_message skips the gap.
+            return _NO_COMPACTION
+        return _will_compact(prior[transcript_msg_count:], model)
+    # Scenario A: --resume covers the full context; nothing is compressed.
+    return _NO_COMPACTION
+
+
+def _retry_reduced_context(
+    *,
+    reduced: ReducedContext,
+    compaction_stats: "CompactionStats | None",
+) -> bool:
+    """Did a context-reduction retry actually summarize anything?
+
+    The retry opens its compaction row optimistically, before
+    ``_reduce_context`` runs, so the close is a claim about work that may
+    not have happened.  The row says the conversation was condensed, and
+    only two things earn that: the transcript came back summarized
+    (``transcript_lost`` false — the drop branch is the only other exit),
+    or ``_build_query_message`` compressed DB history, which surfaces as
+    ``compaction_stats``.
+
+    Dropping the transcript is deliberately NOT enough.  It reduces
+    context, but by discarding history rather than summarizing it, and
+    ``compact_transcript`` failing lands there just as surely as a second
+    retry does — so a guess made before ``_reduce_context`` ran would
+    persist a durable "Condensed" row for a conversation that was
+    truncated.  The non-retry path already refuses to call a drop a
+    summarize; this keeps the retry path honest about the same thing.
+    """
+    return not reduced.transcript_lost or compaction_stats is not None
+
+
 async def _compress_messages(
     messages: list[ChatMessage],
     target_tokens: int | None = None,
-) -> tuple[list[ChatMessage], bool]:
+) -> tuple[list[ChatMessage], bool, "CompactionStats | None"]:
     """Compress a list of messages if they exceed the token threshold.
 
     Delegates to `_run_compression` (`transcript.py`) which centralizes
@@ -2540,24 +2964,15 @@ async def _compress_messages(
     ]
 
     if len(messages) < 2:
-        return messages, False
+        return messages, False, None
 
     # Convert ChatMessages to dicts for compress_context
-    messages_dict = []
-    for msg in messages:
-        msg_dict: dict[str, Any] = {"role": msg.role}
-        if msg.content:
-            msg_dict["content"] = msg.content
-        if msg.tool_calls:
-            msg_dict["tool_calls"] = msg.tool_calls
-        if msg.tool_call_id:
-            msg_dict["tool_call_id"] = msg.tool_call_id
-        messages_dict.append(msg_dict)
+    messages_dict = [_to_compress_dict(msg) for msg in messages]
 
     try:
         result = await _run_compression(
             messages_dict,
-            config.thinking_standard_model,
+            _compression_model(),
             "[SDK]",
             target_tokens=target_tokens,
         )
@@ -2573,11 +2988,16 @@ async def _compress_messages(
         # that can definitively recover a session whose stored history
         # exceeds the model's context window.
         logger.warning(
-            "[SDK] _compress_messages failed — dropping history to bare"
+            "[SDK] _compress_messages failed — dropping %d messages to bare"
             " message to guarantee retry progress: %s",
+            len(messages),
             exc,
         )
-        return [], True
+        # A drop is not a summarize: the row must not claim "condensed" and
+        # must not count as a completed compaction.  It still has to close
+        # honestly — the user just lost their history, and the settled row
+        # is where they learn it — so the stats say only what happened.
+        return [], True, CompactionStats(dropped=True, messages_before=len(messages))
 
     if result.was_compacted:
         logger.info(
@@ -2588,7 +3008,7 @@ async def _compress_messages(
             result.messages_dropped,
         )
         # Convert compressed dicts back to ChatMessages
-        return [
+        compacted = [
             ChatMessage(
                 role=m["role"],
                 content=m.get("content"),
@@ -2596,9 +3016,16 @@ async def _compress_messages(
                 tool_call_id=m.get("tool_call_id"),
             )
             for m in result.messages
-        ], True
+        ]
+        stats = CompactionStats(
+            tokens_before=result.original_token_count,
+            tokens_after=result.token_count,
+            messages_before=len(messages),
+            messages_after=len(compacted),
+        )
+        return compacted, True, stats
 
-    return messages, False
+    return messages, False, None
 
 
 def _session_messages_to_transcript(messages: list[ChatMessage]) -> str:
@@ -2711,7 +3138,8 @@ async def _build_query_message(
     session_msg_ceiling: int | None = None,
     target_tokens: int | None = None,
     prior_messages: "list[ChatMessage] | None" = None,
-) -> tuple[str, bool]:
+    expect_compaction: bool = False,
+) -> tuple[str, "CompactionStats | None"]:
     """Build the query message with appropriate context.
 
     When ``use_resume=True``, the CLI has the full session via ``--resume``;
@@ -2732,9 +3160,12 @@ async def _build_query_message(
             messages so that mid-turn drains do not skew the gap calculation
             and cause pending messages to be duplicated in both the gap context
             and ``current_message``.
+        expect_compaction: What the caller's pre-check predicted.  Logged only,
+            beside the branch actually taken, so a row that opens without
+            compression (or compression with no row) is one grep away.
 
     Returns:
-        Tuple of (query_message, was_compacted).
+        Tuple of (query_message, compaction_stats or None).
     """
     msg_count = len(session.messages)
     # Use the ceiling if supplied (prevents pending-message duplication when
@@ -2758,14 +3189,21 @@ async def _build_query_message(
     # mid-turn user rows from the next LLM query.
     prior = [m for m in prior if m.role != "reasoning"]
 
+    # Every branch below makes at most one ``_compress_messages`` call and then
+    # returns, so this is written exactly once per invocation.
+    compaction_stats: CompactionStats | None = None
+
     logger.info(
         "[SDK] [%s] Context path: use_resume=%s, transcript_msg_count=%d,"
-        " db_msg_count=%d, target_tokens=%s",
+        " db_msg_count=%d, target_tokens=%s, expect_compaction=%s,"
+        " prior_messages=%s",
         session_id[:8],
         use_resume,
         transcript_msg_count,
         msg_count,
         target_tokens,
+        expect_compaction,
+        len(prior_messages) if prior_messages is not None else None,
     )
 
     if use_resume and transcript_msg_count > 0:
@@ -2814,7 +3252,10 @@ async def _build_query_message(
                         e,
                     )
             gap = hole + window_gap
-            compressed, was_compressed = await _compress_messages(gap, target_tokens)
+            compressed, _was_compressed, stats = await _compress_messages(
+                gap, target_tokens
+            )
+            compaction_stats = stats
             gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
@@ -2824,12 +3265,12 @@ async def _build_query_message(
                     session_id[:8],
                     transcript_msg_count,
                     len(gap),
-                    was_compressed,
+                    stats is not None,
                     len(gap_context),
                 )
                 return (
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
-                    was_compressed,
+                    compaction_stats,
                 )
             logger.warning(
                 "[SDK] [%s] Cap-engaged + empty sequence-based gap: window may"
@@ -2838,7 +3279,7 @@ async def _build_query_message(
                 transcript_msg_count,
                 msg_count,
             )
-            return current_message, False
+            return current_message, compaction_stats
         if transcript_msg_count < effective_count - 1:
             # Sanity-check the watermark: the last covered position should be
             # an assistant turn.  A user-role message here means the count is
@@ -2856,9 +3297,12 @@ async def _build_query_message(
                     transcript_msg_count,
                     msg_count,
                 )
-                return current_message, False
+                return current_message, compaction_stats
             gap = prior[transcript_msg_count:]
-            compressed, was_compressed = await _compress_messages(gap, target_tokens)
+            compressed, _was_compressed, stats = await _compress_messages(
+                gap, target_tokens
+            )
+            compaction_stats = stats
             gap_context = _format_conversation_context(compressed)
             if gap_context:
                 logger.info(
@@ -2867,12 +3311,12 @@ async def _build_query_message(
                     transcript_msg_count,
                     msg_count,
                     len(gap),
-                    was_compressed,
+                    stats is not None,
                     len(gap_context),
                 )
                 return (
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
-                    was_compressed,
+                    compaction_stats,
                 )
             logger.warning(
                 "[SDK] [%s] Transcript stale: gap produced empty context"
@@ -2888,7 +3332,7 @@ async def _build_query_message(
                 session_id[:8],
                 transcript_msg_count,
             )
-        return current_message, False
+        return current_message, compaction_stats
 
     elif not use_resume and effective_count > 1:
         # No --resume: the CLI starts a fresh session with no prior context.
@@ -2911,7 +3355,7 @@ async def _build_query_message(
                 _BARE_MESSAGE_TOKEN_FLOOR,
                 msg_count,
             )
-            return current_message, False
+            return current_message, compaction_stats
 
         source = prior_messages if prior_messages is not None else prior
         logger.warning(
@@ -2922,18 +3366,21 @@ async def _build_query_message(
             "transcript+gap" if prior_messages is not None else "full-db",
             target_tokens,
         )
-        compressed, was_compressed = await _compress_messages(source, target_tokens)
+        compressed, _was_compressed, stats = await _compress_messages(
+            source, target_tokens
+        )
+        compaction_stats = stats
         history_context = _format_conversation_context(compressed)
         if history_context:
             logger.info(
                 "[SDK] [%s] Fallback context built: compressed=%s, context_bytes=%d",
                 session_id[:8],
-                was_compressed,
+                stats is not None,
                 len(history_context),
             )
             return (
                 f"{history_context}\n\nNow, the user says:\n{current_message}",
-                was_compressed,
+                compaction_stats,
             )
         logger.warning(
             "[SDK] [%s] Fallback context empty after compression"
@@ -2942,7 +3389,7 @@ async def _build_query_message(
             len(source),
         )
 
-    return current_message, False
+    return current_message, compaction_stats
 
 
 # Claude API vision-supported image types.
@@ -3500,6 +3947,9 @@ async def _run_stream_attempt(
     #   - ValueError: ContextVar token mismatch (AUTOGPT-SERVER-8BT)
     #   - RuntimeError: cancel scope in wrong task  (AUTOGPT-SERVER-8BW)
     # Both are harmless — the TCP connection is already dead.
+    # CLI subprocess spawn + MCP init can take seconds on cold starts —
+    # narrate it so the status doesn't sit on the context-prep message.
+    yield StreamStatus(message="Starting the assistant…")
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
@@ -3515,9 +3965,6 @@ async def _run_stream_attempt(
         )
 
         ctx.compaction.reset_for_query()
-        if state.was_compacted:
-            for ev in ctx.compaction.emit_pre_query(ctx.session):
-                yield ev
 
         # Narrate the silent gap between dispatching the query and the
         # SDK's first real chunk — usually <1s but can stretch to several
@@ -3706,6 +4153,7 @@ async def _seed_transcript(
     transcript_covers_prefix: bool,
     transcript_msg_count: int,
     log_prefix: str,
+    msg_ceiling: int,
 ) -> tuple[str, bool, int]:
     """Seed the transcript builder from compressed DB messages.
 
@@ -3716,14 +4164,21 @@ async def _seed_transcript(
     on the next pod gets a usable compact base even for sessions that started
     on old pods.
 
+    ``msg_ceiling`` is ``len(session.messages)`` as of *before* the compaction
+    row was persisted.  Slicing off just the last entry is not enough: closing
+    a pre-query compaction row appends a synthetic assistant+tool pair, so the
+    naive ``[:-1]`` leaves the current user message inside the seed — and the
+    turn appends it again via ``append_user``, duplicating the live message in
+    the transcript and inflating the watermark by two.
+
     Returns ``(transcript_content, transcript_covers_prefix, transcript_msg_count)``
     updated values — unchanged if seeding is not possible.
     """
-    if len(session.messages) <= 1:
+    if msg_ceiling <= 1:
         return "", transcript_covers_prefix, transcript_msg_count
 
-    _prior = session.messages[:-1]
-    _comp, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
+    _prior = session.messages[: msg_ceiling - 1]
+    _comp, _, _ = await _compress_messages(_prior, _SEED_TARGET_TOKENS)
     if not _comp:
         return "", transcript_covers_prefix, transcript_msg_count
 
@@ -3913,10 +4368,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
-    model: CopilotLlmModel | None = None,
+    model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
+    credential_lease: CredentialLease | PooledCodexRuntimeLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -3949,6 +4405,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+    expert_identity_validated = True
+
+    # Stamping state for THIS turn: messages beyond this index were created
+    # by the current turn and get model/routing_source at persist time.
+    # Pre-feature history rows (NULL model) must never be back-stamped.
+    routing_source: "RoutingSource" = "env"
+
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
     if session.organization_id is None and organization_id:
@@ -3977,10 +4446,23 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
     prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
 
+    # Capture the turn-start boundary AFTER the error-marker and orphan-tool
+    # cleanup above: those pops shrink session.messages, so a count taken
+    # before them would overshoot and leave this turn's first assistant
+    # row(s) below _stamp_turn_messages' start_index — unstamped — exactly
+    # on the error-recovery turns whose routing we most want recorded.
+    pre_turn_message_count = len(session.messages)
+
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
     if message:
         message = strip_user_context_tags(message)
+
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
         session, message, is_user_message
@@ -4100,6 +4582,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
+    # ``compaction`` is constructed after several fallible setup steps below
+    # (sandbox/system-prompt/CLI-restore). The except branch needs to close
+    # a pre-query row on ANY failure in this function, including ones raised
+    # before that point, so it must tolerate ``compaction`` still being None.
+    compaction: CompactionTracker | None = None
+    codex_effort: "CodexReasoningEffort | None" = None
+    codex_gateway: CodexAnthropicGateway | None = None
+    deferred_codex_cleanup_error: BaseException | None = None
+    is_codex_transport = credential_lease is not None
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -4129,6 +4620,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 code="sdk_cwd_error",
             )
             return
+
+        # Narrate the parallel setup below (sandbox spin-up, system prompt
+        # build, CLI session restore) — it can take several seconds and the
+        # generator cannot yield mid-gather.
+        yield StreamStatus(
+            message=(
+                "Restoring your session…" if has_history else "Preparing workspace…"
+            )
+        )
+
         # --- Run independent async I/O operations in parallel ---
         # E2B sandbox setup, system prompt build (Langfuse + DB), Graphiti
         # warm-context, and CLI session restore are all independent network
@@ -4189,6 +4690,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # The whole expert-team surface rides the hire-experts flag, failing
+        # closed for anonymous turns.  Resolved here rather than at the
+        # tool-hiding site below so the delegation rules can be gated on the
+        # same boolean — a flag-off turn must not be told to call tools that
+        # were never registered with the MCP server.
+        experts_enabled = bool(user_id) and await is_feature_enabled(
+            Flag.HIRE_EXPERTS, user_id, default=False
+        )
+        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4203,8 +4713,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
+            + delegation_supplement
             + graphiti_supplement
             + builder_session_suffix
+            + expert_session_suffix
         )
 
         transcript_content = _restore.transcript_content
@@ -4216,7 +4728,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast":
+        if mode == "fast" and not is_codex_transport:
             # The request asked for Fast but this turn runs on the SDK
             # engine (building-mode pin or engine-switch continuation).
             # Tell stale pickers — a client that missed the original
@@ -4231,7 +4743,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions=permissions,
         )
 
-        if not config.api_key and not config.use_claude_code_subscription:
+        if (
+            not is_codex_transport
+            and not config.api_key
+            and not config.use_claude_code_subscription
+        ):
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
                 "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
@@ -4242,6 +4758,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
+        # ``experts_enabled`` was resolved with the system-prompt supplements
+        # above; the role split lives in the shared helper.
+        disabled_tool_groups.extend(
+            expert_tool_disabled_groups(
+                experts_enabled=experts_enabled, expert_id=session.expert_id
+            )
+        )
 
         # Hide both permission-denied tools AND group-disabled tools at
         # registration. ``allowed_tools`` filtering alone routes group-
@@ -4266,8 +4789,35 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Resolve model (request tier → LD per-user override → config default).
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
-        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
-        fallback_model = _resolve_fallback_model()
+        if credential_lease is not None:
+            tier_name: "CopilotLLMModel" = (
+                "advanced" if model == "advanced" else "standard"
+            )
+            route_mode = "fast" if mode == "fast" else "thinking"
+            sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
+                route_mode,
+                tier_name,
+                credential_lease,
+            )
+            if isinstance(credential_lease, PooledCodexRuntimeLease):
+                codex_gateway = CodexAnthropicGateway(
+                    agent_session=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
+            else:
+                codex_gateway = CodexAnthropicGateway(
+                    credential_lease=credential_lease,
+                    model=sdk_model,
+                    effort=codex_effort,
+                )
+            await codex_gateway.start()
+            fallback_model = None
+        else:
+            sdk_model, routing_source = await _resolve_sdk_model_for_request(
+                model, session_id, user_id
+            )
+            fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -4276,6 +4826,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
+            codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -4302,7 +4854,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             """Log a stderr line emitted by the Claude CLI subprocess."""
             nonlocal fallback_model_activated_per_attempt
             sid = session_id[:12] if session_id else "?"
-            logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+            capability = codex_gateway.auth_token if codex_gateway is not None else ""
+            safe_line = _redact_cli_stderr(line, secrets=(capability,))
+            logger.info("[SDK] [%s] CLI stderr: %s", sid, safe_line.rstrip())
             # Detect SDK fallback-model activation via the module-level pure
             # helper so the detection logic can be unit-tested independently.
             # Sets the per-attempt flag which is preserved across transient
@@ -4331,33 +4885,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
+            # Never load the host machine's ~/.claude settings (hooks,
+            # skills, plugins) or filesystem MCP servers into the CoPilot
+            # subprocess.  On developer machines a personal Claude Code
+            # setup can inject hundreds of MCP tool schemas, inflating the
+            # static prompt past the autocompact threshold and causing
+            # compaction thrash on the very first turn.  Prod containers
+            # have a clean HOME, so this is a no-op there.
+            setting_sources=[],
+            extra_args={"strict-mcp-config": None},
             allowed_tools=allowed,
             disallowed_tools=disallowed,
             hooks=security_hooks,
             cwd=sdk_cwd,
             max_buffer_size=config.claude_agent_max_buffer_size,
             stderr=_on_stderr,
-            # --- P0 guardrails ---
-            # fallback_model: SDK auto-retries with this cheaper model on
-            # 529 (overloaded) errors, avoiding user-visible failures.
-            fallback_model=fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
             max_turns=config.agent_max_turns,
-            # max_budget_usd: per-query spend ceiling enforced by the CLI.
-            # Sized to the smaller of the configured per-query default and
-            # the user's *actual* remaining daily/weekly USD cap so the
-            # CLI's "wrap up gracefully" reminder fires when they're close
-            # to the real limit, not the static $10 default.
-            max_budget_usd=await _resolve_dynamic_max_budget_usd(user_id),
-            # thinking: specify extended thinking mode. Thinking tokens are
-            # billed at output rate ($75/M for Opus) and account for ~54%
-            # of total cost.  The CLI silently ignores this field for
-            # models without native extended thinking, so it is safe to
-            # pass unconditionally.
-            # NOTE: Claude 4.7+ does not support capped thinking token
-            # budget: use `effort` instead to steer thinking effort.
-            thinking={"type": "adaptive"},
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
@@ -4367,11 +4912,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 else (config.claude_agent_thinking_effort or "high")
             ),
         )
-        # max_thinking_tokens: legacy cost cap retained for non-4.7 models
-        # and Kimi K2.6.  Setting to 0 acts as the kill switch (same as
-        # baseline): omit the kwarg so the CLI falls back to its default.
-        if config.claude_agent_max_thinking_tokens > 0:
-            sdk_options.max_thinking_tokens = config.claude_agent_max_thinking_tokens
+        if not is_codex_transport:
+            # The Claude/OpenRouter paths use provider-USD controls. A Codex
+            # subscription consumes the connected account's allowance, so
+            # presenting a fabricated USD ceiling or provider fallback to the
+            # CLI would produce incorrect policy and accounting behavior.
+            sdk_options.fallback_model = fallback_model
+            sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
+            sdk_options.thinking = {"type": "adaptive"}
+            if config.claude_agent_max_thinking_tokens > 0:
+                sdk_options.max_thinking_tokens = (
+                    config.claude_agent_max_thinking_tokens
+                )
         if sdk_model:
             sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
@@ -4486,6 +5038,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # persist_session_safe (routes.py has already saved the user
         # message at sequence N before the executor runs, so an
         # incremental upsert would write a second copy at N+1).
+        # Narrate the context-assembly phase (pending drain, user-context
+        # injection, attachment prep, query/transcript build) before the
+        # SDK client spawns.
+        yield StreamStatus(message="Preparing conversation context…")
+
         pending_messages = await drain_pending_safe(session_id, log_prefix)
         if pending_messages:
             logger.info(
@@ -4564,6 +5121,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session_ctx=session_ctx_content,
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
+                expert_id=session.expert_id,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -4608,7 +5166,19 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
-        query_message, was_compacted = await _build_query_message(
+        forecast = _expect_pre_query_compaction(
+            session.messages,
+            _compression_model(),
+            use_resume=use_resume,
+            transcript_msg_count=transcript_msg_count,
+            session_msg_ceiling=_pre_drain_msg_count,
+            prior_messages=restore_context_messages,
+        )
+        if forecast.expected:
+            for ev in compaction.emit_pre_query_start(forecast.tokens_before):
+                yield ev
+
+        query_message, compaction_stats = await _build_query_message(
             current_message,
             session,
             use_resume,
@@ -4616,7 +5186,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_id,
             session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
+            expect_compaction=forecast.expected,
         )
+
+        # Snapshot before the close persists its synthetic assistant+tool pair:
+        # ``_seed_transcript`` slices ``session.messages`` and would otherwise
+        # read the compaction row as history and the current user message as
+        # prior context, seeding a transcript that repeats the live turn.
+        pre_compaction_msg_count = len(session.messages)
+        if compaction_stats is not None:
+            for ev in compaction.emit_pre_query_end(session, compaction_stats):
+                yield ev
+        elif forecast.expected:
+            for ev in compaction.abort_pre_query():
+                yield ev
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(
@@ -4654,6 +5237,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 transcript_covers_prefix,
                 transcript_msg_count,
                 log_prefix,
+                pre_compaction_msg_count,
             )
 
         tried_compaction = False
@@ -4692,7 +5276,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         state = _RetryState(
             options=sdk_options,
             query_message=query_message,
-            was_compacted=was_compacted,
+            compaction_stats=compaction_stats,
             use_resume=use_resume,
             resume_file=resume_file,
             transcript_msg_count=transcript_msg_count,
@@ -4703,6 +5287,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         attempt = 0
         _last_reset_attempt = -1
+        # Attempt 0 runs on the context built above; every later attempt
+        # reduces context exactly once.  Transient retries and building-mode
+        # restarts `continue` back to the loop head without advancing
+        # `attempt`, and re-running the reduction there would summarize the
+        # history a second time and persist a second compaction row for the
+        # same logical compaction (mirrors the `_last_reset_attempt` guard).
+        _last_reduced_attempt = 0
         while attempt < _MAX_STREAM_ATTEMPTS:
             # Reset transient retry counter per context-level attempt so
             # each attempt (original, compacted, no-transcript) gets the
@@ -4726,7 +5317,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
-            if attempt > 0:
+            if attempt != _last_reduced_attempt:
+                _last_reduced_attempt = attempt
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
                     log_prefix,
@@ -4734,6 +5326,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     _MAX_STREAM_ATTEMPTS,
                 )
                 yield StreamStatus(message="Optimizing conversation context\u2026")
+                for ev in compaction.emit_pre_query_start():
+                    yield ev
 
                 ctx = await _reduce_context(
                     transcript_content,
@@ -4785,15 +5379,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # falls back to full session.messages[:-1] from DB — the authoritative
                 # source.  transcript+gap is an optimisation for the first attempt only;
                 # on retry the extra overhead of full-DB context is acceptable.
-                state.query_message, state.was_compacted = await _build_query_message(
-                    current_message,
-                    session,
-                    state.use_resume,
-                    state.transcript_msg_count,
-                    session_id,
-                    session_msg_ceiling=_pre_drain_msg_count,
-                    target_tokens=state.target_tokens,
+                state.query_message, state.compaction_stats = (
+                    await _build_query_message(
+                        current_message,
+                        session,
+                        state.use_resume,
+                        state.transcript_msg_count,
+                        session_id,
+                        session_msg_ceiling=_pre_drain_msg_count,
+                        target_tokens=state.target_tokens,
+                        expect_compaction=True,
+                    )
                 )
+                if _retry_reduced_context(
+                    reduced=ctx,
+                    compaction_stats=state.compaction_stats,
+                ):
+                    for ev in compaction.emit_pre_query_end(
+                        session, state.compaction_stats
+                    ):
+                        yield ev
+                else:
+                    for ev in compaction.abort_pre_query():
+                        yield ev
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
@@ -4872,17 +5480,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # interrupted.capture / snapshot restore here. Detection
                 # cannot re-fire: guide_in_system_prompt flips True on
                 # success, building_mode_requested flips False either way.
-                yield await _apply_building_mode_restart(
+                expert_identity_validated = False
+                restart_status = await _apply_building_mode_restart(
                     session=session,
                     state=state,
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
+                    delegation_supplement=delegation_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
                     message_id=message_id,
                     log_prefix=log_prefix,
                 )
+                expert_identity_validated = True
+                yield restart_status
                 continue
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
@@ -5151,14 +5763,40 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             e, asyncio.CancelledError
         ) or _is_sdk_disconnect_error(e)
         if not is_cancellation:
+            # An open pre-query row (emit_pre_query_start already yielded,
+            # but the matching emit_pre_query_end/abort_pre_query never ran
+            # because the error hit between the two) must be closed here —
+            # otherwise the client is left with a permanently-open
+            # compaction row. abort_pre_query is a no-op when nothing is
+            # open, so this is safe to call unconditionally.
+            if compaction is not None:
+                for ev in compaction.abort_pre_query():
+                    yield ev
             yield StreamError(errorText=display_msg, code=code)
 
         raise
     finally:
+        turn_error = sys.exception()
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
         # point belongs to the next turn.
+
+        if codex_gateway is not None:
+            deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
+                codex_gateway,
+                log_prefix,
+            )
+
+            turn_cost_usd = None
+            codex_usage = _codex_gateway_usage(codex_gateway)
+            if codex_usage is not None:
+                turn_prompt_tokens = max(
+                    0, codex_usage.input_tokens - codex_usage.cached_input_tokens
+                )
+                turn_completion_tokens = codex_usage.output_tokens
+                turn_cache_read_tokens = codex_usage.cached_input_tokens
+                turn_cache_creation_tokens = 0
 
         # --- Close OTEL context (with cost attributes) ---
         # Captured before __exit__ so the reconcile task (launched below,
@@ -5214,7 +5852,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             list(state.generation_ids) if state is not None else []
         )
         _use_openrouter_reconcile = bool(
-            config.openrouter_active
+            not is_codex_transport
+            and config.openrouter_active
             and config.sdk_reconcile_openrouter_cost
             and collected_gen_ids
         )
@@ -5233,7 +5872,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 encode_cwd_for_cli(sdk_cwd),
             )
 
-        if _use_openrouter_reconcile:
+        if is_codex_transport:
+            await persist_and_record_usage(
+                session=session,
+                user_id=user_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=0,
+                log_prefix=log_prefix,
+                cost_usd=None,
+                model=effective_model,
+                provider="codex",
+                credential_id_override=(
+                    credential_lease.credentials.id if credential_lease else None
+                ),
+                extra_metadata={"billing_mode": "user_subscription"},
+                execution_path="codex_claude_sdk",
+            )
+        elif _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
             # ``/generation?id=`` for every round in this turn.  Covers
@@ -5312,6 +5969,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Without this, messages disappear after refresh because they were never
         # saved to the database.
         if session is not None:
+            # sdk_model (not effective_model): in subscription mode no
+            # model was requested — the CLI's default must not read as a
+            # fallback divergence against a fabricated "request".
+            _stamp_turn_messages(
+                session.messages,
+                start_index=pre_turn_message_count,
+                requested_model=sdk_model,
+                actual_model=state.observed_model if state is not None else None,
+                routing_source=routing_source,
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
@@ -5339,9 +6006,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if graphiti_enabled and user_id and message and is_user_message:
-            from ..graphiti.ingest import enqueue_conversation_turn
-
+        if _graphiti_ingest_allowed(
+            expert_identity_validated=expert_identity_validated,
+            graphiti_enabled=graphiti_enabled,
+            user_id=user_id,
+            message=message,
+            is_user_message=is_user_message,
+        ):
             # Extract last assistant message from THIS TURN only (not all
             # session history) to avoid distilling stale content from prior
             # turns when the current turn errors before producing output.
@@ -5354,8 +6025,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
 
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
-                    user_id, session_id, message, assistant_msg=_last_assistant
+                _enqueue_graphiti_turn(
+                    user_id,
+                    session,
+                    session_id,
+                    message,
+                    _last_assistant,
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -5466,6 +6141,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # Release stream lock to allow new streams for this session
             await lock.release()
 
+        _raise_deferred_codex_cleanup_error(
+            deferred_codex_cleanup_error,
+            turn_error,
+        )
+
     # -------------------------------------------------------------------------
     # Auto-continue: drain any messages the user queued AFTER the turn-start
     # drain window and process them as a new turn automatically.
@@ -5522,10 +6202,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     message=_auto_combined,
                     is_user_message=True,
                     user_id=user_id,
+                    session=session,
                     file_ids=None,
                     permissions=permissions,
                     mode=mode,
                     model=model,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    credential_lease=credential_lease,
                 ):
                     if _first_auto_event:
                         _first_auto_event = False
@@ -5570,7 +6254,103 @@ async def _fetch_graphiti_context(
     if not (user_id and len(session.messages) <= 1):
         return True, ""
 
-    from ..graphiti.context import fetch_warm_context
-
-    ctx = await fetch_warm_context(user_id, message or "") or ""
+    ctx = (
+        await fetch_warm_context(user_id, message or "", expert_id=session.expert_id)
+        or ""
+    )
     return True, ctx
+
+
+def _graphiti_ingest_allowed(
+    *,
+    expert_identity_validated: bool,
+    graphiti_enabled: bool,
+    user_id: str | None,
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    return bool(
+        expert_identity_validated
+        and graphiti_enabled
+        and user_id
+        and message
+        and is_user_message
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
+
+
+def _canonical_model(model: str) -> str:
+    """Spelling-insensitive model identity for fallback detection:
+    vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
+    tail = model.lower().split("/")[-1]
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
+    return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
+
+
+def _same_model(a: str, b: str | None) -> bool:
+    return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _stamp_turn_messages(
+    messages: list[ChatMessage],
+    *,
+    start_index: int,
+    requested_model: str | None,
+    actual_model: str | None,
+    routing_source: "RoutingSource",
+) -> None:
+    """Stamp THIS turn's assistant messages with the serving model and
+    routing layer.
+
+    The SDK adapters build messages far from the resolution context, so
+    the stamp lands at persist time — bounded to ``start_index`` (the
+    session length when the turn began) so pre-feature history rows with
+    NULL model are never back-stamped with today's values, and never
+    overwriting an already-stamped row.
+
+    ``actual_model`` is the model observed on ``AssistantMessage.model``
+    (survives retries). When it names a DIFFERENT MODEL than the requested
+    resolution the CLI's overload fallback served the turn — the stamp
+    records the actual model with ``routing_source="fallback"`` so
+    analytics never attribute a fallback-served turn to the layer that
+    routed a different model. The comparison is canonicalized (vendor
+    prefix, dot/dash, date-suffix spellings) so a spelling difference
+    between the request and the CLI's report never fakes a fallback.
+
+    ``requested_model=None`` means no specific model was requested
+    (subscription mode lets the CLI pick its default) — there is nothing
+    to diverge from, so the observed model stamps with the original
+    routing source, never "fallback".
+    """
+    model = actual_model or requested_model
+    if (
+        actual_model is not None
+        and requested_model is not None
+        and not _same_model(actual_model, requested_model)
+    ):
+        routing_source = "fallback"
+    for msg in messages[start_index:]:
+        if msg.role == "assistant" and msg.model is None:
+            msg.model = model
+            msg.routing_source = routing_source
+            if msg.sequence is not None:
+                # Row already flushed to the DB mid-turn — flag it so the
+                # save path back-fills the columns (insert only covers
+                # unsequenced rows).
+                msg.stamps_pending_save = True

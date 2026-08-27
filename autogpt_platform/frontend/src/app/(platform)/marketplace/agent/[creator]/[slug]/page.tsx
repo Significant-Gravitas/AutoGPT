@@ -6,7 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { getServerUser } from "@/lib/auth/server/getServerUser";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { MainAgentPage } from "../../../components/MainAgentPage/MainAgentPage";

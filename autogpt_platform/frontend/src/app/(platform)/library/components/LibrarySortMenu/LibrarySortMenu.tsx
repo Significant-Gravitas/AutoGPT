@@ -35,6 +35,7 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
             <SelectItem value={LibraryAgentSort.updatedAt}>
               Last Modified
             </SelectItem>
+            <SelectItem value={LibraryAgentSort.lastRunAt}>Last Run</SelectItem>
           </SelectGroup>
         </SelectContent>
       </Select>

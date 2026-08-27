@@ -16,7 +16,7 @@ What this module IS responsible for:
     ``flex`` in later steps)
 
 What this module is NOT responsible for (caller wraps):
-  * ``LlmModel``-aware token-budget computation (caller passes
+  * ``LLMModel``-aware token-budget computation (caller passes
     pre-computed ``max_tokens``)
   * Prompt compression (``compress_context``) — block layer needs it,
     dream may not
@@ -45,6 +45,10 @@ from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_FAMILY_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
@@ -109,19 +113,34 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # error, so unknown future models self-heal; this list only matters
 # for batch submissions, whose errors come back hours later in the
 # result rows.
+# 4.7/4.8 verified live; the whole Claude 5 family per litellm
+# supports_sampling_params=false. Load-bearing for batch submissions
+# (dream), which have no retry self-heal. Membership currently coincides
+# with CLAUDE_5_TOKENIZER_GENERATION_PREFIXES (both traits shipped with
+# the 4.7 generation) but is maintained separately: temperature rejection
+# is verified per-model against the live API, not inferred from the
+# tokenizer lineage.
 _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES = (
     "claude-opus-4-7",
     "claude-opus-4-8",
-)
+) + CLAUDE_5_FAMILY_PREFIXES
 
 
 def _anthropic_accepts_temperature(model: str) -> bool:
-    return not model.startswith(_ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES)
+    return not strip_anthropic_vendor_prefix(model).startswith(
+        _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES
+    )
 
 
 def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
+    # The Claude 5 family's rejection wording is unverified (4.7/4.8 say
+    # "deprecated") — match the sibling phrasings so the sync-path
+    # self-heal fires for future families regardless of the exact word.
     error_text = str(exc).lower()
-    return "temperature" in error_text and "deprecated" in error_text
+    return "temperature" in error_text and any(
+        phrase in error_text
+        for phrase in ("deprecated", "not supported", "unsupported", "removed")
+    )
 
 
 # ---------------------------------------------------------------------------

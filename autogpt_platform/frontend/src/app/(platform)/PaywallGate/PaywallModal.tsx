@@ -6,10 +6,11 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
-import { PlayCircleIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";
+import { Logout03Icon, PlayCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Non-dismissable Stripe paywall for NO_TIER users. Reuses the onboarding
 // PlanCard + Monthly/Yearly toggle so both surfaces share one visual.
@@ -47,7 +48,7 @@ export function PaywallModal() {
               variant="ghost"
               size="small"
               onClick={handleLogout}
-              leftIcon={<SignOutIcon size={16} />}
+              leftIcon={<Icon icon={Logout03Icon} size={16} />}
               className="bg-white/90 text-zinc-500 hover:text-zinc-700"
             >
               Log out
@@ -71,9 +72,9 @@ export function PaywallModal() {
               target="_blank"
               className="mt-2 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
             >
-              <PlayCircleIcon
+              <Icon
+                icon={PlayCircleIcon}
                 className="size-5 shrink-0 text-violet-600"
-                weight="fill"
               />
               <span>
                 Not sure yet?{" "}

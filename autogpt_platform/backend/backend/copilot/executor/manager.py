@@ -17,11 +17,13 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+import backend.data.llm_registry
 from backend.copilot import engine_switch
 from backend.copilot.executor.utils import schedule_turn
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
+from backend.integrations.codex.transport import get_codex_transport
 from backend.util.decorator import error_logged
 from backend.util.logging import TruncatedLogger
 from backend.util.process import AppProcess
@@ -41,6 +43,20 @@ from .utils import (
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 settings = Settings()
+
+
+def _load_catalog() -> None:
+    """Load the LLM catalog into THIS process's registry cache.
+
+    Copilot turns run in this executor, not the rest API process — without
+    this, routing cells and serve-time gating silently no-op (an empty
+    registry gates nothing by design). Fail-hard: the catalog is
+    load-bearing (blocks and billing already built from it at import), so
+    a failure here is a bug that should stop the process, not silently
+    disable gating.
+    """
+    backend.data.llm_registry.load_catalog()
+
 
 # Prometheus metrics
 active_tasks_gauge = Gauge(
@@ -88,6 +104,7 @@ class CoPilotExecutor(AppProcess):
 
         self._task_locks: dict[str, ClusterLock] = {}
         self._active_tasks_lock_obj: threading.Lock | None = None
+        self._codex_runtime_pool_closed = False
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -95,6 +112,8 @@ class CoPilotExecutor(AppProcess):
         """Main service loop - consume from RabbitMQ."""
         logger.info(f"Pod assigned executor_id: {self.executor_id}")
         logger.info(f"Spawn max-{self.pool_size} workers...")
+
+        _load_catalog()
 
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property
@@ -105,7 +124,15 @@ class CoPilotExecutor(AppProcess):
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
-        start_http_server(settings.config.copilot_executor_port)
+        # Deliberate reuse of pyro_host: despite the legacy name it is the
+        # bind address for every service's internal listener (see
+        # backend.util.service). Metrics follow the same interface as the RPC
+        # server — 0.0.0.0 under docker-compose (PYRO_HOST is set there for
+        # cross-container scraping), loopback in the single-container runtime.
+        start_http_server(
+            settings.config.copilot_executor_port,
+            addr=settings.config.pyro_host,
+        )
 
         self.cancel_thread.start()
         self.run_thread.start()
@@ -123,11 +150,14 @@ class CoPilotExecutor(AppProcess):
            own ``finally`` publishes its terminal state via
            ``mark_session_completed``. When a turn exits, ``on_run_done``
            removes it from ``active_tasks`` and releases its cluster lock.
-        3. Shut down the thread-pool executor (cancels pending, leaves
+        3. Stop message consumer threads and disconnect their clients.
+        4. Close the process-local Codex runtime pool after turns and
+           consumers have stopped, checkpointing credentials before worker
+           teardown.
+        5. Shut down the thread-pool executor (cancels pending, leaves
            running threads alone — process exit handles them).
-        4. Release any cluster locks still held (defensive — on_run_done's
+        6. Release any cluster locks still held (defensive — on_run_done's
            finally should have already released them).
-        5. Stop message consumer threads + disconnect pika clients.
 
         The zombie-session bug this PR targets is handled inside each
         turn's own lifecycle by :func:`sync_fail_close_session`, NOT by
@@ -199,7 +229,10 @@ class CoPilotExecutor(AppProcess):
                 self._cancel_thread, self.cancel_client, f"{prefix} [cancel]"
             )
 
-        # 4. Worker cleanup + executor shutdown
+        # 4. Checkpoint and close shared Codex runtimes before worker teardown
+        self._close_codex_runtime_pool(prefix)
+
+        # 5. Worker cleanup + executor shutdown
         if self._executor:
             from .processor import cleanup_worker
 
@@ -216,7 +249,7 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"{prefix} Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # 5. Release any cluster locks still held
+        # 6. Release any cluster locks still held
         for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
@@ -225,6 +258,18 @@ class CoPilotExecutor(AppProcess):
                 logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
         logger.info(f"{prefix} Graceful shutdown completed")
+
+    def _close_codex_runtime_pool(self, prefix: str) -> None:
+        with self._active_tasks_lock:
+            if self._codex_runtime_pool_closed:
+                return
+            self._codex_runtime_pool_closed = True
+
+        try:
+            logger.info(f"{prefix} Closing Codex runtime pool...")
+            asyncio.run(get_codex_transport().close_runtime_pool())
+        except Exception as e:
+            logger.error(f"{prefix} Codex runtime pool cleanup error: {e}")
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -616,20 +661,29 @@ def _dispatch_engine_switch_continuation(
     history, so the user's next message still lands on the SDK engine with
     the guide in the prefix.
     """
+
+    async def dispatch() -> None:
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, switch.user_id)
+        if session is None:
+            raise RuntimeError("copilot_session_not_found")
+        await schedule_turn(
+            session_id=session_id,
+            user_id=switch.user_id,
+            turn_id=str(uuid.uuid4()),
+            message=engine_switch.CONTINUATION_MESSAGE,
+            is_user_message=False,
+            mode="extended_thinking",
+            organization_id=switch.organization_id,
+            team_id=switch.team_id,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+        )
+
     for attempt in range(1, _SWITCH_DISPATCH_ATTEMPTS + 1):
         try:
-            asyncio.run(
-                schedule_turn(
-                    session_id=session_id,
-                    user_id=switch.user_id,
-                    turn_id=str(uuid.uuid4()),
-                    message=engine_switch.CONTINUATION_MESSAGE,
-                    is_user_message=False,
-                    mode="extended_thinking",
-                    organization_id=switch.organization_id,
-                    team_id=switch.team_id,
-                )
-            )
+            asyncio.run(dispatch())
             logger.info(f"Dispatched engine-switch continuation for {session_id}")
             return
         except Exception as switch_err:
