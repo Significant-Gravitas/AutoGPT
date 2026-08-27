@@ -16793,6 +16793,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Delegated By Session Id"
           },
+          "delegated_deliverable_mode": {
+            "type": "string",
+            "enum": ["message", "workspace_files"],
+            "title": "Delegated Deliverable Mode",
+            "default": "message"
+          },
           "handed_off_from_expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
@@ -17729,7 +17735,8 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
-              "kind": "normal"
+              "kind": "normal",
+              "delegated_deliverable_mode": "message"
             }
           },
           "expert_id": {
@@ -25059,7 +25066,8 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
-              "kind": "normal"
+              "kind": "normal",
+              "delegated_deliverable_mode": "message"
             }
           },
           "expert_id": {
