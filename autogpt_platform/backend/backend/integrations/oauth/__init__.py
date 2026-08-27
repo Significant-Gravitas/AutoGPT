@@ -8,6 +8,7 @@ from backend.integrations.providers import provider_key
 from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
+from .github_copilot import GitHubCopilotOAuthHandler
 from .google import GoogleOAuthHandler
 from .microsoft_365_copilot import Microsoft365CopilotOAuthHandler
 from .notion import NotionOAuthHandler
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 _ORIGINAL_HANDLERS = [
     DiscordOAuthHandler,
     GitHubOAuthHandler,
+    GitHubCopilotOAuthHandler,
     GoogleOAuthHandler,
     Microsoft365CopilotOAuthHandler,
     NotionOAuthHandler,

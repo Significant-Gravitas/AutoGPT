@@ -231,7 +231,11 @@ GITHUB_COPILOT = SubscriptionProviderProfile(
     # Said plainly here rather than discovered on a bill.
     limitations=(
         "The agent builder's chat panel always runs on AutoGPT.",
-        "Runs count against your Copilot premium request allowance.",
+        # "Premium requests" is the legacy term. GitHub moved to AI Credits
+        # on 2026-06-01 and kept premium requests only for existing annual
+        # subscribers, so naming either one is wrong for half of users --
+        # "usage allowance" is true under both.
+        "Runs count against your Copilot usage allowance.",
     ),
     entitlement=Entitlement.GITHUB_COPILOT_SUBSCRIPTION_TRANSPORT,
     lock_reason="A Max plan or higher is required to use GitHub Copilot.",

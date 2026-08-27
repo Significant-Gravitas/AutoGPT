@@ -1,14 +1,27 @@
 """Running a turn on a user's own subscription, over an OpenAI-compatible API.
 
-Two of the three linked providers reach an endpoint that speaks the same wire
-protocol the baseline path already speaks. What differs is only where the
-request goes and whose token pays for it -- so the runtime for those is this
-small object plus whatever acquires the token, rather than another copy of
-the Codex CLI runtime.
+For a provider whose endpoint speaks the wire protocol the baseline path
+already speaks, the whole runtime is this small object plus whatever
+acquires the token: only the destination and the payer change.
 
-(Codex is the exception, and the reason the exception exists: ChatGPT's
-backend is not an OpenAI-compatible API, so that path drives a CLI that
-speaks it. Nothing here replaces that.)
+That is fewer providers than it first looks, and the reason is worth
+recording so the next reader does not assume otherwise:
+
+- **Codex** -- ChatGPT's backend is not an OpenAI-compatible API, so that
+  path drives a CLI that speaks it.
+- **GitHub Copilot** -- there is no documented chat-completions endpoint. Its
+  sanctioned path is a `copilot` runtime process spoken to over JSON-RPC,
+  and the CLI *is* the API. (An undocumented HTTP endpoint does exist and
+  does accept a user token, but it can change without notice and GitHub's
+  own client code has a "client not supported" status for callers it
+  rejects.)
+- **Microsoft 365 Copilot** -- Graph conversation resources with a
+  server-side conversation id, and cumulative SSE snapshots rather than
+  deltas. Not this shape either.
+
+So this is the seam for the providers that fit it, not the universal answer
+for "linked subscription". A provider that needs a runtime gets a runtime;
+what it must not get is a shared client.
 
 **The whole point of this module is that a subscription client is never
 shared.** The baseline path's normal client is a process-global singleton
