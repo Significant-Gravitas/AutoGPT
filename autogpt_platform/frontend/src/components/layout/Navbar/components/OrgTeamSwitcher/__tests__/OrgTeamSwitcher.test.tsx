@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OrgTeamSwitcher } from "../OrgTeamSwitcher";
 
@@ -64,7 +64,12 @@ async function openSwitcher() {
 
 describe("OrgTeamSwitcher", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
   });
 
   it("renders nothing before the org context has loaded", () => {
@@ -102,9 +107,8 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getAllByText(COMPANY_ORG.name).length).toBeGreaterThan(0);
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
-    // "Create organization" is hidden until the org management frontend
-    // ships (PR1 is backend-only; /org/settings does not exist yet).
-    expect(screen.queryByText("Create organization")).toBeNull();
+    expect(screen.getByTestId("org-switcher-create")).toBeDefined();
+    expect(screen.getByTestId("org-switcher-manage")).toBeDefined();
   });
 
   it("lists teams with a Private badge on invite-only teams", async () => {
@@ -116,7 +120,7 @@ describe("OrgTeamSwitcher", () => {
     expect(screen.getByText(DEFAULT_TEAM.name)).toBeDefined();
     expect(screen.getByText(PRIVATE_TEAM.name)).toBeDefined();
     expect(screen.getByText("Private")).toBeDefined();
-    expect(screen.getByText("Manage teams")).toBeDefined();
+    expect(screen.getByText("Manage organization")).toBeDefined();
   });
 
   it("hides the team section when the org has no teams", async () => {
@@ -126,7 +130,6 @@ describe("OrgTeamSwitcher", () => {
     await openSwitcher();
 
     expect(screen.queryByText("Teams")).toBeNull();
-    expect(screen.queryByText("Manage teams")).toBeNull();
   });
 
   it("switching org updates the store and resets the active team", async () => {

@@ -45,6 +45,19 @@ export enum Flag {
   DREAM_PASS_ENABLED = "dream-pass-enabled",
   DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // Gates the org/teams management UI (org settings page + the
+  // create-organization entry points on the switchers). Defaults false
+  // below — fail-closed, so a LaunchDarkly outage or a missing flag key
+  // never exposes the surface. Use ``NEXT_PUBLIC_FORCE_FLAG_*`` env
+  // overrides to enable it for local-dev / Playwright runs.
+  //
+  // Intentionally NOT kebab-case: this value is the literal LaunchDarkly
+  // key that already exists in the LD project and cannot be renamed. The
+  // SDK is initialised with ``useCamelCaseFlagKeys: false``, so it looks
+  // the flag up by this exact string — "fixing" it to
+  // ``show-org-settings`` would silently resolve nothing and fall back to
+  // the ``false`` default forever.
+  SHOW_ORG_SETTINGS = "SHOW_ORG_SETTINGS",
   // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
   // Bots settings page. Lets ops hide a platform (e.g. Slack while its
   // Marketplace review is pending) without a deploy. Missing keys default to
@@ -84,6 +97,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_ENABLED]: false,
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.SHOW_ORG_SETTINGS]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
 };
 
@@ -96,6 +110,12 @@ type FlagValues = typeof defaultFlags;
  * with ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for that flag
  * in local dev.  Returns ``undefined`` when no override is configured so
  * the caller falls through to LaunchDarkly / ``defaultFlags``.
+ *
+ * That transform is a naming *convention*, not code: the mapping below is
+ * an explicit switch, so the env var name is whatever each ``case`` spells
+ * out. For every flag it happens to equal the enum member name — including
+ * ``SHOW_ORG_SETTINGS``, whose value is already upper-snake and so
+ * transforms to itself.
  *
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
@@ -154,6 +174,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.SHOW_ORG_SETTINGS:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }
