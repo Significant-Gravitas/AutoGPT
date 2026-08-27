@@ -46,16 +46,49 @@ def test_user_id() -> str:
     return str(uuid.uuid4())
 
 
+async def _create_test_user(user_id: str) -> None:
+    data = {
+        "id": user_id,
+        "email": f"oauth-test-{user_id}@example.com",
+        "name": "OAuth Test User",
+    }
+    try:
+        await PrismaUser.prisma().create(data=data)
+    except RuntimeError as error:
+        if "Event loop is closed" not in str(error):
+            raise
+        await PrismaUser.prisma().create(data=data)
+
+
+@pytest.mark.asyncio
+async def test_create_test_user_recovers_from_a_closed_connection_loop(mocker):
+    client = mocker.MagicMock()
+    client.create = mocker.AsyncMock(
+        side_effect=[RuntimeError("Event loop is closed"), None]
+    )
+    mocker.patch.object(PrismaUser, "prisma", return_value=client)
+
+    await _create_test_user("user-1")
+
+    assert client.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_test_user_preserves_other_runtime_failures(mocker):
+    client = mocker.MagicMock()
+    client.create = mocker.AsyncMock(side_effect=RuntimeError("database unavailable"))
+    mocker.patch.object(PrismaUser, "prisma", return_value=client)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await _create_test_user("user-1")
+
+    client.create.assert_awaited_once()
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_user(server, test_user_id: str):
     """Create a test user in the database."""
-    await PrismaUser.prisma().create(
-        data={
-            "id": test_user_id,
-            "email": f"oauth-test-{test_user_id}@example.com",
-            "name": "OAuth Test User",
-        }
-    )
+    await _create_test_user(test_user_id)
 
     yield test_user_id
 

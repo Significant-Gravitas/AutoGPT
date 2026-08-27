@@ -1441,13 +1441,12 @@ async def test_create_preset_accepts_own_webhook(mocker):
     assert create_data["webhookId"] == "own-webhook"
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_create_expert_preset_forces_personal_tenancy(mocker):
-    # create_preset opens a real transaction for the expert-attribution row
-    # lock, so this test must run on the session loop the Prisma client is
-    # bound to (function-loop runs die with "Event bound to a different event
-    # loop"). The lock query itself is mocked: the test DB has no Expert row.
-    await connect()
+    @asynccontextmanager
+    async def fake_tx():
+        yield MagicMock()
+
     created_row = prisma.models.AgentPreset(
         deactivatedByExpertArchive=False,
         id="preset-expert",
@@ -1482,6 +1481,7 @@ async def test_create_expert_preset_forces_personal_tenancy(mocker):
         "resolve_attributable_expert",
         new=AsyncMock(return_value="expert-1"),
     )
+    mocker.patch.object(db, "transaction", fake_tx)
     mock_preset_client = AsyncMock()
     mock_preset_client.create.return_value = created_row
     mocker.patch.object(
@@ -1509,11 +1509,12 @@ async def test_create_expert_preset_forces_personal_tenancy(mocker):
     assert create_data["expertId"] == "expert-1"
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_create_expert_preset_accepts_matching_private_webhook(mocker):
-    # Session loop + real connection for the same reason as
-    # test_create_expert_preset_forces_personal_tenancy above.
-    await connect()
+    @asynccontextmanager
+    async def fake_tx():
+        yield MagicMock()
+
     created_row = prisma.models.AgentPreset(
         deactivatedByExpertArchive=False,
         id="preset-expert",
@@ -1560,6 +1561,7 @@ async def test_create_expert_preset_accepts_matching_private_webhook(mocker):
         "resolve_attributable_expert",
         new=AsyncMock(return_value="expert-1"),
     )
+    mocker.patch.object(db, "transaction", fake_tx)
     mock_preset_client = AsyncMock()
     mock_preset_client.create.return_value = created_row
     mocker.patch.object(
