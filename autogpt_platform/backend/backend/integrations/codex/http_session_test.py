@@ -322,3 +322,45 @@ def test_usage_accumulates_across_tool_hops() -> None:
 )
 def test_tool_arguments_are_parsed_without_killing_the_turn(raw, expected) -> None:
     assert _parse_arguments(raw) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Rate-limit reporting through the transport
+#
+# ChatGPT reports quota only on inference response headers, so a connection
+# that has not run a turn genuinely has nothing to report.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_rate_limits_are_unknown_before_any_turn_rather_than_an_error() -> None:
+    from backend.integrations.codex.transport import CodexTransport
+
+    class _Lease:
+        credentials = _credentials_with_state()
+
+    limits = await CodexTransport().rate_limits(_Lease())  # type: ignore[arg-type]
+    assert limits.primary is None
+    assert limits.plan_type is None
+
+
+def _credentials_with_state() -> OAuth2Credentials:
+    from backend.integrations.codex.auth_bundle import (
+        CodexAuthBundleV1,
+        CodexAuthTokensV1,
+    )
+    from backend.integrations.codex.credential_codec import credentials_from_bundle
+
+    token = (
+        "eyJhbGciOiJub25lIn0." "eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ." "sig"
+    )
+    return credentials_from_bundle(
+        CodexAuthBundleV1(
+            tokens=CodexAuthTokensV1(
+                id_token=SecretStr(token),
+                access_token=SecretStr(token),
+                refresh_token=SecretStr("rt"),
+            ),
+            codex_runtime_version="http",
+        )
+    )

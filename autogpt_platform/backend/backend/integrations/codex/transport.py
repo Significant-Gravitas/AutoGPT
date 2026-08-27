@@ -116,6 +116,10 @@ class CodexAgentSession:
         self._session = session
         self._credentials = credentials
 
+    @property
+    def credential_id(self) -> str:
+        return self._credentials.id
+
     async def invoke(
         self,
         request: CodexInvocationRequest,
@@ -193,6 +197,10 @@ class CodexTransport:
         self._copilot_turn_timeout_seconds = copilot_turn_timeout_seconds
         self._copilot_tool_timeout_seconds = copilot_tool_timeout_seconds
         self._login_timeout_seconds = login_timeout_seconds
+        # Last quota reading per credential. Process-local on purpose: it is a
+        # display value, and paying for an inference call to refresh it would
+        # cost the user real quota.
+        self._last_rate_limits: dict[str, CodexRateLimitsSnapshot] = {}
 
     async def start_device_login(self) -> CodexHttpDeviceLogin:
         return await start_http_device_login(self._login_timeout_seconds)
@@ -215,10 +223,22 @@ class CodexTransport:
         return account_snapshot(codex_credentials(lease))
 
     async def rate_limits(self, lease: CredentialLease) -> CodexRateLimitsSnapshot:
-        """Quota is reported on inference responses, not by a standalone call."""
-        raise CodexTransportError(
-            "Codex rate limits are reported on inference responses"
-        )
+        """Report the quota last seen for this credential.
+
+        ChatGPT only reports quota on the headers of an inference response --
+        there is no standalone endpoint, and ``/models`` carries none. So this
+        answers with what the most recent turn saw, and an empty snapshot (every
+        field ``None``) when this worker has not run one yet. That reads as
+        "not known yet", which is true; failing the request instead would make a
+        never-used connection look broken.
+        """
+        credentials = codex_credentials(lease)
+        return self._last_rate_limits.get(credentials.id, CodexRateLimitsSnapshot())
+
+    def _record_rate_limits(self, session: "CodexAgentSession") -> None:
+        seen = session.rate_limits
+        if seen is not None:
+            self._last_rate_limits[session.credential_id] = seen
 
     async def models(self, lease: CredentialLease) -> list[CodexModelInfo]:
         return await fetch_models(codex_credentials(lease))
@@ -252,7 +272,11 @@ class CodexTransport:
     async def agent_session(
         self, lease: CredentialLease
     ) -> AsyncIterator[CodexAgentSession]:
-        yield self._session_for(codex_credentials(lease))
+        session = self._session_for(codex_credentials(lease))
+        try:
+            yield session
+        finally:
+            self._record_rate_limits(session)
 
     async def logout(self, lease: CredentialLease) -> None:
         """OpenAI publishes no revocation endpoint; the caller drops the row."""
