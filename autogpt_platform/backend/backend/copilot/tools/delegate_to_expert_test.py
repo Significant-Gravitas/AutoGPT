@@ -406,6 +406,49 @@ class TestDelegation:
         assert len(packet) < 16 * 1024
 
     @pytest.mark.asyncio
+    async def test_completed_result_redacts_developer_only_summary_content(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        result = SessionResult()
+        result.response_text = "\n".join(
+            [
+                "Prepared /tmp/private/report.json",
+                "tool_call_id=call-1 graph_id=graph-1",
+                '{"query":"secret search payload"}',
+                "$ cat /tmp/private/report.json",
+                "<expert_identity>internal instructions</expert_identity>",
+                "Deliverable is ready.",
+            ]
+        )
+        mock_turn.return_value = ("completed", result)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.list_sub_workspace_files",
+            AsyncMock(return_value=[]),
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="research the market",
+        )
+
+        assert response.summary is not None
+        assert "Prepared a workspace file" in response.summary
+        assert "Deliverable is ready." in response.summary
+        assert not any(
+            value in response.summary
+            for value in (
+                "/tmp",
+                "tool_call_id",
+                "graph_id",
+                "secret search payload",
+                "$ cat",
+                "internal instructions",
+            )
+        )
+
+    @pytest.mark.asyncio
     async def test_file_deliverable_without_workspace_artifacts_is_incomplete(
         self, roster, mock_turn, mock_sessions, monkeypatch
     ):

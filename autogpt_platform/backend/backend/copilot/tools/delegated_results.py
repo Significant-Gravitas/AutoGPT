@@ -1,5 +1,6 @@
 """Bounded result packets for work delegated to a hired expert."""
 
+import re
 from typing import Literal
 
 from backend.copilot.active_turns import running_turn_limit_message
@@ -21,6 +22,31 @@ _MAX_ARTIFACT_PREVIEW = 25
 _MAX_ARTIFACT_NAME_CHARS = 160
 _MAX_ARTIFACT_PATH_CHARS = 400
 _MAX_MIME_TYPE_CHARS = 100
+_INTERNAL_CONTEXT_BLOCK = re.compile(
+    r"<(?:user_context|memory_context|env_context|budget_context|"
+    r"session_context|available_skills|expert_identity|expert_workflows|"
+    r"team_context)\b[^>]*>[\s\S]*?</(?:user_context|memory_context|"
+    r"env_context|budget_context|session_context|available_skills|"
+    r"expert_identity|expert_workflows|team_context)>",
+    re.IGNORECASE,
+)
+_ABSOLUTE_PATH = re.compile(
+    r"(?:[a-z]:\\(?:users|temp|windows|workspace)\\|"
+    r"/(?:Users|home|tmp|private|var|opt|workspace|mnt)/)[^\s,;)]+",
+    re.IGNORECASE,
+)
+_UUID = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-" r"[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+_INTERNAL_ID = re.compile(
+    r"\b(?:tool(?:_call)?|graph|block|session|execution|node(?:_exec)?)"
+    r"[_-]?id\s*[:=]\s*[\"']?[a-z0-9._:-]+[\"']?",
+    re.IGNORECASE,
+)
+_SHELL_OUTPUT_LINE = re.compile(
+    r"^\s*(?:\$\s|stdout\s*:|stderr\s*:|exit\s+code\s*:)", re.IGNORECASE
+)
 
 
 def delegated_response_from_outcome(
@@ -124,7 +150,30 @@ def _artifact(file: WorkspaceFileInfoData) -> DelegatedArtifact:
 
 
 def _summary_preview(text: str) -> str:
-    return _clip(text, MAX_DELEGATED_SUMMARY_CHARS)
+    return _clip(_safe_summary(text), MAX_DELEGATED_SUMMARY_CHARS)
+
+
+def _safe_summary(text: str) -> str:
+    """Remove developer-only material before a manager can relay the result."""
+    without_context = _INTERNAL_CONTEXT_BLOCK.sub("", text)
+    safe_lines: list[str] = []
+    for line in without_context.splitlines():
+        stripped = line.strip()
+        if _SHELL_OUTPUT_LINE.match(line):
+            continue
+        if (stripped.startswith("{") and stripped.endswith("}")) or (
+            stripped.startswith("[") and stripped.endswith("]")
+        ):
+            continue
+        safe_lines.append(
+            _UUID.sub(
+                "reference",
+                _INTERNAL_ID.sub(
+                    "internal reference", _ABSOLUTE_PATH.sub("a workspace file", line)
+                ),
+            ).rstrip()
+        )
+    return "\n".join(safe_lines).strip()
 
 
 def _clip(value: str, limit: int) -> str:
