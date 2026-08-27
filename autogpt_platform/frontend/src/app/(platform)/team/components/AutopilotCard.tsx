@@ -16,13 +16,13 @@ export function AutopilotCard() {
         <div className="min-w-0 flex-1">
           <Text variant="large-medium">Autopilot</Text>
           <Text variant="small" className="text-zinc-500">
-            Generalist — runs the shop
+            Head of AI — runs the team
           </Text>
         </div>
       </div>
       <Text variant="body">
-        Your built-in generalist. It runs your workflows, answers questions, and
-        hands work to your hired experts.
+        Owns the outcome, assigns work, answers expert questions, and asks you
+        only for decisions it cannot safely make.
       </Text>
       <div className="mt-auto flex gap-2">
         <Button as="NextLink" href="/copilot" variant="secondary" size="small">

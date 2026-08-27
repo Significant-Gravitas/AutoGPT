@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Literal, cast
+from urllib.parse import quote
 from uuid import uuid4
 
 import prisma.enums
@@ -307,5 +308,9 @@ def _to_model(row: prisma.models.ExpertWorkItem) -> ExpertWorkItem:
         updated_at=row.updatedAt,
         started_at=row.startedAt,
         completed_at=row.completedAt,
-        link=f"/copilot?sessionId={row.delegatedSessionId}&workItemId={row.id}",
+        link=(
+            f"/team/{quote(row.expertId, safe='')}"
+            f"?workItemId={quote(row.id, safe='')}"
+            f"#work-item-{quote(row.id, safe='')}"
+        ),
     )

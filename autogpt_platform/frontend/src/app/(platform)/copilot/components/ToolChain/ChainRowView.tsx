@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import { EXPERT_CHANGE_TOOLS } from "./ExpertCards";
-import type { ChainRow } from "./helpers";
+import { founderCanOpenRow, type ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
@@ -47,6 +47,7 @@ function ReasoningStream({ text, live }: ReasoningStreamProps) {
 interface Props {
   row: ChainRow;
   isLast: boolean;
+  founderMode?: boolean;
 }
 
 const SUB_SESSION_TOOLS = new Set([
@@ -72,7 +73,7 @@ function isLiveSubSessionRow(row: ChainRow): boolean {
   );
 }
 
-export function ChainRowView({ row, isLast }: Props) {
+export function ChainRowView({ row, isLast, founderMode = false }: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -127,13 +128,15 @@ export function ChainRowView({ row, isLast }: Props) {
     EXPERT_CHANGE_TOOLS.has(row.tool) &&
     row.output === undefined &&
     row.state === "running";
-  const hasContent = isReasoning
-    ? !!row.reasoningText
-    : !row.supersededSubSession &&
-      !row.groupedProposal &&
-      ((row.output !== undefined && row.output !== "") ||
-        liveSubSession ||
-        pendingExpertChange);
+  const hasContent =
+    (isReasoning
+      ? !!row.reasoningText
+      : !row.supersededSubSession &&
+        !row.groupedProposal &&
+        ((row.output !== undefined && row.output !== "") ||
+          liveSubSession ||
+          pendingExpertChange)) &&
+    (!founderMode || founderCanOpenRow(row));
   useEffect(() => {
     if (pendingExpertChange) setOpen(true);
   }, [pendingExpertChange]);
@@ -197,7 +200,7 @@ export function ChainRowView({ row, isLast }: Props) {
         ) : (
           <div className="flex h-7 items-center gap-1.5">{rowText}</div>
         )}
-        {row.detail && (
+        {!founderMode && row.detail && (
           <p className="animate-fade-in truncate text-xs text-red-400 motion-reduce:animate-none">
             {row.detail}
           </p>
@@ -217,7 +220,7 @@ export function ChainRowView({ row, isLast }: Props) {
                   live={liveReasoning}
                 />
               ) : (
-                <ToolResult row={row} />
+                <ToolResult row={row} founderMode={founderMode} />
               )}
             </div>
           </div>

@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+import { founderSafeArtifactName, founderSafeText } from "./founder-safe-text";
+
+describe("founderSafeText", () => {
+  it("removes paths, ids, JSON, shell output, and internal context", () => {
+    const value = [
+      "Prepared /tmp/private/report.json",
+      "tool_call_id=call-1 graph_id=graph-1",
+      '{"query":"secret search payload"}',
+      "$ cat /tmp/private/report.json",
+      "<expert_identity>internal instructions</expert_identity>",
+    ].join("\n");
+
+    const safe = founderSafeText(value, "Safe update");
+
+    expect(safe).toContain("Prepared a workspace file");
+    expect(safe).not.toMatch(/\/tmp|tool_call_id|graph_id|secret|\$ cat/);
+    expect(safe).not.toContain("internal instructions");
+  });
+
+  it("uses a fallback for structured payloads", () => {
+    expect(founderSafeText('{"query":"secret"}', "Safe update")).toBe(
+      "Safe update",
+    );
+  });
+
+  it("shows only the public artifact name", () => {
+    expect(founderSafeArtifactName("/sessions/secret/launch-plan.md")).toBe(
+      "launch-plan.md",
+    );
+  });
+});

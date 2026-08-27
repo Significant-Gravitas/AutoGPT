@@ -356,6 +356,45 @@ describe("ToolChain", () => {
     expect(screen.getByText("Weekly budget: 2000 credits")).toBeDefined();
   });
 
+  it("hides raw diagnostics and budgets in founder mode", () => {
+    render(
+      <ToolChain
+        founderMode
+        parts={[
+          reasoningPart("Internal chain of thought"),
+          toolPart("bash_exec", "output-available", {
+            input: { command: "cat /tmp/private.json" },
+            output: "raw shell output",
+          }),
+          toolPart("web_search", "output-available", {
+            input: { query: "private search payload" },
+            output: { results: [{ id: "raw-result" }] },
+          }),
+          toolPart("hire_expert", "output-available", {
+            output: {
+              type: "expert_change_proposed",
+              confirmation_id: "conf-1",
+              preview: {
+                name: "Otto",
+                role: "Inbox triage",
+                weekly_budget: 2000,
+              },
+            },
+          }),
+        ]}
+        isStreaming={false}
+      />,
+    );
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.queryByText("Internal chain of thought")).toBeNull();
+    expect(screen.queryByText(/cat \/tmp/)).toBeNull();
+    expect(screen.queryByText("raw shell output")).toBeNull();
+    expect(screen.queryByText(/private search payload/)).toBeNull();
+    expect(screen.queryByText(/raw-result/)).toBeNull();
+    expect(screen.queryByText(/Weekly budget/)).toBeNull();
+  });
+
   it("lets the user collapse an expert approval card", async () => {
     const user = userEvent.setup();
     render(

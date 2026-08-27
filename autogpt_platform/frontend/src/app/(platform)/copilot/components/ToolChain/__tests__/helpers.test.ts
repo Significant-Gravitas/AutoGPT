@@ -9,6 +9,7 @@ import {
   isChainPart,
   isLiftedSetupRow,
   markSupersededSubSessionRows,
+  toFounderRow,
   toChainRow,
   type ChainRow,
 } from "../helpers";
@@ -218,6 +219,56 @@ describe("toChainRow", () => {
   it("does not require action for plain successful output", () => {
     const row = toChainRow(toolPart("run_block", {}, { ok: true }), 0);
     expect(row?.requiresAction).toBe(false);
+  });
+});
+
+describe("toFounderRow", () => {
+  it("removes reasoning and replaces raw tool details with semantic activity", () => {
+    expect(
+      toFounderRow({
+        key: "reasoning",
+        category: "reasoning",
+        text: "Thought",
+        reasoningText: "Internal chain of thought",
+        state: "done",
+      }),
+    ).toBeNull();
+
+    expect(
+      toFounderRow({
+        key: "search",
+        category: "web",
+        text: 'Searched the web for "secret query"',
+        detail: "raw search payload",
+        tool: "web_search",
+        input: { query: "secret query" },
+        output: { results: [{ id: "raw-result" }] },
+        state: "done",
+      }),
+    ).toMatchObject({
+      text: "Research complete",
+      detail: undefined,
+      reasoningText: undefined,
+    });
+  });
+
+  it("names an expert without repeating raw assignment fields", () => {
+    const row = toFounderRow({
+      key: "delegate",
+      category: "agent",
+      text: "Teammate handled",
+      tool: "delegate_to_expert",
+      input: {
+        task_title: "Inspect /tmp/private.json",
+        prompt: "raw instructions",
+      },
+      output: { expert: { name: "Remy" }, status: "completed" },
+      state: "done",
+    });
+
+    expect(row?.text).toBe("Remy reported back");
+    expect(row?.text).not.toContain("/tmp");
+    expect(row?.text).not.toContain("raw instructions");
   });
 });
 

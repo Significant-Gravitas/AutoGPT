@@ -3,6 +3,7 @@ import type { HomeActiveTask } from "@/app/api/__generated__/models/homeActiveTa
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import { founderSafeText } from "@/lib/founder-safe-text";
 import { formatRunningFor } from "../helpers";
 
 interface Props {
@@ -25,7 +26,9 @@ export function ActiveRow({ item }: Props) {
       </span>
       <div className="min-w-0 flex-1">
         <Text variant="body-medium" className="truncate text-zinc-900">
-          {item.title}
+          {item.work_item_id
+            ? founderSafeText(item.title, "Expert work in progress")
+            : item.title}
         </Text>
         <Text variant="small" className="truncate text-zinc-500">
           {item.status === "queued"

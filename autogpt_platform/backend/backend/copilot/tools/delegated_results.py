@@ -221,9 +221,14 @@ def _artifact(file: WorkspaceFileInfoData) -> DelegatedArtifact:
     return DelegatedArtifact(
         name=_clip(file.name, _MAX_ARTIFACT_NAME_CHARS),
         read_path=_clip(file.path, _MAX_ARTIFACT_PATH_CHARS),
+        uri=workspace_file_uri(file.file_id, file.mime_type),
         mime_type=_clip(file.mime_type, _MAX_MIME_TYPE_CHARS),
         size_bytes=max(0, file.size_bytes),
     )
+
+
+def workspace_file_uri(file_id: str, mime_type: str | None = None) -> str:
+    return f"workspace://{file_id}" + (f"#{mime_type}" if mime_type else "")
 
 
 def _summary_preview(text: str) -> str:

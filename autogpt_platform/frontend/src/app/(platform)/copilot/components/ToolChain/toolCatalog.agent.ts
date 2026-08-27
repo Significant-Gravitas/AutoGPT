@@ -155,6 +155,16 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Handed over:",
     subject: (input) => quoted(input, "prompt", 45),
   },
+  report_delegated_result: {
+    category: "team",
+    running: "Reporting to AutoPilot",
+    done: "Reported to AutoPilot",
+  },
+  install_expert_workflow: {
+    category: "agent-build",
+    running: "Installing expert workflow",
+    done: "Installed expert workflow",
+  },
   hire_expert: {
     category: "team",
     running: "Drafting a hire",

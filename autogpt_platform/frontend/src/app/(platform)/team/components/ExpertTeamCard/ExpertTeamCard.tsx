@@ -1,6 +1,8 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
+import type { HomeWorkItem } from "@/app/api/__generated__/models/homeWorkItem";
 import {
   Avatar,
   AvatarFallback,
@@ -22,17 +24,12 @@ import {
   Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
-import { creditsToUsdLabel } from "@/lib/credits";
 import Image from "next/image";
 import Link from "next/link";
 import { MouseEvent } from "react";
+import { founderSafeText } from "@/lib/founder-safe-text";
 
-import { SpendMeter } from "./components/SpendMeter";
-import {
-  getNeedsSetupCount,
-  getScheduleCountLabel,
-  getWeeklySpend,
-} from "../../helpers";
+import { getNeedsSetupCount, getScheduleCountLabel } from "../../helpers";
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
@@ -42,6 +39,8 @@ const TEAM_CARD_BANNER_SRC = "/images/team-card-banner.jpg";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
+  status: HomeAgentStatus | undefined;
+  workItems: HomeWorkItem[];
   pods: ExpertPod[];
   currentPod: ExpertPod | undefined;
   onInstallWorkflow: (expertId: string) => void;
@@ -52,6 +51,8 @@ interface Props {
 export function ExpertTeamCard({
   expert,
   schedules,
+  status,
+  workItems,
   pods,
   currentPod,
   onInstallWorkflow,
@@ -61,10 +62,15 @@ export function ExpertTeamCard({
   const workflowCount = expert.workflows.length;
   const needsSetupCount = getNeedsSetupCount(expert, schedules);
   const scheduleLabel = getScheduleCountLabel(schedules);
-  const weeklySpend = getWeeklySpend(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
+  const activeWork = workItems.find((item) =>
+    ["queued", "running"].includes(item.status),
+  );
+  const deliveredCount = workItems.filter(
+    (item) => item.status === "delivered",
+  ).length;
 
   function handleInstallClick() {
     onInstallWorkflow(expert.id);
@@ -76,7 +82,7 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="flex flex-col rounded-[1.75rem] border border-zinc-200 bg-white p-1 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
+    <div className="flex flex-col rounded-[1.75rem] border border-zinc-200 bg-white p-1 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
       <div className="relative h-24 w-full overflow-hidden rounded-t-[1.5rem]">
         <Image
           src={TEAM_CARD_BANNER_SRC}
@@ -130,7 +136,12 @@ export function ExpertTeamCard({
               <AvatarFallback>{expert.name}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <Text variant="large-medium">{expert.name}</Text>
+              <div className="flex flex-wrap items-center gap-2">
+                <Text variant="large-medium">{expert.name}</Text>
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+                  {statusLabel(status?.status)}
+                </span>
+              </div>
               <Text variant="small" className="text-zinc-500">
                 {expert.role}
               </Text>
@@ -139,27 +150,11 @@ export function ExpertTeamCard({
           <Text variant="body" className="line-clamp-2 min-h-12 text-zinc-600">
             {expert.tagline || expert.identity}
           </Text>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-2">
-              <Text variant="small" className="text-zinc-500">
-                Spend this week
-              </Text>
-              <Text
-                variant="small"
-                unmask={false}
-                className="tabular-nums text-zinc-500"
-              >
-                {weeklySpend
-                  ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
-                  : "No budget"}
-              </Text>
-            </div>
-            <SpendMeter
-              spent={weeklySpend?.spent ?? 0}
-              budget={weeklySpend?.budget ?? 1}
-              muted={!weeklySpend}
-            />
-          </div>
+          <Text variant="small" className="min-h-5 text-zinc-500">
+            {status?.detail
+              ? founderSafeText(status.detail, "Work is in progress")
+              : "Ready for the next task"}
+          </Text>
           <Text variant="small" className="min-h-5 text-zinc-500">
             {scheduleLabel ?? "No schedules yet"}
           </Text>
@@ -173,8 +168,26 @@ export function ExpertTeamCard({
                 setup
               </span>
             ) : null}
+            {deliveredCount > 0 ? (
+              <span className="text-xs text-zinc-400">
+                · {deliveredCount} delivered
+              </span>
+            ) : null}
           </div>
         </Link>
+        {activeWork ? (
+          <Link
+            href={activeWork.link}
+            className="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          >
+            <span className="block text-xs font-medium text-zinc-400">
+              Working now
+            </span>
+            <span className="mt-0.5 block truncate font-medium">
+              {founderSafeText(activeWork.title, "Expert work in progress")}
+            </span>
+          </Link>
+        ) : null}
         {isPaused ? (
           <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
             <Text variant="small" className="text-amber-700">
@@ -261,4 +274,12 @@ export function ExpertTeamCard({
       />
     </div>
   );
+}
+
+function statusLabel(status: HomeAgentStatus["status"] | undefined) {
+  if (status === "working") return "Working";
+  if (status === "paused") return "Paused";
+  if (status === "needs_setup") return "Needs setup";
+  if (status === "failed") return "Needs attention";
+  return "Ready";
 }

@@ -9,7 +9,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatDuration } from "../../../helpers";
+import { founderSafeText } from "@/lib/founder-safe-text";
+import { formatDuration } from "../../../helpers";
 
 interface Props {
   outcome: HomeBriefingOutcome;
@@ -38,13 +39,20 @@ export function OutcomeRow({ outcome }: Props) {
       </span>
       <div className="min-w-0 flex-1">
         <Text variant="body-medium" className="text-pretty text-zinc-950">
-          {outcome.title}
+          {outcome.work_item_id
+            ? founderSafeText(outcome.title, "Expert deliverable")
+            : outcome.title}
         </Text>
         <Text
           variant="body"
           className="mt-1 line-clamp-2 text-pretty text-zinc-600"
         >
-          {outcome.summary}
+          {outcome.work_item_id
+            ? founderSafeText(
+                outcome.summary,
+                "The expert delivered an outcome for AutoPilot to review.",
+              )
+            : outcome.summary}
         </Text>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
           {outcome.expert ? (
@@ -63,10 +71,21 @@ export function OutcomeRow({ outcome }: Props) {
               <span>{formatDuration(outcome.duration_seconds)}</span>
             </>
           ) : null}
-          {outcome.cost_cents ? (
+          {outcome.confidence ? (
             <>
               <span aria-hidden="true">·</span>
-              <span>{formatCurrency(outcome.cost_cents)}</span>
+              <span>{confidenceLabel(outcome.confidence)}</span>
+            </>
+          ) : null}
+          {(outcome.artifacts?.length ?? 0) > 0 ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>
+                {outcome.artifacts?.length ?? 0}{" "}
+                {outcome.artifacts?.length === 1
+                  ? "deliverable"
+                  : "deliverables"}
+              </span>
             </>
           ) : null}
         </div>
@@ -95,6 +114,12 @@ export function OutcomeRow({ outcome }: Props) {
       {content}
     </Link>
   );
+}
+
+function confidenceLabel(
+  value: NonNullable<HomeBriefingOutcome["confidence"]>,
+) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatOccurredAt(value: Date | null | undefined) {

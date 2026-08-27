@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
-import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -135,6 +134,7 @@ const dashboard: HomeDashboardResponse = {
       link: "/library",
     },
   ],
+  work_items: [],
   upcoming_tasks: [
     {
       id: "upcoming-1",
@@ -190,24 +190,28 @@ test("renders every Home tile from the aggregate API", async () => {
   render(<HomePage />);
 
   expect(await screen.findByText(/Abhi/)).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Needs your decision" }),
+  ).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your briefing" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Delivered" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
   expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
   expect(screen.getByRole("heading", { name: "Your agents" })).toBeDefined();
   expect(
     screen.getByRole("link", { name: /View all 10 agents/ }),
   ).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Working now & next" }),
+  ).toBeDefined();
   expect(
     screen.getAllByText("Checking recurring subscriptions").length,
   ).toBeGreaterThan(0);
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
 });
 
-test("shows weekly spend per agent and on the team line", async () => {
+test("does not expose weekly spend or account balances", async () => {
   mockDashboard({
     ...dashboard,
     team: { ...dashboard.team, spend_cents: 1_250 },
@@ -224,16 +228,11 @@ test("shows weekly spend per agent and on the team line", async () => {
 
   render(<HomePage />);
 
-  // Spend sits in its own non-truncating element, so a long detail line can
-  // never clip the figure this tile exists to show.
-  const spend = await screen.findByText("· $9.00 this week");
-  expect(spend.className).toContain("shrink-0");
-  expect(
-    screen.getByText("1 working now · 7 ready · $12.50 this week"),
-  ).toBeDefined();
-  // An expert with no attributed spend keeps its detail line unadorned.
-  expect(screen.getByText("Ready for the next task")).toBeDefined();
+  expect(await screen.findByText("Ready for the next task")).toBeDefined();
+  expect(screen.queryByText("· $9.00 this week")).toBeNull();
+  expect(screen.queryByText(/\$12\.50 this week/)).toBeNull();
   expect(screen.queryByText("· $0.00 this week")).toBeNull();
+  expect(screen.queryByText("15,600")).toBeNull();
 });
 
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
@@ -292,7 +291,7 @@ test("keeps a Review deep link alongside the approval shortcuts", async () => {
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
 });
 
-test("shows calm, useful empty states without hiding the page structure", async () => {
+test("guides a clean-slate user to build their first AI team", async () => {
   mockDashboard({
     ...dashboard,
     attention: [],
@@ -311,33 +310,36 @@ test("shows calm, useful empty states without hiding the page structure", async 
 
   render(<HomePage />);
 
-  expect(await screen.findByText("You are all caught up")).toBeDefined();
-  expect(screen.getByText("No new outcomes yet")).toBeDefined();
-  expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
-  expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
+  expect(
+    await screen.findByRole("heading", { name: "Build your first AI team" }),
+  ).toBeDefined();
+  expect(screen.getByText("Product")).toBeDefined();
+  expect(screen.getByText("Engineering")).toBeDefined();
+  expect(screen.getByText("Marketing")).toBeDefined();
+  expect(screen.getByText("Sales")).toBeDefined();
+  expect(
+    screen
+      .getByRole("link", { name: "Start with AutoPilot" })
+      .getAttribute("href"),
+  ).toBe("/copilot");
+  expect(screen.queryByText("You are all caught up")).toBeNull();
 });
 
-test("filters briefing outcomes by their real status", async () => {
-  const user = userEvent.setup();
+test("keeps failed work in Risks instead of Delivered", async () => {
   mockDashboard(dashboard);
 
   render(<HomePage />);
 
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-  await user.click(screen.getByRole("menuitemradio", { name: "Failed" }));
-
   expect(
-    screen.getByText("Learning sessions could not be scheduled"),
+    await screen.findByText("Learning sessions could not be scheduled"),
   ).toBeDefined();
-  expect(screen.queryByText("Your camera research is ready")).toBeNull();
+  expect(screen.getByText("Your camera research is ready")).toBeDefined();
+  expect(
+    screen.queryByRole("button", { name: "Filter briefing outcomes: All" }),
+  ).toBeNull();
 });
 
-test("renders partial workflow delivery as needing attention", async () => {
-  const user = userEvent.setup();
+test("keeps partial workflow delivery in Risks instead of Delivered", async () => {
   mockDashboard({
     ...dashboard,
     briefing: {
@@ -356,46 +358,42 @@ test("renders partial workflow delivery as needing attention", async () => {
 
   render(<HomePage />);
 
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-  await user.click(
-    screen.getByRole("menuitemradio", { name: "Needs attention" }),
-  );
-
-  expect(screen.getByText("Lead research needs attention")).toBeDefined();
-  expect(screen.queryByText("Your camera research is ready")).toBeNull();
+  expect(
+    await screen.findByText("Lead research needs attention"),
+  ).toBeDefined();
+  expect(screen.getByText("Nothing delivered yet")).toBeDefined();
 });
 
-test("labels a filter option for an unrecognised briefing status", async () => {
-  const user = userEvent.setup();
+test("shows delegated risk confidence and scrubs internal details", async () => {
   mockDashboard({
     ...dashboard,
-    briefing: {
-      ...dashboard.briefing,
-      outcomes: [
-        dashboard.briefing.outcomes[0],
-        {
-          ...dashboard.briefing.outcomes[1],
-          status: "cancelled" as HomeBriefingOutcome["status"],
-        },
-      ],
-    },
+    work_items: [
+      {
+        id: "work-1",
+        title: "Review /tmp/internal/search.json",
+        expected_deliverable: "A safe recommendation",
+        status: "blocked_manager",
+        expert: maria,
+        progress: 60,
+        blocker: 'tool_call_id=abc graph_id=def {"query":"private payload"}',
+        confidence: "likely",
+        artifacts: [],
+        updated_at: NOW,
+        link: "/team/maria?workItemId=work-1#work-item-work-1",
+      },
+    ],
   });
 
   render(<HomePage />);
 
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
+  const riskTitle = await screen.findByText("Review a workspace file");
+  const risk = riskTitle.closest("a");
+  expect(risk).not.toBeNull();
+  expect(risk?.getAttribute("href")).toBe(
+    "/team/maria?workItemId=work-1#work-item-work-1",
   );
-
-  expect(
-    screen.getByRole("menuitemradio", { name: "cancelled" }),
-  ).toBeDefined();
+  expect(screen.queryByText(/private payload/)).toBeNull();
+  expect(screen.queryByText(/tool_call_id/)).toBeNull();
 });
 
 test("shows a retryable page error when the aggregate cannot load", async () => {
@@ -419,7 +417,7 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   await user.click(screen.getByRole("button", { name: /try again/i }));
 
   expect(
-    await screen.findByRole("heading", { name: "Needs you" }),
+    await screen.findByRole("heading", { name: "Needs your decision" }),
   ).toBeDefined();
 });
 
@@ -460,7 +458,7 @@ test("renders the briefing unchanged when no narrative was generated", async () 
   render(<HomePage />);
 
   expect(
-    await screen.findByRole("heading", { name: "Your briefing" }),
+    await screen.findByRole("heading", { name: "Delivered" }),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
 });

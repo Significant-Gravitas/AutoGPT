@@ -20,6 +20,28 @@ export const TEAM_GRID_CLASS =
 /** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
 export const POD_NAME_MAX_LENGTH = 100;
 
+const FUNCTION_ORDER = [
+  ["product", "research", "strategy"],
+  ["engineer", "engineering", "developer", "coding", "technical"],
+  ["marketing", "content", "brand", "seo"],
+  ["sales", "revenue", "lead", "business development"],
+] as const;
+
+export function sortExpertsByFunction(experts: Expert[]) {
+  return [...experts].sort((left, right) => {
+    const rankDifference = functionRank(left) - functionRank(right);
+    return rankDifference || left.name.localeCompare(right.name);
+  });
+}
+
+function functionRank(expert: Expert) {
+  const description = `${expert.role} ${expert.tagline ?? ""}`.toLowerCase();
+  const rank = FUNCTION_ORDER.findIndex((terms) =>
+    terms.some((term) => description.includes(term)),
+  );
+  return rank === -1 ? FUNCTION_ORDER.length : rank;
+}
+
 interface AssignToastArgs {
   podId: string | null;
   destinationName?: string;
@@ -54,9 +76,9 @@ export function groupExpertsByPods(
   return {
     groups: pods.map((pod) => ({
       pod,
-      experts: membersByPod.get(pod.id) ?? [],
+      experts: sortExpertsByFunction(membersByPod.get(pod.id) ?? []),
     })),
-    ungrouped,
+    ungrouped: sortExpertsByFunction(ungrouped),
   };
 }
 

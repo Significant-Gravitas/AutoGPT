@@ -406,11 +406,10 @@ describe("ChainActionCard", () => {
       expect(screen.getByText("Answer a few questions")).toBeDefined();
       expect(screen.getByText("Which region?")).toBeDefined();
 
-      const nextButtons = screen.getAllByRole("button", {
+      const nextButton = screen.getByRole("button", {
         name: "Next question",
-      }) as HTMLButtonElement[];
-      // The round action is answer-gated; the pager chevron is not.
-      expect(nextButtons.filter((button) => button.disabled)).toHaveLength(1);
+      }) as HTMLButtonElement;
+      expect(nextButton.disabled).toBe(true);
     });
 
     it("advances to the next question once answered", () => {
@@ -423,11 +422,10 @@ describe("ChainActionCard", () => {
         ],
       });
 
-      const [action] = (
-        screen.getAllByRole("button", {
-          name: "Next question",
-        }) as HTMLButtonElement[]
-      ).filter((button) => !button.disabled);
+      const action = screen.getByRole("button", {
+        name: "Next question",
+      }) as HTMLButtonElement;
+      expect(action.disabled).toBe(false);
       fireEvent.click(action);
 
       expect(screen.getByText("Which format?")).toBeDefined();

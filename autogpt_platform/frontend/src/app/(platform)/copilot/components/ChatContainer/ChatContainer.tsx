@@ -134,6 +134,7 @@ export const ChatContainer = ({
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
+  const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
   // The composer and the message column only slide aside while the floating
   // files card is shown; this host is the one that mounts the card.
   const areFilesOpen = useAreWorkspaceFileCardsOpen();
@@ -204,12 +205,18 @@ export const ChatContainer = ({
   // it does not run per stream delta — serializing every part is not free.
   const devtoolBreakdownKeyRef = useRef("");
   useEffect(() => {
-    if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
+    if (
+      isFounderMode ||
+      !sessionId ||
+      !isTokenDevtoolEnabled() ||
+      messages.length === 0
+    )
+      return;
     const key = breakdownCacheKey(sessionId, messages, isStreaming);
     if (key === devtoolBreakdownKeyRef.current) return;
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
-  }, [sessionId, messages, isStreaming]);
+  }, [sessionId, messages, isStreaming, isFounderMode]);
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
@@ -322,6 +329,7 @@ export const ChatContainer = ({
                         <TaskProgressBar
                           todos={getLatestTaskList(messages) ?? []}
                           isStreaming={isStreaming}
+                          founderMode={isFounderMode}
                         />
                       </div>
                     )}

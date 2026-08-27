@@ -26,7 +26,7 @@ export function NowNext({ dashboard, className }: Props) {
             aria-hidden="true"
           />
           <Text variant="h5" className="text-zinc-950">
-            Now &amp; next
+            Working now &amp; next
           </Text>
         </div>
       }
@@ -51,7 +51,7 @@ export function NowNext({ dashboard, className }: Props) {
 
       <div>
         <Text variant="small" className="font-medium text-zinc-500">
-          Coming up
+          Next
         </Text>
         {dashboard.upcoming_tasks.length === 0 ? (
           <HomeTileEmpty

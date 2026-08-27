@@ -105,9 +105,10 @@ function makeDashboard(attention: HomeAttentionItem[]): HomeDashboardResponse {
       outcomes: [],
     },
     active_tasks: [],
+    work_items: [],
     upcoming_tasks: [],
-    team: { total: 0, ready: 0, working: 0, needs_attention: 0 },
-    agents: [],
+    team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
+    agents: [{ expert: maria, status: "ready", detail: "Ready" }],
     week: {
       run_count: 0,
       completed_count: 0,

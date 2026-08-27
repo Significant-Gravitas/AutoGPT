@@ -3,12 +3,16 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { describe, expect, test } from "vitest";
 import { getAssignToastTitle, groupExpertsByPods } from "./helpers";
 
-function makeExpert(id: string, podId: string | null = null): Expert {
+function makeExpert(
+  id: string,
+  podId: string | null = null,
+  role = "Role",
+): Expert {
   return {
     id,
     name: id,
     avatar_url: null,
-    role: "Role",
+    role,
     tagline: null,
     bio: null,
     skills: [],
@@ -72,6 +76,25 @@ describe("groupExpertsByPods", () => {
     );
     expect(groups).toEqual([]);
     expect(ungrouped).toHaveLength(2);
+  });
+
+  test("orders team functions as Product, Engineering, Marketing, then Sales", () => {
+    const { ungrouped } = groupExpertsByPods(
+      [
+        makeExpert("sales", null, "Sales lead"),
+        makeExpert("marketing", null, "Marketing strategist"),
+        makeExpert("engineering", null, "Software engineer"),
+        makeExpert("product", null, "Product researcher"),
+      ],
+      [],
+    );
+
+    expect(ungrouped.map((expert) => expert.id)).toEqual([
+      "product",
+      "engineering",
+      "marketing",
+      "sales",
+    ]);
   });
 });
 

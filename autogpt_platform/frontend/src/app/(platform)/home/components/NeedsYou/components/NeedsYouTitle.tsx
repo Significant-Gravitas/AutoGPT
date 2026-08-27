@@ -31,7 +31,7 @@ export function NeedsYouTitle({
           aria-hidden="true"
         />
         <Text variant="h5" className="text-zinc-950">
-          Needs you
+          Needs your decision
         </Text>
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

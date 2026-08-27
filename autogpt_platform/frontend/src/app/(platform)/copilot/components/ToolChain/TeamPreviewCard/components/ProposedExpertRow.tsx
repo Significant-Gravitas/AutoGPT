@@ -18,6 +18,7 @@ interface Props {
   confirmed: boolean;
   removed: boolean;
   open: boolean;
+  founderMode?: boolean;
   onToggleRemoved: () => void;
   onToggleOpen: () => void;
 }
@@ -27,6 +28,7 @@ export function ProposedExpertRow({
   confirmed,
   removed,
   open,
+  founderMode = false,
   onToggleRemoved,
   onToggleOpen,
 }: Props) {
@@ -38,7 +40,8 @@ export function ProposedExpertRow({
   const voice = str(preview, "voice_preferences");
   const budget =
     typeof preview.weekly_budget === "number" ? preview.weekly_budget : null;
-  const hasCharter = !!(about || boundaries || voice) || budget !== null;
+  const hasCharter =
+    !!(about || boundaries || voice) || (!founderMode && budget !== null);
 
   return (
     <div className={"py-2.5 " + (removed ? "opacity-40" : "")}>
@@ -107,7 +110,7 @@ export function ProposedExpertRow({
                 <p className="text-zinc-400">Stops at: {boundaries}</p>
               )}
               {voice && <p className="text-zinc-400">Sounds like: {voice}</p>}
-              {budget !== null && (
+              {!founderMode && budget !== null && (
                 <p className="text-zinc-400">Weekly budget: {budget} credits</p>
               )}
             </div>

@@ -8,6 +8,7 @@ import {
   useListExperts,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { useGetHomeDashboard } from "@/app/api/__generated__/endpoints/home/home";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { okData } from "@/app/api/helpers";
@@ -42,6 +43,14 @@ export function useTeamPage({ enabled }: Args) {
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
     query: { select: (res) => okData(res) ?? [], enabled },
+  });
+  const homeQuery = useGetHomeDashboard({
+    query: {
+      select: (res) => okData(res) ?? null,
+      enabled,
+      refetchInterval: 5_000,
+      refetchOnWindowFocus: true,
+    },
   });
   const pods = podsQuery.data ?? [];
   // Built once per render so each card resolves its pod in O(1) instead of
@@ -150,7 +159,20 @@ export function useTeamPage({ enabled }: Args) {
       expertsQuery.refetch(),
       podsQuery.refetch(),
       schedulesQuery.refetch(),
+      homeQuery.refetch(),
     ]);
+  }
+
+  function statusForExpert(expert: Expert) {
+    return homeQuery.data?.agents.find(
+      (status) => status.expert.id === expert.id,
+    );
+  }
+
+  function workItemsForExpert(expert: Expert) {
+    return (homeQuery.data?.work_items ?? []).filter(
+      (item) => item.expert.id === expert.id,
+    );
   }
 
   function closeSoul() {
@@ -186,13 +208,19 @@ export function useTeamPage({ enabled }: Args) {
     ungroupedExperts: ungrouped,
     schedules,
     schedulesForExpert,
+    statusForExpert,
+    workItemsForExpert,
     isLoading:
       enabled &&
       (expertsQuery.isLoading ||
         podsQuery.isLoading ||
-        schedulesQuery.isLoading),
+        schedulesQuery.isLoading ||
+        homeQuery.isLoading),
     isError:
-      expertsQuery.isError || podsQuery.isError || schedulesQuery.isError,
+      expertsQuery.isError ||
+      podsQuery.isError ||
+      schedulesQuery.isError ||
+      homeQuery.isError,
     refetch,
     installWorkflow,
     pickerExpertId,

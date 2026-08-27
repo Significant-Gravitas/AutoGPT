@@ -7,10 +7,12 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
+import { BuildFirstTeam } from "./components/BuildFirstTeam/BuildFirstTeam";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
 import { MorningBriefing } from "./components/MorningBriefing/MorningBriefing";
 import { NeedsYou } from "./components/NeedsYou/NeedsYou";
 import { NowNext } from "./components/NowNext/NowNext";
+import { WorkRisks } from "./components/WorkRisks/WorkRisks";
 import { getTimeOfDayGreeting } from "./helpers";
 import { useHomePage } from "./useHomePage";
 
@@ -53,16 +55,21 @@ export default function HomePage() {
           name={getGreetingName(user)}
           dashboard={dashboard}
         />
-        <div className={GRID_CLASS}>
-          <div className="flex min-w-0 flex-col gap-7 xl:col-span-8">
-            <NeedsYou dashboard={dashboard} />
-            <MorningBriefing dashboard={dashboard} />
+        {dashboard.team.total === 0 ? (
+          <BuildFirstTeam />
+        ) : (
+          <div className={GRID_CLASS}>
+            <div className="flex min-w-0 flex-col gap-7 xl:col-span-8">
+              <NeedsYou dashboard={dashboard} />
+              <NowNext dashboard={dashboard} />
+              <MorningBriefing dashboard={dashboard} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-7 xl:col-span-4">
+              <AgentTeam dashboard={dashboard} />
+              <WorkRisks dashboard={dashboard} />
+            </div>
           </div>
-          <div className="flex min-w-0 flex-col gap-7 xl:col-span-4">
-            <AgentTeam dashboard={dashboard} />
-            <NowNext dashboard={dashboard} />
-          </div>
-        </div>
+        )}
       </div>
     </main>
   );

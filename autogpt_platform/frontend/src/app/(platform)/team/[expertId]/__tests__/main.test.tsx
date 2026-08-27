@@ -5,9 +5,12 @@ import {
   getGetExpertDetachPreviewMockHandler,
   getGetExpertMockHandler,
   getListExpertRunsMockHandler,
+  getListExpertWorkMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
+import type { ExpertWorkItem } from "@/app/api/__generated__/models/expertWorkItem";
+import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -149,11 +152,47 @@ const mariaRuns: ExpertRun[] = [
   },
 ];
 
+const mariaWork: ExpertWorkItem = {
+  id: "work-1",
+  expert_id: "expert-maria",
+  manager_session_id: "manager-1",
+  delegated_session_id: "delegated-1",
+  project_phase: "Launch",
+  task_title: "Prepare /tmp/private/launch-plan.md",
+  expected_deliverable: "A launch plan",
+  deliverable_mode: "workspace_files",
+  success_criteria: [],
+  dependencies: [],
+  source_artifacts: [],
+  constraints: [],
+  approval_boundaries: [],
+  estimate_minutes: 30,
+  progress: 100,
+  status: "delivered",
+  result: "Completed graph_id=secret with verified evidence.",
+  blocker: null,
+  confidence: "verified",
+  artifacts: [
+    {
+      name: "/tmp/private/launch-plan.md",
+      uri: "workspace://file-1#text/markdown",
+      mime_type: "text/markdown",
+      size_bytes: 1200,
+    },
+  ],
+  created_at: new Date("2026-08-28T00:00:00Z"),
+  updated_at: new Date("2026-08-28T00:30:00Z"),
+  started_at: new Date("2026-08-28T00:00:00Z"),
+  completed_at: new Date("2026-08-28T00:30:00Z"),
+  link: "/team/expert-maria?workItemId=work-1#work-item-work-1",
+};
+
 beforeEach(() => {
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
     getListExpertRunsMockHandler([]),
+    getListExpertWorkMockHandler([]),
   );
 });
 
@@ -229,6 +268,33 @@ describe("ExpertDetailPage", () => {
     expect(within(workList).queryByText("Needs review")).toBeNull();
   });
 
+  test("shows delegated work with safe text and downloadable deliverables", async () => {
+    server.use(getListExpertWorkMockHandler([mariaWork]));
+
+    render(<ExpertDetailPage />);
+
+    const workList = await screen.findByRole("list", { name: "Expert work" });
+    expect(
+      within(workList).getByText("Prepare a workspace file"),
+    ).toBeDefined();
+    expect(within(workList).getByText("Verified")).toBeDefined();
+    expect(within(workList).getByText("launch-plan.md")).toBeDefined();
+    expect(within(workList).queryByText(/graph_id/)).toBeNull();
+    expect(within(workList).queryByText(/\/tmp\/private/)).toBeNull();
+
+    const deliverable = within(workList).getByRole("link", {
+      name: "launch-plan.md",
+    });
+    expect(deliverable.getAttribute("href")).toBe(
+      getGetWorkspaceDownloadFileByIdUrl("file-1"),
+    );
+    expect(
+      within(workList)
+        .getByRole("link", { name: "Open thread" })
+        .getAttribute("href"),
+    ).toBe("/copilot?sessionId=delegated-1");
+  });
+
   test("filters work to runs that need review", async () => {
     server.use(getListExpertRunsMockHandler(mariaRuns));
 
@@ -248,7 +314,9 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     await screen.findByRole("heading", { name: "Maria" });
-    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
+    expect(
+      await screen.findByText(/No work yet. Delegated tasks and workflow runs/),
+    ).toBeDefined();
   });
 
   test("shows a retryable error when recent work fails to load", async () => {

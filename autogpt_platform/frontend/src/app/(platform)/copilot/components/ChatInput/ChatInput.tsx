@@ -111,6 +111,7 @@ export function ChatInput({
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
@@ -273,7 +274,8 @@ export function ChatInput({
       : placeholder;
 
   // Narrows to string, so neither render site needs to re-test sessionId.
-  const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
+  const devtoolSessionId =
+    !isFounderMode && isTokenDevtoolEnabled() ? sessionId : null;
   const hasTrayItems =
     (showModeToggle && !isStreaming) ||
     (showDryRunToggle && !hasSession) ||

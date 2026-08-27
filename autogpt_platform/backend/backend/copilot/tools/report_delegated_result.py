@@ -14,6 +14,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
+from .delegated_results import workspace_file_uri
 from .models import DelegatedWorkReportedResponse, ErrorResponse, ToolResponseBase
 from .run_sub_session import list_sub_workspace_files
 
@@ -187,7 +188,7 @@ class ReportDelegatedResultTool(BaseTool):
             final_artifacts = [
                 ExpertWorkArtifact(
                     name=file.name,
-                    uri=file.path,
+                    uri=workspace_file_uri(file.file_id, file.mime_type),
                     mime_type=file.mime_type,
                     size_bytes=file.size_bytes,
                 )
@@ -257,7 +258,10 @@ def _manager_notice(item) -> str:
         parts.append(f"Manager blocker: {item.blocker}")
     if item.artifacts:
         parts.append(
-            "Artifacts: " + ", ".join(artifact.name for artifact in item.artifacts)
+            "Artifacts: "
+            + ", ".join(
+                f"{artifact.name} ({artifact.uri})" for artifact in item.artifacts
+            )
         )
     parts.append(
         "Resolve manager-level questions yourself when possible and keep other "

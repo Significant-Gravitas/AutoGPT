@@ -283,6 +283,93 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
   return null;
 }
 
+const FOUNDER_ACTIVITY: Record<ChainRow["category"], [string, string]> = {
+  reasoning: ["Working", "Worked"],
+  bash: ["Working", "Step complete"],
+  web: ["Researching", "Research complete"],
+  browser: ["Researching", "Research complete"],
+  "file-read": ["Reviewing source material", "Reviewed source material"],
+  "file-write": ["Saving a deliverable", "Saved a deliverable"],
+  "file-delete": ["Updating deliverables", "Updated deliverables"],
+  "file-list": ["Checking deliverables", "Checked deliverables"],
+  search: ["Finding relevant context", "Found relevant context"],
+  edit: ["Improving the work", "Improved the work"],
+  todo: ["Updating the plan", "Updated the plan"],
+  compaction: ["Organizing context", "Context organized"],
+  agent: ["Running a workflow", "Workflow finished"],
+  "agent-build": ["Creating a workflow", "Workflow created"],
+  plan: ["Planning the work", "Plan ready"],
+  block: ["Running a workflow step", "Workflow step finished"],
+  memory: ["Checking project context", "Project context updated"],
+  folder: ["Organizing work", "Work organized"],
+  schedule: ["Scheduling work", "Work scheduled"],
+  trigger: ["Setting up monitoring", "Monitoring ready"],
+  preset: ["Preparing workflow inputs", "Workflow inputs ready"],
+  chat: ["Sharing an update", "Update shared"],
+  mcp: ["Using a connected tool", "Connected tool finished"],
+  docs: ["Reviewing guidance", "Guidance reviewed"],
+  skill: ["Applying team learning", "Team learning updated"],
+  integration: ["Connecting a tool", "Tool connected"],
+  feature: ["Checking platform support", "Platform support checked"],
+  question: ["Preparing a question", "Question ready"],
+  team: ["Forming your team", "Team updated"],
+  info: ["Checking your workspace", "Workspace checked"],
+  narration: ["Working", "Progress updated"],
+  other: ["Working", "Step complete"],
+};
+
+const FOUNDER_OPEN_TOOLS = new Set([
+  "run_agent",
+  "schedule_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "hire_expert",
+  "raise_expert",
+  "update_expert",
+  "confirm_expert_change",
+]);
+
+export function toFounderRow(row: ChainRow): ChainRow | null {
+  if (row.category === "reasoning") return null;
+  if (row.requiresAction) return { ...row, detail: undefined };
+
+  const output = asObject(row.output);
+  const expert = output ? asObject(output.expert) : null;
+  const workflow = output ? asObject(output.workflow) : null;
+  const expertName = expert ? str(expert, "name") : null;
+  const workflowName = workflow ? str(workflow, "name") : null;
+  const running = row.state === "running";
+  let text: string;
+
+  if (row.tool === "delegate_to_expert" || row.tool === "handoff_to_expert") {
+    text = running
+      ? `${expertName ?? "A teammate"} working`
+      : `${expertName ?? "A teammate"} reported back`;
+  } else if (row.tool === "install_expert_workflow") {
+    text = running
+      ? "Installing a workflow"
+      : workflowName && expertName
+        ? `Installed ${workflowName} on ${expertName}`
+        : "Workflow installed";
+  } else if (row.tool === "report_delegated_result") {
+    text = running ? "Reporting progress to AutoPilot" : "Progress reported";
+  } else {
+    const labels = FOUNDER_ACTIVITY[row.category];
+    text = running ? labels[0] : labels[1];
+  }
+
+  if (row.state === "error") text = "This step needs attention";
+  return { ...row, text, detail: undefined, reasoningText: undefined };
+}
+
+export function founderCanOpenRow(row: ChainRow) {
+  return Boolean(
+    row.requiresAction || (row.tool && FOUNDER_OPEN_TOOLS.has(row.tool)),
+  );
+}
+
 const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   reasoning: "thought it through",
   bash: "ran commands",

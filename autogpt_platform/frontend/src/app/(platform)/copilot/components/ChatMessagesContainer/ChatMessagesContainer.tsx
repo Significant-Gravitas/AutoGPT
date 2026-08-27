@@ -480,7 +480,7 @@ export function ChatMessagesContainer({
         areFilesOpen={areFilesOpen}
         hasFloatingControls={hasFloatingControls}
       />
-      <ChatMinimap messages={messages} />
+      {!isFounderMode ? <ChatMinimap messages={messages} /> : null}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -581,7 +581,11 @@ export function ChatMessagesContainer({
             // tool calls can't split a chain. data-status surfaces via
             // ThinkingIndicator; data-compaction via CompactionCard.
             const renderableParts = message.parts.filter(
-              (p) => !isBookkeepingPart(p),
+              (part) =>
+                !isBookkeepingPart(part) &&
+                (!isFounderMode ||
+                  (part.type !== "reasoning" &&
+                    part.type !== "tool-context_compaction")),
             );
             // Only a message that is actively streaming can have a live
             // compaction phase — a stopped or failed turn must not leave an
@@ -676,7 +680,7 @@ export function ChatMessagesContainer({
                       ))}
                     </UserMessageClamp>
                   )}
-                  {isLastInTurn && !isCurrentlyStreaming && (
+                  {!isFounderMode && isLastInTurn && !isCurrentlyStreaming && (
                     <TurnStatsBar
                       turnMessages={getTurnMessages(messages, messageIndex)}
                       elapsedSeconds={
@@ -814,9 +818,11 @@ export function ChatMessagesContainer({
                 The assistant encountered an error. Please try sending your
                 message again.
               </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
+              {!isFounderMode ? (
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
+                  {error instanceof Error ? error.message : String(error)}
+                </pre>
+              ) : null}
             </details>
           )}
           <TailSpacer

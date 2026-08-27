@@ -21,7 +21,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
 from .get_sub_session_result import GetSubSessionResultTool
-from .models import ErrorResponse, SubSessionStatusResponse
+from .models import ErrorResponse, SubSessionStatusResponse, WorkspaceFileInfoData
 
 
 @pytest.fixture(autouse=True)
@@ -605,6 +605,40 @@ class TestDelegation:
         assert response.status == "incomplete"
         assert response.artifact_count == 0
         assert response.blockers
+
+    @pytest.mark.asyncio
+    async def test_promoted_file_has_a_safe_downloadable_uri(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        result = SessionResult()
+        result.response_text = "The launch plan is ready."
+        mock_turn.return_value = ("completed", result)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.list_sub_workspace_files",
+            AsyncMock(
+                return_value=[
+                    WorkspaceFileInfoData(
+                        file_id="file-1",
+                        name="launch-plan.md",
+                        path="/sessions/delegated-1/launch-plan.md",
+                        mime_type="text/markdown",
+                        size_bytes=1200,
+                    )
+                ]
+            ),
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="create the launch plan",
+            deliverable_mode="workspace_files",
+        )
+
+        assert response.status == "completed"
+        assert response.artifacts[0].uri == "workspace://file-1#text/markdown"
+        assert response.artifacts[0].read_path.startswith("/sessions/")
 
     @pytest.mark.asyncio
     async def test_file_deliverable_requires_workspace_promotion(

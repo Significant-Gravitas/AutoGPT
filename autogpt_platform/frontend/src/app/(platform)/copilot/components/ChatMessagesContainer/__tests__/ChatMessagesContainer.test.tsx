@@ -69,7 +69,20 @@ vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
 vi.mock("../components/ChainMessageParts", () => ({
-  ChainMessageParts: () => <div data-testid="chain-message-parts" />,
+  ChainMessageParts: ({
+    parts,
+    founderMode,
+  }: {
+    parts: Array<{ type: string }>;
+    founderMode?: boolean;
+  }) => (
+    <div
+      data-testid="chain-message-parts"
+      data-founder-mode={String(Boolean(founderMode))}
+    >
+      {parts.map((part) => part.type).join(",")}
+    </div>
+  ),
 }));
 
 vi.mock("../components/QueueBadge", () => ({
@@ -99,7 +112,7 @@ vi.mock("../../ToolChain/ToolChain", () => ({
   ToolChain: () => <div data-testid="tool-chain" />,
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
-  TurnStatsBar: () => null,
+  TurnStatsBar: () => <div data-testid="turn-stats">turn stats</div>,
 }));
 vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
@@ -164,6 +177,10 @@ const baseProps = {
   onRetry: vi.fn(),
 };
 
+beforeEach(() => {
+  getFlagMock.mockReturnValue(false);
+});
+
 describe("ChatMessagesContainer — assistant rendering", () => {
   const messages = [
     {
@@ -213,6 +230,54 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     rerender(<ChatMessagesContainer {...baseProps} messages={watcher} />);
 
     expect(screen.getByText("Lead Research needs attention")).toBeDefined();
+  });
+
+  it("hides reasoning, diagnostics, and raw errors for founders", () => {
+    getFlagMock.mockReturnValue(true);
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={
+          [
+            {
+              id: "assistant-private",
+              role: "assistant",
+              parts: [
+                {
+                  type: "reasoning",
+                  text: "private chain of thought",
+                  state: "done",
+                },
+                { type: "text", text: "Safe answer" },
+              ],
+            },
+          ] as any
+        }
+        error={new Error("raw SDK payload with session_id=secret")}
+        status="error"
+      />,
+    );
+
+    const chain = screen.getByTestId("chain-message-parts");
+    expect(chain.getAttribute("data-founder-mode")).toBe("true");
+    expect(chain.textContent).toBe("text");
+    expect(screen.queryByTestId("turn-stats")).toBeNull();
+    expect(screen.queryByText(/raw SDK payload/)).toBeNull();
+    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+  });
+
+  it("keeps the legacy diagnostics visible when the expert flag is off", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={messages}
+        error={new Error("legacy SDK detail")}
+        status="error"
+      />,
+    );
+
+    expect(screen.getByTestId("turn-stats")).toBeDefined();
+    expect(screen.getByText("legacy SDK detail")).toBeDefined();
   });
 
   it("shows the thinking indicator inside a submitted assistant turn", () => {

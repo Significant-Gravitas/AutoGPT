@@ -47,12 +47,14 @@ interface Props {
   todos: TodoItem[];
   isStreaming?: boolean;
   defaultExpanded?: boolean;
+  founderMode?: boolean;
 }
 
 export function TaskProgressBar({
   todos,
   isStreaming = false,
   defaultExpanded = false,
+  founderMode = false,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const reduceMotion = useReducedMotion();
@@ -87,7 +89,9 @@ export function TaskProgressBar({
                 variant="body-medium"
                 className="min-w-0 flex-1 truncate text-sm text-zinc-800"
               >
-                All tasks complete
+                {founderMode && isStreaming
+                  ? "Starting the next phase"
+                  : "All tasks complete"}
               </Text>
             </>
           ) : !expanded && current ? (

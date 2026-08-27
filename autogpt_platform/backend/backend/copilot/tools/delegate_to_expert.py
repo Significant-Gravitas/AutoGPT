@@ -665,7 +665,7 @@ async def _record_work_outcome(
         artifacts=[
             ExpertWorkArtifact(
                 name=artifact.name,
-                uri=artifact.read_path,
+                uri=artifact.uri,
                 mime_type=artifact.mime_type,
                 size_bytes=artifact.size_bytes,
             )

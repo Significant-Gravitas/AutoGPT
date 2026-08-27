@@ -32,6 +32,8 @@ export default function TeamPage() {
     ungroupedExperts,
     schedules,
     schedulesForExpert,
+    statusForExpert,
+    workItemsForExpert,
     isLoading,
     isError,
     refetch,
@@ -72,6 +74,8 @@ export default function TeamPage() {
         key={expert.id}
         expert={expert}
         schedules={schedulesForExpert(expert)}
+        status={statusForExpert(expert)}
+        workItems={workItemsForExpert(expert)}
         pods={pods}
         currentPod={podForExpert(expert)}
         onInstallWorkflow={installWorkflow}

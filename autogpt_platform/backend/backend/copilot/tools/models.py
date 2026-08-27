@@ -491,6 +491,7 @@ class DelegatedCriterionState(BaseModel):
 class DelegatedArtifact(BaseModel):
     name: str
     read_path: str
+    uri: str
     mime_type: str
     size_bytes: int
 

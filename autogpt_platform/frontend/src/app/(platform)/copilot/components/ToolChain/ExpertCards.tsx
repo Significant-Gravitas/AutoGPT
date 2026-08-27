@@ -27,6 +27,7 @@ export const EXPERT_CHANGE_TOOLS = new Set([
 interface Props {
   output: Record<string, unknown>;
   applied?: boolean;
+  founderMode?: boolean;
 }
 
 const APPLIED_LABELS: Record<string, string> = {
@@ -43,9 +44,10 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
   );
 }
 
-export function ExpertChangeCard({ output }: Props) {
+export function ExpertChangeCard({ output, founderMode = false }: Props) {
   const results = asItems(output.results);
-  if (!results) return <ExpertSingleCard output={output} />;
+  if (!results)
+    return <ExpertSingleCard output={output} founderMode={founderMode} />;
   return (
     <div className="flex flex-col gap-1.5">
       {results.map((result) =>
@@ -54,6 +56,7 @@ export function ExpertChangeCard({ output }: Props) {
             key={expertResultKey(result)}
             output={result}
             applied
+            founderMode={founderMode}
           />
         ) : (
           <ExpertBatchNotice key={expertResultKey(result)} result={result} />
@@ -111,7 +114,11 @@ function ExpertBatchNotice({ result }: { result: Record<string, unknown> }) {
  *  user's OK (given in chat, nothing created yet) or the teammate
  *  ``confirm_expert_change`` actually created. Once they exist, the card
  *  offers the two things the user does next: adjust them or talk to them. */
-function ExpertSingleCard({ output, applied: forcedApplied }: Props) {
+function ExpertSingleCard({
+  output,
+  applied: forcedApplied,
+  founderMode = false,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
   const appliedConfirmationIDs = useContext(ExpertConfirmationContext);
   const detailsID = useId();
@@ -195,7 +202,7 @@ function ExpertSingleCard({ output, applied: forcedApplied }: Props) {
               Stops at: {boundaries}
             </p>
           )}
-          {budget !== null && (
+          {!founderMode && budget !== null && (
             <p className="pl-9 text-sm text-zinc-600">
               Weekly budget: {budget} credits
             </p>

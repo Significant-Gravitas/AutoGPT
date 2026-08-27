@@ -10,7 +10,7 @@ export function useTeamPreviewCard(
   appliedConfirmationIDs: ReadonlySet<string>,
 ) {
   const actions = useContext(CopilotChatActionsContext);
-  const [removedIds, setRemovedIds] = useState<readonly string[]>([]);
+  const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const confirmed = proposals.filter((proposal) =>
     appliedConfirmationIDs.has(proposal.confirmationId),
@@ -19,14 +19,14 @@ export function useTeamPreviewCard(
     (proposal) => !appliedConfirmationIDs.has(proposal.confirmationId),
   );
   const kept = pending.filter(
-    (proposal) => !removedIds.includes(proposal.confirmationId),
+    (proposal) => !removedIds.has(proposal.confirmationId),
   );
 
   function toggleRemoved(confirmationId: string) {
     setRemovedIds((previous) =>
-      previous.includes(confirmationId)
-        ? previous.filter((id) => id !== confirmationId)
-        : [...previous, confirmationId],
+      previous.has(confirmationId)
+        ? new Set([...previous].filter((id) => id !== confirmationId))
+        : new Set(previous).add(confirmationId),
     );
   }
 

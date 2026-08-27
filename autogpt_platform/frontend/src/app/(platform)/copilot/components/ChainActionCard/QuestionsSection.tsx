@@ -111,7 +111,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                 aria-current={i === current ? "step" : undefined}
                 onClick={() => setStep(i)}
                 className={
-                  "rounded-full transition-all duration-300 " +
+                  "rounded-full transition-[width,height,border-color,background-color] duration-300 " +
                   (i === current
                     ? "size-2.5 border-2 border-zinc-800"
                     : i < current
@@ -121,15 +121,6 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
               />
             ))}
           </span>
-          <button
-            type="button"
-            aria-label="Next question"
-            disabled={isLast}
-            onClick={() => setStep(current + 1)}
-            className="flex size-6 items-center justify-center rounded-lg text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-35"
-          >
-            <Icon icon={ArrowRight01Icon} size={14} />
-          </button>
         </span>
 
         <button
@@ -138,7 +129,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           disabled={!actionEnabled}
           onClick={handleAction}
           className={
-            "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
+            "flex size-8 items-center justify-center rounded-full transition-[transform,background-color,color] duration-200 enabled:active:scale-95 " +
             (actionEnabled
               ? "bg-zinc-800 text-white hover:bg-zinc-900"
               : "bg-zinc-100 text-zinc-400")

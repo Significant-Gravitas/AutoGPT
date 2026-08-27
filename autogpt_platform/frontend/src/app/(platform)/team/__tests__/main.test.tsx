@@ -25,6 +25,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -105,6 +106,36 @@ const localOnlyAgent = makeLibraryAgent({
   store_listing_version_id: null,
 });
 
+const emptyHomeDashboard: HomeDashboardResponse = {
+  generated_at: new Date("2026-08-28T00:00:00Z"),
+  timezone: "UTC",
+  attention: [],
+  briefing: {
+    generated_at: new Date("2026-08-28T00:00:00Z"),
+    window_started_at: new Date("2026-08-27T00:00:00Z"),
+    completed_count: 0,
+    failed_count: 0,
+    routine_count: 0,
+    outcomes: [],
+  },
+  active_tasks: [],
+  work_items: [],
+  upcoming_tasks: [],
+  team: { total: 0, ready: 0, working: 0, needs_attention: 0 },
+  agents: [],
+  week: {
+    run_count: 0,
+    completed_count: 0,
+    review_count: 0,
+    failed_count: 0,
+    total_runtime_seconds: 0,
+    timed_run_count: 0,
+    total_cost_cents: 0,
+    credits_balance: 0,
+    daily: [],
+  },
+};
+
 function makeSchedule(
   over: Partial<GraphExecutionJobInfo> = {},
 ): GraphExecutionJobInfo {
@@ -127,6 +158,9 @@ beforeEach(() => {
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
     getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+      HttpResponse.json(emptyHomeDashboard),
+    ),
   );
 });
 
@@ -240,7 +274,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const autopilot = await screen.findByText("Autopilot");
-    expect(screen.getByText(/runs the shop/i)).toBeDefined();
+    expect(screen.getByText(/runs the team/i)).toBeDefined();
 
     const maria = await screen.findByText("Maria");
     expect(
@@ -285,6 +319,60 @@ describe("TeamPage", () => {
     const card = screen.getByRole("link", { name: "View Maria" });
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
+  });
+
+  test("shows live delegated work and links to its exact history row", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+        HttpResponse.json({
+          ...emptyHomeDashboard,
+          team: { total: 1, ready: 0, working: 1, needs_attention: 0 },
+          agents: [
+            {
+              expert: {
+                id: hiredMaria.id,
+                name: hiredMaria.name,
+                role: hiredMaria.role,
+                avatar_url: hiredMaria.avatar_url,
+              },
+              status: "working",
+              detail: "Preparing the launch plan",
+            },
+          ],
+          work_items: [
+            {
+              id: "work-1",
+              title: "Prepare the launch plan",
+              expected_deliverable: "A launch plan",
+              status: "running",
+              expert: {
+                id: hiredMaria.id,
+                name: hiredMaria.name,
+                role: hiredMaria.role,
+                avatar_url: hiredMaria.avatar_url,
+              },
+              progress: 40,
+              confidence: "unknown",
+              artifacts: [],
+              updated_at: new Date("2026-08-28T00:00:00Z"),
+              link: "/team/expert-maria?workItemId=work-1#work-item-work-1",
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<TeamPage />);
+
+    expect(await screen.findByText("Working")).toBeDefined();
+    expect(screen.getByText("Working now")).toBeDefined();
+    const workLink = screen.getByRole("link", {
+      name: /Working now Prepare the launch plan/,
+    });
+    expect(workLink.getAttribute("href")).toBe(
+      "/team/expert-maria?workItemId=work-1#work-item-work-1",
+    );
   });
 
   test("links the card content to the expert page", async () => {
@@ -348,7 +436,7 @@ describe("TeamPage", () => {
     expect(screen.getByText(/1 needs setup/)).toBeDefined();
   });
 
-  test("shows weekly spend as a progress bar on the expert card", async () => {
+  test("does not expose weekly budget or spend on the expert card", async () => {
     const budgetMaria: Expert = {
       ...hiredMaria,
       weekly_budget: 5000,
@@ -359,8 +447,8 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText("Spend this week")).toBeDefined();
-    expect(screen.getByText("$12 / $50")).toBeDefined();
+    expect(screen.queryByText("Spend this week")).toBeNull();
+    expect(screen.queryByText("$12 / $50")).toBeNull();
   });
 
   test("paused expert offers one-click resume", async () => {

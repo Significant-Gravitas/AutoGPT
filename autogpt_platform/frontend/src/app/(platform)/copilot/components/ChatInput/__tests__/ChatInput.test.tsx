@@ -87,9 +87,16 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
 }));
 
 let mockFlagValue = false;
+let mockFounderFlagValue = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { CHAT_MODE_OPTION: "CHAT_MODE_OPTION" },
-  useGetFlag: () => mockFlagValue,
+  Flag: {
+    CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
+    CHAT_WORKSPACE_FILES: "CHAT_WORKSPACE_FILES",
+    HIRE_EXPERTS: "HIRE_EXPERTS",
+    ONBOARDING_BRAIN_DUMP: "ONBOARDING_BRAIN_DUMP",
+  },
+  useGetFlag: (flag: string) =>
+    flag === "HIRE_EXPERTS" ? mockFounderFlagValue : mockFlagValue,
 }));
 
 // Off by default so the rest of the suite sees the production-build behaviour.
@@ -261,6 +268,7 @@ afterEach(() => {
   mockCopilotLlmModel = "standard";
   mockCopilotLlmAuthProvider = "platform";
   mockFlagValue = false;
+  mockFounderFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
 });
@@ -293,6 +301,14 @@ describe("ChatInput token devtool badge", () => {
   it("stays hidden before a session exists", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
+
+    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+  });
+
+  it("stays hidden for founders even when the devtool gate is on", () => {
+    mockFounderFlagValue = true;
+    mockTokenDevtoolEnabled = true;
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
     expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
   });

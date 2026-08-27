@@ -194,7 +194,11 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  founderMode: boolean,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -212,6 +216,7 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         (input ? str(input, "username_agent_slug", "agent_name") : null);
       if (output && name && str(output, "execution_id")) {
         const graphID = str(output, "graph_id");
+        const libraryAgentID = str(output, "library_agent_id");
         const executionID = str(output, "execution_id");
         return (
           <ExecutionCard
@@ -219,9 +224,11 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
             status={str(output, "status") ?? undefined}
             href={
               str(output, "library_agent_link") ??
-              (graphID && executionID
-                ? `/library/agents/${graphID}?activeTab=runs&activeItem=${executionID}`
-                : undefined)
+              (founderMode && libraryAgentID && executionID
+                ? `/library/agents/${libraryAgentID}?activeTab=runs&activeItem=${executionID}`
+                : graphID && executionID
+                  ? `/library/agents/${graphID}?activeTab=runs&activeItem=${executionID}`
+                  : undefined)
             }
           />
         );
@@ -268,7 +275,9 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         row.tool === "handoff_to_expert" ||
         !!(output && asObject(output.expert));
       if (output && str(output, "status"))
-        return <SubSessionCard output={output} minimal={delegated} />;
+        return (
+          <SubSessionCard output={output} minimal={founderMode || delegated} />
+        );
       // A blocking delegate has no output while the teammate works — show
       // who's on it and what they were asked from the tool input instead.
       // Not for result polls: the delegation card above is already showing
@@ -282,12 +291,19 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     case "raise_expert":
       if (row.groupedProposal) return null;
       if (row.teamProposals)
-        return <TeamPreviewCard proposals={row.teamProposals} />;
-      if (output) return <ExpertChangeCard output={output} />;
+        return (
+          <TeamPreviewCard
+            proposals={row.teamProposals}
+            founderMode={founderMode}
+          />
+        );
+      if (output)
+        return <ExpertChangeCard output={output} founderMode={founderMode} />;
       return row.state === "running" ? <ExpertChangeCardSkeleton /> : null;
     case "update_expert":
     case "confirm_expert_change":
-      if (output) return <ExpertChangeCard output={output} />;
+      if (output)
+        return <ExpertChangeCard output={output} founderMode={founderMode} />;
       // The expert is still being written — hold the card's shape so the
       // real one swaps in without the row jumping.
       return row.state === "running" ? <ExpertChangeCardSkeleton /> : null;
@@ -414,9 +430,10 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
 
 interface Props {
   row: ChainRow;
+  founderMode?: boolean;
 }
 
-export function ToolResult({ row }: Props) {
+export function ToolResult({ row, founderMode = false }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
 
@@ -445,8 +462,9 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, founderMode);
   if (card) return card;
+  if (founderMode) return null;
 
   if (!output) return <KeyValueList value={row.output} />;
 

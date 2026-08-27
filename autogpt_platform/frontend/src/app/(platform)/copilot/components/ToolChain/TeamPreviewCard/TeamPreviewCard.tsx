@@ -9,9 +9,10 @@ import { useTeamPreviewCard } from "./useTeamPreviewCard";
 
 interface Props {
   proposals: TeamProposal[];
+  founderMode?: boolean;
 }
 
-export function TeamPreviewCard({ proposals }: Props) {
+export function TeamPreviewCard({ proposals, founderMode = false }: Props) {
   const appliedConfirmationIDs = useContext(ExpertConfirmationContext);
   const {
     canConfirm,
@@ -47,8 +48,9 @@ export function TeamPreviewCard({ proposals }: Props) {
             key={proposal.confirmationId}
             proposal={proposal}
             confirmed={appliedConfirmationIDs.has(proposal.confirmationId)}
-            removed={removedIds.includes(proposal.confirmationId)}
+            removed={removedIds.has(proposal.confirmationId)}
             open={openId === proposal.confirmationId}
+            founderMode={founderMode}
             onToggleRemoved={() => toggleRemoved(proposal.confirmationId)}
             onToggleOpen={() => toggleOpen(proposal.confirmationId)}
           />

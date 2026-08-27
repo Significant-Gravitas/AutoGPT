@@ -34,6 +34,7 @@ import {
   type ChainRow,
   getChainHeading,
   groupTeamProposalRows,
+  toFounderRow,
   isLiftedSetupRow,
   markSupersededSubSessionRows,
   toChainRow,
@@ -111,6 +112,8 @@ export function ToolChain({
     const mapped = markSupersededSubSessionRows(
       parts
         .map((part, i) => toChainRow(part, i))
+        .filter((row): row is ChainRow => row !== null)
+        .map((row) => (founderMode ? toFounderRow(row) : row))
         .filter((row): row is ChainRow => row !== null)
         // Unanswered clarifying questions and setup cards render their work
         // in the card below the chain — their rows are lifted out of view.
@@ -301,6 +304,7 @@ export function ToolChain({
                             <ChainRowView
                               row={row}
                               isLast={i === visible.length - 1 && !showDone}
+                              founderMode={founderMode}
                             />
                           </ChainActionsContext.Provider>
                         </m.div>
@@ -334,7 +338,7 @@ export function ToolChain({
           <div className="hidden">
             <ChainActionsContext.Provider value={chainActions}>
               {liftedRows.map((row) => (
-                <ToolResult key={row.key} row={row} />
+                <ToolResult key={row.key} row={row} founderMode={founderMode} />
               ))}
             </ChainActionsContext.Provider>
           </div>

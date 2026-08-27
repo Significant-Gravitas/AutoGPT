@@ -3,9 +3,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.api.features.experts.models import ExpertWorkItem
+from backend.api.features.experts.models import ExpertWorkArtifact, ExpertWorkItem
 
-from .models import DelegatedWorkReportedResponse, ErrorResponse
+from .models import (
+    DelegatedWorkReportedResponse,
+    ErrorResponse,
+    WorkspaceFileInfoData,
+)
 from .report_delegated_result import ReportDelegatedResultTool
 
 NOW = datetime(2026, 8, 27, tzinfo=timezone.utc)
@@ -155,6 +159,49 @@ async def test_required_files_without_workspace_artifact_become_partial(
     assert isinstance(response, DelegatedWorkReportedResponse)
     assert report.await_args.kwargs["status"] == "partial"
     assert "not promoted" in report.await_args.kwargs["blocker"]
+
+
+@pytest.mark.asyncio
+async def test_promoted_files_are_persisted_as_workspace_uris(dependencies):
+    item, _, get_item, report, _, queue = dependencies
+    file_item = _item(deliverable_mode="workspace_files")
+    artifact = ExpertWorkArtifact(
+        name="launch-plan.md",
+        uri="workspace://file-1#text/markdown",
+        mime_type="text/markdown",
+        size_bytes=1200,
+    )
+    get_item.return_value = file_item
+    report.return_value = (
+        file_item.model_copy(update={"status": "delivered", "artifacts": [artifact]}),
+        True,
+    )
+    files = AsyncMock(
+        return_value=[
+            WorkspaceFileInfoData(
+                file_id="file-1",
+                name="launch-plan.md",
+                path="/sessions/delegated-1/launch-plan.md",
+                mime_type="text/markdown",
+                size_bytes=1200,
+            )
+        ]
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "backend.copilot.tools.report_delegated_result.list_sub_workspace_files",
+            files,
+        )
+        await ReportDelegatedResultTool()._execute(
+            "user-1",
+            _session(),
+            work_item_id="work-1",
+            status="delivered",
+            summary="Files are ready",
+        )
+
+    assert report.await_args.kwargs["artifacts"] == [artifact]
+    assert "workspace://file-1#text/markdown" in queue.await_args.kwargs["message"]
 
 
 @pytest.mark.asyncio

@@ -88,6 +88,19 @@ describe("TaskProgressBar", () => {
     expect(screen.getByText("2/2")).toBeDefined();
   });
 
+  it("announces a new phase instead of stale completion while founders stream", () => {
+    render(
+      <TaskProgressBar
+        founderMode
+        isStreaming
+        todos={[todo("Step 1", "completed"), todo("Step 2", "completed")]}
+      />,
+    );
+
+    expect(screen.getByText("Starting the next phase")).toBeDefined();
+    expect(screen.queryByText("All tasks complete")).toBeNull();
+  });
+
   it("expands to reveal every task row when the header is clicked", () => {
     render(
       <TaskProgressBar

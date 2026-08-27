@@ -22,13 +22,16 @@ interface Props {
 
 export function MorningBriefing({ dashboard, className }: Props) {
   const { briefing } = dashboard;
+  const deliveredOutcomes = briefing.outcomes.filter(
+    (outcome) => outcome.status === "completed",
+  );
   const {
     filterOptions,
     hasFilters,
     selectedFilter,
     selectFilter,
     visibleOutcomes,
-  } = useMorningBriefing({ outcomes: briefing.outcomes });
+  } = useMorningBriefing({ outcomes: deliveredOutcomes });
 
   return (
     <HomeTile
@@ -45,17 +48,12 @@ export function MorningBriefing({ dashboard, className }: Props) {
               aria-hidden="true"
             />
             <Text variant="h5" className="text-zinc-950">
-              Your briefing
+              Delivered
             </Text>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-3 text-xs font-medium tabular-nums text-zinc-500">
-              <span>{briefing.completed_count} completed</span>
-              {briefing.failed_count > 0 ? (
-                <span className="text-rose-700">
-                  {briefing.failed_count} failed
-                </span>
-              ) : null}
+              <span>{briefing.completed_count} delivered</span>
             </div>
             {hasFilters ? (
               <HomeTileFilter
@@ -70,7 +68,7 @@ export function MorningBriefing({ dashboard, className }: Props) {
       }
       header={
         <Text variant="large" className="text-zinc-600">
-          The outcomes worth knowing since{" "}
+          Finished work and evidence worth reviewing since{" "}
           {formatBriefingWindowStart(
             briefing.window_started_at,
             dashboard.timezone,
@@ -85,11 +83,11 @@ export function MorningBriefing({ dashboard, className }: Props) {
         </Text>
       ) : null}
 
-      {briefing.outcomes.length === 0 ? (
+      {deliveredOutcomes.length === 0 ? (
         <HomeTileEmpty
           icon={InboxIcon}
-          title="No new outcomes yet"
-          description="Completed work and useful exceptions will appear here."
+          title="Nothing delivered yet"
+          description="Verified outcomes and accessible deliverables will appear here."
         />
       ) : (
         <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
