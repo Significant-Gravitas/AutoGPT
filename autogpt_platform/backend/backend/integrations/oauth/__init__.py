@@ -9,6 +9,7 @@ from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .microsoft_365_copilot import Microsoft365CopilotOAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
@@ -23,6 +24,7 @@ _ORIGINAL_HANDLERS = [
     DiscordOAuthHandler,
     GitHubOAuthHandler,
     GoogleOAuthHandler,
+    Microsoft365CopilotOAuthHandler,
     NotionOAuthHandler,
     RedditOAuthHandler,
     TwitterOAuthHandler,
