@@ -11,6 +11,8 @@ from .client import (
     derive_group_id,
     derive_memory_group_id,
     derive_memory_scope_key,
+    derive_org_group_id,
+    derive_team_group_id,
     evict_client,
     make_flex_graphiti_client,
 )
@@ -105,6 +107,50 @@ class TestDeriveMemoryGroupId:
         assert derive_memory_scope_key("user-1", "expert-1") == derive_memory_group_id(
             "user-1", "expert-1"
         )
+
+
+class TestDeriveTeamGroupId:
+    """Team-tier derivation shares the personal sanitization contract but
+    carries a distinct ``team_`` prefix so team and personal namespaces
+    can never collide."""
+
+    def test_prefixes_with_team(self) -> None:
+        assert derive_team_group_id("team123") == "team_team123"
+
+    def test_uuid_passthrough(self) -> None:
+        tid = "883cc9da-fe37-4863-839b-acba022bf3ef"
+        assert derive_team_group_id(tid) == f"team_{tid}"
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            derive_team_group_id("")
+
+    def test_invalid_chars_raise(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_team_group_id("team.evil")
+
+    def test_distinct_namespace_from_personal(self) -> None:
+        # Same raw id → different group_ids across tiers (no collision).
+        raw = "collide"
+        assert derive_team_group_id(raw) != derive_group_id(raw)
+        assert derive_team_group_id(raw) != derive_org_group_id(raw)
+
+
+class TestDeriveOrgGroupId:
+    def test_prefixes_with_org(self) -> None:
+        assert derive_org_group_id("org123") == "org_org123"
+
+    def test_uuid_passthrough(self) -> None:
+        oid = "883cc9da-fe37-4863-839b-acba022bf3ef"
+        assert derive_org_group_id(oid) == f"org_{oid}"
+
+    def test_empty_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            derive_org_group_id("")
+
+    def test_all_invalid_chars_raise(self) -> None:
+        with pytest.raises(ValueError, match="empty group_id after sanitization"):
+            derive_org_group_id("!!!")
 
 
 class TestEvictClient:
@@ -232,9 +278,9 @@ class TestMakeFlexGraphitiClient:
 
         # The regular (non-flex) client was constructed.
         assert regular_sentinel.called, "expected fallback to regular OpenAIClient"
-        assert (
-            not flex_sentinel.called
-        ), "flex client must not be constructed under local transport"
+        assert not flex_sentinel.called, (
+            "flex client must not be constructed under local transport"
+        )
         # And the constructed instance was passed into _build_graphiti.
         assert captured["llm_client"] is regular_sentinel.return_value
 
