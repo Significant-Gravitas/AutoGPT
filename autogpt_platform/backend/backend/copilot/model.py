@@ -139,6 +139,7 @@ class ChatSessionMetadata(BaseModel):
     # accepts a cross-expert sub only when it names the caller here.
     delegated_by_expert_id: str | None = None
     delegated_by_session_id: str | None = None
+    delegated_deliverable_mode: Literal["message", "workspace_files"] = "message"
 
     # Set by ``handoff_to_expert`` alongside the delegation fields: a handoff
     # transfers ownership rather than borrowing a teammate, so the receiving
@@ -483,6 +484,7 @@ class ChatSession(ChatSessionInfo):
         expert_id: str | None = None,
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
+        delegated_deliverable_mode: Literal["message", "workspace_files"] = "message",
         handed_off_from_expert_id: str | None = None,
     ) -> Self:
         return cls(
@@ -503,6 +505,7 @@ class ChatSession(ChatSessionInfo):
                 llm_credential_id=llm_credential_id,
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
+                delegated_deliverable_mode=delegated_deliverable_mode,
                 handed_off_from_expert_id=handed_off_from_expert_id,
             ),
             organization_id=organization_id,
@@ -1301,6 +1304,7 @@ async def create_chat_session(
     expert_id: str | None = None,
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
+    delegated_deliverable_mode: Literal["message", "workspace_files"] = "message",
     handed_off_from_expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
@@ -1324,6 +1328,8 @@ async def create_chat_session(
             (None = plain AutoPilot). Provenance only.
         delegated_by_session_id: Session that delegated this session's work.
             Doubles as the poll capability for cross-expert delegation.
+        delegated_deliverable_mode: Whether the delegated result is complete
+            as a message or must include persistent workspace files.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
 
@@ -1351,6 +1357,7 @@ async def create_chat_session(
         expert_id=expert_id,
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
+        delegated_deliverable_mode=delegated_deliverable_mode,
         handed_off_from_expert_id=handed_off_from_expert_id,
     )
 

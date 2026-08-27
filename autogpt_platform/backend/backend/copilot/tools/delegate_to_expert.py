@@ -44,6 +44,7 @@ from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegated_results import DeliverableMode, delegated_response_from_outcome
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
@@ -51,12 +52,7 @@ from .expert_delegation import (
     unknown_target_message,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
-from .run_sub_session import (
-    MAX_SUB_SESSION_WAIT_SECONDS,
-    apply_delegated_expert,
-    list_sub_workspace_files,
-    response_from_outcome,
-)
+from .run_sub_session import MAX_SUB_SESSION_WAIT_SECONDS, list_sub_workspace_files
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +122,15 @@ class DelegateToExpertTool(BaseTool):
                     ),
                     "default": 60,
                 },
+                "deliverable_mode": {
+                    "type": "string",
+                    "enum": ["message", "workspace_files"],
+                    "description": (
+                        "Use workspace_files when completion requires one or "
+                        "more persistent files; otherwise use message."
+                    ),
+                    "default": "message",
+                },
             },
             "required": ["expert_id", "prompt"],
         }
@@ -140,6 +145,7 @@ class DelegateToExpertTool(BaseTool):
         system_context: str = "",
         delegated_session_id: str = "",
         wait_for_result: int = 60,
+        deliverable_mode: DeliverableMode = "message",
         **kwargs,
     ) -> ToolResponseBase:
         target_id = expert_id.strip()
@@ -149,6 +155,8 @@ class DelegateToExpertTool(BaseTool):
             return self._error("prompt is required", session)
         if user_id is None:
             return self._error("Authentication required", session)
+        if deliverable_mode not in ("message", "workspace_files"):
+            return self._error("deliverable_mode is invalid", session)
         if target_id == session.expert_id:
             return self._error(
                 "You are that expert — do the work yourself, or use "
@@ -177,6 +185,7 @@ class DelegateToExpertTool(BaseTool):
             session=session,
             target=target,
             delegated_session_id=delegated_session_id.strip(),
+            deliverable_mode=deliverable_mode,
         )
         if isinstance(inner_session_id, ErrorResponse):
             return inner_session_id
@@ -186,7 +195,12 @@ class DelegateToExpertTool(BaseTool):
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
-            message=_handoff_message(caller, system_context, prompt),
+            message=_handoff_message(
+                caller,
+                system_context,
+                prompt,
+                deliverable_mode=deliverable_mode,
+            ),
             timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
             permissions=get_current_permissions(),
             tool_call_id=(
@@ -200,17 +214,15 @@ class DelegateToExpertTool(BaseTool):
             if outcome == "completed"
             else None
         )
-        return apply_delegated_expert(
-            response_from_outcome(
-                outcome=outcome,
-                result=result,
-                inner_session_id=inner_session_id,
-                parent_session_id=session.session_id,
-                elapsed=elapsed,
-                workspace_files=workspace_files,
-                actor=target.name,
-            ),
-            DelegatedExpertInfo(
+        return delegated_response_from_outcome(
+            outcome=outcome,
+            result=result,
+            inner_session_id=inner_session_id,
+            parent_session_id=session.session_id,
+            elapsed=elapsed,
+            workspace_files=workspace_files,
+            deliverable_mode=deliverable_mode,
+            expert=DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,
                 role=target.role,
@@ -253,6 +265,7 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
+        deliverable_mode: DeliverableMode,
     ) -> str | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
@@ -269,6 +282,7 @@ class DelegateToExpertTool(BaseTool):
                 expert_id=target.id,
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
+                delegated_deliverable_mode=deliverable_mode,
                 origin=child_session_origin(session.metadata),
             )
             return new_session.session_id
@@ -298,6 +312,12 @@ class DelegateToExpertTool(BaseTool):
                 "empty to open a fresh one.",
                 session,
             )
+        if prior.metadata.delegated_deliverable_mode != deliverable_mode:
+            return self._error(
+                "That delegation thread uses a different deliverable mode. "
+                "Leave delegated_session_id empty to start a fresh task.",
+                session,
+            )
         return delegated_session_id
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
@@ -314,7 +334,13 @@ class DelegateToExpertTool(BaseTool):
         return caller.name if caller else "a teammate"
 
 
-def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
+def _handoff_message(
+    caller: str,
+    system_context: str,
+    prompt: str,
+    *,
+    deliverable_mode: DeliverableMode,
+) -> str:
     """Frame the task so the teammate knows a colleague — not the user — asked.
 
     Without this the delegated prompt reads as the user speaking, and the
@@ -330,4 +356,11 @@ def _handoff_message(caller: str, system_context: str, prompt: str) -> str:
     )
     if system_context.strip():
         preamble += f"\n\n[Context: {system_context.strip()}]"
+    if deliverable_mode == "workspace_files":
+        preamble += (
+            "\n\n[Persistent files are required. Before reporting completion, "
+            "promote every promised output with "
+            "write_workspace_file(source_path=...). Local sandbox paths are "
+            "not deliverables.]"
+        )
     return f"{preamble}\n\n{prompt}"

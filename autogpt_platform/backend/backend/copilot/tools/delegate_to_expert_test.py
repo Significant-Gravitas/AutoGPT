@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
@@ -109,6 +110,9 @@ def mock_sessions(monkeypatch):
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
+        sess.metadata.delegated_deliverable_mode = kwargs.get(
+            "delegated_deliverable_mode", "message"
+        )
         # Without this the MagicMock answers any origin assertion truthily, so
         # a test for origin propagation would pass with the kwarg dropped.
         sess.metadata.origin = kwargs.get("origin")
@@ -364,6 +368,85 @@ class TestValidation:
 
 class TestDelegation:
     @pytest.mark.asyncio
+    async def test_completed_result_is_bounded_and_omits_tool_transcript(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        result = SessionResult()
+        result.response_text = "x" * 50_000
+        result.tool_calls = [
+            ToolCallEntry(
+                tool_call_id=f"tc-{index}",
+                tool_name="web_search",
+                input={"query": "q" * 2_000},
+                output="raw search payload" * 2_000,
+                success=True,
+            )
+            for index in range(100)
+        ]
+        mock_turn.return_value = ("completed", result)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.list_sub_workspace_files",
+            AsyncMock(return_value=[]),
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="research the market",
+        )
+
+        assert type(response).__name__ == "DelegatedExpertStatusResponse"
+        assert response.tool_calls is None
+        assert response.response is None
+        assert response.summary is not None
+        assert len(response.summary) <= 12_000
+        assert response.tool_call_count == 100
+        packet = response.model_dump_json(exclude_none=True).encode("utf-8")
+        assert len(packet) < 16 * 1024
+
+    @pytest.mark.asyncio
+    async def test_file_deliverable_without_workspace_artifacts_is_incomplete(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        result = SessionResult()
+        result.response_text = "The scaffold is in my local sandbox."
+        mock_turn.return_value = ("completed", result)
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.list_sub_workspace_files",
+            AsyncMock(return_value=[]),
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="create the starter app",
+            deliverable_mode="workspace_files",
+        )
+
+        assert type(response).__name__ == "DelegatedExpertStatusResponse"
+        assert response.status == "incomplete"
+        assert response.artifact_count == 0
+        assert response.blockers
+
+    @pytest.mark.asyncio
+    async def test_file_deliverable_requires_workspace_promotion(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="create the starter app",
+            deliverable_mode="workspace_files",
+            wait_for_result=0,
+        )
+
+        message = mock_turn.await_args.kwargs["message"]
+        assert "write_workspace_file(source_path=...)" in message
+
+    @pytest.mark.asyncio
     async def test_sub_runs_in_target_scope_with_provenance(
         self, roster, mock_turn, mock_sessions
     ):
@@ -525,6 +608,54 @@ class TestHandoffReentry:
 
 
 class TestPollScope:
+    @pytest.mark.asyncio
+    async def test_completed_poll_uses_the_bounded_delegated_contract(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        parent = _session(session_id="s1", expert_id="expert-a")
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=parent,
+            expert_id="expert-b",
+            prompt="research",
+            wait_for_result=0,
+        )
+        completed = SessionResult()
+        completed.response_text = "done"
+        completed.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="web_search",
+                input={},
+                output="raw payload",
+                success=True,
+            )
+        ]
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            AsyncMock(return_value=None),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
+            AsyncMock(return_value=("completed", completed)),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
+            AsyncMock(return_value=[]),
+        )
+
+        response = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=parent,
+            sub_session_id="inner-1",
+            wait_if_running=1,
+        )
+
+        assert type(response).__name__ == "DelegatedExpertStatusResponse"
+        assert response.summary == "done"
+        assert response.tool_call_count == 1
+        assert response.tool_calls is None
+
     @pytest.mark.asyncio
     async def test_delegator_can_poll_across_expert_scope(
         self, roster, mock_turn, mock_sessions, monkeypatch

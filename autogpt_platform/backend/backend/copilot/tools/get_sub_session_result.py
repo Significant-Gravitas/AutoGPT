@@ -20,7 +20,7 @@ re-verified on every call by loading the ChatSession and comparing its
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
@@ -34,6 +34,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
+from .delegated_results import delegated_response_from_outcome
 from .models import (
     DelegatedExpertInfo,
     ErrorResponse,
@@ -247,6 +248,17 @@ class GetSubSessionResultTool(BaseTool):
             if outcome == "completed"
             else None
         )
+        if delegate is not None:
+            return delegated_response_from_outcome(
+                outcome=outcome,
+                result=result,
+                inner_session_id=inner_session_id,
+                parent_session_id=session.session_id,
+                elapsed=elapsed,
+                workspace_files=workspace_files,
+                deliverable_mode=_delegated_deliverable_mode(sub),
+                expert=delegate,
+            )
         return apply_delegated_expert(
             response_from_outcome(
                 outcome=outcome,
@@ -258,6 +270,13 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+def _delegated_deliverable_mode(
+    sub: ChatSession,
+) -> Literal["message", "workspace_files"]:
+    mode = sub.metadata.delegated_deliverable_mode
+    return mode if mode in ("message", "workspace_files") else "message"
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:

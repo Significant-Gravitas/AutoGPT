@@ -392,7 +392,13 @@ class SubSessionStatusResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
     status: Literal[
-        "running", "completed", "cancelled", "error", "queued", "transferred"
+        "running",
+        "completed",
+        "incomplete",
+        "cancelled",
+        "error",
+        "queued",
+        "transferred",
     ] = Field(
         description=(
             "Current state of the sub-AutoPilot run.  ``queued`` means the "
@@ -467,6 +473,31 @@ class SubSessionStatusResponse(ToolResponseBase):
             "and the sub is still running."
         ),
     )
+
+
+class DelegatedCriterionState(BaseModel):
+    criterion: str
+    status: Literal["met", "unmet", "unknown"]
+    evidence: str | None = None
+
+
+class DelegatedArtifact(BaseModel):
+    name: str
+    read_path: str
+    mime_type: str
+    size_bytes: int
+
+
+class DelegatedExpertStatusResponse(SubSessionStatusResponse):
+    """Compact result contract returned only for cross-expert delegation."""
+
+    deliverable_mode: Literal["message", "workspace_files"]
+    summary: str | None = None
+    criteria: list[DelegatedCriterionState] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    artifacts: list[DelegatedArtifact] = Field(default_factory=list)
+    artifact_count: int = 0
+    tool_call_count: int = 0
 
 
 class InputValidationErrorResponse(ToolResponseBase):
