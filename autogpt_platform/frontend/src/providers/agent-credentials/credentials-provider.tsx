@@ -169,6 +169,12 @@ export default function CredentialsProvider({
   const pendingUpsertsRef = useRef<
     Partial<Record<CredentialsProviderName, CredentialsMetaResponse[]>>
   >({});
+  // Monotonic id for list requests. Two can overlap, and the older one may
+  // resolve last carrying a response that predates an upsert — retiring the
+  // pending entry on the newer response would leave nothing to re-merge, so
+  // the stale publish would drop the credential again. Only the newest
+  // request may publish or retire.
+  const loadGenerationRef = useRef(0);
 
   const upsertCredentials = useCallback(
     (
@@ -335,6 +341,20 @@ export default function CredentialsProvider({
         if (!result.deleted) {
           return result;
         }
+        // Drop any pending copy first. A credential deleted while still
+        // pending would otherwise be merged straight back into the picker by
+        // the next load.
+        const pendingForProvider = pendingUpsertsRef.current[provider];
+        if (pendingForProvider?.length) {
+          const kept = pendingForProvider.filter(
+            (c: CredentialsMetaResponse) => c.id !== id,
+          );
+          if (kept.length) {
+            pendingUpsertsRef.current[provider] = kept;
+          } else {
+            delete pendingUpsertsRef.current[provider];
+          }
+        }
         setProviders((prev) => {
           if (!prev || !prev[provider]) return prev;
 
@@ -358,6 +378,15 @@ export default function CredentialsProvider({
   );
 
   const loadCredentials = useCallback(() => {
+    if (!isLoggedIn) {
+      // Pending upserts belong to the session that made them. Left in place
+      // they would be merged into the *next* user's list on the same mounted
+      // provider, exposing the previous account's credential metadata.
+      pendingUpsertsRef.current = {};
+      // Retire any in-flight request so its response cannot publish over the
+      // logged-out state.
+      loadGenerationRef.current += 1;
+    }
     if (!isLoggedIn || providerNames.length === 0) {
       // null is the sole "still loading" sentinel; an empty object means
       // "loaded, and this user has no providers". Keeping those distinct
@@ -378,9 +407,15 @@ export default function CredentialsProvider({
       return;
     }
 
+    const generation = ++loadGenerationRef.current;
+
     api
       .listCredentials()
       .then((response) => {
+        // A newer request has since started; this response is stale. Publishing
+        // it would overwrite fresher state, and retiring pending entries from
+        // it would strand credentials the newer response has not returned yet.
+        if (generation !== loadGenerationRef.current) return;
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
             if (!acc[cred.provider]) {
