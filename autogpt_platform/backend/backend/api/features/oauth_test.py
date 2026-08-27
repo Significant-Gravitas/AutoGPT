@@ -59,15 +59,17 @@ async def _create_test_user(user_id: str) -> None:
         if "Event loop is closed" not in str(error):
             raise
         client._client._engine.session.open()
-        await client.create(data=data)
+        if await client.find_unique(where={"id": user_id}) is None:
+            await client.create(data=data)
 
 
 @pytest.mark.asyncio
 async def test_create_test_user_recovers_from_a_closed_connection_loop(mocker):
-    client = mocker.MagicMock(spec=["create", "_client"])
+    client = mocker.MagicMock(spec=["create", "find_unique", "_client"])
     client.create = mocker.AsyncMock(
         side_effect=[RuntimeError("Event loop is closed"), None]
     )
+    client.find_unique = mocker.AsyncMock(return_value=None)
     client._client = mocker.MagicMock()
     mocker.patch.object(PrismaUser, "prisma", return_value=client)
 
@@ -75,6 +77,21 @@ async def test_create_test_user_recovers_from_a_closed_connection_loop(mocker):
 
     client._client._engine.session.open.assert_called_once_with()
     assert client.create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_test_user_accepts_a_committed_first_write(mocker):
+    client = mocker.MagicMock(spec=["create", "find_unique", "_client"])
+    client.create = mocker.AsyncMock(side_effect=RuntimeError("Event loop is closed"))
+    client.find_unique = mocker.AsyncMock(return_value=mocker.MagicMock())
+    client._client = mocker.MagicMock()
+    mocker.patch.object(PrismaUser, "prisma", return_value=client)
+
+    await _create_test_user("user-1")
+
+    client._client._engine.session.open.assert_called_once_with()
+    client.find_unique.assert_awaited_once_with(where={"id": "user-1"})
+    client.create.assert_awaited_once()
 
 
 @pytest.mark.asyncio
