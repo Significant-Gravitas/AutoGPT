@@ -12,6 +12,7 @@ interface Props {
   selected?: boolean;
   onClick?: () => void;
   actions?: React.ReactNode;
+  badge?: React.ReactNode;
 }
 
 export function SidebarItemCard({
@@ -22,6 +23,7 @@ export function SidebarItemCard({
   selected,
   onClick,
   actions,
+  badge,
 }: Props) {
   return (
     <div
@@ -40,13 +42,16 @@ export function SidebarItemCard({
           >
             {title}
           </Text>
-          <Text
-            variant="body"
-            className="leading-tight !text-zinc-500"
-            title={descriptionTitle}
-          >
-            {description}
-          </Text>
+          <div className="flex w-full min-w-0 items-center gap-2">
+            <Text
+              variant="body"
+              className="min-w-0 flex-1 truncate leading-tight !text-zinc-500"
+              title={descriptionTitle}
+            >
+              {description}
+            </Text>
+            {badge ? <div className="shrink-0">{badge}</div> : null}
+          </div>
         </div>
         {actions ? (
           <div onClick={(e) => e.stopPropagation()}>{actions}</div>
