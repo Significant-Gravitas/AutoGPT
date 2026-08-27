@@ -43,10 +43,8 @@ from backend.data.model import (
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.codex.access import (
-    enforce_codex_access_http,
-    has_codex_access_for_discovery,
-)
+from backend.integrations.subscription_access import hidden_subscription_providers
+from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
@@ -97,6 +95,8 @@ from .models import (
     ProviderMetadata,
     ProviderNamesResponse,
     get_all_provider_names,
+    display_alias_for,
+    merge_subscription_summaries,
     get_provider_description,
     get_supported_auth_types,
 )
@@ -1852,17 +1852,24 @@ async def list_providers(
     except Exception as e:
         logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
-    all_providers = get_all_provider_names()
-    if user_id is None or not await has_codex_access_for_discovery(user_id):
-        all_providers = [name for name in all_providers if name != ProviderName.CODEX]
-    return [
-        ProviderMetadata(
-            name=name,
-            description=get_provider_description(name),
-            supported_auth_types=get_supported_auth_types(name),
-        )
-        for name in all_providers
-    ]
+    # A subscription provider is hidden unless this deployment offers it and
+    # this user is entitled to it. Asked of the provider table rather than of
+    # codex by name: the second and third providers have the same gate, and a
+    # provider listed here that the user cannot actually use produces a
+    # connect button that fails at the end of a sign-in.
+    hidden = await hidden_subscription_providers(user_id)
+    all_providers = [name for name in get_all_provider_names() if name not in hidden]
+    return merge_subscription_summaries(
+        [
+            ProviderMetadata(
+                name=name,
+                description=get_provider_description(name),
+                supported_auth_types=get_supported_auth_types(name),
+                display_alias=display_alias_for(name),
+            )
+            for name in all_providers
+        ]
+    )
 
 
 @router.get("/providers/system", response_model=List[str])

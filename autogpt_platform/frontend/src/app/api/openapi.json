@@ -24224,6 +24224,11 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "display_alias": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Alias",
+            "description": "Provider slug this one is filed under in the connections UI, when that differs from ``name``. A ChatGPT subscription is a different credential from an OpenAI API key but the same entry to a person looking for it, so ``codex`` is filed under ``openai``. ``None`` means the provider is its own entry."
           }
         },
         "type": "object",

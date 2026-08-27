@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from backend.data.model import CredentialsType
 from backend.integrations.providers import ProviderName
 from backend.sdk.registry import AutoRegistry
+from backend.copilot.subscription_providers import known_profiles
 
 
 def get_all_provider_names() -> list[str]:
@@ -68,6 +69,16 @@ class ProviderMetadata(BaseModel):
             "no auth types declared."
         ),
     )
+    display_alias: str | None = Field(
+        default=None,
+        description=(
+            "Provider slug this one is filed under in the connections UI, "
+            "when that differs from ``name``. A ChatGPT subscription is a "
+            "different credential from an OpenAI API key but the same entry "
+            "to a person looking for it, so ``codex`` is filed under "
+            "``openai``. ``None`` means the provider is its own entry."
+        ),
+    )
 
 
 def get_supported_auth_types(name: str) -> list[CredentialsType]:
@@ -120,3 +131,58 @@ class ProviderConstants(BaseModel):
             }
         ],
     )
+
+
+def merge_subscription_summaries(
+    rows: list[ProviderMetadata],
+) -> list[ProviderMetadata]:
+    """Fold each subscription's one-line summary into the entry it files under.
+
+    The connections list shows one card per *display* provider, so the entry
+    a subscription aliases into is where a user reads what it offers -- and
+    the aliased provider's own registry description is developer-facing
+    ("Use your ChatGPT plan with Codex App Server"), not what belongs on a
+    card. Composed here rather than in the client, which used to carry the
+    whole sentence as a literal keyed on ``codex``.
+
+    Only rows still in ``rows`` contribute, so a provider hidden by the
+    entitlement gate does not advertise itself on someone else's card.
+    """
+    present = {row.name for row in rows}
+    summaries: dict[str, list[str]] = {}
+    for profile in known_profiles():
+        if profile.credential_provider is None or profile.display_alias is None:
+            continue
+        if not profile.connection_summary:
+            continue
+        if profile.credential_provider not in present:
+            continue
+        summaries.setdefault(profile.display_alias, []).append(
+            profile.connection_summary
+        )
+
+    merged: list[ProviderMetadata] = []
+    for row in rows:
+        extra = summaries.get(row.name)
+        if not extra:
+            merged.append(row)
+            continue
+        base = row.description or f"{row.name} models"
+        merged.append(
+            row.model_copy(update={"description": " or ".join([base, *extra])})
+        )
+    return merged
+
+
+def display_alias_for(name: str) -> str | None:
+    """The slug a provider is filed under in the connections UI.
+
+    Only subscription providers alias, and the provider table already says
+    which slug each one belongs beside -- the client used to carry that as a
+    literal `name === "codex" ? "openai"`, which is a fact about a provider
+    living in the one place that cannot be told when it changes.
+    """
+    for profile in known_profiles():
+        if profile.credential_provider == name:
+            return profile.display_alias
+    return None

@@ -36,7 +36,11 @@ export function toConnectableProviders(
     if (seen.has(item.name)) continue;
     seen.add(item.name);
 
-    const displayProvider = item.name === "codex" ? "openai" : item.name;
+    // Which entry this credential is filed under. A ChatGPT subscription is
+    // a different credential from an OpenAI API key and the same entry to a
+    // person looking for it -- the server says which, because the client
+    // cannot be told when a provider is added.
+    const displayProvider = item.display_alias ?? item.name;
     const authTypes = normalizeAuthTypes(item.supported_auth_types);
     const existing = byDisplayProvider.get(displayProvider);
     const provider = existing ?? {
@@ -69,12 +73,6 @@ export function toConnectableProviders(
       provider.description = item.description;
     }
     byDisplayProvider.set(displayProvider, provider);
-  }
-
-  const openai = byDisplayProvider.get("openai");
-  if (openai?.authProviderByType?.oauth2 === "codex") {
-    openai.description =
-      "OpenAI models via API key or your ChatGPT subscription";
   }
 
   const result = Array.from(byDisplayProvider.values());

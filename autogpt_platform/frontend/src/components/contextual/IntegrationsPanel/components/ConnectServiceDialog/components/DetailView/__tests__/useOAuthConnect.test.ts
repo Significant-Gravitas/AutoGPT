@@ -8,6 +8,14 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
+// The hook asks the server how long to wait on the sign-in window. That is
+// covered where the value is decided; here it is a fixed input, so the
+// react-query stack this file deliberately does not stand up stays out of it.
+const loginTimeoutMock = vi.fn(() => 900_000);
+vi.mock("@/lib/oauth/useOAuthLoginTimeout", () => ({
+  useOAuthLoginTimeout: () => loginTimeoutMock(),
+}));
+
 vi.mock("@/lib/oauth-popup", () => ({
   openOAuthPopup: vi.fn(),
   preOpenOAuthPopup: vi.fn(() => null),

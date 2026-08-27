@@ -120,6 +120,11 @@ class SubscriptionProviderProfile(BaseModel):
     # because that is where a person looks for it -- even though the two are
     # entirely different credentials to the server.
     display_alias: str | None = None
+    # How this connection reads in the aliased entry's one-line summary, so
+    # the OpenAI card can say "OpenAI models via API key or your ChatGPT
+    # subscription" without the client knowing that codex and openai are the
+    # same card. A noun phrase, joined with "or" by whoever composes it.
+    connection_summary: str | None = None
 
     # --- routing --------------------------------------------------------
     # Registry surface that resolves (mode, tier) -> model for this provider.
@@ -161,6 +166,7 @@ CODEX = SubscriptionProviderProfile(
     connect_button_label="Sign in with ChatGPT",
     terms_company="OpenAI",
     display_alias="openai",
+    connection_summary="your ChatGPT subscription",
     route_surface="copilot_codex",
     catalog_vendor="openai",
 )
@@ -193,7 +199,12 @@ GITHUB_COPILOT = SubscriptionProviderProfile(
     login_timeout_seconds=15 * 60,
     connect_button_label="Sign in with GitHub",
     terms_company="GitHub",
-    display_alias="github",
+    # Its own card, unlike ChatGPT under OpenAI. GitHub already offers OAuth
+    # for repositories, and a card shows one tab per auth method -- filing
+    # Copilot under it would put two different OAuth sign-ins on one tab and
+    # leave whichever lost unreachable. It is also a product a person looks
+    # for by name.
+    display_alias=None,
     route_surface="copilot_github",
     catalog_vendor=None,
 )
@@ -233,6 +244,7 @@ GROK = SubscriptionProviderProfile(
     connect_button_label="Sign in with Grok",
     terms_company="xAI",
     display_alias="xai",
+    connection_summary="your SuperGrok subscription",
     route_surface="copilot_grok",
     catalog_vendor="xai",
 )

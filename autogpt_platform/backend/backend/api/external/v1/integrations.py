@@ -31,7 +31,7 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
-from backend.integrations.codex.access import has_codex_access_for_discovery
+from backend.integrations.subscription_access import hidden_subscription_providers
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -273,9 +273,13 @@ async def list_providers(
     from backend.sdk.registry import AutoRegistry
 
     providers = []
-    codex_allowed = await has_codex_access_for_discovery(auth.user_id)
+    # Same gate as the internal providers list: a subscription provider is
+    # listed only where the deployment offers it and the caller is entitled
+    # to it. Asked of the provider table so a provider added there is gated
+    # here without this loop being touched.
+    hidden = await hidden_subscription_providers(auth.user_id)
     for name in get_all_provider_names():
-        if name == ProviderName.CODEX and not codex_allowed:
+        if name in hidden:
             continue
         supports_oauth = name in HANDLERS_BY_NAME
         handler_class = HANDLERS_BY_NAME.get(name)

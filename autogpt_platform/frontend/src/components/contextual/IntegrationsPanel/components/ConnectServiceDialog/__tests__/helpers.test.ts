@@ -58,15 +58,20 @@ describe("toConnectableProviders", () => {
   });
 
   test("merges ChatGPT sign-in into OpenAI while preserving backend auth targets", () => {
+    // `display_alias` and the merged description are the server's answers.
+    // They used to be literals here keyed on "codex", which meant the client
+    // decided which card a credential belonged on -- and could not be told
+    // when a provider was added.
     const result = toConnectableProviders([
       makeMeta({
         name: "codex",
         description: "Use your ChatGPT plan",
+        display_alias: "openai",
         supported_auth_types: ["oauth2"],
       }),
       makeMeta({
         name: "openai",
-        description: "GPT models and embeddings",
+        description: "GPT models and embeddings or your ChatGPT subscription",
         supported_auth_types: ["api_key"],
       }),
     ]);
@@ -75,11 +80,34 @@ describe("toConnectableProviders", () => {
     expect(result[0]).toMatchObject({
       id: "openai",
       name: "OpenAI",
-      description: "OpenAI models via API key or your ChatGPT subscription",
+      description: "GPT models and embeddings or your ChatGPT subscription",
       supportedAuthTypes: ["oauth2", "api_key"],
       authProviderByType: { oauth2: "codex" },
       searchTerms: ["codex"],
     });
+  });
+
+  test("keeps a subscription that would collide as its own card", () => {
+    // GitHub already owns the OAuth tab on its card. The server says so by
+    // sending no alias, and this passes with no code here knowing that
+    // GitHub Copilot exists -- which is the point of the alias travelling.
+    const result = toConnectableProviders([
+      makeMeta({
+        name: "github_copilot",
+        description: "Your GitHub Copilot subscription",
+        supported_auth_types: ["oauth2"],
+      }),
+      makeMeta({
+        name: "github",
+        description: "Issues, pull requests, repositories",
+        supported_auth_types: ["oauth2", "api_key"],
+      }),
+    ]);
+
+    expect(result.map((p) => p.id)).toEqual(["github", "github_copilot"]);
+    // Each card keeps its own OAuth target, so neither sign-in is unreachable.
+    expect(result[0].authProviderByType?.oauth2).toBeUndefined();
+    expect(result[1].authProviderByType?.oauth2).toBeUndefined();
   });
 });
 
@@ -136,8 +164,16 @@ describe("filterConnectableProviders", () => {
 
   test("matches presentation aliases", () => {
     const openai = toConnectableProviders([
-      makeMeta({ name: "codex", supported_auth_types: ["oauth2"] }),
-      makeMeta({ name: "openai", supported_auth_types: ["api_key"] }),
+      makeMeta({
+        name: "codex",
+        display_alias: "openai",
+        supported_auth_types: ["oauth2"],
+      }),
+      makeMeta({
+        name: "openai",
+        description: "GPT models or your ChatGPT subscription",
+        supported_auth_types: ["api_key"],
+      }),
     ]);
 
     expect(filterConnectableProviders(openai, "chatgpt")).toEqual(openai);
