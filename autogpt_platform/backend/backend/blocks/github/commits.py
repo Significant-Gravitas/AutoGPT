@@ -49,6 +49,36 @@ class GithubListCommitsBlock(Block):
             default=1,
             ge=1,
         )
+        path: str = SchemaField(
+            description="Only include commits that touch this file or directory path",
+            placeholder="src/main.py",
+            default="",
+            advanced=True,
+        )
+        author: str = SchemaField(
+            description="Only include commits authored by this user "
+            "(GitHub username or email address)",
+            default="",
+            advanced=True,
+        )
+        committer: str = SchemaField(
+            description="Only include commits committed by this user "
+            "(GitHub username or email address)",
+            default="",
+            advanced=True,
+        )
+        since: str = SchemaField(
+            description="Only include commits after the given ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
+        until: str = SchemaField(
+            description="Only include commits before the given ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         class CommitItem(TypedDict):
@@ -120,15 +150,27 @@ class GithubListCommitsBlock(Block):
 
     @staticmethod
     async def list_commits(
-        credentials: GithubCredentials,
-        repo_url: str,
-        branch: str,
-        per_page: int,
-        page: int,
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.CommitItem]:
         api = get_api(credentials)
+        repo_url = input_data.repo_url
         commits_url = repo_url + "/commits"
-        params = {"sha": branch, "per_page": str(per_page), "page": str(page)}
+        params = {
+            "sha": input_data.branch,
+            "per_page": str(input_data.per_page),
+            "page": str(input_data.page),
+        }
+        if input_data.path:
+            params["path"] = input_data.path
+        if input_data.author:
+            params["author"] = input_data.author
+        if input_data.committer:
+            params["committer"] = input_data.committer
+        if input_data.since:
+            params["since"] = input_data.since
+        if input_data.until:
+            params["until"] = input_data.until
+
         response = await api.get(commits_url, params=params)
         data = response.json()
         repo_path = github_repo_path(repo_url)
@@ -151,13 +193,7 @@ class GithubListCommitsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            commits = await self.list_commits(
-                credentials,
-                input_data.repo_url,
-                input_data.branch,
-                input_data.per_page,
-                input_data.page,
-            )
+            commits = await self.list_commits(credentials, input_data)
             yield "commits", commits
             for commit in commits:
                 yield "commit", commit

@@ -12,7 +12,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -30,6 +30,38 @@ class GithubListPullRequestsBlock(Block):
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
+        )
+        state: Literal["open", "closed", "all"] = SchemaField(
+            description="Only include pull requests in this state",
+            default="open",
+        )
+        base: str = SchemaField(
+            description="Only include pull requests targeting this base branch",
+            placeholder="main",
+            default="",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of pull requests to fetch",
+            default=30,
+            ge=1,
+            le=1000,
+        )
+        head: str = SchemaField(
+            description="Only include pull requests from this head branch. "
+            "Format: 'user:branch' or 'org:branch'.",
+            placeholder="octocat:feature-branch",
+            default="",
+            advanced=True,
+        )
+        sort: Literal["created", "updated", "popularity", "long-running"] = SchemaField(
+            description="What to sort the pull requests by",
+            default="created",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction",
+            default="desc",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -89,12 +121,25 @@ class GithubListPullRequestsBlock(Block):
 
     @staticmethod
     async def list_prs(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.PRItem]:
         api = get_api(credentials)
-        pulls_url = repo_url + "/pulls"
-        response = await api.get(pulls_url)
-        data = response.json()
+        params = {
+            "state": input_data.state,
+            "sort": input_data.sort,
+            "direction": input_data.direction,
+        }
+        if input_data.base:
+            params["base"] = input_data.base
+        if input_data.head:
+            params["head"] = input_data.head
+
+        data = await get_paginated(
+            api,
+            input_data.repo_url + "/pulls",
+            limit=input_data.limit,
+            params=params,
+        )
         pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
             {"title": pr["title"], "url": pr["html_url"]} for pr in data
         ]
@@ -107,10 +152,7 @@ class GithubListPullRequestsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        pull_requests = await self.list_prs(
-            credentials,
-            input_data.repo_url,
-        )
+        pull_requests = await self.list_prs(credentials, input_data)
         yield "pull_requests", pull_requests
         for pr in pull_requests:
             yield "pull_request", pr

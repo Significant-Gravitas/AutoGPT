@@ -1,3 +1,4 @@
+from typing import Literal
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -39,6 +40,11 @@ class GithubListBranchesBlock(Block):
             description="Page number for pagination",
             default=1,
             ge=1,
+        )
+        protected: Literal["all", "protected", "unprotected"] = SchemaField(
+            description="Only include branches that are (un)protected",
+            default="all",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -99,13 +105,18 @@ class GithubListBranchesBlock(Block):
 
     @staticmethod
     async def list_branches(
-        credentials: GithubCredentials, repo_url: str, per_page: int, page: int
+        credentials: GithubCredentials,
+        repo_url: str,
+        per_page: int,
+        page: int,
+        protected: str,
     ) -> list[Output.BranchItem]:
         api = get_api(credentials)
         branches_url = repo_url + "/branches"
-        response = await api.get(
-            branches_url, params={"per_page": str(per_page), "page": str(page)}
-        )
+        params = {"per_page": str(per_page), "page": str(page)}
+        if protected != "all":
+            params["protected"] = str(protected == "protected").lower()
+        response = await api.get(branches_url, params=params)
         data = response.json()
         repo_path = github_repo_path(repo_url)
         branches: list[GithubListBranchesBlock.Output.BranchItem] = [
@@ -130,6 +141,7 @@ class GithubListBranchesBlock(Block):
                 input_data.repo_url,
                 input_data.per_page,
                 input_data.page,
+                input_data.protected,
             )
             yield "branches", branches
             for branch in branches:

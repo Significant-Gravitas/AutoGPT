@@ -11,7 +11,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 
-from ._api import GITHUB_API_URL, get_api
+from ._api import GITHUB_API_URL, get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -58,6 +58,12 @@ class GithubListNotificationsBlock(Block):
             description="Whether to only include notifications in which you are "
             "directly participating or mentioned",
             default=False,
+        )
+        limit: int = SchemaField(
+            description="Maximum number of notifications to fetch",
+            default=50,
+            ge=1,
+            le=1000,
         )
         repo: str = SchemaField(
             description="Repository to list notifications for. "
@@ -115,31 +121,33 @@ class GithubListNotificationsBlock(Block):
 
     @staticmethod
     async def list_notifications(
-        credentials: GithubCredentials,
-        include_read: bool,
-        participating_only: bool,
-        repo: str,
-        since: str,
-        before: str,
+        credentials: GithubCredentials, input_data: Input
     ) -> list[NotificationItem]:
         api = get_api(credentials, convert_urls=False)
         url = (
-            f"{GITHUB_API_URL}/repos/{repo}/notifications"
-            if repo
+            f"{GITHUB_API_URL}/repos/{input_data.repo}/notifications"
+            if input_data.repo
             else f"{GITHUB_API_URL}/notifications"
         )
         params: dict[str, str] = {}
-        if include_read:
+        if input_data.include_read:
             params["all"] = "true"
-        if participating_only:
+        if input_data.participating_only:
             params["participating"] = "true"
-        if since:
-            params["since"] = since
-        if before:
-            params["before"] = before
+        if input_data.since:
+            params["since"] = input_data.since
+        if input_data.before:
+            params["before"] = input_data.before
 
-        response = await api.get(url, params=params)
-        return [_to_notification_item(thread) for thread in response.json()]
+        threads = await get_paginated(
+            api,
+            url,
+            limit=input_data.limit,
+            params=params,
+            # The notifications endpoint accepts a page size of at most 50
+            max_page_size=50,
+        )
+        return [_to_notification_item(thread) for thread in threads]
 
     async def run(
         self,
@@ -148,14 +156,7 @@ class GithubListNotificationsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        notifications = await self.list_notifications(
-            credentials,
-            input_data.include_read,
-            input_data.participating_only,
-            input_data.repo,
-            input_data.since,
-            input_data.before,
-        )
+        notifications = await self.list_notifications(credentials, input_data)
         yield "notifications", notifications
         for notification in notifications:
             yield "notification", notification
