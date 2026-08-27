@@ -6,15 +6,14 @@ import type { SetDefaultTransportRequestAuthProvider } from "@/app/api/__generat
  * The route to send when making a connection the default.
  *
  * The offer describes a connection; the default is set on the transport that
- * runs it, which is keyed by provider and credential. ``offer_id`` is built
- * server-side as ``{auth_provider}:{credential_id or "deployment"}``, so the
- * provider is recoverable from it without the client deciding anything.
+ * runs it, which is keyed by provider and credential. Both come off the offer
+ * as values -- this used to split ``offer_id`` on ":" to recover the provider,
+ * which is a parser standing in for a field.
  */
 export function routeOf(offer: AIConnectionOffer): SetDefaultTransportRequest {
   return {
-    auth_provider: offer.offer_id.split(
-      ":",
-    )[0] as SetDefaultTransportRequestAuthProvider,
+    auth_provider:
+      offer.auth_provider as SetDefaultTransportRequestAuthProvider,
     credential_id: offer.credential_id ?? null,
   };
 }

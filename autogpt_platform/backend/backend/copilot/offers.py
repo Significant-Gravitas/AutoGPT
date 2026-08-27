@@ -69,6 +69,10 @@ class ConnectionTier(BaseModel):
 
 class AIConnectionOffer(BaseModel):
     offer_id: str
+    # Which connection this is, as a value rather than a prefix on offer_id.
+    # Clients were splitting the id on ":" to recover it, which works right
+    # up until an id gains a second colon or a provider key contains one.
+    auth_provider: str
     provider_family: str
     display_name: str
     auth_method: str
@@ -155,6 +159,7 @@ async def _locked_offers(
         locked.append(
             AIConnectionOffer(
                 offer_id=f"{profile.key}:locked",
+                auth_provider=profile.key,
                 provider_family=profile.provider_family,
                 display_name=profile.display_name,
                 auth_method=profile.auth_method,
@@ -251,6 +256,7 @@ def _offer(
 ) -> AIConnectionOffer:
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
+        auth_provider=transport.auth_provider,
         provider_family=_provider_family(transport.auth_provider),
         display_name=transport.label,
         auth_method=_auth_method(transport.auth_provider),

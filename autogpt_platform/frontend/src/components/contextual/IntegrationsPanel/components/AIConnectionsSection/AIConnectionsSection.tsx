@@ -77,8 +77,13 @@ export function AIConnectionsSection() {
               isSelected={connection.offer_id === selectedKey}
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}
+              // Manageable means there is a linked account to reconnect or
+              // disconnect, which is exactly "has a credential". Read as
+              // `auth_method === "chatgpt_oauth"` until a second provider
+              // existed, at which point that connection had no way to be
+              // reconnected or removed from this page at all.
               onManage={
-                connection.auth_method === "chatgpt_oauth"
+                connection.credential_id
                   ? () => setManaging(connection)
                   : undefined
               }

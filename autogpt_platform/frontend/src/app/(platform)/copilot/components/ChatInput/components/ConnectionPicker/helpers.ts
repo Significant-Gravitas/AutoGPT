@@ -8,9 +8,7 @@ export function offerToSelection(
     return { authProvider: "platform", credentialId: null };
   }
   if (!offer.credential_id) return null;
-  // The offer id is "<provider>:<credential>", which is where the provider
-  // comes from -- not a literal that has to be remembered per provider.
-  const authProvider = offer.offer_id.split(":")[0];
+  const authProvider = offer.auth_provider;
   if (!authProvider || authProvider === "platform") return null;
   return {
     authProvider: authProvider as Exclude<

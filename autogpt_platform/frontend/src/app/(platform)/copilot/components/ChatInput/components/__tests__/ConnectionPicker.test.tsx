@@ -28,6 +28,7 @@ function tier(
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",
@@ -49,6 +50,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
 const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
   offer({
     offer_id: "codex:cred-1",
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
@@ -66,6 +68,7 @@ const chatgpt = (over: Partial<AIConnectionOffer> = {}) =>
 const locked = (over: Partial<AIConnectionOffer> = {}) =>
   offer({
     offer_id: "codex:locked",
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",

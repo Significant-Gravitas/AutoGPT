@@ -14969,6 +14969,7 @@
       "AIConnectionOffer": {
         "properties": {
           "offer_id": { "type": "string", "title": "Offer Id" },
+          "auth_provider": { "type": "string", "title": "Auth Provider" },
           "provider_family": { "type": "string", "title": "Provider Family" },
           "display_name": { "type": "string", "title": "Display Name" },
           "auth_method": { "type": "string", "title": "Auth Method" },
@@ -15011,6 +15012,7 @@
         "type": "object",
         "required": [
           "offer_id",
+          "auth_provider",
           "provider_family",
           "display_name",
           "auth_method",

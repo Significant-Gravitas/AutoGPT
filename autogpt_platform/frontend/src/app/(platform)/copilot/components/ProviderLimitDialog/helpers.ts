@@ -36,9 +36,8 @@ export function alternativeConnection(
 
   return {
     display_name: platform.display_name,
-    auth_provider: platform.offer_id.split(
-      ":",
-    )[0] as ChangeSessionConnectionRequestLlmAuthProvider,
+    auth_provider:
+      platform.auth_provider as ChangeSessionConnectionRequestLlmAuthProvider,
     credential_id: platform.credential_id ?? null,
   };
 }
@@ -47,8 +46,7 @@ function isTheOneThatFailed(
   offer: AIConnectionOffer,
   failure: ProviderFailure,
 ): boolean {
-  const provider = offer.offer_id.split(":")[0];
-  if (provider !== failure.authProvider) return false;
+  if (offer.auth_provider !== failure.authProvider) return false;
   // A provider with no credential is a single connection, so the provider
   // matching is enough. With one, only the account that failed is excluded --
   // a second ChatGPT account has its own quota.

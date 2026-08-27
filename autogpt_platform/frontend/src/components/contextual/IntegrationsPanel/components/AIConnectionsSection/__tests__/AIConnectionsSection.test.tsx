@@ -14,6 +14,7 @@ import { AIConnectionsSection } from "../AIConnectionsSection";
 function platform(isDefault: boolean): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "Self-hosted chat",
     auth_method: "deployment",
@@ -42,9 +43,29 @@ function platform(isDefault: boolean): AIConnectionOffer {
   } as AIConnectionOffer;
 }
 
+function copilot(id = "cred-9"): AIConnectionOffer {
+  return {
+    offer_id: `github_copilot:${id}`,
+    auth_provider: "github_copilot",
+    provider_family: "github",
+    display_name: "GitHub Copilot",
+    auth_method: "github_oauth",
+    credential_id: id,
+    backed_by_label: "Your GitHub Copilot subscription",
+    description:
+      "New chats are backed by your GitHub Copilot subscription, and spend no AutoGPT credits.",
+    state: "ready",
+    selectable: true,
+    is_default: false,
+    tiers: [],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
 function chatgpt(isDefault: boolean, id = "cred-1"): AIConnectionOffer {
   return {
     offer_id: `codex:${id}`,
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
@@ -234,5 +255,30 @@ describe("AIConnectionsSection", () => {
         "A Max plan or higher is required to use ChatGPT.",
       ),
     ).toBeDefined();
+  });
+
+  it("manages the connection that was clicked, whichever provider it is", async () => {
+    // The dialog used to be ChatGPT's: it opened a codex OAuth flow, asked
+    // codex who was signed in, and said "your ChatGPT plan" in every line.
+    // Opened on a different connection it would have offered to reconnect
+    // the wrong account -- so this asserts on the copy that names it.
+    server.use(
+      getGetV2ListChatConnectionsMockHandler200({
+        offers: [platform(true), copilot()],
+      }),
+      getGetV1ListCredentialsMockHandler200([]),
+    );
+    render(<AIConnectionsSection />);
+
+    const manage = await screen.findByRole("button", { name: "Manage" });
+    await userEvent.click(manage);
+
+    expect(
+      await screen.findByText(/run on your GitHub Copilot subscription/i),
+    ).toBeDefined();
+    // Only Codex can be asked who is signed in, so no other provider may
+    // claim to be checking with one.
+    expect(screen.queryByText(/Checking with/i)).toBeNull();
+    expect(screen.queryByText(/ChatGPT/)).toBeNull();
   });
 });

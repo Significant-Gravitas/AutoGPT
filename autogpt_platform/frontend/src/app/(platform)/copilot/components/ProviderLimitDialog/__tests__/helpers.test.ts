@@ -7,6 +7,7 @@ import { alternativeConnection, formatResetHint } from "../helpers";
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",
@@ -27,6 +28,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
 function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return offer({
     offer_id: "codex:cred-1",
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
@@ -78,7 +80,8 @@ describe("alternativeConnection", () => {
     const found = alternativeConnection(
       [
         chatgpt(),
-        chatgpt({ offer_id: "codex:cred-2", credential_id: "cred-2" }),
+        chatgpt({ offer_id: "codex:cred-2",
+ auth_provider: "codex", credential_id: "cred-2" }),
       ],
       limitOn("codex", "cred-1"),
     );
