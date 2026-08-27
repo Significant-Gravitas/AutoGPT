@@ -16936,7 +16936,13 @@
         "properties": {
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex", "github_copilot", "grok"],
+            "enum": [
+              "platform",
+              "codex",
+              "github_copilot",
+              "grok",
+              "microsoft_365_copilot"
+            ],
             "title": "Llm Auth Provider"
           },
           "llm_credential_id": {
@@ -16994,7 +17000,13 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex", "github_copilot", "grok"],
+            "enum": [
+              "platform",
+              "codex",
+              "github_copilot",
+              "grok",
+              "microsoft_365_copilot"
+            ],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -17085,7 +17097,13 @@
         "properties": {
           "auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex", "github_copilot", "grok"],
+            "enum": [
+              "platform",
+              "codex",
+              "github_copilot",
+              "grok",
+              "microsoft_365_copilot"
+            ],
             "title": "Auth Provider"
           },
           "credential_id": {
@@ -17947,7 +17965,13 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex", "github_copilot", "grok"],
+            "enum": [
+              "platform",
+              "codex",
+              "github_copilot",
+              "grok",
+              "microsoft_365_copilot"
+            ],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -25449,7 +25473,13 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": ["platform", "codex", "github_copilot", "grok"]
+                "enum": [
+                  "platform",
+                  "codex",
+                  "github_copilot",
+                  "grok",
+                  "microsoft_365_copilot"
+                ]
               },
               { "type": "null" }
             ],

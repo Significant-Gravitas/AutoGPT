@@ -254,6 +254,7 @@ def _offer(
     codex_models: dict[CopilotLLMModel, str | None],
     advanced_allowed: bool,
 ) -> AIConnectionOffer:
+    profile = profile_for(transport.auth_provider)
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
         auth_provider=transport.auth_provider,
@@ -263,31 +264,40 @@ def _offer(
         credential_id=transport.credential_id,
         backed_by_label=_backed_by_label(transport),
         description=_description(transport),
-        connect_button_label=profile_for(transport.auth_provider).connect_button_label,
-        terms_company=profile_for(transport.auth_provider).terms_company,
+        connect_button_label=profile.connect_button_label,
+        terms_company=profile.terms_company,
         state="ready" if transport.available else "unavailable",
         selectable=transport.available,
         is_default=transport.default,
-        tiers=[
-            ConnectionTier(
-                tier=tier,
-                label=label,
-                selectable=(
-                    transport.available and (advanced_allowed or tier != "advanced")
-                ),
-                display_model=(
-                    platform_models.get(tier)
-                    if transport.auth_provider == "platform"
-                    else codex_models.get(tier)
-                ),
-                lock_reason=(
-                    None
-                    if advanced_allowed or tier != "advanced"
-                    else ADVANCED_TIER_LOCK_REASON
-                ),
-            )
-            for tier, label in TIER_LABELS.items()
-        ],
+        # A provider that picks its own model has no tiers to offer, and an
+        # empty list is the honest answer. Rendering "Balanced / Advanced"
+        # for it would invent both a choice the user does not have and a
+        # model nobody can name -- Microsoft 365 Copilot's Chat API has no
+        # model field at all.
+        tiers=(
+            [
+                ConnectionTier(
+                    tier=tier,
+                    label=label,
+                    selectable=(
+                        transport.available and (advanced_allowed or tier != "advanced")
+                    ),
+                    display_model=(
+                        platform_models.get(tier)
+                        if transport.auth_provider == "platform"
+                        else codex_models.get(tier)
+                    ),
+                    lock_reason=(
+                        None
+                        if advanced_allowed or tier != "advanced"
+                        else ADVANCED_TIER_LOCK_REASON
+                    ),
+                )
+                for tier, label in TIER_LABELS.items()
+            ]
+            if profile.serves_named_models
+            else []
+        ),
         limitations=_limitations(transport),
     )
 

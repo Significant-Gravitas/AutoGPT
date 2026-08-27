@@ -15,6 +15,8 @@ from backend.copilot.subscription_providers import (
     linked_profiles,
     profile_for,
     runtime_is_available,
+    tool_calling_allowed_on,
+    unattended_runs_allowed_on,
 )
 
 
@@ -187,3 +189,68 @@ class TestOperatorOptIn:
         for profile in known_profiles():
             if profile.opt_in_env is None and profile.runtime_ready:
                 assert is_enabled(profile)
+
+
+class TestCapabilitiesAProviderMayNotHave:
+    """Three assumptions this table made silently until a provider broke them.
+
+    Adding Microsoft 365 Copilot is what surfaced these. Its Chat API has no
+    model field, answers with text only, and is licensed for human-directed
+    use -- so "every connection names a model per tier", "every connection
+    can run tools", and "any chat can run on any connection" were all wrong,
+    and all three would have failed quietly rather than loudly.
+    """
+
+    def test_a_provider_that_picks_its_own_model_says_so(self) -> None:
+        """Rendering Balanced/Advanced for it would invent both a choice the
+        user does not have and a model nobody can name."""
+        chooses_for_you = [p for p in known_profiles() if not p.serves_named_models]
+        assert chooses_for_you, "expected at least one model-abstracting provider"
+        for profile in chooses_for_you:
+            # It still has to describe itself -- the connection is real, it
+            # just has no tiers.
+            assert profile.display_name.strip()
+            assert profile.backed_by_label.strip()
+
+    def test_a_chat_only_provider_is_given_no_tools(self) -> None:
+        """Offering tools to a connection that cannot call them puts them in
+        the prompt, lets the model try one, and fails in front of a user who
+        is already waiting."""
+        assert tool_calling_allowed_on("platform")
+        assert tool_calling_allowed_on(None)
+        assert tool_calling_allowed_on("codex")
+        for profile in known_profiles():
+            if not profile.supports_tool_calling:
+                assert not tool_calling_allowed_on(profile.key)
+
+    def test_a_human_directed_provider_refuses_unattended_runs(self) -> None:
+        """A licence condition on the *user's* account, so getting it wrong
+        risks their access rather than ours."""
+        assert unattended_runs_allowed_on("platform")
+        assert unattended_runs_allowed_on("codex")
+        for profile in known_profiles():
+            if profile.human_directed_only:
+                assert not unattended_runs_allowed_on(profile.key)
+
+    def test_a_limited_provider_says_what_it_cannot_do(self) -> None:
+        """These limits are documented properties of the provider, not gaps
+        in our integration, so a user has to be able to read them before
+        connecting rather than discover them when something does not work."""
+        for profile in known_profiles():
+            if profile.credential_strategy == "platform":
+                continue
+            if not profile.supports_tool_calling:
+                assert any("tool" in limit.lower() for limit in profile.limitations), (
+                    f"{profile.key} cannot run tools but does not say so"
+                )
+            if not profile.serves_named_models:
+                assert profile.limitations, (
+                    f"{profile.key} names no models but explains nothing"
+                )
+
+    def test_an_unknown_provider_is_not_silently_stripped(self) -> None:
+        """The route is validated where it is chosen. These two only decide
+        what to put in a request, and defaulting them to "deny" would take
+        tools away from a working connection over a typo."""
+        assert tool_calling_allowed_on("not-a-provider")
+        assert unattended_runs_allowed_on("not-a-provider")

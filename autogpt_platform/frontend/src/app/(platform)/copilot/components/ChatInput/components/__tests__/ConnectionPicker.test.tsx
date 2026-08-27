@@ -86,6 +86,22 @@ const locked = (over: Partial<AIConnectionOffer> = {}) =>
     ...over,
   });
 
+const m365 = (over: Partial<AIConnectionOffer> = {}) =>
+  offer({
+    offer_id: "microsoft_365_copilot:cred-m",
+    auth_provider: "microsoft_365_copilot",
+    provider_family: "microsoft",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "microsoft_entra_oauth",
+    credential_id: "cred-m",
+    backed_by_label: "Your Microsoft 365 Copilot licence",
+    is_default: false,
+    // The point of this fixture: Microsoft's Chat API has no model field,
+    // so the server sends no tiers rather than inventing two.
+    tiers: [],
+    ...over,
+  });
+
 function mockOffers(offers: AIConnectionOffer[]) {
   server.use(getGetV2ListChatConnectionsMockHandler200({ offers }));
 }
@@ -535,5 +551,32 @@ describe("ConnectionPicker", () => {
 
     const trigger = await screen.findByRole("button", { name: /Runs on/ });
     expect(trigger.getAttribute("aria-label")).not.toMatch(/your plan/);
+  });
+
+  it("offers a tierless connection without inventing a tier for it", async () => {
+    // A provider that picks its own model has no Balanced/Advanced to show.
+    // The picker still has to let you choose the *connection* -- it just
+    // must not claim a tier structure the provider does not have.
+    mockOffers([offer(), m365()]);
+
+    render(<ConnectionPicker />);
+
+    const trigger = await screen.findByRole("button", { name: /Runs on/ });
+    await userEvent.click(trigger);
+
+    expect(await screen.findByText("Microsoft 365 Copilot")).toBeDefined();
+    expect(
+      screen.getByText("Your Microsoft 365 Copilot licence"),
+    ).toBeDefined();
+  });
+
+  it("hides the picker entirely when the only connection has no tiers", async () => {
+    // Nothing left to decide: one connection, and it has no tier choice.
+    // Showing a control whose every option is the current state is noise.
+    mockOffers([m365({ is_default: true })]);
+
+    const { container } = render(<ConnectionPicker />);
+
+    await waitFor(() => expect(container.querySelector("button")).toBeNull());
   });
 });

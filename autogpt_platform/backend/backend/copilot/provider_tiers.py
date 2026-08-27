@@ -99,11 +99,18 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     for profile in known_profiles():
         if profile.key == "platform":
             models = platform
-        elif is_enabled(profile):
-            models = per_provider.get(profile.key, {})
-        else:
-            # Not offered on this deployment, so not described either.
+        elif not is_enabled(profile):
+            # Not offered on this deployment, so not described either. This
+            # test comes first: a provider that is off must stay absent
+            # whatever else is true of it.
             continue
+        elif not profile.serves_named_models:
+            # Not "we could not resolve it" -- the provider has no model to
+            # name. An empty list keeps the connection describable without
+            # claiming a tier structure it does not have.
+            models = {}
+        else:
+            models = per_provider.get(profile.key, {})
         described.append(
             ProviderTiers(
                 provider_family=profile.provider_family,

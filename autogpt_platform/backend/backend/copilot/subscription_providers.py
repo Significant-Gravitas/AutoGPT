@@ -137,6 +137,40 @@ class SubscriptionProviderProfile(BaseModel):
     # same card. A noun phrase, joined with "or" by whoever composes it.
     connection_summary: str | None = None
 
+    # --- capabilities ---------------------------------------------------
+    # These are not "not built yet" -- they are shapes a provider genuinely
+    # does not have, and they were discovered by adding a second and third
+    # provider rather than reasoned about in advance. Every one of them was
+    # an assumption this table made silently until a provider broke it.
+
+    # Whether the provider lets the caller pick a model, and can therefore
+    # name one per tier.
+    #
+    # False for a provider that decides for itself. Microsoft 365 Copilot's
+    # Chat API has no model field at all -- Microsoft abstracts whatever
+    # serves the response -- so a "Balanced / Advanced, running GPT-5.6"
+    # row for it would be inventing both halves. The picker shows the
+    # connection without tiers instead of showing tiers that mean nothing.
+    serves_named_models: bool = True
+
+    # Whether a turn on this connection can call the agent tool registry.
+    #
+    # False makes a connection chat-only. The M365 Chat API is documented as
+    # returning textual responses only -- no file creation, no mail, no code
+    # interpreter -- so tools offered on it would be listed, invoked, and
+    # fail. Better to not offer them and say why.
+    supports_tool_calling: bool = True
+
+    # Whether the provider's terms allow a run nobody is watching.
+    #
+    # The M365 Copilot preview terms prohibit non-human-directed
+    # applications "such as bots, multiplexing or similar". An interactive
+    # chat a person just sent is within that; a scheduled AutoPilot job
+    # firing at 3am is the thing the clause names. This is a licence
+    # condition on the user's own account, so getting it wrong puts *their*
+    # access at risk, not ours.
+    human_directed_only: bool = False
+
     # --- routing --------------------------------------------------------
     # Registry surface that resolves (mode, tier) -> model for this provider.
     # ``None`` means the platform router decides.
@@ -265,8 +299,72 @@ GROK = SubscriptionProviderProfile(
     catalog_vendor="xai",
 )
 
+MICROSOFT_365_COPILOT = SubscriptionProviderProfile(
+    key="microsoft_365_copilot",
+    display_name="Microsoft 365 Copilot",
+    provider_family="microsoft",
+    auth_method="microsoft_entra_oauth",
+    backed_by_label="Your Microsoft 365 Copilot licence",
+    description=(
+        "New chats are backed by your Microsoft 365 Copilot licence, and "
+        "spend no AutoGPT credits."
+    ),
+    # Every one of these is a documented limit of the Chat API, not a gap in
+    # our integration -- which is why they are stated up front rather than
+    # discovered when something silently does not work.
+    limitations=(
+        "The agent builder's chat panel always runs on AutoGPT.",
+        "Chat only: agent tools cannot run on this connection.",
+        "Microsoft chooses the model, so there is no Balanced or Advanced.",
+        "Interactive chats only -- scheduled runs stay on another connection.",
+        "Requires a work or school account with a Copilot licence.",
+    ),
+    entitlement=Entitlement.MICROSOFT_365_COPILOT_SUBSCRIPTION_TRANSPORT,
+    lock_reason="A Max plan or higher is required to use Microsoft 365 Copilot.",
+    unlock_href="/settings/billing",
+    # Unlike the Grok row, this one is not an impersonation problem: Microsoft
+    # documents a Chat API for third-party applications, its terms explicitly
+    # contemplate ISVs and multi-tenant apps, and the OAuth is ordinary Entra
+    # delegated auth against an application we register ourselves.
+    #
+    # It is opt-in for a different reason. The API is /beta, Microsoft says
+    # production use is unsupported and reserves the right to change or
+    # withdraw it, and the licence conditions bind the *user's* Microsoft
+    # account rather than ours. Turning that on is an operator's call.
+    opt_in_env="CHAT_ENABLE_MICROSOFT_365_COPILOT",
+    runtime_ready=False,
+    credential_strategy="oauth_app",
+    credential_provider=ProviderName.MICROSOFT_365_COPILOT,
+    login_timeout_seconds=15 * 60,
+    connect_button_label="Sign in with Microsoft",
+    terms_company="Microsoft",
+    # Its own card. Filing it under a "microsoft" entry would put it beside
+    # unrelated Microsoft integrations, and this is a product people look for
+    # by name.
+    display_alias=None,
+    # Microsoft's Chat API has no model field -- it abstracts whatever serves
+    # the response -- so naming a model per tier would be inventing one.
+    serves_named_models=False,
+    # Documented as textual responses only: no file creation, no mail, no
+    # code interpreter. Tools offered here would be listed, invoked, and fail.
+    supports_tool_calling=False,
+    # The preview terms prohibit non-human-directed applications "such as
+    # bots, multiplexing or similar". A chat someone just sent is fine; a
+    # scheduled job firing overnight is the thing that clause names.
+    human_directed_only=True,
+    route_surface=None,
+    catalog_vendor=None,
+)
+
 _PROFILES: dict[str, SubscriptionProviderProfile] = {
-    profile.key: profile for profile in (PLATFORM, CODEX, GITHUB_COPILOT, GROK)
+    profile.key: profile
+    for profile in (
+        PLATFORM,
+        CODEX,
+        GITHUB_COPILOT,
+        GROK,
+        MICROSOFT_365_COPILOT,
+    )
 }
 
 
@@ -367,3 +465,41 @@ def runtime_is_available(auth_provider: str) -> bool:
         return is_enabled(profile_for(auth_provider))
     except ValueError:
         return False
+
+
+def tool_calling_allowed_on(auth_provider: str | None) -> bool:
+    """Whether a turn on this connection may be given the tool registry.
+
+    The platform route always can. A linked provider may not: Microsoft's
+    Chat API answers with text and nothing else, so tools offered there
+    would be put in the prompt, attempted, and fail in front of a user who
+    is already waiting.
+
+    An unknown provider is treated as tool-capable, because the alternative
+    is silently stripping tools from a working connection over a typo. The
+    route itself is validated where it is chosen; this is only about what to
+    put in the request.
+    """
+    if auth_provider is None or auth_provider == "platform":
+        return True
+    try:
+        return profile_for(auth_provider).supports_tool_calling
+    except ValueError:
+        return True
+
+
+def unattended_runs_allowed_on(auth_provider: str | None) -> bool:
+    """Whether a run nobody is watching may use this connection.
+
+    Some providers licence their API for human-directed use only --
+    Microsoft's preview terms name "bots, multiplexing or similar" -- and
+    that condition binds the *user's* account, not ours. Getting it wrong
+    risks their access, which is why a scheduled run refuses the connection
+    rather than quietly using it.
+    """
+    if auth_provider is None or auth_provider == "platform":
+        return True
+    try:
+        return not profile_for(auth_provider).human_directed_only
+    except ValueError:
+        return True

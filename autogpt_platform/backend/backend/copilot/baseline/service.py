@@ -113,6 +113,7 @@ from backend.copilot.subscription_endpoint import (
     build_subscription_client,
     resolve_subscription_endpoint,
 )
+from backend.copilot.subscription_providers import tool_calling_allowed_on
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import (
@@ -2166,7 +2167,18 @@ async def stream_chat_completion_baseline(
             experts_enabled=experts_enabled, expert_id=session.expert_id
         )
     )
-    tools = get_available_tools(disabled_groups=disabled_tool_groups)
+    # A connection that cannot call tools gets none, rather than a list it
+    # will refuse. Microsoft 365 Copilot's Chat API is documented as
+    # returning text only -- offering tools on it would put them in the
+    # prompt, let the model try to use one, and fail at the point where the
+    # user is already waiting for an answer.
+    tools = (
+        get_available_tools(disabled_groups=disabled_tool_groups)
+        if tool_calling_allowed_on(
+            session.metadata.llm_auth_provider if session is not None else None
+        )
+        else []
+    )
 
     # --- Permission filtering ---
     if permissions is not None:

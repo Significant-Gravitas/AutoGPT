@@ -22,6 +22,7 @@ class ProviderName(str, Enum):
     E2B = "e2b"
     GITHUB_COPILOT = "github_copilot"
     GROK = "grok"
+    MICROSOFT_365_COPILOT = "microsoft_365_copilot"
     ELEVENLABS = "elevenlabs"
     FAL = "fal"
     GITHUB = "github"

@@ -16,6 +16,9 @@ class Entitlement(str, Enum):
     CODEX_SUBSCRIPTION_TRANSPORT = "codex_subscription_transport"
     GITHUB_COPILOT_SUBSCRIPTION_TRANSPORT = "github_copilot_subscription_transport"
     GROK_SUBSCRIPTION_TRANSPORT = "grok_subscription_transport"
+    MICROSOFT_365_COPILOT_SUBSCRIPTION_TRANSPORT = (
+        "microsoft_365_copilot_subscription_transport"
+    )
     # The Advanced model tier. Gated on hosted so it is a reason to upgrade
     # rather than a reason not to; granted outright on self-host, where
     # there is no plan to sell and the operator pays for their own tokens.
@@ -40,6 +43,10 @@ ENTITLEMENT_POLICIES: Mapping[Entitlement, EntitlementPolicy] = MappingProxyType
             allow_local=True,
         ),
         Entitlement.GROK_SUBSCRIPTION_TRANSPORT: EntitlementPolicy(
+            minimum_tier=SubscriptionTier.MAX,
+            allow_local=True,
+        ),
+        Entitlement.MICROSOFT_365_COPILOT_SUBSCRIPTION_TRANSPORT: EntitlementPolicy(
             minimum_tier=SubscriptionTier.MAX,
             allow_local=True,
         ),
