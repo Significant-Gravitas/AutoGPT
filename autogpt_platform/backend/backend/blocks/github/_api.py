@@ -119,15 +119,16 @@ async def get_paginated(
     params: Optional[dict[str, str]] = None,
     keep: Optional[Callable[[dict], bool]] = None,
     max_page_size: int = 100,
+    start_page: int = 1,
 ) -> list[dict]:
     """
     Fetches items from a paginated GitHub list endpoint until `limit` items
     are collected or no pages are left. Items are filtered by `keep` (if given)
-    before counting towards `limit`.
+    before counting towards `limit`. Fetching starts at `start_page`.
     """
     items: list[dict] = []
     page_size = max_page_size if keep else min(limit, max_page_size)
-    page = 1
+    page = start_page
     while len(items) < limit:
         response = await api.get(
             url,
