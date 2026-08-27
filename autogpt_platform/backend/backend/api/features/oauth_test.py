@@ -58,21 +58,22 @@ async def _create_test_user(user_id: str) -> None:
     except RuntimeError as error:
         if "Event loop is closed" not in str(error):
             raise
-        client._engine.session.open()
+        client._client._engine.session.open()
         await client.create(data=data)
 
 
 @pytest.mark.asyncio
 async def test_create_test_user_recovers_from_a_closed_connection_loop(mocker):
-    client = mocker.MagicMock()
+    client = mocker.MagicMock(spec=["create", "_client"])
     client.create = mocker.AsyncMock(
         side_effect=[RuntimeError("Event loop is closed"), None]
     )
+    client._client = mocker.MagicMock()
     mocker.patch.object(PrismaUser, "prisma", return_value=client)
 
     await _create_test_user("user-1")
 
-    client._engine.session.open.assert_called_once_with()
+    client._client._engine.session.open.assert_called_once_with()
     assert client.create.await_count == 2
 
 
