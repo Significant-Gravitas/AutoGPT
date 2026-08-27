@@ -233,7 +233,12 @@ def _validate_name(name: str) -> str | None:
 
 async def _get_user_skill_manager(user_id: str) -> WorkspaceManager:
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id=None)
+    return WorkspaceManager(
+        user_id,
+        workspace.id,
+        session_id=None,
+        user_global_config=True,
+    )
 
 
 # Redis lock key for serialising store_skill writes per user. A per-user

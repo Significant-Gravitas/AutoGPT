@@ -12,6 +12,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from autogpt_libs.auth.models import RequestContext
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -78,6 +79,11 @@ from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.model import Credentials
+from backend.data.tenancy import (
+    connect_live_transaction_lease_database,
+    disconnect_live_transaction_lease_database,
+    release_all_live_transaction_leases,
+)
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -128,6 +134,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+    lease_database_owned = await connect_live_transaction_lease_database()
     # Eager connect to fail-fast if Redis is unreachable.
     await backend.data.redis_client.get_redis_async()
 
@@ -217,6 +224,18 @@ async def lifespan_context(app: fastapi.FastAPI):
         await backend.data.redis_client.disconnect_async()
     except Exception:
         logger.warning("redis_client.disconnect_async failed", exc_info=True)
+
+    if lease_database_owned:
+        try:
+            await release_all_live_transaction_leases()
+        except Exception:
+            logger.warning("release_all_live_transaction_leases failed", exc_info=True)
+        try:
+            await disconnect_live_transaction_lease_database()
+        except Exception:
+            logger.warning(
+                "disconnect_live_transaction_lease_database failed", exc_info=True
+            )
 
     try:
         await backend.data.db.disconnect()
@@ -573,6 +592,45 @@ async def health():
     return {"status": "healthy"}
 
 
+async def _test_request_context(
+    user_id: str, *, allow_missing: bool = False
+) -> RequestContext:
+    membership = await backend.data.db.prisma.orgmember.find_first(
+        where={
+            "userId": user_id,
+            "isOwner": True,
+            "status": "ACTIVE",
+            "Org": {"isPersonal": True, "deletedAt": None},
+        },
+        order={"createdAt": "asc"},
+    )
+    if membership is None:
+        if allow_missing:
+            return RequestContext(
+                user_id=user_id,
+                org_id=f"missing-test-org-{user_id}",
+                team_id=None,
+                is_org_owner=False,
+                is_org_admin=False,
+                is_org_billing_manager=False,
+                is_team_admin=False,
+                is_team_billing_manager=False,
+                seat_status="NONE",
+            )
+        raise RuntimeError(f"Test user {user_id} has no active organization")
+    return RequestContext(
+        user_id=user_id,
+        org_id=membership.orgId,
+        team_id=None,
+        is_org_owner=membership.isOwner,
+        is_org_admin=membership.isAdmin,
+        is_org_billing_manager=membership.isBillingManager,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
         cors_params = build_cors_params(
@@ -616,23 +674,7 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
-        from autogpt_libs.auth.models import RequestContext
-
-        # team_id intentionally None: integration tests don't seed a Team
-        # row, and the schema enforces a FK from AgentGraph.teamId →
-        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
-        # ForeignKeyViolationError on graph creates.
-        ctx = RequestContext(
-            user_id=user_id,
-            org_id=f"test-org-{user_id}",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
-        )
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
             ctx=ctx,
@@ -649,23 +691,7 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         for_export: bool = False,
     ):
-        from autogpt_libs.auth.models import RequestContext
-
-        # team_id intentionally None: integration tests don't seed a Team
-        # row, and the schema enforces a FK from AgentGraph.teamId →
-        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
-        # ForeignKeyViolationError on graph creates.
-        ctx = RequestContext(
-            user_id=user_id,
-            org_id=f"test-org-{user_id}",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
-        )
+        ctx = await _test_request_context(user_id, allow_missing=True)
         return await backend.api.features.v1.get_graph(
             graph_id, user_id, ctx, graph_version, for_export
         )
@@ -675,23 +701,7 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        from autogpt_libs.auth.models import RequestContext
-
-        # team_id intentionally None: integration tests don't seed a Team
-        # row, and the schema enforces a FK from AgentGraph.teamId →
-        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
-        # ForeignKeyViolationError on graph creates.
-        ctx = RequestContext(
-            user_id=user_id,
-            org_id=f"test-org-{user_id}",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
-        )
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.v1.create_new_graph(
             create_graph, user_id, ctx
         )
@@ -710,38 +720,26 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
-        from autogpt_libs.auth.models import RequestContext
-
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
-        # team_id intentionally None: integration tests don't seed a Team
-        # row, and the schema enforces a FK from AgentGraph.teamId →
-        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
-        # ForeignKeyViolationError on graph creates.
-        ctx = RequestContext(
-            user_id=user_id,
-            org_id=f"test-org-{user_id}",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
+        ctx = await _test_request_context(user_id)
+        return await backend.api.features.v1.delete_graph(
+            graph_id, user_id, ctx, target_team_id=None
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.list_presets(
-            user_id=user_id, page=page, page_size=page_size
+            user_id=user_id, ctx=ctx, page=page, page_size=page_size
         )
 
     @staticmethod
     async def test_get_preset(preset_id: str, user_id: str):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.get_preset(
-            preset_id=preset_id, user_id=user_id
+            preset_id=preset_id, user_id=user_id, ctx=ctx
         )
 
     @staticmethod
@@ -749,8 +747,9 @@ class AgentServer(backend.util.service.AppProcess):
         preset: backend.api.features.library.model.LibraryAgentPresetCreatable,
         user_id: str,
     ):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.create_preset(
-            preset=preset, user_id=user_id
+            preset=preset, user_id=user_id, ctx=ctx
         )
 
     @staticmethod
@@ -759,14 +758,16 @@ class AgentServer(backend.util.service.AppProcess):
         preset: backend.api.features.library.model.LibraryAgentPresetUpdatable,
         user_id: str,
     ):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.update_preset(
-            preset_id=preset_id, preset=preset, user_id=user_id
+            preset_id=preset_id, preset=preset, user_id=user_id, ctx=ctx
         )
 
     @staticmethod
     async def test_delete_preset(preset_id: str, user_id: str):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.delete_preset(
-            preset_id=preset_id, user_id=user_id
+            preset_id=preset_id, user_id=user_id, ctx=ctx
         )
 
     @staticmethod
@@ -775,19 +776,7 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         inputs: Optional[dict[str, Any]] = None,
     ):
-        from autogpt_libs.auth.models import RequestContext
-
-        ctx = RequestContext(
-            user_id=user_id,
-            org_id=f"test-org-{user_id}",
-            team_id=None,
-            is_org_owner=True,
-            is_org_admin=True,
-            is_org_billing_manager=False,
-            is_team_admin=True,
-            is_team_billing_manager=False,
-            seat_status="ACTIVE",
-        )
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.library.routes.presets.execute_preset(
             preset_id=preset_id,
             user_id=user_id,
@@ -800,8 +789,9 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_create_store_listing(
         request: backend.api.features.store.model.StoreSubmissionRequest, user_id: str
     ):
+        ctx = await _test_request_context(user_id)
         return await backend.api.features.store.routes.create_submission(
-            request, user_id
+            request, user_id, ctx
         )
 
     ### ADMIN ###

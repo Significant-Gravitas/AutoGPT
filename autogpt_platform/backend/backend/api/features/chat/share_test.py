@@ -1,6 +1,8 @@
 """Route tests for chat-share endpoints (no DB)."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -52,12 +54,44 @@ def _mock_download_response():
     return _handler
 
 
+def _mock_shared_file_access(file: WorkspaceFile | None):
+    @asynccontextmanager
+    async def _access(*args, **kwargs):
+        yield file
+
+    return _access
+
+
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, mocker):
     """Bypass JWT auth for owner-router tests."""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
+    mocker.patch(
+        "backend.api.features.chat.share.get_chat_session_metadata",
+        autospec=True,
+        return_value=SimpleNamespace(
+            session_id=SESSION_ID,
+            organization_id="test-org",
+            team_id="test-team",
+        ),
+    )
+
+    @asynccontextmanager
+    async def allowed(*_args, **_kwargs):
+        yield True
+
+    mocker.patch(
+        "backend.api.features.chat.share.live_resource_permission_barrier",
+        new=allowed,
+    )
+    mocker.patch(
+        "backend.api.features.chat.share.require_exact_chat_session_scope",
+        new=AsyncMock(),
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -295,9 +329,8 @@ class TestPublicChatRead:
 class TestDownloadSharedChatFile:
     def test_uniform_404_for_unknown_token(self, client):
         with patch(
-            "backend.api.features.chat.share.share_db.get_shared_chat_file",
-            new_callable=AsyncMock,
-            return_value=None,
+            "backend.api.features.chat.share.share_db.shared_chat_file_access",
+            new=_mock_shared_file_access(None),
         ):
             response = client.get(
                 f"/api/public/shared/chats/{VALID_TOKEN}/files/{VALID_FILE_ID}/download"
@@ -307,14 +340,8 @@ class TestDownloadSharedChatFile:
     def test_valid_token_returns_inline(self, client):
         with (
             patch(
-                "backend.api.features.chat.share.share_db.get_shared_chat_file",
-                new_callable=AsyncMock,
-                return_value=SESSION_ID,
-            ),
-            patch(
-                "backend.api.features.chat.share.get_workspace_file_by_id",
-                new_callable=AsyncMock,
-                return_value=_make_workspace_file(),
+                "backend.api.features.chat.share.share_db.shared_chat_file_access",
+                new=_mock_shared_file_access(_make_workspace_file()),
             ),
             patch(
                 "backend.api.features.chat.share.create_file_download_response",

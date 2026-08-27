@@ -7,9 +7,9 @@ from the same data model, and one-click List-Unsubscribe headers on every
 family except Ops, which is internal mail and deliberately not opt-in.
 """
 
-import asyncio
 import logging
 
+import httpx
 from postmarker.core import PostmarkClient
 from postmarker.models.emails import EmailManager
 from prisma.enums import NotificationType
@@ -39,9 +39,11 @@ class TypedPostmarkClient(PostmarkClient):
 
 class EmailSender:
     def __init__(self):
-        if settings.secrets.postmark_server_api_token:
+        self._http_client: httpx.AsyncClient | None = None
+        self.server_token = settings.secrets.postmark_server_api_token
+        if self.server_token:
             self.postmark = TypedPostmarkClient(
-                server_token=settings.secrets.postmark_server_api_token,
+                server_token=self.server_token,
                 # postmarker defaults to no timeout, which hands `requests` an
                 # unbounded wait. Every send occupies a thread-pool worker, so a
                 # hung Postmark call would otherwise exhaust the pool.
@@ -115,22 +117,44 @@ class EmailSender:
         text_body: str,
         headers: dict[str, str] | None,
     ) -> None:
-        if not self.postmark:
-            logger.warning("Email tried to send without Postmark configured")
-            return
+        if not self.server_token:
+            raise RuntimeError("Postmark is not configured; cannot send email")
         logger.debug("Sending email to %s with subject %s", user_email, subject)
-        # postmarker's send is a blocking HTTP call; keep it off the event loop
-        # so a slow Postmark response can't stall the notification service.
-        await asyncio.to_thread(
-            self.postmark.emails.send,
-            From=sender,
-            To=user_email,
-            Subject=subject,
-            HtmlBody=html_body,
-            TextBody=text_body,
-            MessageStream=settings.config.postmark_transactional_stream,
-            Headers=headers,
+        payload: dict[str, object] = {
+            "From": sender,
+            "To": user_email,
+            "Subject": subject,
+            "HtmlBody": html_body,
+            "TextBody": text_body,
+            "MessageStream": settings.config.postmark_transactional_stream,
+        }
+        if headers:
+            payload["Headers"] = [
+                {"Name": name, "Value": value} for name, value in headers.items()
+            ]
+
+        client = self._http_client
+        if client is None:
+            client = httpx.AsyncClient(timeout=POSTMARK_TIMEOUT_SECONDS)
+            self._http_client = client
+        response = await client.post(
+            "https://api.postmarkapp.com/email",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-Postmark-Server-Token": self.server_token,
+            },
+            json=payload,
         )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("ErrorCode") != 0:
+            raise RuntimeError("Postmark rejected the notification email")
+
+    async def close(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
 
 def _sender_for(stream: DeliveryStream) -> str:

@@ -39,6 +39,7 @@ export function ScheduleAgentModal({
     resetForm,
     teamId,
     setTeamId,
+    isReady,
   } = useScheduleAgentModal(agent, inputValues, inputCredentials, {
     onCreateSchedule: (schedule) => {
       onScheduleCreated?.(schedule);
@@ -63,7 +64,7 @@ export function ScheduleAgentModal({
     }
   }
 
-  const canSchedule = scheduleName.trim() && isScheduleFormValid;
+  const canSchedule = scheduleName.trim() && isScheduleFormValid && isReady;
 
   return (
     <Dialog

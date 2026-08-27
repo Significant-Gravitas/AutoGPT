@@ -41,7 +41,18 @@ def _membership(team_id="team-1", org_id="org-1"):
     membership = MagicMock()
     membership.teamId = team_id
     membership.Team = MagicMock(orgId=org_id)
+    membership.isAdmin = False
+    membership.isBillingManager = False
     return membership
+
+
+def _org_membership(org_id="org-1", *, billing_only=False):
+    return MagicMock(
+        orgId=org_id,
+        isOwner=False,
+        isAdmin=False,
+        isBillingManager=billing_only,
+    )
 
 
 @pytest.fixture
@@ -49,8 +60,8 @@ def mock_prisma(mocker):
     mock = MagicMock()
     mock.agentgraphgrant.find_many = AsyncMock(return_value=[])
     mock.teammember.find_many = AsyncMock(return_value=[])
-    mock.orgmember.find_many = AsyncMock(return_value=[MagicMock(orgId="org-1")])
-    mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
+    mock.orgmember.find_many = AsyncMock(return_value=[_org_membership()])
+    mock.orgmember.find_first = AsyncMock(return_value=_org_membership())
     mocker.patch("backend.data.grants.prisma", mock)
     return mock
 
@@ -206,6 +217,19 @@ class TestResolveGraphGrant:
             is None
         )
 
+    @pytest.mark.asyncio
+    async def test_org_billing_only_membership_makes_grant_inert(self, mock_prisma):
+        mock_prisma.agentgraphgrant.find_many = AsyncMock(return_value=[_grant()])
+        mock_prisma.teammember.find_many = AsyncMock(return_value=[_membership()])
+        mock_prisma.orgmember.find_many = AsyncMock(
+            return_value=[_org_membership(billing_only=True)]
+        )
+
+        assert (
+            await resolve_graph_grant("u1", "g1", capability=GrantCapability.EXECUTE)
+            is None
+        )
+
 
 class TestGrantCoversVersion:
     def test_pinned_grant_covers_only_pinned_version(self):
@@ -256,7 +280,7 @@ class TestResolveExecutionCredentialsOwner:
         mock = MagicMock()
         mock.agentgraph.find_unique = AsyncMock(return_value=_cred_graph())
         mock.agentgraph.find_first = AsyncMock(return_value=_cred_graph())
-        mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        mock.orgmember.find_first = AsyncMock(return_value=_org_membership())
         mocker.patch("backend.data.grants.prisma", mock)
         return mock
 
@@ -306,6 +330,18 @@ class TestResolveExecutionCredentialsOwner:
     ):
         patch_grant(_cred_grant())
         mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+
+        with pytest.raises(OwnerGrantConsentError, match="no longer an active member"):
+            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+
+    @pytest.mark.asyncio
+    async def test_owner_billing_downgrade_rejects_owner_mode_resolution(
+        self, mock_prisma, patch_grant
+    ):
+        patch_grant(_cred_grant())
+        mock_prisma.orgmember.find_first = AsyncMock(
+            return_value=_org_membership(billing_only=True)
+        )
 
         with pytest.raises(OwnerGrantConsentError, match="no longer an active member"):
             await resolve_execution_credentials_owner("consumer-1", "g1", 3)
@@ -428,8 +464,8 @@ class TestValidateExecutionCredentialsOwner:
         mock.agentgraph.find_unique = AsyncMock(return_value=_cred_graph())
         mock.agentgraphgrant.find_many = AsyncMock(return_value=[])
         mock.teammember.find_many = AsyncMock(return_value=[])
-        mock.orgmember.find_many = AsyncMock(return_value=[MagicMock(orgId="org-1")])
-        mock.orgmember.find_first = AsyncMock(return_value=MagicMock())
+        mock.orgmember.find_many = AsyncMock(return_value=[_org_membership()])
+        mock.orgmember.find_first = AsyncMock(return_value=_org_membership())
         mock.team.find_first = AsyncMock(return_value=MagicMock())
         mocker.patch("backend.data.grants.prisma", mock)
         return mock
@@ -474,6 +510,17 @@ class TestValidateExecutionCredentialsOwner:
     async def test_owner_org_removal_invalidates_queued_grant(self, mock_prisma):
         self._authorize(mock_prisma)
         mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+
+        assert not await validate_execution_credentials_owner(
+            "consumer-1", "g1", 3, "owner-1", "grant-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_owner_billing_downgrade_invalidates_queued_grant(self, mock_prisma):
+        self._authorize(mock_prisma)
+        mock_prisma.orgmember.find_first = AsyncMock(
+            return_value=_org_membership(billing_only=True)
+        )
 
         assert not await validate_execution_credentials_owner(
             "consumer-1", "g1", 3, "owner-1", "grant-1"

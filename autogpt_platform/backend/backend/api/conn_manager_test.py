@@ -19,7 +19,9 @@ from backend.data.execution import GraphExecutionMeta
 
 @pytest.fixture
 def connection_manager() -> ConnectionManager:
-    return ConnectionManager()
+    manager = ConnectionManager()
+    manager._execution_scope_is_live = AsyncMock(return_value=True)
+    return manager
 
 
 @pytest.fixture
@@ -34,6 +36,8 @@ def _meta(graph_id: str = "test_graph") -> MagicMock:
     meta.id = "graph-exec-1"
     meta.user_id = "user-1"
     meta.graph_id = graph_id
+    meta.organization_id = "org-1"
+    meta.team_id = "team-1"
     return meta
 
 
@@ -643,7 +647,16 @@ async def test_subscribe_graph_execs_opens_aggregate_channel(
         captured.append(full_channel)
         return fake_sub
 
-    with patch("backend.api.conn_manager._Subscription", side_effect=_capture):
+    graph = MagicMock()
+    graph.organization_id = "org-1"
+    graph.team_id = "team-1"
+    with (
+        patch("backend.api.conn_manager._Subscription", side_effect=_capture),
+        patch(
+            "backend.api.conn_manager.get_graph",
+            AsyncMock(return_value=graph),
+        ),
+    ):
         await connection_manager.subscribe_graph_execs(
             user_id="user-1",
             graph_id="graph-1",
@@ -760,6 +773,38 @@ async def test_two_connections_get_independent_subscriptions(
     # Both websockets are on the same channel set.
     subs = connection_manager.subscriptions["user-1|graph_exec#graph-exec-1"]
     assert ws_a in subs and ws_b in subs
+
+
+@pytest.mark.asyncio
+async def test_subscription_closes_before_forwarding_after_scope_revocation(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+) -> None:
+    fake_sub = MagicMock()
+    fake_sub.start = AsyncMock()
+    fake_sub.stop = AsyncMock()
+    connection_manager._execution_scope_is_live.side_effect = [True, False]
+    with (
+        patch(
+            "backend.api.conn_manager.get_graph_execution_meta",
+            AsyncMock(return_value=_meta()),
+        ),
+        patch("backend.api.conn_manager._Subscription", return_value=fake_sub),
+    ):
+        await connection_manager.subscribe_graph_exec(
+            user_id="user-1",
+            graph_exec_id="graph-exec-1",
+            websocket=mock_websocket,
+        )
+
+    on_message = fake_sub.start.call_args.args[0]
+    await on_message(b'{"payload":{"event_type":"graph_execution_update"}}')
+
+    mock_websocket.close.assert_awaited_once_with(
+        code=4003,
+        reason="Execution subscription access was revoked",
+    )
+    mock_websocket.send_text.assert_not_awaited()
 
 
 # ---------- _forward_exec_event ----------

@@ -7,6 +7,7 @@ from prisma.enums import GrantCapability, GrantCredentialMode, GrantPrincipalTyp
 from backend.blocks import get_block
 from backend.data.db import prisma
 from backend.data.includes import AGENT_GRAPH_INCLUDE
+from backend.data.tenancy import agent_graph_attachment_mutation_barrier
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .grant_model import GrantResponse, ReceivedGrantResponse
@@ -64,6 +65,34 @@ async def upsert_grant(
     or capability/mode values (route maps to 400) and ``NotFoundError`` when
     the graph/team isn't in this org.
     """
+    async with agent_graph_attachment_mutation_barrier(graph_id):
+        return await _upsert_grant_locked(
+            org_id,
+            graph_id,
+            principal_type=principal_type,
+            principal_id=principal_id,
+            graph_version=graph_version,
+            capability=capability,
+            credential_mode=credential_mode,
+            follow_latest=follow_latest,
+            created_by_user_id=created_by_user_id,
+            sharer_is_org_admin=sharer_is_org_admin,
+        )
+
+
+async def _upsert_grant_locked(
+    org_id: str,
+    graph_id: str,
+    *,
+    principal_type: str,
+    principal_id: str,
+    graph_version: int | None,
+    capability: str,
+    credential_mode: str,
+    follow_latest: bool,
+    created_by_user_id: str,
+    sharer_is_org_admin: bool,
+) -> GrantResponse:
     if principal_type != GrantPrincipalType.TEAM:
         raise ValueError(
             "Only TEAM principals are supported; USER/PERSONA grants are not "
@@ -160,8 +189,24 @@ async def upsert_grant(
     return GrantResponse.from_db(grant)
 
 
-async def list_grants_for_graph(org_id: str, graph_id: str) -> list[GrantResponse]:
+async def list_grants_for_graph(
+    org_id: str,
+    graph_id: str,
+    *,
+    requested_by_user_id: str,
+    requester_is_org_admin: bool,
+) -> list[GrantResponse]:
     """List grants on a graph within this org."""
+    graph = await prisma.agentgraph.find_first(
+        where={"id": graph_id, "organizationId": org_id},
+        order={"version": "desc"},
+    )
+    if graph is None:
+        raise NotFoundError(f"Graph #{graph_id} not found")
+    if graph.userId != requested_by_user_id and not requester_is_org_admin:
+        raise NotAuthorizedError(
+            "Only the graph's owner or an org admin can list its grants"
+        )
     grants = await prisma.agentgraphgrant.find_many(
         where={"agentGraphId": graph_id, "organizationId": org_id},
         order={"createdAt": "asc"},
@@ -180,7 +225,11 @@ async def list_received_grants(
             "Team": {"is": {"orgId": org_id, "archivedAt": None}},
         }
     )
-    team_ids = [m.teamId for m in memberships]
+    team_ids = [
+        membership.teamId
+        for membership in memberships
+        if membership.isAdmin or not membership.isBillingManager
+    ]
     if not team_ids:
         return []
 
@@ -205,6 +254,24 @@ async def revoke_grant(
     revoker_is_org_admin: bool,
 ) -> None:
     """Delete a grant. Raises ``NotFoundError`` if it isn't on this org+graph."""
+    async with agent_graph_attachment_mutation_barrier(graph_id):
+        await _revoke_grant_locked(
+            org_id,
+            graph_id,
+            grant_id,
+            revoked_by_user_id=revoked_by_user_id,
+            revoker_is_org_admin=revoker_is_org_admin,
+        )
+
+
+async def _revoke_grant_locked(
+    org_id: str,
+    graph_id: str,
+    grant_id: str,
+    *,
+    revoked_by_user_id: str,
+    revoker_is_org_admin: bool,
+) -> None:
     grant = await prisma.agentgraphgrant.find_first(
         where={"id": grant_id, "agentGraphId": graph_id, "organizationId": org_id}
     )
@@ -212,7 +279,8 @@ async def revoke_grant(
         raise NotFoundError(f"Grant #{grant_id} not found")
 
     graph = await prisma.agentgraph.find_first(
-        where={"id": graph_id}, order={"version": "desc"}
+        where={"id": graph_id, "organizationId": org_id},
+        order={"version": "desc"},
     )
     if (
         graph is not None
@@ -223,5 +291,13 @@ async def revoke_grant(
             "Only the graph's owner or an org admin can revoke a grant"
         )
 
-    await prisma.agentgraphgrant.delete(where={"id": grant_id})
+    deleted = await prisma.agentgraphgrant.delete_many(
+        where={
+            "id": grant_id,
+            "agentGraphId": graph_id,
+            "organizationId": org_id,
+        }
+    )
+    if deleted != 1:
+        raise NotFoundError(f"Grant #{grant_id} not found")
     logger.info(f"Grant {grant_id} on graph {graph_id} revoked")

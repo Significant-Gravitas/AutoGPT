@@ -6,15 +6,22 @@ combining the storage backend and database layer.
 """
 
 import asyncio
+import inspect
 import logging
 import mimetypes
 import uuid
-from typing import Optional
+from typing import Awaitable, Optional, TypeVar
 
 from prisma.errors import UniqueViolationError
 
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import (
+    LiveResourceAccessRevoked,
+    live_resource_lease,
+    require_exact_chat_session_scope,
+    workspace_db,
+)
+from backend.data.tenancy import ResourceAccess
 from backend.data.workspace import WorkspaceFile
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
@@ -36,6 +43,7 @@ def format_bytes(n: int) -> str:
 
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class WorkspaceManager:
@@ -48,7 +56,16 @@ class WorkspaceManager:
     """
 
     def __init__(
-        self, user_id: str, workspace_id: str, session_id: Optional[str] = None
+        self,
+        user_id: str,
+        workspace_id: str,
+        session_id: Optional[str] = None,
+        *,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        execution_id: str | None = None,
+        access: ResourceAccess = "execute",
+        user_global_config: bool = False,
     ):
         """
         Initialize WorkspaceManager.
@@ -61,8 +78,51 @@ class WorkspaceManager:
         self.user_id = user_id
         self.workspace_id = workspace_id
         self.session_id = session_id
+        self.organization_id = organization_id
+        self.team_id = team_id
+        self.execution_id = execution_id
+        self.access: ResourceAccess = access
+        self.user_global_config = user_global_config
+        if user_global_config and any(
+            (organization_id, team_id, session_id, execution_id)
+        ):
+            raise ValueError("User-global workspace files cannot carry tenant scope")
         # Session path prefix for file isolation
         self.session_path = f"/sessions/{session_id}" if session_id else ""
+
+    def _scope_kwargs(self) -> dict:
+        return {
+            "organization_id": self.organization_id,
+            "team_id": self.team_id,
+            "user_global_config": self.user_global_config,
+        }
+
+    def _matches_session(self, file: WorkspaceFile | None) -> bool:
+        return file is not None and (
+            self.session_id is None or file.session_id == self.session_id
+        )
+
+    async def _run_scoped(self, action: Awaitable[T]) -> T:
+        if self.user_global_config or self.organization_id is None:
+            return await action
+        async with live_resource_lease(
+            self.user_id,
+            self.organization_id,
+            self.team_id,
+            self.access,
+        ) as guard:
+            if not guard:
+                if inspect.iscoroutine(action):
+                    action.close()
+                raise LiveResourceAccessRevoked("workspace_access_revoked")
+            if self.session_id is not None:
+                await require_exact_chat_session_scope(
+                    self.session_id,
+                    self.user_id,
+                    self.organization_id,
+                    self.team_id,
+                )
+            return await guard.run(action)
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -76,8 +136,10 @@ class WorkspaceManager:
         Returns:
             Resolved path with session prefix if applicable
         """
-        # If path explicitly references a session folder, use it as-is
+        # Explicit session paths must stay inside the manager's persisted session.
         if path.startswith("/sessions/"):
+            if self.session_path and not path.startswith(self.session_path + "/"):
+                raise ValueError("Cross-session workspace paths are not allowed")
             return path
 
         # If we have a session context, prepend session path
@@ -103,6 +165,8 @@ class WorkspaceManager:
         Returns:
             Effective path prefix for database query
         """
+        if include_all_sessions and self.session_id is not None:
+            raise ValueError("Session-scoped managers cannot access other sessions")
         if include_all_sessions:
             # Normalize path to ensure leading slash (stored paths are normalized)
             if path is not None and not path.startswith("/"):
@@ -135,11 +199,19 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        return await self._run_scoped(self._read_file(path))
+
+    async def _read_file(self, path: str) -> bytes:
         db = workspace_db()
         resolved_path = self._resolve_path(path)
-        file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
-        if file is None:
+        file = await db.get_workspace_file_by_path(
+            self.workspace_id,
+            resolved_path,
+            **self._scope_kwargs(),
+        )
+        if not self._matches_session(file):
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
+        assert file is not None
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
@@ -157,15 +229,43 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        return await self._run_scoped(self._read_file_by_id(file_id))
+
+    async def _read_file_by_id(self, file_id: str) -> bytes:
         db = workspace_db()
-        file = await db.get_workspace_file(file_id, self.workspace_id)
-        if file is None:
+        file = await db.get_workspace_file(
+            file_id,
+            self.workspace_id,
+            **self._scope_kwargs(),
+        )
+        if not self._matches_session(file):
             raise FileNotFoundError(f"File not found: {file_id}")
+        assert file is not None
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
 
     async def write_file(
+        self,
+        content: bytes,
+        filename: str,
+        path: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        overwrite: bool = False,
+        metadata: Optional[dict] = None,
+    ) -> WorkspaceFile:
+        return await self._run_scoped(
+            self._write_file(
+                content,
+                filename,
+                path=path,
+                mime_type=mime_type,
+                overwrite=overwrite,
+                metadata=metadata,
+            )
+        )
+
+    async def _write_file(
         self,
         content: bytes,
         filename: str,
@@ -224,11 +324,15 @@ class WorkspaceManager:
         # with a same-size or smaller file is not rejected near the cap.
         storage_limit, current_usage = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
-            workspace_db().get_workspace_total_size(self.workspace_id),
+            workspace_db().get_workspace_total_size(self.workspace_id, all_scopes=True),
         )
         if overwrite:
             db = workspace_db()
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+            existing = await db.get_workspace_file_by_path(
+                self.workspace_id,
+                path,
+                **self._scope_kwargs(),
+            )
             if existing is not None:
                 current_usage = max(0, current_usage - existing.size_bytes)
 
@@ -247,7 +351,11 @@ class WorkspaceManager:
         db = workspace_db()
 
         if not overwrite:
-            existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+            existing = await db.get_workspace_file_by_path(
+                self.workspace_id,
+                path,
+                **self._scope_kwargs(),
+            )
             if existing is not None:
                 raise ValueError(f"File already exists at path: {path}")
 
@@ -295,12 +403,19 @@ class WorkspaceManager:
                     size_bytes=len(content),
                     checksum=checksum,
                     metadata=metadata,
+                    organization_id=self.organization_id,
+                    team_id=self.team_id,
+                    session_id=self.session_id,
+                    execution_id=self.execution_id,
+                    user_global_config=self.user_global_config,
                 )
             except UniqueViolationError:
                 if retries > 0:
                     # Delete conflicting file and retry
                     existing = await db.get_workspace_file_by_path(
-                        self.workspace_id, path
+                        self.workspace_id,
+                        path,
+                        **self._scope_kwargs(),
                     )
                     if existing:
                         await self.delete_file(existing.id)
@@ -325,21 +440,6 @@ class WorkspaceManager:
             f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
             f"at path {path}, size={len(content)} bytes"
         )
-
-        # Fire-and-forget: index this file in the hybrid-search store so
-        # the user can find it from /search/global by name. No-ops cheaply
-        # when the existing embedding's text is unchanged.
-        try:
-            from backend.api.features.workspace.embeddings import (
-                schedule_workspace_file_embedding,
-            )
-
-            schedule_workspace_file_embedding(
-                file_id=file.id, user_id=self.user_id, name=file.name, path=file.path
-            )
-        except Exception as e:
-            # Embedding is purely a search-quality concern — never block writes.
-            logger.warning(f"Failed to schedule file embedding for {file.id}: {e}")
 
         return file
 
@@ -383,6 +483,34 @@ class WorkspaceManager:
         Returns:
             List of WorkspaceFile instances
         """
+        return await self._run_scoped(
+            self._list_files(
+                path=path,
+                limit=limit,
+                offset=offset,
+                include_all_sessions=include_all_sessions,
+                name_contains=name_contains,
+                path_not_starts_with=path_not_starts_with,
+                metadata_equals=metadata_equals,
+                metadata_not_equals=metadata_not_equals,
+                folder_id=folder_id,
+                root_only=root_only,
+            )
+        )
+
+    async def _list_files(
+        self,
+        path: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        include_all_sessions: bool = False,
+        name_contains: Optional[str] = None,
+        path_not_starts_with: Optional[str] = None,
+        metadata_equals: Optional[dict] = None,
+        metadata_not_equals: Optional[dict] = None,
+        folder_id: Optional[str] = None,
+        root_only: bool = False,
+    ) -> list[WorkspaceFile]:
         effective_path = self._get_effective_path(path, include_all_sessions)
         db = workspace_db()
 
@@ -397,6 +525,7 @@ class WorkspaceManager:
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
             root_only=root_only,
+            **self._scope_kwargs(),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -409,10 +538,18 @@ class WorkspaceManager:
         Returns:
             True if deleted, False if not found
         """
+        return await self._run_scoped(self._delete_file(file_id))
+
+    async def _delete_file(self, file_id: str) -> bool:
         db = workspace_db()
-        file = await db.get_workspace_file(file_id, self.workspace_id)
-        if file is None:
+        file = await db.get_workspace_file(
+            file_id,
+            self.workspace_id,
+            **self._scope_kwargs(),
+        )
+        if not self._matches_session(file):
             return False
+        assert file is not None
 
         # Delete from storage
         storage = await get_workspace_storage()
@@ -423,7 +560,11 @@ class WorkspaceManager:
             # Continue with database soft-delete even if storage delete fails
 
         # Soft-delete database record
-        result = await db.soft_delete_workspace_file(file_id, self.workspace_id)
+        result = await db.soft_delete_workspace_file(
+            file_id,
+            self.workspace_id,
+            **self._scope_kwargs(),
+        )
 
         # Best-effort cleanup of the search index so deleted files don't
         # keep showing up in /search/global hits.
@@ -455,10 +596,20 @@ class WorkspaceManager:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        return await self._run_scoped(
+            self._get_download_url(file_id, expires_in=expires_in)
+        )
+
+    async def _get_download_url(self, file_id: str, expires_in: int = 3600) -> str:
         db = workspace_db()
-        file = await db.get_workspace_file(file_id, self.workspace_id)
-        if file is None:
+        file = await db.get_workspace_file(
+            file_id,
+            self.workspace_id,
+            **self._scope_kwargs(),
+        )
+        if not self._matches_session(file):
             raise FileNotFoundError(f"File not found: {file_id}")
+        assert file is not None
 
         storage = await get_workspace_storage()
         return await storage.get_download_url(file.storage_path, expires_in)
@@ -473,8 +624,16 @@ class WorkspaceManager:
         Returns:
             WorkspaceFile instance or None
         """
+        return await self._run_scoped(self._get_file_info(file_id))
+
+    async def _get_file_info(self, file_id: str) -> Optional[WorkspaceFile]:
         db = workspace_db()
-        return await db.get_workspace_file(file_id, self.workspace_id)
+        file = await db.get_workspace_file(
+            file_id,
+            self.workspace_id,
+            **self._scope_kwargs(),
+        )
+        return file if self._matches_session(file) else None
 
     async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
@@ -489,9 +648,17 @@ class WorkspaceManager:
         Returns:
             WorkspaceFile instance or None
         """
+        return await self._run_scoped(self._get_file_info_by_path(path))
+
+    async def _get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         db = workspace_db()
         resolved_path = self._resolve_path(path)
-        return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
+        file = await db.get_workspace_file_by_path(
+            self.workspace_id,
+            resolved_path,
+            **self._scope_kwargs(),
+        )
+        return file if self._matches_session(file) else None
 
     async def get_file_count(
         self,
@@ -512,9 +679,23 @@ class WorkspaceManager:
         Returns:
             Number of files
         """
+        return await self._run_scoped(
+            self._get_file_count(
+                path=path,
+                include_all_sessions=include_all_sessions,
+            )
+        )
+
+    async def _get_file_count(
+        self,
+        path: Optional[str] = None,
+        include_all_sessions: bool = False,
+    ) -> int:
         effective_path = self._get_effective_path(path, include_all_sessions)
         db = workspace_db()
 
         return await db.count_workspace_files(
-            self.workspace_id, path_prefix=effective_path
+            self.workspace_id,
+            path_prefix=effective_path,
+            **self._scope_kwargs(),
         )

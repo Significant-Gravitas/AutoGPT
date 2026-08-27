@@ -29,12 +29,12 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
     NIGHTLY_BATCH_REGISTRATION_PREFIX,
     clear_registration_marker,
 )
-from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
@@ -200,6 +200,17 @@ async def _execute_graph(**kwargs):
     start_time = asyncio.get_event_loop().time()
     db = get_database_manager_async_client()
     try:
+        if not await db.has_live_resource_access(
+            args.user_id,
+            args.organization_id,
+            args.team_id,
+            "execute",
+        ):
+            logger.warning(
+                "Skipping scheduled graph %s because its org/team access is inactive",
+                args.graph_id,
+            )
+            return
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
             user_id=args.user_id,
@@ -245,6 +256,11 @@ async def _execute_graph(**kwargs):
         logger.info(
             f"Skipping scheduled expert run for graph #{args.graph_id}: "
             "expert unavailable"
+        )
+    except NotAuthorizedError:
+        logger.warning(
+            "Skipping scheduled graph %s because execution access was revoked",
+            args.graph_id,
         )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -326,11 +342,54 @@ async def _skip_inactive_expert_scope(
         await _reschedule_one_shot_after_expert_unavailable(args)
 
 
+async def schedule_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    turn_id: str,
+    message: str,
+    tool_call_id: str,
+    tool_name: str,
+    is_user_message: bool,
+    organization_id: str | None,
+    team_id: str | None,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    return await get_database_manager_async_client().schedule_turn_if_live(
+        session_id=session_id,
+        user_id=user_id,
+        turn_id=turn_id,
+        message=message,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        is_user_message=is_user_message,
+        organization_id=organization_id,
+        team_id=team_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+    )
+
+
 async def _execute_copilot_turn(**kwargs):
+    organization_scope_was_persisted = "organization_id" in kwargs
+    team_scope_was_persisted = "team_id" in kwargs
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
+    db = get_database_manager_async_client()
     try:
+        if not await db.has_live_resource_access(
+            args.user_id,
+            args.organization_id,
+            args.team_id,
+            "execute",
+        ):
+            logger.warning(
+                "Skipping Copilot schedule %s because its org/team access is inactive",
+                args.schedule_id,
+            )
+            return
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
@@ -379,6 +438,17 @@ async def _execute_copilot_turn(**kwargs):
                 return
             target_session_id = new_session.session_id
             target_session = new_session
+            if (
+                new_session.organization_id,
+                new_session.team_id,
+                new_session.expert_id,
+            ) != (args.organization_id, args.team_id, args.expert_id):
+                logger.warning(
+                    "Copilot turn schedule %s created a session outside its "
+                    "persisted scope; skipping dispatch",
+                    args.schedule_id,
+                )
+                return
             # Nothing can be forged in a chat that has never existed before:
             # its ``origin="automation"`` refuses the staffing tools outright,
             # so no proposal can be parked here to approve. Persist the opener
@@ -398,20 +468,35 @@ async def _execute_copilot_turn(**kwargs):
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
-            if expert_scope_was_persisted and session.expert_id != args.expert_id:
+            scope_mismatch = (
+                (
+                    organization_scope_was_persisted
+                    and session.organization_id != args.organization_id
+                )
+                or (team_scope_was_persisted and session.team_id != args.team_id)
+                or (expert_scope_was_persisted and session.expert_id != args.expert_id)
+            )
+            if scope_mismatch:
                 logger.warning(
                     f"Copilot turn schedule {args.schedule_id} skipped — session "
-                    f"{args.session_id[:12]} memory scope no longer matches the "
+                    f"{args.session_id[:12]} tenant scope no longer matches the "
                     "persisted schedule scope; removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
+            scope_updates: dict[str, str | None] = {}
+            if not organization_scope_was_persisted:
+                scope_updates["organization_id"] = session.organization_id
+            if not team_scope_was_persisted:
+                scope_updates["team_id"] = session.team_id
             if not expert_scope_was_persisted:
                 # Legacy explicit-session jobs predate the scope field. The
                 # owned target session is the only authoritative provenance
                 # available, so recover from it rather than interpreting the
                 # missing field as AutoPilot.
-                args = args.model_copy(update={"expert_id": session.expert_id})
+                scope_updates["expert_id"] = session.expert_id
+            if scope_updates:
+                args = args.model_copy(update=scope_updates)
             if args.expert_id is not None:
                 expert_status = await _expert_scope_status(args.user_id, args.expert_id)
                 if expert_status != "active":
@@ -428,12 +513,7 @@ async def _execute_copilot_turn(**kwargs):
             persist_as_user_turn = False
 
         assert target_session_id is not None
-        # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
-        # point: it acquires a per-user concurrency slot AND registers the
-        # session in the stream registry before queue-publishing, so the
-        # executor's streamed output reaches a known consumer instead of
-        # being orphaned.
-        await schedule_turn(
+        dispatched = await schedule_turn(
             session_id=target_session_id,
             user_id=args.user_id,
             turn_id=str(uuid.uuid4()),
@@ -441,11 +521,17 @@ async def _execute_copilot_turn(**kwargs):
             is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
-            organization_id=args.organization_id,
-            team_id=args.team_id,
+            organization_id=target_session.organization_id,
+            team_id=target_session.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
         )
+        if not dispatched:
+            logger.warning(
+                "Skipping Copilot schedule %s because execution access was revoked",
+                args.schedule_id,
+            )
+            return
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Dispatched scheduled copilot turn for session "
@@ -2057,7 +2143,11 @@ class Scheduler(AppService):
 
     @expose
     def delete_graph_execution_schedule(
-        self, schedule_id: str, user_id: str
+        self,
+        schedule_id: str,
+        user_id: str,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo]:
         """Delete a schedule by id, regardless of kind.
 
@@ -2065,7 +2155,13 @@ class Scheduler(AppService):
         ``SchedulerClient.delete_schedule`` and accepts both graph and
         copilot-turn schedules.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="delete")
+        job, info = self._authorized_job(
+            schedule_id,
+            user_id,
+            action="delete",
+            organization_id=organization_id,
+            team_ids=team_ids,
+        )
         logger.info(f"Deleting job {schedule_id} (kind={info.kind})")
         job.remove()
         # Invalidate the read cache so the deletion shows up immediately
@@ -2073,8 +2169,31 @@ class Scheduler(AppService):
         self._invalidate_jobs_cache()
         return info
 
+    @expose
+    def get_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
+    ) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo]:
+        _, info = self._authorized_job(
+            schedule_id,
+            user_id,
+            action="view",
+            organization_id=organization_id,
+            team_ids=team_ids,
+        )
+        return info
+
     def _authorized_job(
-        self, schedule_id: str, user_id: str, *, action: str
+        self,
+        schedule_id: str,
+        user_id: str,
+        *,
+        action: str,
+        organization_id: str | None = None,
+        team_ids: list[str] | None = None,
     ) -> tuple[JobObj, Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
         """Load a schedule and check *user_id* owns it.
 
@@ -2096,6 +2215,11 @@ class Scheduler(AppService):
             raise NotFoundError(f"Job #{schedule_id} has invalid schedule data.")
         if info.user_id != user_id:
             raise NotAuthorizedError("User ID does not match the job's user ID")
+        if organization_id is not None and not (
+            info.organization_id == organization_id
+            and (info.team_id is None or info.team_id in (team_ids or []))
+        ):
+            raise NotFoundError(f"Job #{schedule_id} not found.")
         return job, info
 
     @expose
@@ -2230,8 +2354,8 @@ class Scheduler(AppService):
 
         With *organization_id* (from a membership-verified RequestContext)
         the org/team visibility rules apply instead of strict ownership:
-        own schedules + org-home schedules + schedules of teams in
-        *team_ids* (resolved by the caller, who has async DB access). Expert
+        own legacy untagged schedules + org-home schedules + schedules of
+        teams in *team_ids* (resolved by the caller, who has async DB access). Expert
         schedules remain owner-only for scoped calls. Trusted global callers
         that provide neither *user_id* nor *organization_id* receive all jobs.
 
@@ -2253,19 +2377,17 @@ class Scheduler(AppService):
             if kind is not None and info.kind != kind:
                 continue
             if info.expert_id is not None:
-                if (
-                    user_id is not None or organization_id is not None
-                ) and info.user_id != user_id:
+                if user_id is not None and info.user_id != user_id:
                     continue
-            elif organization_id is not None:
+            if organization_id is not None:
                 # GraphExecutionJobArgs defaults organization_id to "" —
                 # normalise so untagged rows never match an org clause.
                 info_org = info.organization_id or None
-                owned = user_id is not None and info.user_id == user_id
+                own_legacy = info.user_id == user_id and info_org is None
                 in_org = info_org == organization_id and (
                     info.team_id is None or info.team_id in (team_ids or [])
                 )
-                if not (owned or in_org):
+                if not (own_legacy or in_org):
                     continue
             elif user_id is not None and info.user_id != user_id:
                 continue
@@ -2676,6 +2798,7 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    get_execution_schedule = endpoint_to_async(Scheduler.get_execution_schedule)
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.

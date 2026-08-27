@@ -8,6 +8,7 @@ Two surfaces:
      /orgs/{org_id}/memory, mocked at the graphiti-driver + prisma boundary.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -137,6 +138,13 @@ class TestHoldBufferUpdateDb:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         self.prisma.organizationprofile.update = AsyncMock()
+
+        @asynccontextmanager
+        async def tx(*args, **kwargs):
+            yield self.prisma
+
+        self.prisma.tx = tx
+        mocker.patch("backend.api.features.orgs.db.lock_live_org_scope", AsyncMock())
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -297,7 +305,10 @@ class TestListHeld:
 
         await memory_db.list_held_memories(ORG_ID, limit=50)
 
-        assert self.prisma.team.find_many.call_args[1]["where"] == {"orgId": ORG_ID}
+        assert self.prisma.team.find_many.call_args[1]["where"] == {
+            "orgId": ORG_ID,
+            "archivedAt": None,
+        }
         opened = [c.args[0] for c in open_driver.call_args_list]
         assert opened == [ORG_GROUP]
         assert derive_org_group_id(OTHER_ORG_ID) not in opened
@@ -391,6 +402,15 @@ class TestHeldRoutePermissions:
         self.app = fastapi.FastAPI()
         self.app.include_router(router, prefix="/orgs/{org_id}/memory")
         self.mock_db = mocker.patch("backend.api.features.orgs.memory_routes.memory_db")
+
+        @asynccontextmanager
+        async def allowed(*args, **kwargs):
+            yield True
+
+        self.live_barrier = mocker.patch(
+            "backend.api.features.orgs.memory_routes.live_org_permission_barrier",
+            allowed,
+        )
         self.client = fastapi.testclient.TestClient(self.app)
         yield
         self.app.dependency_overrides.clear()
@@ -428,3 +448,37 @@ class TestHeldRoutePermissions:
         resp = self.client.get(f"/orgs/{ORG_ID}/memory/held")
         assert resp.status_code == 200
         assert resp.json() == {"org_id": ORG_ID, "items": []}
+
+    def test_revoked_admin_cannot_approve(self, mocker):
+        @asynccontextmanager
+        async def denied(*args, **kwargs):
+            yield False
+
+        mocker.patch(
+            "backend.api.features.orgs.memory_routes.live_org_permission_barrier",
+            denied,
+        )
+        self.app.dependency_overrides[get_request_context] = lambda: _owner_ctx()
+        resp = self.client.post(f"/orgs/{ORG_ID}/memory/held/{MEM_ID}/approve")
+        assert resp.status_code == 403
+        self.mock_db.approve_held_memory.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "path,method",
+        [("held", "list_held_memories"), ("active", "list_active_memories")],
+    )
+    def test_revoked_admin_cannot_list_shared_memory(self, mocker, path, method):
+        @asynccontextmanager
+        async def denied(*args, **kwargs):
+            yield False
+
+        mocker.patch(
+            "backend.api.features.orgs.memory_routes.live_org_permission_barrier",
+            denied,
+        )
+        self.app.dependency_overrides[get_request_context] = lambda: _owner_ctx()
+
+        resp = self.client.get(f"/orgs/{ORG_ID}/memory/{path}")
+
+        assert resp.status_code == 403
+        getattr(self.mock_db, method).assert_not_called()

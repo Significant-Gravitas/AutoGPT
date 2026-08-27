@@ -117,7 +117,25 @@ _ORG_EXPECTED: dict[OrgAction, dict[str, bool]] = {
         "billing_manager": True,
         "member": True,
     },
+    OrgAction.VIEW_RESOURCES: {
+        "owner": True,
+        "admin": True,
+        "billing_manager": False,
+        "member": True,
+    },
     OrgAction.CREATE_RESOURCES: {
+        "owner": True,
+        "admin": True,
+        "billing_manager": False,
+        "member": True,
+    },
+    OrgAction.EXECUTE_RESOURCES: {
+        "owner": True,
+        "admin": True,
+        "billing_manager": False,
+        "member": True,
+    },
+    OrgAction.MANAGE_CREDENTIALS: {
         "owner": True,
         "admin": True,
         "billing_manager": False,
@@ -210,6 +228,21 @@ _TEAM_EXPECTED: dict[TeamAction, dict[str, bool]] = {
         "team_member": True,
     },
     TeamAction.VIEW_EXECUTIONS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
+    TeamAction.VIEW_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
+    TeamAction.EXECUTE_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
+    },
+    TeamAction.PUBLISH_AGENTS: {
         "team_admin": True,
         "team_billing_manager": False,
         "team_member": True,

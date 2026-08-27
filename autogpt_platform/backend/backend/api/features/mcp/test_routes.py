@@ -82,6 +82,7 @@ class TestDiscoverTools:
                 }
             )
             instance.list_tools = AsyncMock(return_value=mock_tools)
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -95,6 +96,7 @@ class TestDiscoverTools:
         assert data["tools"][1]["name"] == "add_numbers"
         assert data["server_name"] == "test-server"
         assert data["protocol_version"] == "2025-03-26"
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_with_auth_token(self, client):
@@ -104,6 +106,7 @@ class TestDiscoverTools:
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
             instance.list_tools = AsyncMock(return_value=[])
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -118,6 +121,7 @@ class TestDiscoverTools:
             "https://mcp.example.com/mcp",
             auth_token="my-secret-token",
         )
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auto_uses_stored_credential(self, client):
@@ -146,6 +150,7 @@ class TestDiscoverTools:
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
             instance.list_tools = AsyncMock(return_value=[])
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -157,6 +162,7 @@ class TestDiscoverTools:
             "https://mcp.example.com/mcp",
             auth_token="stored-token-123",
         )
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):
@@ -172,6 +178,7 @@ class TestDiscoverTools:
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -180,6 +187,7 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Connection refused" in response.json()["detail"]
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_generic_error(self, client):
@@ -193,6 +201,7 @@ class TestDiscoverTools:
         ):
             instance = MockClient.return_value
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -201,6 +210,7 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Failed to connect" in response.json()["detail"]
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auth_required(self, client):
@@ -216,6 +226,7 @@ class TestDiscoverTools:
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
             )
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -224,6 +235,7 @@ class TestDiscoverTools:
 
         assert response.status_code == 401
         assert "requires authentication" in response.json()["detail"]
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_forbidden(self, client):
@@ -239,6 +251,7 @@ class TestDiscoverTools:
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
             )
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -247,6 +260,7 @@ class TestDiscoverTools:
 
         assert response.status_code == 401
         assert "requires authentication" in response.json()["detail"]
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_missing_url(self, client):

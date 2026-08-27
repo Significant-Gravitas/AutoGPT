@@ -569,6 +569,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
         is_sensitive_action: bool = False,
+        allow_owner_credentials: bool = True,
     ):
         """
         Initialize the block with the given schema.
@@ -602,6 +603,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_sensitive_action = is_sensitive_action
+        self.allow_owner_credentials = allow_owner_credentials
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()

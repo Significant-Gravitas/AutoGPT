@@ -373,6 +373,10 @@ async def try_send_insufficient_funds_notif(
     graph_id: str,
     error: InsufficientBalanceError,
     log_metadata: LogMetadata,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    source_graph_execution_id: str | None = None,
 ) -> None:
     """Send an insufficient-funds notification, swallowing failures."""
     try:
@@ -382,6 +386,9 @@ async def try_send_insufficient_funds_notif(
             user_id,
             graph_id,
             error,
+            organization_id=organization_id,
+            team_id=team_id,
+            source_graph_execution_id=source_graph_execution_id,
         )
     except Exception as notif_error:  # pragma: no cover
         log_metadata.warning(
@@ -394,6 +401,10 @@ def handle_insufficient_funds_notif(
     user_id: str,
     graph_id: str,
     e: InsufficientBalanceError,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    source_graph_execution_id: str | None = None,
 ) -> None:
     # Check if we've already sent a notification for this user+agent combo.
     # We only send one notification per user per agent until they top up credits.
@@ -429,16 +440,26 @@ def handle_insufficient_funds_notif(
     # Raise the alert condition rather than sending: the alert engine owns
     # debouncing, coalescing and the daily cap, and folds anything it can't
     # send into the next Briefing.
-    agent_name = metadata.name if metadata else "Unknown Agent"
+    fallback_name = f"Agent {graph_id[:8]}"
+    if metadata is not None and (
+        metadata.organization_id,
+        metadata.team_id,
+    ) == (organization_id, team_id):
+        agent_name = metadata.name or fallback_name
+    else:
+        agent_name = fallback_name
     db_client.raise_alert_condition(
         user_id=user_id,
         cause=AlertCause.ZERO_BALANCE,
-        cause_key=f"zero_balance:{graph_id}",
+        cause_key=f"zero_balance:{source_graph_execution_id or graph_id}",
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
             shortfall_display=f"{shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
+        organization_id=organization_id,
+        team_id=team_id,
+        source_graph_execution_id=source_graph_execution_id,
     )
 
     # Send Discord system alert
@@ -448,7 +469,7 @@ def handle_insufficient_funds_notif(
         alert_message = (
             f"❌ **Insufficient Funds Alert**\n"
             f"User: {user_email or user_id}\n"
-            f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
+            f"Agent: {agent_name}\n"
             f"Current balance: ${e.balance / 100:.2f}\n"
             f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
             f"Shortfall: ${abs(shortfall) / 100:.2f}\n"

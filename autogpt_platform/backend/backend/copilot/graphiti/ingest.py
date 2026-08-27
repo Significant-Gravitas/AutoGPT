@@ -12,8 +12,11 @@ from datetime import datetime, timezone
 
 from graphiti_core.nodes import EpisodeType
 
+from backend.data.db_accessors import context_without_live_leases, live_resource_lease
+
 from .client import derive_memory_group_id, ensure_indices_once, get_graphiti_client
 from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
+from .tiers import get_team_membership, hold_buffer_enabled, is_org_admin
 from .types import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -34,7 +37,9 @@ class _LoopIngestState:
         self.workers_lock = asyncio.Lock()
 
 
-_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]" = weakref.WeakKeyDictionary()
+_loop_state: (
+    "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]"
+) = weakref.WeakKeyDictionary()
 
 
 def _get_loop_state() -> _LoopIngestState:
@@ -239,7 +244,69 @@ async def _stamp_edge_metadata(
         )
 
 
-async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -> None:
+async def _process_ingestion_payload(
+    user_id: str, group_id: str, payload: dict
+) -> None:
+    if payload.get("group_id") != group_id:
+        raise MemoryScopeViolationError("Ingestion payload memory group mismatch")
+    resource_scope = payload.pop("_resource_scope", None)
+    client = await get_graphiti_client(group_id)
+    await ensure_indices_once(group_id, client)
+    edge_metadata = payload.pop("_edge_metadata", None)
+
+    async def write_episode() -> None:
+        result = await client.add_episode(
+            **payload,
+            entity_types=ENTITY_TYPES,
+            edge_types=EDGE_TYPES,
+            edge_type_map=EDGE_TYPE_MAP,
+        )
+        if edge_metadata:
+            await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
+
+    async def apply_current_governance() -> None:
+        organization_id = resource_scope["organization_id"]
+        if not await hold_buffer_enabled(organization_id):
+            return
+        team_id = resource_scope["team_id"]
+        if team_id is None:
+            admin = await is_org_admin(user_id, organization_id)
+        else:
+            membership = await get_team_membership(user_id, team_id, organization_id)
+            admin = bool(membership and membership.is_admin)
+        if admin:
+            return
+
+        envelope = MemoryEnvelope.model_validate_json(payload["episode_body"])
+        if envelope.status != MemoryStatus.active:
+            return
+        envelope.status = MemoryStatus.tentative
+        payload["episode_body"] = envelope.model_dump_json()
+        if edge_metadata is not None:
+            edge_metadata["status"] = MemoryStatus.tentative.value
+
+    if resource_scope is None:
+        await write_episode()
+        return
+    async with live_resource_lease(
+        user_id,
+        resource_scope["organization_id"],
+        resource_scope["team_id"],
+        "create",
+    ) as allowed:
+        if allowed:
+            await apply_current_governance()
+            if hasattr(allowed, "run"):
+                await allowed.run(write_episode())
+            else:
+                await write_episode()
+        else:
+            logger.warning(
+                "Dropping shared-memory episode after resource access was revoked"
+            )
+
+
+async def _ingestion_worker(group_id: str, queue: asyncio.Queue) -> None:
     """Process episodes sequentially for one resolved memory namespace.
 
     Exits after ``_WORKER_IDLE_TIMEOUT`` seconds of inactivity so that
@@ -282,47 +349,19 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
             # up front so it is signalled in the finally below even if the
             # graph write raises. See ``IngestionCompletion``.
             completion: IngestionCompletion | None = payload.pop("_completion", None)
+            actor_user_id = payload.pop("_actor_user_id", None)
             try:
-                if payload.get("group_id") != group_id:
+                if not isinstance(actor_user_id, str) or not actor_user_id:
                     raise MemoryScopeViolationError(
-                        "Ingestion payload memory group mismatch"
+                        "Ingestion payload actor is missing"
                     )
-                client = await get_graphiti_client(group_id)
-                # This is the write path, so materializing the graph is
-                # intended here — unlike driver construction, which must
-                # never create one. Once per group per loop.
-                await ensure_indices_once(group_id, client)
-                # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) —
-                # pop it before the **payload spread. Present for dream writes
-                # and explicit shared-tier stores (so their status/provenance
-                # lands on the edge); None for conversation turns.
-                edge_metadata = payload.pop("_edge_metadata", None)
-                # Pass custom entity + edge types so MemoryEnvelope metadata
-                # (status, confidence, source_kind, scope, provenance) lives
-                # on :RELATES_TO edges and not only inside :Episodic.content.
-                # Single point of wire-in for every caller of this worker.
-                result = await client.add_episode(
-                    **payload,
-                    entity_types=ENTITY_TYPES,
-                    edge_types=EDGE_TYPES,
-                    edge_type_map=EDGE_TYPE_MAP,
-                )
-                # graphiti's attribute extraction fills MemoryFact fields from
-                # the episode text, not the envelope, so dream metadata
-                # (source_kind/provenance/exact status) doesn't survive. Stamp
-                # it deterministically onto the edges THIS episode newly
-                # created — see ``_stamp_edge_metadata`` for the dedup-safety
-                # invariant that prevents clobbering user-authored edges.
-                if edge_metadata:
-                    await _stamp_edge_metadata(
-                        client, group_id, result, edge_metadata, user_id
-                    )
+                await _process_ingestion_payload(actor_user_id, group_id, payload)
             except MemoryScopeViolationError:
                 logger.error(
                     "MEMORY ISOLATION VIOLATION: ingestion payload for user %s "
                     "targeted group %r but the worker owns group %r — "
                     "episode dropped",
-                    user_id[:12],
+                    actor_user_id[:12] if isinstance(actor_user_id, str) else "unknown",
                     payload.get("group_id"),
                     group_id,
                 )
@@ -356,8 +395,9 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                     state.group_workers.pop(group_id, None)
                 else:
                     state.group_workers[group_id] = asyncio.create_task(
-                        _ingestion_worker(user_id, group_id, queue),
+                        _ingestion_worker(group_id, queue),
                         name=f"graphiti-ingest-{group_id[:12]}",
+                        context=context_without_live_leases(),
                     )
 
 
@@ -460,6 +500,8 @@ async def enqueue_episode(
     completion: IngestionCompletion | None = None,
     expert_id: str | None = None,
     group_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
@@ -534,6 +576,11 @@ async def enqueue_episode(
             # Sidecar — the worker calls ``complete_one`` on it after
             # processing so a scoped-drain caller can await this episode.
             "_completion": completion,
+            "_resource_scope": (
+                {"organization_id": organization_id, "team_id": team_id}
+                if organization_id is not None
+                else None
+            ),
         },
         schedule_dreams=is_personal,
     )
@@ -604,10 +651,12 @@ async def _enqueue_payload(
         worker = state.group_workers.get(group_id)
         if worker is None or worker.done():
             state.group_workers[group_id] = asyncio.create_task(
-                _ingestion_worker(user_id, group_id, queue),
+                _ingestion_worker(group_id, queue),
                 name=f"graphiti-ingest-{group_id[:12]}",
+                context=context_without_live_leases(),
             )
         try:
+            payload["_actor_user_id"] = user_id
             queue.put_nowait(payload)
         except asyncio.QueueFull:
             return False
@@ -622,6 +671,7 @@ async def _enqueue_payload(
         asyncio.create_task(
             ensure_dream_system_scheduled(user_id),
             name=f"dream-system-register-{user_id[:12]}",
+            context=context_without_live_leases(),
         )
 
     return True

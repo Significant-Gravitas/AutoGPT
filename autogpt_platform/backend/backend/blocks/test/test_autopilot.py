@@ -1,6 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,6 +16,14 @@ from backend.blocks.autopilot import (
     _reset_recursion,
 )
 from backend.data.execution import ExecutionContext
+
+
+@pytest.fixture(autouse=True)
+def _allow_live_resource_access(monkeypatch):
+    credit_client = SimpleNamespace(
+        has_live_resource_access=AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr("backend.blocks.autopilot.credit_db", lambda: credit_client)
 
 
 def _make_context(user_id: str = "test-user-123") -> ExecutionContext:
@@ -154,8 +163,9 @@ class TestRunValidation:
         input_data = block.Input(prompt="do something", max_recursion_depth=3)
         ctx = _make_context()
         outputs = {}
-        async for name, value in block.run(input_data, execution_context=ctx):
-            outputs[name] = value
+        with patch("backend.blocks.autopilot._enqueue_for_recovery", new=AsyncMock()):
+            async for name, value in block.run(input_data, execution_context=ctx):
+                outputs[name] = value
 
         assert outputs["session_id"] == "sess-fail"
         assert "boom" in outputs.get("error", "")
@@ -202,6 +212,7 @@ class TestRunValidation:
             dry_run=True,
             organization_id=None,
             team_id=None,
+            expert_id=None,
             llm_auth_provider="platform",
             llm_credential_id=None,
         )
@@ -223,8 +234,22 @@ class TestRunValidation:
             prompt="test", session_id="existing-sid", max_recursion_depth=3
         )
         ctx = _make_context()
-        async for _ in block.run(input_data, execution_context=ctx):
-            pass
+        session = SimpleNamespace(
+            organization_id=None,
+            team_id=None,
+            expert_id=None,
+            metadata=SimpleNamespace(
+                origin="automation",
+                llm_auth_provider="platform",
+                llm_credential_id=None,
+            ),
+        )
+        with patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ):
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
 
         block.create_session.assert_not_called()
 
@@ -287,6 +312,9 @@ class TestRecoveryEnqueue:
             ctx.user_id,
             "do work",
             False,
+            None,
+            None,
+            None,
         )
 
     @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 import base64
 import io
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -22,11 +23,26 @@ PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presen
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def mock_live_resource_lease(mocker):
+    class Guard:
+        async def run(self, action):
+            return await action
+
+    @asynccontextmanager
+    async def lease(*args, **kwargs):
+        yield Guard()
+
+    mocker.patch("backend.api.features.workspace.routes.live_resource_lease", new=lease)
 
 
 def _make_workspace() -> Workspace:
@@ -86,9 +102,11 @@ def _mock_lookups(mocker, file: WorkspaceFile) -> None:
         "backend.api.features.workspace.routes.get_workspace",
         AsyncMock(return_value=_make_workspace()),
     )
+    manager = mocker.MagicMock()
+    manager.get_file_info = AsyncMock(return_value=file)
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_file",
-        AsyncMock(return_value=file),
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=manager,
     )
 
 
@@ -228,9 +246,11 @@ def test_preview_404_when_file_missing(mocker):
         "backend.api.features.workspace.routes.get_workspace",
         AsyncMock(return_value=_make_workspace()),
     )
+    manager = mocker.MagicMock()
+    manager.get_file_info = AsyncMock(return_value=None)
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_file",
-        AsyncMock(return_value=None),
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=manager,
     )
 
     response = client.get("/files/missing/preview")

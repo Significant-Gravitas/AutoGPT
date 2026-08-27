@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -24,12 +25,18 @@ NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     from autogpt_libs.auth import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
+
+    @asynccontextmanager
+    async def allow(*_args):
+        yield True
+
+    monkeypatch.setattr("backend.api.live_auth.live_resource_permission_barrier", allow)
     yield
     app.dependency_overrides.clear()
 
@@ -90,7 +97,9 @@ def test_get_home_dashboard_returns_single_payload(
     assert body["timezone"] == "UTC"
     assert body["attention"][0]["kind"] == "approval"
     assert set(body) >= {"attention", "briefing", "active_tasks", "team", "week"}
-    build.assert_awaited_once_with(user_id=test_user_id, organization_id="test-org")
+    build.assert_awaited_once_with(
+        user_id=test_user_id, organization_id="test-org", team_id="test-team"
+    )
 
 
 def test_personal_context_passes_no_organization(
@@ -116,4 +125,6 @@ def test_personal_context_passes_no_organization(
     )
 
     assert client.get("/home").status_code == 200
-    build.assert_awaited_once_with(user_id=test_user_id, organization_id=None)
+    build.assert_awaited_once_with(
+        user_id=test_user_id, organization_id=None, team_id=None
+    )

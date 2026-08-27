@@ -22,7 +22,8 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
-from backend.util.exceptions import ExpertNotFoundError
+from backend.data.tenancy import live_resource_access_barrier
+from backend.util.exceptions import ExpertNotFoundError, NotAuthorizedError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
@@ -101,33 +102,14 @@ async def chat_message_has_assistant_reply(
     return assistant_reply is not None
 
 
-def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
-    """AND-clause scoping a user's own sessions to the active org.
-
-    Includes untagged pre-backfill rows (``organizationId`` null) so sessions
-    created before the org migration stay visible and loadable in the user's
-    personal-org context. Mirrors library visibility
-    (``api/features/library/db.py``); exact ``organizationId`` equality would
-    silently hide them. Always paired with a ``userId`` filter, so it only
-    ever widens to the caller's own rows.
-
-    Expert-scoped sessions (``expertId`` set) are exempt from org scoping:
-    they are pinned to the owner's personal organization by design (see
-    ``copilot/model.py::create_chat_session``), so filtering them by the
-    caller's *active* org would make them invisible and undeletable whenever
-    a shared org is active — while streaming into them still works.
-    """
+def _own_org_scope(
+    organization_id: str | None,
+    team_id: str | None = None,
+) -> list[ChatSessionWhereInput]:
+    """AND-clause scoping a user's own sessions to the active context."""
     if organization_id is None:
         return []
-    return [
-        {
-            "OR": [
-                {"organizationId": organization_id},
-                {"organizationId": None},
-                {"expertId": {"not": None}},
-            ]
-        }
-    ]
+    return [{"organizationId": organization_id}, {"teamId": team_id}]
 
 
 async def get_chat_messages_paginated(
@@ -136,6 +118,7 @@ async def get_chat_messages_paginated(
     before_sequence: int | None = None,
     user_id: str | None = None,
     organization_id: str | None = None,
+    team_id: str | None = None,
     *,
     after_sequence: int | None = None,
 ) -> PaginatedMessages | None:
@@ -164,7 +147,7 @@ async def get_chat_messages_paginated(
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
         session_where["userId"] = user_id
-    if org_scope := _own_org_scope(organization_id):
+    if org_scope := _own_org_scope(organization_id, team_id):
         session_where["AND"] = org_scope
 
     msg_filter: dict = {}
@@ -319,6 +302,30 @@ async def create_chat_session(
     expert_id: str | None = None,
 ) -> ChatSessionInfo:
     """Create a chat session, atomically validating expert attribution."""
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise NotAuthorizedError("Chat execution access was revoked")
+        return await _create_chat_session_locked(
+            session_id,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=metadata,
+            expert_id=expert_id,
+        )
+
+
+async def _create_chat_session_locked(
+    session_id: str,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
+    expert_id: str | None = None,
+) -> ChatSessionInfo:
     requested_expert_id = expert_id
     if requested_expert_id:
         async with db.transaction() as tx:
@@ -731,6 +738,8 @@ async def get_user_chat_sessions(
     limit: int = 50,
     offset: int = 0,
     organization_id: str | None = None,
+    team_id: str | None = None,
+    team_ids: list[str] | None = None,
     title_contains: str | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
@@ -763,14 +772,24 @@ async def get_user_chat_sessions(
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if team_id is not None and team_ids is not None:
+        raise ValueError("team_id and team_ids are mutually exclusive")
     if organization_id is not None:
         params.append(organization_id)
-        # Same carve-out as _own_org_scope: the owner's expert sessions are
-        # personal-org resources and stay visible under any active org.
-        conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
-            ' OR "expertId" IS NOT NULL)'
-        )
+        conditions.append(f'"organizationId" = ${len(params)}')
+        if team_ids is not None:
+            if team_ids:
+                params.append(team_ids)
+                conditions.append(
+                    f'("teamId" IS NULL OR "teamId" = ANY(${len(params)}::text[]))'
+                )
+            else:
+                conditions.append('"teamId" IS NULL')
+        elif team_id is None:
+            conditions.append('"teamId" IS NULL')
+        else:
+            params.append(team_id)
+            conditions.append(f'"teamId" = ${len(params)}')
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")
         conditions.append(f'"title" ILIKE ${len(params)}')
@@ -796,6 +815,8 @@ async def get_user_chat_sessions(
 async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
+    team_id: str | None = None,
+    team_ids: list[str] | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
 ) -> int:
@@ -812,14 +833,24 @@ async def get_user_session_count(
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if team_id is not None and team_ids is not None:
+        raise ValueError("team_id and team_ids are mutually exclusive")
     if organization_id is not None:
         params.append(organization_id)
-        # Keep in lockstep with get_user_chat_sessions so pagination totals
-        # always match the visible list (expert sessions included).
-        conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
-            ' OR "expertId" IS NOT NULL)'
-        )
+        conditions.append(f'"organizationId" = ${len(params)}')
+        if team_ids is not None:
+            if team_ids:
+                params.append(team_ids)
+                conditions.append(
+                    f'("teamId" IS NULL OR "teamId" = ANY(${len(params)}::text[]))'
+                )
+            else:
+                conditions.append('"teamId" IS NULL')
+        elif team_id is None:
+            conditions.append('"teamId" IS NULL')
+        else:
+            params.append(team_id)
+            conditions.append(f'"teamId" = ${len(params)}')
     if expert_id is not None:
         params.append(expert_id)
         conditions.append(f'"expertId" = ${len(params)}')
@@ -910,6 +941,8 @@ _PENDING_QUESTION_SESSION_COLUMNS = (
 async def get_sessions_with_pending_question(
     user_id: str,
     limit: int = PENDING_QUESTION_LIMIT,
+    organization_id: str | None = None,
+    team_ids: list[str] | None = None,
 ) -> list[ChatSessionInfo]:
     """Sessions of *user_id* still waiting on an answer, newest question first.
 
@@ -925,37 +958,53 @@ async def get_sessions_with_pending_question(
     something only they can provide is missing. That question is the only path
     back to the user, so hiding it is how a handed-off request dies in silence.
     """
+    params: list[Any] = [user_id]
+    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if organization_id is not None:
+        params.append(organization_id)
+        conditions.append(f'"organizationId" = ${len(params)}')
+        if team_ids:
+            params.append(team_ids)
+            conditions.append(
+                f'("teamId" IS NULL OR "teamId" = ANY(${len(params)}::text[]))'
+            )
+        else:
+            conditions.append('"teamId" IS NULL')
+    conditions.extend(
+        [
+            # jsonb_typeof, not IS NOT NULL: a session created after this field
+            # existed persists an explicit ``"pending_question": null``, which is a
+            # JSON null — present as far as ``->`` is concerned.
+            "jsonb_typeof(\"metadata\" -> 'pending_question') = 'object'",
+            # ``->>`` (text extraction), not ``->``: every session persists this
+            # key with an explicit JSON null by default, and ``->`` returns that
+            # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
+            # check on ``->`` would silently exclude every normal session (same
+            # class of bug as the dream-session filter above). ``->>`` collapses
+            # "key absent" and "explicit JSON null" to the same SQL NULL, so only
+            # a real delegating session id excludes the row.
+            #
+            # The second arm is load-bearing, not defensive: a handoff records the
+            # delegation fields too (``handoff_to_expert._transfer`` sets
+            # ``delegated_by_session_id`` for attribution and because
+            # ``get_sub_session_result._in_caller_scope`` reads it to refuse the
+            # poll), so "delegated" alone matches every handed-off thread as well.
+            # Without this arm the receiving expert's question — the only path
+            # back to the user — never reaches Home. See the docstring.
+            "(\"metadata\" ->> 'delegated_by_session_id' IS NULL "
+            "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL)",
+        ]
+    )
+    params.append(limit)
     sessions = await db.query_raw_with_schema(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
-        'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
-        + _EXCLUDE_DREAM_SESSIONS_SQL
-        # jsonb_typeof, not IS NOT NULL: a session created after this field
-        # existed persists an explicit ``"pending_question": null``, which is a
-        # JSON null — present as far as ``->`` is concerned.
-        + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
-        # ``->>`` (text extraction), not ``->``: every session persists this
-        # key with an explicit JSON null by default, and ``->`` returns that
-        # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
-        # check on ``->`` would silently exclude every normal session (same
-        # class of bug as the dream-session filter above). ``->>`` collapses
-        # "key absent" and "explicit JSON null" to the same SQL NULL, so only
-        # a real delegating session id excludes the row.
-        #
-        # The second arm is load-bearing, not defensive: a handoff records the
-        # delegation fields too (``handoff_to_expert._transfer`` sets
-        # ``delegated_by_session_id`` for attribution and because
-        # ``get_sub_session_result._in_caller_scope`` reads it to refuse the
-        # poll), so "delegated" alone matches every handed-off thread as well.
-        # Without this arm the receiving expert's question — the only path
-        # back to the user — never reaches Home. See the docstring.
-        "AND (\"metadata\" ->> 'delegated_by_session_id' IS NULL "
-        "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL) "
+        'FROM {schema_prefix}"ChatSession" WHERE ' + " AND ".join(conditions)
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).
-        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC " "LIMIT $2",
-        user_id,
-        limit,
+        + " ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC "
+        + f"LIMIT ${len(params)}",
+        *params,
         model=PrismaChatSession,
     )
     return [ChatSessionInfo.from_db(s) for s in sessions]
@@ -974,6 +1023,7 @@ async def delete_chat_session(
     session_id: str,
     user_id: str | None = None,
     organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> bool:
     """Delete a chat session and all its messages.
 
@@ -1006,7 +1056,10 @@ async def delete_chat_session(
 
                 try:
                     await disable_chat_session_share(
-                        session_id=session_id, user_id=user_id
+                        session_id=session_id,
+                        user_id=user_id,
+                        organization_id=existing.organizationId,
+                        team_id=existing.teamId,
                     )
                 except Exception as cascade_exc:
                     # Cascade failure must not block the deletion path —
@@ -1026,7 +1079,7 @@ async def delete_chat_session(
         where_clause: ChatSessionWhereInput = {"id": session_id}
         if user_id is not None:
             where_clause["userId"] = user_id
-        if org_scope := _own_org_scope(organization_id):
+        if org_scope := _own_org_scope(organization_id, team_id):
             where_clause["AND"] = org_scope
 
         result = await PrismaChatSession.prisma().delete_many(where=where_clause)
@@ -1405,7 +1458,9 @@ async def append_plain_session_message(
     # open. Same exclusion as the listing queries.
     sessions = await db.query_raw_with_schema(
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 '
-        f'AND "expertId" IS NULL AND {_EXCLUDE_DREAM_SESSIONS_SQL} '
+        'AND "expertId" IS NULL AND "organizationId" IS NULL '
+        'AND "teamId" IS NULL AND "isShared" = false '
+        f"AND {_EXCLUDE_DREAM_SESSIONS_SQL} "
         'ORDER BY "updatedAt" DESC LIMIT 1',
         user_id,
         model=PrismaChatSession,

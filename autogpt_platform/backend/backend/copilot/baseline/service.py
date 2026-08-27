@@ -134,6 +134,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.db_accessors import context_without_live_leases
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -1826,7 +1827,8 @@ async def stream_chat_completion_baseline(
             first_message = user_messages[0].content or message or ""
             if first_message:
                 task = asyncio.create_task(
-                    _update_title_async(session_id, first_message, user_id)
+                    _update_title_async(session_id, first_message, user_id),
+                    context=context_without_live_leases(),
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -1933,7 +1935,11 @@ async def stream_chat_completion_baseline(
         session_ctx_content = ""
         if user_id:
             session_ctx_content = await build_session_context(
-                session_id=session_id, user_id=user_id
+                session_id=session_id,
+                user_id=user_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                expert_id=session.expert_id,
             )
         # Skill index — same content/contract as the SDK path.  Failures
         # here MUST NOT block the turn; log and proceed with empty index.
@@ -1954,6 +1960,8 @@ async def stream_chat_completion_baseline(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
@@ -2607,7 +2615,8 @@ async def stream_chat_completion_baseline(
                     session_id,
                     message,
                     final_text if state else "",
-                )
+                ),
+                context=context_without_live_leases(),
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)

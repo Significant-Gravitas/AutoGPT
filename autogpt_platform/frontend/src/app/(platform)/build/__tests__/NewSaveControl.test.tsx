@@ -64,6 +64,7 @@ function setupMock(overrides: {
     teamId: null,
     setTeamId: vi.fn(),
     showTeamPicker: false,
+    isReady: true,
   });
 
   return form;

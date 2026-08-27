@@ -10,6 +10,7 @@ from . import tiers
 from .tiers import (
     MemoryTier,
     TierError,
+    can_write_org_memory,
     hold_buffer_enabled,
     is_org_admin,
     merge_tiered,
@@ -319,6 +320,42 @@ class TestIsOrgAdmin:
         with patch.object(tiers, "orgs_db", return_value=client):
             assert await is_org_admin("u1", "org-1") is False
 
+
+class TestSharedMemoryResourceAccess:
+    @pytest.mark.asyncio
+    async def test_billing_only_org_member_cannot_read_or_write(self) -> None:
+        client = SimpleNamespace(
+            get_shared_memory_org_access=AsyncMock(
+                return_value=SimpleNamespace(
+                    is_admin=False, can_view=False, can_write=False
+                )
+            )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
+            assert await tiers.is_org_member("u1", "org-1") is False
+            assert await can_write_org_memory("u1", "org-1") is False
+
+    @pytest.mark.asyncio
+    async def test_billing_only_teams_are_not_search_targets(self) -> None:
+        client = SimpleNamespace(
+            list_shared_memory_team_access=AsyncMock(
+                return_value=[
+                    SimpleNamespace(
+                        team_id="billing",
+                        can_view=False,
+                        can_write=False,
+                    ),
+                    SimpleNamespace(
+                        team_id="resources",
+                        can_view=True,
+                        can_write=True,
+                    ),
+                ]
+            )
+        )
+        with patch.object(tiers, "orgs_db", return_value=client):
+            assert await tiers.get_user_team_ids("u1", "org-1") == ["resources"]
+
     @pytest.mark.asyncio
     async def test_non_member_false(self) -> None:
         client = SimpleNamespace(
@@ -375,7 +412,7 @@ class TestHoldBufferEnabled:
 class TestResolveStoreTeam:
     @pytest.mark.asyncio
     async def test_explicit_team_id_validates_membership(self) -> None:
-        membership = SimpleNamespace(team_id="team-1", is_admin=True)
+        membership = SimpleNamespace(team_id="team-1", is_admin=True, can_write=True)
         with patch.object(
             tiers,
             "get_team_membership",
@@ -388,7 +425,9 @@ class TestResolveStoreTeam:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_single_team(self) -> None:
-        membership = SimpleNamespace(team_id="only-team", is_admin=False)
+        membership = SimpleNamespace(
+            team_id="only-team", is_admin=False, can_write=True
+        )
         with (
             patch.object(
                 tiers,
@@ -433,7 +472,17 @@ class TestResolveStoreTeam:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            with pytest.raises(
-                TierError, match="not an active member of the specified"
-            ):
+            with pytest.raises(TierError, match="do not have resource access"):
                 await resolve_store_team("u1", "org-1", "some-team", "some-team")
+
+    @pytest.mark.asyncio
+    async def test_billing_only_target_team_cannot_store(self) -> None:
+        membership = SimpleNamespace(team_id="team-1", is_admin=False, can_write=False)
+        with patch.object(
+            tiers,
+            "get_team_membership",
+            new_callable=AsyncMock,
+            return_value=membership,
+        ):
+            with pytest.raises(TierError, match="do not have resource access"):
+                await resolve_store_team("u1", "org-1", "team-1", "team-1")

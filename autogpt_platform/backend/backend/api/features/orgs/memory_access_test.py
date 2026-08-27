@@ -14,13 +14,17 @@ from .db import (
 async def test_shared_memory_org_access_returns_prisma_free_role() -> None:
     with patch("backend.api.features.orgs.db.prisma") as mock_prisma:
         mock_prisma.orgmember.find_first = AsyncMock(
-            return_value=SimpleNamespace(isAdmin=False, isOwner=True)
+            return_value=SimpleNamespace(
+                isAdmin=False, isOwner=True, isBillingManager=False
+            )
         )
 
         access = await get_shared_memory_org_access("org-1", "user-1")
 
     assert access is not None
     assert access.is_admin is True
+    assert access.can_view is True
+    assert access.can_write is True
     mock_prisma.orgmember.find_first.assert_awaited_once_with(
         where={
             "orgId": "org-1",
@@ -39,16 +43,28 @@ async def test_shared_memory_team_access_excludes_missing_relations() -> None:
                 SimpleNamespace(
                     teamId="team-1",
                     isAdmin=True,
+                    isBillingManager=False,
                     Team=SimpleNamespace(name="Platform"),
                 ),
-                SimpleNamespace(teamId="deleted", isAdmin=False, Team=None),
+                SimpleNamespace(
+                    teamId="deleted",
+                    isAdmin=False,
+                    isBillingManager=False,
+                    Team=None,
+                ),
             ]
         )
 
         access = await list_shared_memory_team_access("org-1", "user-1")
 
     assert [item.model_dump() for item in access] == [
-        {"team_id": "team-1", "name": "Platform", "is_admin": True}
+        {
+            "team_id": "team-1",
+            "name": "Platform",
+            "is_admin": True,
+            "can_view": True,
+            "can_write": True,
+        }
     ]
     mock_prisma.teammember.find_many.assert_awaited_once_with(
         where={
@@ -100,6 +116,35 @@ async def test_shared_memory_team_access_requires_active_org_membership() -> Non
         "userId": "user-1",
         "status": "ACTIVE",
     }
+
+
+@pytest.mark.asyncio
+async def test_shared_memory_access_marks_billing_only_roles_unavailable() -> None:
+    with patch("backend.api.features.orgs.db.prisma") as mock_prisma:
+        mock_prisma.orgmember.find_first = AsyncMock(
+            return_value=SimpleNamespace(
+                isAdmin=False, isOwner=False, isBillingManager=True
+            )
+        )
+        mock_prisma.teammember.find_many = AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    teamId="team-1",
+                    isAdmin=False,
+                    isBillingManager=True,
+                    Team=SimpleNamespace(name="Billing"),
+                )
+            ]
+        )
+
+        org_access = await get_shared_memory_org_access("org-1", "user-1")
+        team_access = await list_shared_memory_team_access("org-1", "user-1")
+
+    assert org_access is not None
+    assert org_access.can_view is False
+    assert org_access.can_write is False
+    assert team_access[0].can_view is False
+    assert team_access[0].can_write is False
 
 
 @pytest.mark.asyncio

@@ -6,8 +6,10 @@ import {
   useGetV2ListGrantsOnAGraph,
   usePostV2ShareGraphWithATeam,
 } from "@/app/api/__generated__/endpoints/grants/grants";
+import { useGetV2ListWorkspaces } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { GrantResponse } from "@/app/api/__generated__/models/grantResponse";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,7 +25,6 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const orgId = useOrgTeamStore((s) => s.activeOrgID);
-  const teams = useOrgTeamStore((s) => s.teams);
 
   const [teamId, setTeamId] = useState<string | null>(null);
   const [capability, setCapability] = useState<string>(GrantCapability.Execute);
@@ -40,6 +41,12 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
     query: {
       enabled: Boolean(orgId) && isOpen,
       select: (res) => res.data as GrantResponse[],
+    },
+  });
+  const teamsQuery = useGetV2ListWorkspaces(orgId ?? "", {
+    query: {
+      enabled: Boolean(orgId) && isOpen,
+      select: (response) => response.data as TeamResponse[],
     },
   });
 
@@ -102,7 +109,8 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
   }
 
   return {
-    teams,
+    teams: teamsQuery.data ?? [],
+    isLoadingTeams: teamsQuery.isLoading,
     teamId,
     setTeamId,
     capability,
@@ -116,7 +124,11 @@ export function useShareAgentDialog(agent: LibraryAgent, isOpen: boolean) {
     isLoadingGrants: grantsQuery.isLoading,
     isGrantsError: grantsQuery.isError,
     isSharing,
-    canShare: Boolean(orgId) && Boolean(teamId),
+    canShare:
+      Boolean(orgId) &&
+      Boolean(teamId) &&
+      !teamsQuery.isLoading &&
+      !teamsQuery.isError,
     handleShare,
     handleRevoke,
   };

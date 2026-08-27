@@ -1,23 +1,22 @@
 """Organization management API routes."""
 
+import mimetypes
 import os
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
-from typing import Annotated
+from typing import IO, Annotated
 
-from autogpt_libs.auth import (
-    get_request_context,
-    get_user_id,
-    requires_org_permission,
-    requires_user,
-)
+from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
-from fastapi import APIRouter, HTTPException, Query, Security, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, UploadFile
+from fastapi.responses import StreamingResponse
 
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import media as store_media
+from backend.api.live_auth import requires_live_org_permission
 from backend.data.org_credit import get_org_spend_by_team
+from backend.data.tenancy import live_org_permission_barrier
 
 from . import db as org_db
 from .model import (
@@ -36,6 +35,14 @@ from .model import (
 )
 
 router = APIRouter()
+
+
+def _stream_open_file(file: IO[bytes]) -> Iterator[bytes]:
+    try:
+        while chunk := file.read(64 * 1024):
+            yield chunk
+    finally:
+        file.close()
 
 
 def _verify_org_path(ctx: RequestContext, org_id: str) -> None:
@@ -85,7 +92,10 @@ async def list_orgs(
 )
 async def get_org(
     org_id: str,
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_live_org_permission(OrgAction.VIEW_ORG),
+    ],
 ) -> OrgResponse:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
@@ -115,6 +125,7 @@ async def update_org(
             avatar_url=request.avatar_url,
             memory_hold_buffer=request.memory_hold_buffer,
         ),
+        actor_user_id=ctx.user_id,
     )
 
 
@@ -125,6 +136,18 @@ _AVATAR_EXTENSIONS_BY_CONTENT_TYPE = {
     "image/gif": {".gif"},
     "image/webp": {".webp"},
 }
+
+
+async def _require_org_avatar_access(
+    org_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> AsyncIterator[None]:
+    async with live_org_permission_barrier(
+        user_id, org_id, OrgAction.VIEW_ORG
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(403, detail="Not a member of this organization")
+        yield
 
 
 @router.post(
@@ -146,62 +169,93 @@ async def upload_org_avatar(
     client-supplied filename is only used for extension validation.
     """
     _verify_org_path(ctx, org_id)
+    async with live_org_permission_barrier(
+        ctx.user_id, org_id, OrgAction.RENAME_ORG
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(403, detail="Organization access was revoked")
+        if file.content_type not in store_media.ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                400,
+                detail=(
+                    "Avatar must be an image; allowed content types: "
+                    f"{', '.join(sorted(store_media.ALLOWED_IMAGE_TYPES))}"
+                ),
+            )
+        extension = os.path.splitext(file.filename or "")[1].lower()
+        if extension not in _AVATAR_ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                400,
+                detail=(
+                    "Avatar file extension must be one of: "
+                    f"{', '.join(sorted(_AVATAR_ALLOWED_EXTENSIONS))}"
+                ),
+            )
+        if extension not in _AVATAR_EXTENSIONS_BY_CONTENT_TYPE[file.content_type]:
+            raise HTTPException(
+                400,
+                detail="Avatar file extension does not match its content type",
+            )
 
-    if file.content_type not in store_media.ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            400,
-            detail=(
-                "Avatar must be an image; allowed content types: "
-                f"{', '.join(sorted(store_media.ALLOWED_IMAGE_TYPES))}"
-            ),
-        )
-    extension = os.path.splitext(file.filename or "")[1].lower()
-    if extension not in _AVATAR_ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            400,
-            detail=(
-                "Avatar file extension must be one of: "
-                f"{', '.join(sorted(_AVATAR_ALLOWED_EXTENSIONS))}"
-            ),
-        )
-    if extension not in _AVATAR_EXTENSIONS_BY_CONTENT_TYPE[file.content_type]:
-        raise HTTPException(
-            400,
-            detail="Avatar file extension does not match its content type",
-        )
+        try:
+            avatar_url = await store_media.upload_media(
+                user_id=ctx.user_id, file=file, organization_id=org_id
+            )
+        except store_exceptions.MediaUploadError as e:
+            raise HTTPException(400, detail=str(e)) from e
 
-    try:
-        avatar_url = await store_media.upload_media(
-            user_id=ctx.user_id, file=file, organization_id=org_id
-        )
-    except store_exceptions.MediaUploadError as e:
-        # Same 400 the global ValueError handler produces on the main app;
-        # raised explicitly so the route is self-contained.
-        raise HTTPException(400, detail=str(e)) from e
-
-    return await org_db.update_org(org_id, UpdateOrgData(avatar_url=avatar_url))
+    return await org_db.update_org(
+        org_id,
+        UpdateOrgData(avatar_url=avatar_url),
+        actor_user_id=ctx.user_id,
+    )
 
 
 @router.get(
     "/{org_id}/avatar/{filename}",
     summary="Get organization avatar",
     tags=["orgs"],
-    response_class=FileResponse,
+    response_class=StreamingResponse,
+    dependencies=[Depends(_require_org_avatar_access)],
 )
 async def get_org_avatar(
     org_id: str,
     filename: str,
-    user_id: Annotated[str, Security(get_user_id)],
-) -> FileResponse:
-    if not await org_db.is_org_member(org_id, user_id):
-        raise HTTPException(403, detail="Not a member of this organization")
-    extension = os.path.splitext(filename)[1].lower()
+) -> StreamingResponse:
+    normalized_org_id = org_id.replace("\\", "/")
+    safe_org_id = os.path.basename(normalized_org_id)
+    normalized_filename = filename.replace("\\", "/")
+    safe_filename = os.path.basename(normalized_filename)
+    if (
+        not safe_org_id
+        or safe_org_id != normalized_org_id
+        or not safe_filename
+        or safe_filename != normalized_filename
+    ):
+        raise HTTPException(404, detail="Avatar not found")
+    extension = os.path.splitext(safe_filename)[1].lower()
     if extension not in _AVATAR_ALLOWED_EXTENSIONS:
         raise HTTPException(404, detail="Avatar not found")
-    path = store_media.get_local_media_path(f"orgs/{org_id}/images/{filename}")
-    if not path.is_file():
+    media_root = store_media.get_local_media_root()
+    path = os.path.realpath(
+        os.path.join(media_root, "orgs", safe_org_id, "images", safe_filename)
+    )
+    if not path.startswith(os.path.join(media_root, "")):
         raise HTTPException(404, detail="Avatar not found")
-    return FileResponse(path)
+    if not os.path.isfile(path):
+        raise HTTPException(404, detail="Avatar not found")
+    try:
+        file = open(path, "rb")
+    except OSError as error:
+        raise HTTPException(404, detail="Avatar not found") from error
+    return StreamingResponse(
+        _stream_open_file(file),
+        media_type=mimetypes.guess_type(safe_filename)[0],
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Length": str(os.fstat(file.fileno()).st_size),
+        },
+    )
 
 
 @router.delete(
@@ -218,7 +272,7 @@ async def delete_org(
     ],
 ) -> None:
     _verify_org_path(ctx, org_id)
-    await org_db.delete_org(org_id)
+    await org_db.delete_org(org_id, actor_user_id=ctx.user_id)
 
 
 @router.post(
@@ -247,7 +301,10 @@ async def convert_org(
 )
 async def list_members(
     org_id: str,
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_live_org_permission(OrgAction.VIEW_ORG),
+    ],
 ) -> list[OrgMemberResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
@@ -267,6 +324,8 @@ async def add_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    if request.user_id == ctx.user_id:
+        raise HTTPException(409, detail="You are already a member")
     _verify_org_path(ctx, org_id)
     return await org_db.add_org_member(
         org_id=org_id,
@@ -291,12 +350,15 @@ async def update_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    if uid == ctx.user_id:
+        raise HTTPException(400, detail="You cannot change your own organization role")
     _verify_org_path(ctx, org_id)
     return await org_db.update_org_member(
         org_id=org_id,
         user_id=uid,
         is_admin=request.is_admin,
         is_billing_manager=request.is_billing_manager,
+        requesting_user_id=ctx.user_id,
     )
 
 
@@ -314,6 +376,10 @@ async def remove_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> None:
+    if uid == ctx.user_id:
+        raise HTTPException(
+            400, detail="You cannot remove yourself from the organization"
+        )
     _verify_org_path(ctx, org_id)
     await org_db.remove_org_member(org_id, uid, requesting_user_id=ctx.user_id)
 
@@ -347,7 +413,7 @@ async def get_org_spend(
     org_id: str,
     ctx: Annotated[
         RequestContext,
-        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+        requires_live_org_permission(OrgAction.MANAGE_BILLING),
     ],
     from_time: Annotated[datetime | None, Query(alias="from")] = None,
     to_time: Annotated[datetime | None, Query(alias="to")] = None,
@@ -375,7 +441,10 @@ async def get_org_spend(
 )
 async def list_aliases(
     org_id: str,
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: Annotated[
+        RequestContext,
+        requires_live_org_permission(OrgAction.VIEW_ORG),
+    ],
 ) -> list[OrgAliasResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")

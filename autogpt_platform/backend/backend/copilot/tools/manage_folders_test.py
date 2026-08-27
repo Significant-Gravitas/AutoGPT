@@ -192,7 +192,7 @@ async def test_list_folders_tree_with_agents_includes_root(list_tool, session):
     assert result.tree[0].agents is not None
     assert result.tree[0].agents[0].name == "Foldered"
     mock_lib.return_value.get_root_agent_summaries.assert_awaited_once_with(
-        _TEST_USER_ID
+        _TEST_USER_ID, session.organization_id, session.team_id
     )
 
 

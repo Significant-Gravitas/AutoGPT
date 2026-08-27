@@ -404,6 +404,9 @@ CRED_ERR_UNKNOWN_PREFIX = "Unknown credentials #"
 CRED_ERR_OWNER_REFERENCE_ONLY = (
     "OWNER credential mode does not support runtime-managed credential references"
 )
+CRED_ERR_OWNER_UNSAFE_BLOCK = (
+    "OWNER credential mode is not allowed for blocks that execute user-controlled code"
+)
 
 # Markers used by ``is_credential_validation_error_message`` to classify a
 # message. Each entry is (match_mode, lowercased_marker) — "exact" means
@@ -419,6 +422,7 @@ _CREDENTIAL_ERROR_MARKERS: tuple[tuple[_MatchMode, str], ...] = (
     ("prefix", CRED_ERR_NOT_AVAILABLE_PREFIX.lower()),
     ("prefix", CRED_ERR_UNKNOWN_PREFIX.lower()),
     ("prefix", CRED_ERR_OWNER_REFERENCE_ONLY.lower()),
+    ("exact", CRED_ERR_OWNER_UNSAFE_BLOCK.lower()),
 )
 
 
@@ -477,6 +481,9 @@ async def _validate_node_input_credentials(
         credentials_fields = block.input_schema.get_credentials_fields()
         auto_credentials_fields = block.input_schema.get_auto_credentials_fields()
         if not credentials_fields and not auto_credentials_fields:
+            continue
+        if credentials_owner_id and not block.allow_owner_credentials:
+            credential_errors[node.id]["credentials"] = CRED_ERR_OWNER_UNSAFE_BLOCK
             continue
 
         # Field-bound OWNER references. A credential id is trusted only for the
@@ -999,6 +1006,8 @@ async def validate_and_construct_node_execution_input(
     is_sub_graph: bool = False,
     dry_run: bool = False,
     credentials_owner_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    team_id_restriction: Optional[str] = None,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -1052,6 +1061,8 @@ async def validate_and_construct_node_execution_input(
         graph_id=graph.id,
         graph_version=graph.version,
         is_sub_graph=is_sub_graph,
+        organization_id=organization_id,
+        team_id_restriction=team_id_restriction,
     )
 
     # In OWNER mode the graph runs on its owner's stored credentials, so any
@@ -1491,6 +1502,20 @@ async def add_graph_execution(
             )
         expert_id = graph_exec.expert_id
 
+        if expert_id is None:
+            if organization_id is not None and (
+                organization_id != graph_exec.organization_id
+            ):
+                raise ValueError(
+                    f"Organization scope does not match graph execution #{graph_exec.id}"
+                )
+            if team_id is not None and team_id != graph_exec.team_id:
+                raise ValueError(
+                    f"Team scope does not match graph execution #{graph_exec.id}"
+                )
+            organization_id = graph_exec.organization_id
+            team_id = graph_exec.team_id
+
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
         if expert_id:
@@ -1529,6 +1554,7 @@ async def add_graph_execution(
                 user_id=user_id,
                 graph_id=graph_id,
                 graph_version=graph_exec.graph_version,
+                team_id_restriction=team_id,
             )
             if owner_info:
                 credentials_owner_id, credentials_grant_id = owner_info
@@ -1554,6 +1580,7 @@ async def add_graph_execution(
                 user_id=user_id,
                 graph_id=graph_id,
                 graph_version=graph_version,
+                team_id_restriction=team_id,
             )
             if owner_info:
                 credentials_owner_id, credentials_grant_id = owner_info
@@ -1574,6 +1601,8 @@ async def add_graph_execution(
             is_sub_graph=parent_exec_id is not None,
             dry_run=dry_run,
             credentials_owner_id=credentials_owner_id,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
         )
 
         # Tenant a NEW execution at creation: several callers arrive with a

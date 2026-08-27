@@ -29,6 +29,7 @@ export const NewSaveControl = () => {
     teamId,
     setTeamId,
     showTeamPicker,
+    isReady,
   } = useNewSaveControl();
   const { saveControlOpen, setSaveControlOpen, forceOpenSave } =
     useControlPanelStore();
@@ -138,7 +139,7 @@ export const NewSaveControl = () => {
                   className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
-                  disabled={isSaving}
+                  disabled={isSaving || !isReady}
                   loading={isSaving}
                 >
                   Save Agent

@@ -10,11 +10,14 @@ import {
 // last-used team (org-home if never used), persists on change, and exposes the
 // Orval request options that stamp X-Team-Id on the create call.
 export function useCreateTeamSelection(surfaceKey: string) {
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const teams = useOrgTeamStore((s) => s.teams);
   const isLoaded = useOrgTeamStore((s) => s.isLoaded);
-  const [teamId, setTeamIdState] = useState<string | null>(() =>
-    getLastUsedTeam(surfaceKey),
-  );
+  const [selection, setSelection] = useState(() => ({
+    orgId: activeOrgID,
+    teamId: activeOrgID ? getLastUsedTeam(activeOrgID, surfaceKey) : null,
+  }));
+  const teamId = selection.orgId === activeOrgID ? selection.teamId : null;
 
   // Once the store has loaded, clamp a last-used team that no longer exists
   // (deleted, or the user left the org / now has no teams at all) back to
@@ -24,20 +27,37 @@ export function useCreateTeamSelection(surfaceKey: string) {
   // stale id and stamp a bogus X-Team-Id on the create.
   useEffect(() => {
     if (isLoaded && teamId && !teams.some((t) => t.id === teamId)) {
-      setTeamIdState(null);
-      setLastUsedTeam(surfaceKey, null);
+      setSelection({ orgId: activeOrgID, teamId: null });
+      if (activeOrgID) {
+        setLastUsedTeam(activeOrgID, surfaceKey, null);
+      }
     }
-  }, [isLoaded, teams, teamId, surfaceKey]);
+  }, [activeOrgID, isLoaded, teams, teamId, surfaceKey]);
+
+  useEffect(() => {
+    if (isLoaded && selection.orgId !== activeOrgID) {
+      setSelection({
+        orgId: activeOrgID,
+        teamId: activeOrgID ? getLastUsedTeam(activeOrgID, surfaceKey) : null,
+      });
+    }
+  }, [activeOrgID, isLoaded, selection.orgId, surfaceKey]);
 
   function setTeamId(next: string | null) {
-    setTeamIdState(next);
-    setLastUsedTeam(surfaceKey, next);
+    setSelection({ orgId: activeOrgID, teamId: next });
+    if (activeOrgID) {
+      setLastUsedTeam(activeOrgID, surfaceKey, next);
+    }
   }
 
   return {
     teamId,
     setTeamId,
     hasTeams: teams.length > 0,
-    teamRequestInit: getTeamRequestInit(teamId),
+    isReady: isLoaded && activeOrgID !== null,
+    teamRequestInit: getTeamRequestInit(
+      teamId,
+      isLoaded && activeOrgID !== null,
+    ),
   };
 }

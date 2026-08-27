@@ -52,7 +52,12 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import (
+    LiveResourceAccessRevoked,
+    chat_db,
+    live_resource_lease,
+    require_exact_chat_session_scope,
+)
 from backend.integrations.codex.access import has_codex_access
 
 logger = logging.getLogger(__name__)
@@ -98,6 +103,8 @@ async def try_enqueue_turn(
     user_id: str,
     inflight_cap: int,
     session_id: str,
+    organization_id: str | None,
+    team_id: str | None,
     message: str,
     message_id: str | None = None,
     message_metadata: Mapping[str, Any] | None = None,
@@ -124,6 +131,8 @@ async def try_enqueue_turn(
     return await enqueue_turn(
         user_id=user_id,
         session_id=session_id,
+        organization_id=organization_id,
+        team_id=team_id,
         message=message,
         message_id=message_id,
         message_metadata=message_metadata,
@@ -143,6 +152,8 @@ async def enqueue_turn(
     *,
     user_id: str,
     session_id: str,
+    organization_id: str | None,
+    team_id: str | None,
     message: str,
     message_id: str | None = None,
     message_metadata: Mapping[str, Any] | None = None,
@@ -165,60 +176,56 @@ async def enqueue_turn(
     The dispatcher's submit-time payload is stashed in the row's
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
-    metadata = dict(message_metadata or {})
-    if context is not None:
-        metadata["context"] = dict(context)
-    if file_ids is not None:
-        metadata["file_ids"] = list(file_ids)
-    if mode is not None:
-        metadata["mode"] = mode
-    if model is not None:
-        metadata["model"] = model
-    metadata["llm_auth_provider"] = llm_auth_provider
-    if llm_credential_id is not None:
-        metadata["llm_credential_id"] = llm_credential_id
-    if permissions is not None:
-        metadata["permissions"] = dict(permissions)
-    if request_arrival_at:
-        metadata["request_arrival_at"] = request_arrival_at
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise LiveResourceAccessRevoked("workspace_access_revoked")
+        await require_exact_chat_session_scope(
+            session_id, user_id, organization_id, team_id
+        )
 
-    # The Redis NX session lock serialises with ``append_and_save_message``
-    # so two concurrent submits to the same session can't pick the same
-    # ``sequence`` and PK-collide on ``(sessionId, sequence)``.
-    db = chat_db()
-    async with _get_session_lock(session_id):
-        live_sequence = await db.get_next_sequence(session_id)
-        try:
-            row = await db.add_chat_message(
-                message_id=message_id or str(uuid.uuid4()),
-                session_id=session_id,
-                role="user" if is_user_message else "assistant",
-                content=message,
-                sequence=live_sequence,
-                metadata=metadata or None,
-            )
-        except UniqueViolationError as exc:
-            if message_id and is_duplicate_chat_message_id_error(exc):
-                return None
-            raise
-    # Flip the session to ``"queued"``.  CAS-gated on ``"idle"`` so a
-    # double-submit (session already queued/running) leaves the state
-    # alone; the second pending message persists as a normal ChatMessage
-    # row.  When the session eventually promotes, the dispatcher reads
-    # the most-recent user row via ``get_latest_user_message_in_session``;
-    # earlier pending rows aren't independently scheduled, they sit in
-    # the chat history and the model sees them as context.
-    await db.update_chat_session_status(
-        session_id=session_id,
-        expect_status=CHAT_STATUS_IDLE,
-        status=CHAT_STATUS_QUEUED,
-        user_id=user_id,
-    )
-    # Invalidate the session cache so the next /chat read picks up the
-    # queued row + the session's new status (frontend renders the
-    # 'Queued' badge from ``session.chat_status``).
-    await invalidate_session_cache(session_id)
-    return row
+        metadata = dict(message_metadata or {})
+        if context is not None:
+            metadata["context"] = dict(context)
+        if file_ids is not None:
+            metadata["file_ids"] = list(file_ids)
+        if mode is not None:
+            metadata["mode"] = mode
+        if model is not None:
+            metadata["model"] = model
+        metadata["llm_auth_provider"] = llm_auth_provider
+        if llm_credential_id is not None:
+            metadata["llm_credential_id"] = llm_credential_id
+        if permissions is not None:
+            metadata["permissions"] = dict(permissions)
+        if request_arrival_at:
+            metadata["request_arrival_at"] = request_arrival_at
+
+        db = chat_db()
+        async with _get_session_lock(session_id):
+            live_sequence = await db.get_next_sequence(session_id)
+            try:
+                row = await db.add_chat_message(
+                    message_id=message_id or str(uuid.uuid4()),
+                    session_id=session_id,
+                    role="user" if is_user_message else "assistant",
+                    content=message,
+                    sequence=live_sequence,
+                    metadata=metadata or None,
+                )
+            except UniqueViolationError as exc:
+                if message_id and is_duplicate_chat_message_id_error(exc):
+                    return None
+                raise
+        await db.update_chat_session_status(
+            session_id=session_id,
+            expect_status=CHAT_STATUS_IDLE,
+            status=CHAT_STATUS_QUEUED,
+            user_id=user_id,
+        )
+        await invalidate_session_cache(session_id)
+        return row
 
 
 async def cancel_queued_turn(*, user_id: str, session_id: str) -> bool:
@@ -356,28 +363,39 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         # ``mark_session_completed`` → ``release_turn_slot``.
         slot = TurnSlot(user_id, head.session_id)
         slot.admitted = True
-        await dispatch_turn(
-            slot,
-            session_id=head.session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=pending.content,
-            is_user_message=pending.role == "user",
-            context=metadata.get("context"),
-            file_ids=metadata.get("file_ids"),
-            # Session-anchored tenancy: promoted turns attribute to the
-            # session's org/team, same as directly-dispatched turns —
-            # without this, capped users' queued turns would lose their
-            # org context on promotion.
-            organization_id=head.organization_id,
-            team_id=head.team_id,
-            mode=metadata.get("mode"),
-            model=metadata.get("model"),
-            llm_auth_provider=head.metadata.llm_auth_provider,
-            llm_credential_id=head.metadata.llm_credential_id,
-            permissions=metadata.get("permissions"),
-            request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
-        )
+        async with live_resource_lease(
+            user_id, head.organization_id, head.team_id, "execute"
+        ) as allowed:
+            if not allowed:
+                await chat_db().update_chat_session_status(
+                    session_id=head.session_id,
+                    expect_status=CHAT_STATUS_RUNNING,
+                    status=CHAT_STATUS_QUEUED,
+                )
+                await invalidate_session_cache(head.session_id)
+                return False
+            await dispatch_turn(
+                slot,
+                session_id=head.session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                message=pending.content,
+                is_user_message=pending.role == "user",
+                context=metadata.get("context"),
+                file_ids=metadata.get("file_ids"),
+                # Session-anchored tenancy: promoted turns attribute to the
+                # session's org/team, same as directly-dispatched turns —
+                # without this, capped users' queued turns would lose their
+                # org context on promotion.
+                organization_id=head.organization_id,
+                team_id=head.team_id,
+                mode=metadata.get("mode"),
+                model=metadata.get("model"),
+                llm_auth_provider=head.metadata.llm_auth_provider,
+                llm_credential_id=head.metadata.llm_credential_id,
+                permissions=metadata.get("permissions"),
+                request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            )
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just

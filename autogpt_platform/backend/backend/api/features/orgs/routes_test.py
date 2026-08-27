@@ -5,6 +5,7 @@ cases. Tests are organized by domain and mock at the Prisma boundary so the
 actual logic in db.py / routes.py / team_db.py is exercised.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,7 +14,11 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth.models import RequestContext
 
-from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.exceptions import (
+    InsufficientBalanceError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Shared helpers
@@ -38,6 +43,101 @@ def _fake_transaction(client):
         yield client
 
     return _tx
+
+
+def _configure_mock_client_tx(client):
+    tx = MagicMock()
+    tx.__aenter__ = AsyncMock(return_value=client)
+    tx.__aexit__ = AsyncMock(return_value=False)
+    client.tx.return_value = tx
+
+
+@pytest.fixture(autouse=True)
+def _mock_tenancy_advisory_locks(mocker):
+    mocker.patch(
+        "backend.data.tenancy._lock_advisory_scope",
+        new_callable=AsyncMock,
+    )
+
+
+def _configure_member_removal_mocks(mocker, prisma):
+    for model in (
+        prisma.agentgraph,
+        prisma.libraryagent,
+        prisma.libraryfolder,
+        prisma.agentpreset,
+        prisma.apikey,
+        prisma.integrationwebhook,
+        prisma.chatsession,
+        prisma.agentgraphexecution,
+        prisma.expert,
+    ):
+        model.count = AsyncMock(return_value=0)
+    prisma.user.find_unique = AsyncMock(
+        return_value=MagicMock(email="member@example.com")
+    )
+    prisma.orginvitation.update_many = AsyncMock(return_value=1)
+    prisma.orgmember.update = AsyncMock()
+    prisma.orgmember.update_many = AsyncMock(return_value=1)
+    prisma.teammember.find_many = AsyncMock(return_value=[])
+    prisma.teammember.delete_many = AsyncMock(return_value=1)
+    tx = MagicMock()
+    tx.__aenter__ = AsyncMock(return_value=prisma)
+    tx.__aexit__ = AsyncMock(return_value=False)
+    prisma.tx.return_value = tx
+    mocker.patch(
+        "backend.api.features.orgs.db.execute_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    mocker.patch(
+        "backend.data.tenancy.get_user_team_ids",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch("backend.util.clients.get_scheduler_client", return_value=scheduler)
+
+
+def _configure_membership_lock(mocker):
+    mocker.patch(
+        "backend.api.features.orgs.db.execute_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+
+def _configure_team_removal_mocks(mocker, prisma):
+    tx = MagicMock()
+    tx.__aenter__ = AsyncMock(return_value=prisma)
+    tx.__aexit__ = AsyncMock(return_value=False)
+    prisma.tx.return_value = tx
+    for model in (
+        prisma.agentgraph,
+        prisma.libraryagent,
+        prisma.libraryfolder,
+        prisma.agentpreset,
+        prisma.apikey,
+        prisma.integrationwebhook,
+        prisma.chatsession,
+        prisma.agentgraphexecution,
+        prisma.expert,
+    ):
+        model.count = AsyncMock(return_value=0)
+    prisma.teammember.update = AsyncMock()
+    prisma.teammember.update_many = AsyncMock(return_value=1)
+    prisma.teammember.delete = AsyncMock()
+    prisma.teaminvite.update_many = AsyncMock(return_value=0)
+    _configure_membership_lock(mocker)
+    mocker.patch(
+        "backend.api.features.orgs.team_db.execute_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+    mocker.patch("backend.util.clients.get_scheduler_client", return_value=scheduler)
 
 
 def _make_org(
@@ -172,6 +272,20 @@ def _member_ctx(org_id=ORG_ID, user_id=OTHER_USER_ID, team_id=None) -> RequestCo
     )
 
 
+def _billing_ctx(org_id=ORG_ID, user_id=OTHER_USER_ID) -> RequestContext:
+    return RequestContext(
+        user_id=user_id,
+        org_id=org_id,
+        team_id=None,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=True,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. ORG CRUD  (db.py)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -288,6 +402,11 @@ class TestOrgDbUpdateOrg:
         self.prisma.organizationalias.create = AsyncMock()
         self.prisma.organization.update = AsyncMock()
         self.prisma.organizationprofile.update = AsyncMock()
+        self.prisma.execute_raw = AsyncMock()
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -348,7 +467,9 @@ class TestOrgDbUpdateOrg:
         from backend.api.features.orgs.model import UpdateOrgData
 
         foreign_alias = MagicMock(aliasSlug="taken", organizationId="other-org")
-        self.prisma.organization.find_unique = AsyncMock(return_value=None)
+        self.prisma.organization.find_unique = AsyncMock(
+            side_effect=[None, self.old_org]
+        )
         self.prisma.organizationalias.find_unique = AsyncMock(
             return_value=foreign_alias
         )
@@ -388,7 +509,20 @@ class TestOrgDbDeleteOrg:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.user.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.update_many = AsyncMock()
+        self.prisma.execute_raw = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        mocker.patch(
+            "backend.api.features.orgs.db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
     @pytest.mark.asyncio
     async def test_delete_personal_org_raises_value_error(self):
@@ -437,6 +571,7 @@ class TestOrgDbConvertOrg:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         self.prisma.organization.update = AsyncMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         # Org creation is delegated to the shared data-layer helper; its exact
         # record shape is covered by org_migration_test.TestCreatePersonalOrg.
@@ -491,7 +626,15 @@ class TestOrgDbMembers:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.execute_raw = AsyncMock()
+        self.prisma.user.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.update_many = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
+        _configure_member_removal_mocks(mocker, self.prisma)
 
     @pytest.mark.asyncio
     async def test_add_member_auto_joins_default_workspace(self):
@@ -519,6 +662,28 @@ class TestOrgDbMembers:
         wsm_data = self.prisma.teammember.create.call_args[1]["data"]
         assert wsm_data["teamId"] == "ws-default"
         assert wsm_data["userId"] == OTHER_USER_ID
+        assert wsm_data["isBillingManager"] is False
+
+    @pytest.mark.asyncio
+    async def test_add_billing_member_marks_default_workspace_billing_only(self):
+        from backend.api.features.orgs.db import add_org_member
+
+        self.prisma.orgmember.create = AsyncMock(
+            return_value=_make_member(userId=OTHER_USER_ID, isBillingManager=True)
+        )
+        self.prisma.team.find_first = AsyncMock(
+            return_value=_make_workspace(id="ws-default", isDefault=True)
+        )
+        self.prisma.teammember.create = AsyncMock()
+
+        await add_org_member(
+            org_id=ORG_ID,
+            user_id=OTHER_USER_ID,
+            is_billing_manager=True,
+        )
+
+        data = self.prisma.teammember.create.call_args.kwargs["data"]
+        assert data["isBillingManager"] is True
 
     @pytest.mark.asyncio
     async def test_add_member_no_default_workspace_skips_ws_join(self):
@@ -539,26 +704,36 @@ class TestOrgDbMembers:
         from backend.api.features.orgs.db import remove_org_member
 
         member = _make_member(userId=OTHER_USER_ID, isOwner=False)
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        suspended = _make_member(
+            userId=OTHER_USER_ID, isOwner=False, status="SUSPENDED"
+        )
+        self.prisma.orgmember.find_unique = AsyncMock(side_effect=[member, suspended])
         # User has another org — removal allowed
         self.prisma.orgmember.count = AsyncMock(return_value=1)
 
         ws1 = _make_workspace(id="ws-1")
         ws2 = _make_workspace(id="ws-2")
         self.prisma.team.find_many = AsyncMock(return_value=[ws1, ws2])
-        self.prisma.teammember.delete_many = AsyncMock()
+        self.prisma.teammember.delete_many = AsyncMock(return_value=1)
         self.prisma.orgmember.delete = AsyncMock()
 
         await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
 
-        # Should delete workspace memberships for each workspace
-        assert self.prisma.teammember.delete_many.call_count == 2
-        calls = self.prisma.teammember.delete_many.call_args_list
-        ws_ids = [c[1]["where"]["teamId"] for c in calls]
-        assert set(ws_ids) == {"ws-1", "ws-2"}
+        self.prisma.teammember.delete_many.assert_awaited_once_with(
+            where={
+                "teamId": {"in": ["ws-1", "ws-2"]},
+                "userId": OTHER_USER_ID,
+            }
+        )
 
         # Org membership deleted
         self.prisma.orgmember.delete.assert_called_once()
+        invitation_where = self.prisma.orginvitation.update_many.call_args.kwargs[
+            "where"
+        ]
+        assert invitation_where["orgId"] == ORG_ID
+        assert {"targetUserId": OTHER_USER_ID} in invitation_where["OR"]
+        assert any("email" in identity for identity in invitation_where["OR"])
 
     @pytest.mark.asyncio
     async def test_remove_owner_raises_value_error(self):
@@ -609,8 +784,17 @@ class TestOrgDbTransferOwnership:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
-        self.prisma.execute_raw = AsyncMock(return_value=2)
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        tx_context = MagicMock()
+        tx_context.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx_context.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx_context
+        self.execute_raw = mocker.patch(
+            "backend.api.features.orgs.db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=2,
+        )
 
     @pytest.mark.asyncio
     async def test_transfer_ownership_atomic(self):
@@ -625,15 +809,14 @@ class TestOrgDbTransferOwnership:
 
         await transfer_ownership(ORG_ID, USER_ID, OTHER_USER_ID)
 
-        # Raw SQL was executed for atomic transfer
-        self.prisma.execute_raw.assert_called_once()
-        raw_call_args = self.prisma.execute_raw.call_args
+        # First statement locks the org; second atomically selects one owner.
+        assert self.execute_raw.await_count == 2
+        raw_call_args = self.execute_raw.await_args_list[1]
         sql = raw_call_args[0][0]
         assert "isOwner" in sql
-        # Positional params: current_owner_id, new_owner_id, org_id
-        assert raw_call_args[0][1] == USER_ID
-        assert raw_call_args[0][2] == OTHER_USER_ID
-        assert raw_call_args[0][3] == ORG_ID
+        assert raw_call_args[0][1] == OTHER_USER_ID
+        assert raw_call_args[0][2] == ORG_ID
+        assert raw_call_args.kwargs["client"] is self.prisma
 
     @pytest.mark.asyncio
     async def test_transfer_to_non_member_raises(self):
@@ -671,13 +854,16 @@ class TestOrgDbAliases:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
     @pytest.mark.asyncio
     async def test_create_alias_duplicate_raises(self):
         from backend.api.features.orgs.db import create_org_alias
 
-        self.prisma.organization.find_unique = AsyncMock(return_value=None)
+        self.prisma.organization.find_unique = AsyncMock(
+            side_effect=[_make_org(), None]
+        )
         self.prisma.organizationalias.find_unique = AsyncMock(
             return_value=MagicMock(aliasSlug="existing-alias")
         )
@@ -690,7 +876,7 @@ class TestOrgDbAliases:
         from backend.api.features.orgs.db import create_org_alias
 
         self.prisma.organization.find_unique = AsyncMock(
-            return_value=_make_org(slug="org-slug")
+            side_effect=[_make_org(), _make_org(slug="org-slug")]
         )
 
         with pytest.raises(ValueError, match="already used by an organization"):
@@ -700,7 +886,9 @@ class TestOrgDbAliases:
     async def test_create_alias_success(self):
         from backend.api.features.orgs.db import create_org_alias
 
-        self.prisma.organization.find_unique = AsyncMock(return_value=None)
+        self.prisma.organization.find_unique = AsyncMock(
+            side_effect=[_make_org(), None]
+        )
         self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
         alias_mock = MagicMock()
         alias_mock.id = "alias-1"
@@ -822,6 +1010,33 @@ class TestOrgRoutes:
 
         assert exc_info.value.status_code == 403
 
+    def test_billing_manager_can_read_org_members_and_aliases(self):
+        from autogpt_libs.auth import get_request_context
+
+        from backend.api.features.orgs.model import OrgResponse
+
+        self.app.dependency_overrides[get_request_context] = lambda: _billing_ctx(
+            user_id=self._user_id
+        )
+        self.mock_db.get_org = AsyncMock(
+            return_value=OrgResponse(
+                id=ORG_ID,
+                name="Acme",
+                slug="acme",
+                avatar_url=None,
+                description=None,
+                is_personal=False,
+                member_count=1,
+                created_at=FIXED_NOW,
+            )
+        )
+        self.mock_db.list_org_members = AsyncMock(return_value=[])
+        self.mock_db.list_org_aliases = AsyncMock(return_value=[])
+
+        assert self.client.get(f"/orgs/{ORG_ID}").status_code == 200
+        assert self.client.get(f"/orgs/{ORG_ID}/members").status_code == 200
+        assert self.client.get(f"/orgs/{ORG_ID}/aliases").status_code == 200
+
 
 class TestOrgAvatarUpload:
     """HTTP-level tests for POST /orgs/{org_id}/avatar.
@@ -838,6 +1053,7 @@ class TestOrgAvatarUpload:
 
         self.app = fastapi.FastAPI()
         self.app.include_router(org_router, prefix="/orgs")
+        self.mocker = mocker
 
         self.mock_db = mocker.patch("backend.api.features.orgs.routes.org_db")
         self.mock_upload = mocker.patch(
@@ -853,14 +1069,41 @@ class TestOrgAvatarUpload:
         self.app.dependency_overrides.clear()
 
     def _authenticate_as(self, ctx):
-        from autogpt_libs.auth import get_request_context
+        from autogpt_libs.auth import get_request_context, get_user_id
+        from autogpt_libs.auth.permissions import check_org_permission
+
+        from backend.api.features.orgs import routes
 
         self.app.dependency_overrides[get_request_context] = lambda: ctx
+        self.app.dependency_overrides[get_user_id] = lambda: ctx.user_id
+
+        @asynccontextmanager
+        async def scoped_access(user_id, org_id, action):
+            yield (
+                user_id == ctx.user_id
+                and org_id == ctx.org_id
+                and check_org_permission(ctx, action)
+            )
+
+        self.mocker.patch.object(routes, "live_org_permission_barrier", scoped_access)
 
     def _authenticate_user(self):
-        from autogpt_libs.auth import get_user_id
+        from autogpt_libs.auth import get_request_context, get_user_id
 
+        from backend.api.features.orgs import routes
+
+        self.app.dependency_overrides[get_request_context] = lambda: _member_ctx(
+            org_id="personal-org", user_id=USER_ID
+        )
         self.app.dependency_overrides[get_user_id] = lambda: USER_ID
+
+        @asynccontextmanager
+        async def target_membership(*_args, **_kwargs):
+            yield True
+
+        self.mocker.patch.object(
+            routes, "live_org_permission_barrier", target_membership
+        )
 
     def _post_avatar(
         self,
@@ -981,13 +1224,13 @@ class TestOrgAvatarUpload:
         assert model.avatar_url == "https://cdn.example.com/logo.png"
 
     def test_member_can_read_local_avatar(self, tmp_path, mocker):
-        avatar = tmp_path / "avatar.png"
+        avatar = tmp_path / "orgs" / ORG_ID / "images" / "avatar.png"
+        avatar.parent.mkdir(parents=True)
         avatar.write_bytes(self.PNG_BYTES)
         mocker.patch(
-            "backend.api.features.orgs.routes.store_media.get_local_media_path",
-            return_value=avatar,
+            "backend.api.features.orgs.routes.store_media.get_local_media_root",
+            return_value=str(tmp_path),
         )
-        self.mock_db.is_org_member = AsyncMock(return_value=True)
         self._authenticate_user()
 
         resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
@@ -997,8 +1240,7 @@ class TestOrgAvatarUpload:
         assert resp.headers["content-type"] == "image/png"
 
     def test_non_member_cannot_read_local_avatar(self):
-        self.mock_db.is_org_member = AsyncMock(return_value=False)
-        self._authenticate_user()
+        self._authenticate_as(_member_ctx(org_id="org-other"))
 
         resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
 
@@ -1008,14 +1250,12 @@ class TestOrgAvatarUpload:
         resp = self.client.get(f"/orgs/{ORG_ID}/avatar/avatar.png")
 
         assert resp.status_code == 401
-        self.mock_db.is_org_member.assert_not_called()
 
     def test_missing_local_avatar_returns_404(self, tmp_path, mocker):
         mocker.patch(
-            "backend.api.features.orgs.routes.store_media.get_local_media_path",
-            return_value=tmp_path / "missing.png",
+            "backend.api.features.orgs.routes.store_media.get_local_media_root",
+            return_value=str(tmp_path),
         )
-        self.mock_db.is_org_member = AsyncMock(return_value=True)
         self._authenticate_user()
 
         resp = self.client.get(f"/orgs/{ORG_ID}/avatar/missing.png")
@@ -1040,6 +1280,7 @@ class TestWorkspaceDbCreate:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -1047,6 +1288,8 @@ class TestWorkspaceDbCreate:
         from backend.api.features.orgs.team_db import create_team
 
         ws = _make_workspace(id="ws-new", isDefault=False)
+        self.prisma.execute_raw = AsyncMock(return_value=1)
+        self.prisma.orgmember.find_first = AsyncMock(return_value=_make_member())
         self.prisma.team.create = AsyncMock(return_value=ws)
         self.prisma.teammember.create = AsyncMock()
 
@@ -1066,7 +1309,9 @@ class TestWorkspaceDbJoinLeave:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        _configure_team_removal_mocks(mocker, self.prisma)
 
     @pytest.mark.asyncio
     async def test_join_open_workspace_success(self):
@@ -1133,7 +1378,7 @@ class TestWorkspaceDbJoinLeave:
         self.prisma.team.find_unique = AsyncMock(return_value=default_ws)
 
         with pytest.raises(ValueError, match="Cannot leave the default"):
-            await leave_team(WS_ID, USER_ID)
+            await leave_team(WS_ID, USER_ID, ORG_ID)
 
     @pytest.mark.asyncio
     async def test_leave_non_default_workspace_success(self):
@@ -1141,11 +1386,13 @@ class TestWorkspaceDbJoinLeave:
 
         ws = _make_workspace(isDefault=False)
         self.prisma.team.find_unique = AsyncMock(return_value=ws)
-        self.prisma.teammember.delete_many = AsyncMock()
+        member = _make_ws_member(userId=USER_ID)
+        suspended = _make_ws_member(userId=USER_ID, status="SUSPENDED")
+        self.prisma.teammember.find_unique = AsyncMock(side_effect=[member, suspended])
 
-        await leave_team(WS_ID, USER_ID)
+        await leave_team(WS_ID, USER_ID, ORG_ID)
 
-        self.prisma.teammember.delete_many.assert_called_once()
+        self.prisma.teammember.delete.assert_awaited_once()
 
 
 class TestWorkspaceDbDelete:
@@ -1153,6 +1400,11 @@ class TestWorkspaceDbDelete:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        self.prisma.execute_raw = AsyncMock(return_value=1)
 
     @pytest.mark.asyncio
     async def test_delete_default_workspace_raises(self):
@@ -1170,11 +1422,15 @@ class TestWorkspaceDbDelete:
 
         ws = _make_workspace(isDefault=False)
         self.prisma.team.find_unique = AsyncMock(return_value=ws)
-        self.prisma.team.delete = AsyncMock()
+        self.prisma.team.update = AsyncMock()
 
         await delete_team(WS_ID)
 
-        self.prisma.team.delete.assert_called_once_with(where={"id": WS_ID})
+        self.prisma.team.update.assert_awaited_once()
+        update = self.prisma.team.update.await_args.kwargs
+        assert update["where"] == {"id": WS_ID}
+        assert update["data"]["archivedAt"] is not None
+        assert update["data"]["slug"] is None
 
     @pytest.mark.asyncio
     async def test_delete_team_not_found_raises(self):
@@ -1229,6 +1485,16 @@ class TestWorkspaceDbMembers:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        _configure_membership_lock(mocker)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
     @pytest.mark.asyncio
     async def test_add_team_member_requires_org_membership(self):
@@ -1240,7 +1506,9 @@ class TestWorkspaceDbMembers:
         )
         self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
 
-        with pytest.raises(ValueError, match="not a member of the organization"):
+        with pytest.raises(
+            ValueError, match="not an active member of the organization"
+        ):
             await add_team_member(
                 ws_id=WS_ID,
                 user_id="outsider",
@@ -1318,6 +1586,31 @@ class TestWorkspaceRoutes:
 
         assert exc_info.value.status_code == 403
 
+    @pytest.mark.asyncio
+    async def test_billing_manager_can_list_visible_teams(self, mocker):
+        from backend.api.features.orgs import team_routes
+
+        ctx = _billing_ctx()
+
+        @asynccontextmanager
+        async def live_context(*_args, **_kwargs):
+            yield ctx
+
+        mocker.patch.object(team_routes, "live_org_context_barrier", live_context)
+        list_visible = mocker.patch.object(
+            team_routes.team_db,
+            "list_teams",
+            new_callable=AsyncMock,
+            return_value=[],
+        )
+
+        assert await team_routes.list_teams(ORG_ID, ctx) == []
+        list_visible.assert_awaited_once_with(
+            ORG_ID,
+            ctx.user_id,
+            can_manage_workspaces=False,
+        )
+
     def test_list_team_members_requires_org_membership(self, mocker):
         """list_members raises 403 when ctx.org_id != path org_id."""
         from backend.api.features.orgs.team_routes import list_members
@@ -1378,6 +1671,7 @@ class TestWorkspaceRouteValueErrorsBecome400:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        _configure_team_removal_mocks(mocker, self.prisma)
 
     @pytest.mark.asyncio
     async def test_delete_default_team_returns_400_with_detail(self):
@@ -1482,7 +1776,7 @@ class TestWorkspaceRouteValueErrorsBecome400:
             await add_member(org_id=ORG_ID, ws_id=WS_ID, request=request, ctx=ctx)
 
         assert exc_info.value.status_code == 400
-        assert "not a member of the organization" in exc_info.value.detail
+        assert "not an active member of the organization" in exc_info.value.detail
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1496,8 +1790,19 @@ class TestInvitationAcceptance:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.invitation_routes.transaction",
+            _fake_transaction(self.prisma),
+        )
+        mocker.patch(
+            "backend.api.features.orgs.invitation_routes.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
+        _configure_membership_lock(mocker)
 
     def _make_invitation(
         self,
@@ -1549,11 +1854,11 @@ class TestInvitationAcceptance:
         accepting_user = MagicMock(id=test_user_id, email="test@example.com")
         self.prisma.user.find_unique = AsyncMock(return_value=accepting_user)
 
-        # Mock add_org_member chain
-        new_member = _make_member(userId=test_user_id)
-        self.prisma.orgmember.create = AsyncMock(return_value=new_member)
-        self.prisma.team.find_first = AsyncMock(return_value=None)
-        self.prisma.orginvitation.update = AsyncMock()
+        self.prisma.organization.find_first = AsyncMock(return_value=MagicMock())
+        self.prisma.team.find_many = AsyncMock(return_value=[])
+        self.prisma.orginvitation.update_many = AsyncMock(return_value=1)
+        self.prisma.orgmember.upsert = AsyncMock(return_value=MagicMock())
+        self.prisma.teammember.upsert = AsyncMock(return_value=MagicMock())
 
         resp = client.post("/invitations/tok-abc/accept")
 
@@ -1561,6 +1866,32 @@ class TestInvitationAcceptance:
         data = resp.json()
         assert data["orgId"] == ORG_ID
         assert "accepted" in data["message"].lower()
+
+    def test_accept_billing_invitation_marks_workspace_billing_only(
+        self, _app_and_client, test_user_id
+    ):
+        _, client = _app_and_client
+        invitation = self._make_invitation(
+            email="test@example.com",
+            isBillingManager=True,
+            teamIds=["team-1"],
+        )
+        self.prisma.orginvitation.find_unique = AsyncMock(return_value=invitation)
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(id=test_user_id, email="test@example.com")
+        )
+        self.prisma.organization.find_first = AsyncMock(return_value=MagicMock())
+        self.prisma.team.find_many = AsyncMock(return_value=[MagicMock(id="team-1")])
+        self.prisma.orginvitation.update_many = AsyncMock(return_value=1)
+        self.prisma.orgmember.upsert = AsyncMock(return_value=MagicMock())
+        self.prisma.teammember.upsert = AsyncMock(return_value=MagicMock())
+
+        response = client.post("/invitations/tok-abc/accept")
+
+        assert response.status_code == 200
+        data = self.prisma.teammember.upsert.call_args.kwargs["data"]
+        assert data["create"]["isBillingManager"] is True
+        assert data["update"]["isBillingManager"] is True
 
     def test_accept_expired_invitation_raises(self, _app_and_client):
         _, client = _app_and_client
@@ -1620,6 +1951,27 @@ class TestInvitationAcceptance:
         assert resp.status_code == 403
         assert "different email" in resp.json()["detail"].lower()
 
+    def test_accept_rejects_token_rotated_after_lookup(
+        self, _app_and_client, test_user_id
+    ):
+        _, client = _app_and_client
+        invitation = self._make_invitation(email="test@example.com")
+        self.prisma.orginvitation.find_unique = AsyncMock(return_value=invitation)
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(id=test_user_id, email="test@example.com")
+        )
+        self.prisma.organization.find_first = AsyncMock(return_value=MagicMock())
+        self.prisma.team.find_many = AsyncMock(return_value=[])
+        self.prisma.orginvitation.update_many = AsyncMock(return_value=0)
+        self.prisma.orgmember.upsert = AsyncMock()
+
+        resp = client.post("/invitations/tok-abc/accept")
+
+        assert resp.status_code == 409
+        claim_where = self.prisma.orginvitation.update_many.call_args.kwargs["where"]
+        assert claim_where["token"] == "tok-abc"
+        self.prisma.orgmember.upsert.assert_not_awaited()
+
     def test_accept_invitation_not_found_raises_error(self, _app_and_client):
         """When invitation is not found, NotFoundError is raised.  TestClient
         propagates unhandled exceptions, so we catch it directly."""
@@ -1637,7 +1989,7 @@ class TestInvitationAcceptance:
 
         invitation = self._make_invitation(email="test@example.com")
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=invitation)
-        self.prisma.orginvitation.update = AsyncMock()
+        self.prisma.orginvitation.update_many = AsyncMock(return_value=1)
         # decline now checks user email matches invitation
         user = MagicMock(id="test-user-id", email="test@example.com")
         self.prisma.user.find_unique = AsyncMock(return_value=user)
@@ -1646,8 +1998,8 @@ class TestInvitationAcceptance:
 
         assert resp.status_code == 204
         # Should have set revokedAt
-        self.prisma.orginvitation.update.assert_called_once()
-        update_data = self.prisma.orginvitation.update.call_args[1]["data"]
+        self.prisma.orginvitation.update_many.assert_called_once()
+        update_data = self.prisma.orginvitation.update_many.call_args[1]["data"]
         assert "revokedAt" in update_data
 
 
@@ -1658,6 +2010,9 @@ class TestInvitationListPending:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
+        self.prisma.user.find_first = AsyncMock(return_value=None)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.find_first = AsyncMock(return_value=None)
 
     @pytest.fixture
     def _app_and_client(self, mock_jwt_user):
@@ -1733,9 +2088,11 @@ class TestOrgCreditsSpend:
         non_personal.isPersonal = False
         self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
-        org_credit._personal_org_owner.cache_clear()
-        yield
-        org_credit._personal_org_owner.cache_clear()
+        mocker.patch.object(
+            org_credit,
+            "_personal_org_owner",
+            new=AsyncMock(return_value=None),
+        )
 
     @pytest.mark.asyncio
     async def test_spend_credits_success(self):
@@ -1846,9 +2203,11 @@ class TestOrgCreditsTopUp:
         non_personal.isPersonal = False
         self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
-        org_credit._personal_org_owner.cache_clear()
-        yield
-        org_credit._personal_org_owner.cache_clear()
+        mocker.patch.object(
+            org_credit,
+            "_personal_org_owner",
+            new=AsyncMock(return_value=None),
+        )
 
     @pytest.mark.asyncio
     async def test_top_up_creates_balance_if_not_exists(self):
@@ -1914,9 +2273,11 @@ class TestOrgCreditsGet:
         non_personal.isPersonal = False
         self.prisma.organization.find_unique = AsyncMock(return_value=non_personal)
         mocker.patch("backend.data.org_credit.prisma", self.prisma)
-        org_credit._personal_org_owner.cache_clear()
-        yield
-        org_credit._personal_org_owner.cache_clear()
+        mocker.patch.object(
+            org_credit,
+            "_personal_org_owner",
+            new=AsyncMock(return_value=None),
+        )
 
     @pytest.mark.asyncio
     async def test_get_credits_returns_balance(self):
@@ -2229,6 +2590,11 @@ class TestOrgDbUpdateMemberNoop:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
+        _configure_membership_lock(mocker)
 
     @pytest.mark.asyncio
     async def test_update_member_no_changes_skips_db_update(self):
@@ -2336,6 +2702,7 @@ class TestConversionSpawnsNewPersonalOrg:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         self.prisma.organization.find_unique = AsyncMock(return_value=None)
         self.prisma.organization.update = AsyncMock()
         self.prisma.user.find_unique = AsyncMock(
@@ -2460,7 +2827,18 @@ class TestSoftDeleteOrg:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.user.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.update_many = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        mocker.patch(
+            "backend.api.features.orgs.db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
     @pytest.mark.asyncio
     async def test_delete_org_sets_deleted_at(self):
@@ -2533,6 +2911,7 @@ class TestSelfRemovalPrevention:
     def setup(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        _configure_member_removal_mocks(mocker, self.prisma)
 
     @pytest.mark.asyncio
     async def test_remove_self_blocked(self):
@@ -2561,7 +2940,10 @@ class TestSelfRemovalPrevention:
         from backend.api.features.orgs.db import remove_org_member
 
         member = _make_member(userId=OTHER_USER_ID, isOwner=False)
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        suspended = _make_member(
+            userId=OTHER_USER_ID, isOwner=False, status="SUSPENDED"
+        )
+        self.prisma.orgmember.find_unique = AsyncMock(side_effect=[member, suspended])
         # User has 1 other org membership
         self.prisma.orgmember.count = AsyncMock(return_value=1)
         self.prisma.team.find_many = AsyncMock(return_value=[])
@@ -2597,6 +2979,7 @@ class TestDefaultWorkspaceProtection:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -2615,7 +2998,7 @@ class TestDefaultWorkspaceProtection:
 
         default_ws = _make_workspace(isDefault=True)
         self.prisma.team.find_unique = AsyncMock(return_value=default_ws)
-        self.prisma.team.update = AsyncMock()
+        self.prisma.team.update = AsyncMock(return_value=default_ws)
 
         await update_team(WS_ID, {"name": "General"})
         self.prisma.team.update.assert_called_once()
@@ -2629,7 +3012,7 @@ class TestDefaultWorkspaceProtection:
         self.prisma.team.find_unique = AsyncMock(
             side_effect=[non_default_ws, updated_ws]
         )
-        self.prisma.team.update = AsyncMock()
+        self.prisma.team.update = AsyncMock(return_value=updated_ws)
 
         await update_team("ws-other", {"joinPolicy": "PRIVATE"})
         self.prisma.team.update.assert_called_once()
@@ -2642,6 +3025,8 @@ class TestLastAdminGuard:
     def setup(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        self.prisma.team.find_unique = AsyncMock(return_value=_make_workspace())
+        _configure_team_removal_mocks(mocker, self.prisma)
 
     @pytest.mark.asyncio
     async def test_remove_last_workspace_admin_blocked(self):
@@ -2660,7 +3045,8 @@ class TestLastAdminGuard:
         from backend.api.features.orgs.team_db import remove_team_member
 
         admin = _make_ws_member(isAdmin=True, userId="admin-1")
-        self.prisma.teammember.find_unique = AsyncMock(return_value=admin)
+        suspended = _make_ws_member(isAdmin=True, userId="admin-1", status="SUSPENDED")
+        self.prisma.teammember.find_unique = AsyncMock(side_effect=[admin, suspended])
         # 2 admins exist — safe to remove one
         self.prisma.teammember.count = AsyncMock(return_value=2)
         self.prisma.teammember.delete = AsyncMock()
@@ -2673,7 +3059,10 @@ class TestLastAdminGuard:
         from backend.api.features.orgs.team_db import remove_team_member
 
         member = _make_ws_member(isAdmin=False, userId="regular-1")
-        self.prisma.teammember.find_unique = AsyncMock(return_value=member)
+        suspended = _make_ws_member(
+            isAdmin=False, userId="regular-1", status="SUSPENDED"
+        )
+        self.prisma.teammember.find_unique = AsyncMock(side_effect=[member, suspended])
         self.prisma.teammember.delete = AsyncMock()
 
         await remove_team_member(WS_ID, "regular-1")
@@ -2689,7 +3078,6 @@ class TestInvitationIdempotency:
     def setup(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
-        mocker.patch("backend.api.features.orgs.invitation_routes.org_db")
 
     @pytest.mark.asyncio
     async def test_accept_already_accepted_raises_400(self):
@@ -2751,6 +3139,7 @@ class TestUpdateOrgTypedModel:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         self.prisma.organizationprofile.update = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
@@ -2873,6 +3262,53 @@ class TestAuthErrorMessage:
         assert ctx.user_id == "fresh-user"
         assert ctx.is_org_owner is True
 
+    @pytest.mark.asyncio
+    async def test_explicit_team_header_rejects_nonmember_instead_of_widening(
+        self, mocker
+    ):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        mock_prisma = MagicMock()
+        mock_prisma.orgmember.find_unique = AsyncMock(
+            return_value=_make_member(isOwner=False, isAdmin=False)
+        )
+        mock_prisma.teammember.find_unique = AsyncMock(return_value=None)
+        mocker.patch("backend.data.db.prisma", mock_prisma)
+
+        mock_request = MagicMock()
+        mock_request.headers = {"X-Org-Id": ORG_ID, "X-Team-Id": "ws-private"}
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await get_request_context(mock_request, {"sub": USER_ID})
+
+        assert exc_info.value.status_code == 403
+        assert "active member of this workspace" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_explicit_team_header_keeps_valid_membership(self, mocker):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        team_member = _make_ws_member(
+            workspaceId=WS_ID,
+            isAdmin=True,
+            isBillingManager=True,
+        )
+        mock_prisma = MagicMock()
+        mock_prisma.orgmember.find_unique = AsyncMock(
+            return_value=_make_member(isOwner=False, isAdmin=False)
+        )
+        mock_prisma.teammember.find_unique = AsyncMock(return_value=team_member)
+        mocker.patch("backend.data.db.prisma", mock_prisma)
+
+        mock_request = MagicMock()
+        mock_request.headers = {"X-Org-Id": ORG_ID, "X-Team-Id": WS_ID}
+
+        ctx = await get_request_context(mock_request, {"sub": USER_ID})
+
+        assert ctx.team_id == WS_ID
+        assert ctx.is_team_admin is True
+        assert ctx.is_team_billing_manager is True
+
 
 # ============================================================================
 # PR REVIEW BUG TESTS — written as xfail first, fixed after
@@ -2894,6 +3330,17 @@ class TestPRReviewBugs:
         mocker.patch(
             "backend.api.features.orgs.db.transaction",
             _fake_transaction(self.prisma),
+        )
+
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        _configure_membership_lock(mocker)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
         )
 
     # --- Bug: invitation routes missing _verify_org_path ---
@@ -2987,7 +3434,7 @@ class TestPRReviewBugs:
     # --- Bug: join_team doesn't verify org membership ---
 
     @pytest.mark.asyncio
-    async def test_join_team_requires_org_membership(self):
+    async def test_join_team_requires_org_membership(self, mocker):
         """join_team should verify user is actually an org member."""
         from backend.api.features.orgs.team_db import join_team
 
@@ -2996,8 +3443,12 @@ class TestPRReviewBugs:
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
         # User is NOT an org member
         self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.lock_live_org_permission_scope",
+            new=AsyncMock(return_value=None),
+        )
 
-        with pytest.raises(ValueError, match="not a member"):
+        with pytest.raises(ValueError, match="not an active member"):
             await join_team(WS_ID, "non-member-user", ORG_ID)
 
     # --- Bug: workspace create/delete missing org path check ---
@@ -3024,7 +3475,23 @@ class TestPRReviewBugsRound2:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.user.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.update_many = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
+        tx = MagicMock()
+        tx.__aenter__ = AsyncMock(return_value=self.prisma)
+        tx.__aexit__ = AsyncMock(return_value=False)
+        self.prisma.tx.return_value = tx
+        _configure_membership_lock(mocker)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
 
     # --- Bug: update_org_member bare next() raises StopIteration ---
@@ -3069,6 +3536,27 @@ class TestPRReviewBugsRound2:
         self.prisma.teammember.update_many.assert_called_once_with(
             where={"teamId": WS_ID, "userId": OTHER_USER_ID},
             data={"isAdmin": True},
+        )
+
+    @pytest.mark.asyncio
+    async def test_update_org_billing_role_syncs_default_workspace(self):
+        from backend.api.features.orgs.db import update_org_member
+
+        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        self.prisma.orgmember.update = AsyncMock()
+        self.prisma.team.find_first = AsyncMock(return_value=MagicMock(id=WS_ID))
+        self.prisma.teammember.update_many = AsyncMock()
+        updated = _make_member(userId=OTHER_USER_ID, isBillingManager=True)
+        self.prisma.orgmember.find_many = AsyncMock(return_value=[updated])
+
+        await update_org_member(
+            ORG_ID, OTHER_USER_ID, is_admin=False, is_billing_manager=True
+        )
+
+        self.prisma.teammember.update_many.assert_called_once_with(
+            where={"teamId": WS_ID, "userId": OTHER_USER_ID},
+            data={"isAdmin": False, "isBillingManager": True},
         )
 
     # --- Bug: test_assign_seat asserts wrong seat type ---
@@ -3122,6 +3610,14 @@ class TestInvitationSeeding:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.invitation_routes.transaction",
+            _fake_transaction(self.prisma),
+        )
+        _configure_membership_lock(mocker)
+        self.prisma.user.find_first = AsyncMock(return_value=None)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+        self.prisma.orginvitation.find_first = AsyncMock(return_value=None)
 
     @pytest.mark.asyncio
     async def test_create_invitation_rejects_foreign_team_ids(self):
@@ -3358,7 +3854,21 @@ class TestTeamManagementByTeamId:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        _configure_mock_client_tx(self.prisma)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        _configure_team_removal_mocks(mocker, self.prisma)
+        self.current_ctx = _mgmt_ctx()
+        self.target_team_admin = False
+
+        async def authorize(*_args, **_kwargs):
+            if self.current_ctx.is_org_admin or self.current_ctx.is_org_owner:
+                return self.current_ctx
+            return self.current_ctx if self.target_team_admin else None
+
+        mocker.patch(
+            "backend.api.features.orgs.team_db.lock_live_org_or_team_permission_scope",
+            new=AsyncMock(side_effect=authorize),
+        )
 
     @pytest.fixture
     def _app_and_client(self):
@@ -3375,14 +3885,21 @@ class TestTeamManagementByTeamId:
             return JSONResponse(status_code=404, content={"detail": str(exc)})
 
         app.add_exception_handler(NotFoundError, _not_found)
+
+        async def _not_authorized(request, exc):
+            return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+        app.add_exception_handler(NotAuthorizedError, _not_authorized)
         self.app = app
         client = fastapi.testclient.TestClient(app)
         yield app, client
         app.dependency_overrides.clear()
 
-    def _use_ctx(self, ctx: RequestContext):
+    def _use_ctx(self, ctx: RequestContext, *, target_team_admin: bool = False):
         from autogpt_libs.auth import get_request_context
 
+        self.current_ctx = ctx
+        self.target_team_admin = target_team_admin
         self.app.dependency_overrides[get_request_context] = lambda: ctx
 
     # --- team settings update (PATCH /{ws_id}) ------------------------------
@@ -3399,9 +3916,14 @@ class TestTeamManagementByTeamId:
                 workspaceId=WS_ID, userId=USER_ID, isAdmin=True
             )
         )
-        self.prisma.team.update = AsyncMock()
+        self.prisma.team.update = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, name="Renamed", isDefault=False)
+        )
         # No active team: team_id is None (no X-Team-Id header).
-        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None, team_admin=False))
+        self._use_ctx(
+            _mgmt_ctx(user_id=USER_ID, team_id=None, team_admin=False),
+            target_team_admin=True,
+        )
 
         resp = client.patch(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
@@ -3417,7 +3939,9 @@ class TestTeamManagementByTeamId:
         )
         # Org admin is not a member of the target team.
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
-        self.prisma.team.update = AsyncMock()
+        self.prisma.team.update = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, name="Renamed", isDefault=False)
+        )
         self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
 
         resp = client.patch(
@@ -3471,7 +3995,11 @@ class TestTeamManagementByTeamId:
         self.prisma.team.find_unique = AsyncMock(
             return_value=_make_workspace(id=WS_ID, isDefault=False)
         )
-        self.prisma.teammember.update = AsyncMock()
+        self.prisma.teammember.update = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=True
+            )
+        )
         self.prisma.teammember.find_many = AsyncMock(
             return_value=[_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)]
         )
@@ -3482,11 +4010,12 @@ class TestTeamManagementByTeamId:
         _, client = _app_and_client
         self._stub_member_update()
         self.prisma.teammember.find_unique = AsyncMock(
-            return_value=_make_ws_member(
-                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
-            )
+            side_effect=[
+                _make_ws_member(workspaceId=WS_ID, userId=USER_ID, isAdmin=True),
+                _make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID),
+            ]
         )
-        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None))
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None), target_team_admin=True)
 
         resp = client.patch(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
@@ -3501,7 +4030,9 @@ class TestTeamManagementByTeamId:
     ):
         _, client = _app_and_client
         self._stub_member_update()
-        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)
+        )
         self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
 
         resp = client.patch(
@@ -3511,13 +4042,13 @@ class TestTeamManagementByTeamId:
 
         assert resp.status_code == 200
         self.prisma.teammember.update.assert_awaited_once()
-        self.prisma.teammember.find_unique.assert_not_awaited()
+        self.prisma.teammember.find_unique.assert_awaited_once()
 
     def test_plain_org_member_cannot_update_member(self, _app_and_client):
         _, client = _app_and_client
         self._stub_member_update()
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
-        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
 
         resp = client.patch(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
@@ -3531,9 +4062,7 @@ class TestTeamManagementByTeamId:
         _, client = _app_and_client
         self._stub_member_update()
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
-        self._use_ctx(
-            _mgmt_ctx(user_id=OTHER_USER_ID, team_id="ws-other", team_admin=True)
-        )
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id="ws-other", team_admin=True))
 
         resp = client.patch(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
@@ -3556,11 +4085,13 @@ class TestTeamManagementByTeamId:
                 workspaceId=WS_ID, userId=USER_ID, isAdmin=True
             )
         )
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=MagicMock())
+        self.prisma.orgmember.find_unique = AsyncMock(
+            return_value=MagicMock(status="ACTIVE")
+        )
         self.prisma.teammember.create = AsyncMock(
             return_value=_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)
         )
-        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None))
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None), target_team_admin=True)
 
         resp = client.post(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members",
@@ -3598,11 +4129,14 @@ class TestTeamManagementByTeamId:
         )
         # Only remove_team_member's target lookup hits this (org permission
         # short-circuits before is_team_admin); target is not an admin.
-        self.prisma.teammember.find_unique = AsyncMock(
-            return_value=_make_ws_member(
-                workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=False
-            )
+        active = _make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=False)
+        suspended = _make_ws_member(
+            workspaceId=WS_ID,
+            userId=OTHER_USER_ID,
+            isAdmin=False,
+            status="SUSPENDED",
         )
+        self.prisma.teammember.find_unique = AsyncMock(side_effect=[active, suspended])
         self.prisma.teammember.delete = AsyncMock()
         self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
 
@@ -3622,9 +4156,7 @@ class TestTeamManagementByTeamId:
         # team ("ws-other") having them as admin.
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
         self.prisma.teammember.delete = AsyncMock()
-        self._use_ctx(
-            _mgmt_ctx(user_id=OTHER_USER_ID, team_id="ws-other", team_admin=True)
-        )
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id="ws-other", team_admin=True))
 
         resp = client.delete(
             f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}"
@@ -3743,6 +4275,16 @@ class TestTeamListVisibility:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        self.current_ctx = _mgmt_ctx()
+
+        @asynccontextmanager
+        async def live_context(*_args, **_kwargs):
+            yield self.current_ctx
+
+        mocker.patch(
+            "backend.api.features.orgs.team_routes.live_org_context_barrier",
+            live_context,
+        )
 
     @pytest.fixture
     def _app_and_client(self):
@@ -3767,6 +4309,7 @@ class TestTeamListVisibility:
     def _use_ctx(self, ctx: RequestContext):
         from autogpt_libs.auth import get_request_context
 
+        self.current_ctx = ctx
         self.app.dependency_overrides[get_request_context] = lambda: ctx
 
     # --- list (GET "") ------------------------------------------------------
@@ -3965,6 +4508,16 @@ class TestTeamMembersVisibility:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        self.current_ctx = _mgmt_ctx()
+
+        @asynccontextmanager
+        async def live_context(*_args, **_kwargs):
+            yield self.current_ctx
+
+        mocker.patch(
+            "backend.api.features.orgs.team_routes.live_org_context_barrier",
+            live_context,
+        )
 
     @pytest.fixture
     def _app_and_client(self):
@@ -3987,6 +4540,7 @@ class TestTeamMembersVisibility:
     def _use_ctx(self, ctx: RequestContext):
         from autogpt_libs.auth import get_request_context
 
+        self.current_ctx = ctx
         self.app.dependency_overrides[get_request_context] = lambda: ctx
 
     def _mock_team(self, join_policy: str, caller_is_member: bool):

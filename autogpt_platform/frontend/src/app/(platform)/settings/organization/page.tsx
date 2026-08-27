@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -12,6 +12,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 
 import { DangerZoneSection } from "./components/DangerZoneSection/DangerZoneSection";
 import { InvitationsSection } from "./components/InvitationsSection/InvitationsSection";
@@ -49,6 +50,25 @@ function resolveInitialTab(searchParams: URLSearchParams): OrgSettingsTab {
 }
 
 export default function OrganizationSettingsPage() {
+  const { enabled, ready } = useFlagStatus(Flag.SHOW_ORG_SETTINGS);
+
+  if (!ready) return <OrganizationSettingsSkeleton />;
+  if (!enabled) notFound();
+
+  return <OrganizationSettingsPageContent />;
+}
+
+function OrganizationSettingsSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 py-6">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
+function OrganizationSettingsPageContent() {
   const searchParams = useSearchParams();
   const {
     org,
@@ -70,13 +90,7 @@ export default function OrganizationSettingsPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col gap-6 py-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <OrganizationSettingsSkeleton />;
   }
 
   if (isError || !org) {

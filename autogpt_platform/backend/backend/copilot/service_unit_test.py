@@ -12,6 +12,8 @@ where the code under test imports them (``backend.copilot.service.*``).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,6 +30,7 @@ from backend.copilot.service import (
     _title_usage_from_response,
     _update_title_async,
 )
+from backend.data.db_accessors import LiveResourceAccessRevoked
 
 
 def _build_completion(
@@ -350,6 +353,30 @@ class TestUpdateTitleAsync:
     as independent best-effort steps — a failure in one does NOT
     cancel the other."""
 
+    @pytest.fixture(autouse=True)
+    def _live_title_scope(self):
+        session = MagicMock(organization_id="org-1", team_id="team-1")
+
+        @contextlib.asynccontextmanager
+        async def allow(*_args, **_kwargs):
+            yield True
+
+        with (
+            patch(
+                "backend.copilot.service.get_chat_session_metadata",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "backend.copilot.service.live_resource_lease",
+                new=allow,
+            ),
+            patch(
+                "backend.copilot.service.require_exact_chat_session_scope",
+                new=AsyncMock(),
+            ),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_title_success_cost_success(self):
         resp = _build_completion(usage=_usage_with_cost(0.0001))
@@ -510,6 +537,61 @@ class TestUpdateTitleAsync:
             "sess-6", "u", "fallback title", only_if_empty=True
         )
         record.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_revoked_scope_never_discloses_message_to_title_provider(self):
+        gen = AsyncMock()
+        update = AsyncMock()
+
+        @contextlib.asynccontextmanager
+        async def deny(*_args, **_kwargs):
+            yield False
+
+        with (
+            patch("backend.copilot.service.live_resource_lease", new=deny),
+            patch("backend.copilot.service._generate_session_title", new=gen),
+            patch("backend.copilot.service.update_session_title", new=update),
+        ):
+            await _update_title_async("sess-revoked", "private", user_id="u")
+
+        gen.assert_not_awaited()
+        update.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lease_loss_cancels_provider_and_prevents_title_write(self):
+        provider_started = asyncio.Event()
+
+        async def blocked_provider(*_args, **_kwargs):
+            provider_started.set()
+            await asyncio.Event().wait()
+
+        class RevokingGuard:
+            async def run(self, action):
+                task = asyncio.create_task(action)
+                await provider_started.wait()
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                raise LiveResourceAccessRevoked("workspace_lease_lost")
+
+        @contextlib.asynccontextmanager
+        async def revoke_during_provider(*_args, **_kwargs):
+            yield RevokingGuard()
+
+        update = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.service.live_resource_lease",
+                new=revoke_during_provider,
+            ),
+            patch(
+                "backend.copilot.service._generate_session_title",
+                new=AsyncMock(side_effect=blocked_provider),
+            ),
+            patch("backend.copilot.service.update_session_title", new=update),
+        ):
+            await _update_title_async("sess-race", "private", user_id="u")
+
+        update.assert_not_awaited()
 
 
 class TestGenerateSessionTitle:

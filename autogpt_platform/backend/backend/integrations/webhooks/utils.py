@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional, cast
 
 from pydantic import JsonValue
 
+from backend.integrations.credential_lease import run_with_credential_lease_guard
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Config
 
@@ -89,6 +90,7 @@ async def setup_webhook_for_block(
         logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
 
     # Check & process prerequisites for auto-setup webhooks
+    credentials_id: str | None = None
     if auto_setup_webhook := isinstance(trigger_base_config, BlockWebhookConfig):
         try:
             resource = trigger_base_config.resource_format.format(**trigger_config)
@@ -110,18 +112,7 @@ async def setup_webhook_for_block(
             credentials_meta := cast(dict, trigger_config.get(creds_field_name, None))
         ):
             return None, f"Cannot set up {provider.value} webhook without credentials"
-        elif not (
-            credentials := credentials
-            or await credentials_manager.get(user_id, credentials_meta["id"])
-        ):
-            raise ValueError(
-                f"Cannot set up {provider.value} webhook without credentials: "
-                f"credentials #{credentials_meta['id']} not found for user #{user_id}"
-            )
-        elif credentials.provider != provider:
-            raise ValueError(
-                f"Credentials #{credentials.id} do not match provider {provider.value}"
-            )
+        credentials_id = credentials_meta["id"]
     else:
         # not relevant for manual webhooks:
         resource = ""
@@ -131,16 +122,42 @@ async def setup_webhook_for_block(
 
     # Find/make and attach a suitable webhook to the node
     if auto_setup_webhook:
-        assert credentials is not None
-        webhook = await webhooks_manager.get_suitable_auto_webhook(
-            user_id=user_id,
-            credentials=credentials,
-            webhook_type=trigger_base_config.webhook_type,
-            resource=resource,
-            events=events,
-            organization_id=organization_id,
-            team_id=team_id,
-        )
+        assert credentials_id is not None
+        try:
+            lease = await credentials_manager.acquire_lease(user_id, credentials_id)
+        except ValueError as error:
+            raise ValueError(
+                f"Cannot set up {provider.value} webhook without credentials: "
+                f"credentials #{credentials_id} not found for user #{user_id}"
+            ) from error
+        try:
+            leased_credentials = lease.credentials
+            if leased_credentials.provider != provider:
+                raise ValueError(
+                    f"Credentials #{leased_credentials.id} do not match provider "
+                    f"{provider.value}"
+                )
+            if credentials is not None and (
+                credentials.id != leased_credentials.id
+                or credentials.provider != leased_credentials.provider
+            ):
+                raise ValueError(
+                    "Provided credentials do not match the selected credential"
+                )
+            webhook = await run_with_credential_lease_guard(
+                webhooks_manager.get_suitable_auto_webhook(
+                    user_id=user_id,
+                    credentials=leased_credentials,
+                    webhook_type=trigger_base_config.webhook_type,
+                    resource=resource,
+                    events=events,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                ),
+                [lease],
+            )
+        finally:
+            await lease.release()
     else:
         # Manual webhook -> no credentials -> don't register but do create
         webhook = await webhooks_manager.get_manual_webhook(
@@ -154,6 +171,37 @@ async def setup_webhook_for_block(
         )
     logger.debug(f"Acquired webhook: {webhook}")
     return webhook, None
+
+
+async def prune_webhook_with_credential_lease(
+    user_id: str,
+    webhook: "Webhook",
+) -> bool:
+    manager = get_webhook_manager(webhook.provider)
+    if not webhook.credentials_id:
+        return await manager.prune_webhook_if_dangling(user_id, webhook.id, None)
+    try:
+        lease = await credentials_manager.acquire_lease(
+            user_id,
+            webhook.credentials_id,
+        )
+    except ValueError:
+        return False
+    try:
+        credentials = lease.credentials
+        provider_value = getattr(webhook.provider, "value", webhook.provider)
+        if credentials.provider != provider_value:
+            return False
+        return await run_with_credential_lease_guard(
+            manager.prune_webhook_if_dangling(
+                user_id,
+                webhook.id,
+                credentials,
+            ),
+            [lease],
+        )
+    finally:
+        await lease.release()
 
 
 async def migrate_legacy_triggered_graphs():

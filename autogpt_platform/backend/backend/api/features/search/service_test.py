@@ -153,32 +153,22 @@ def _mock_recent_sources(
 
 @pytest.mark.asyncio
 async def test_global_search_buckets_results_by_content_type(mocker):
-    """One hybrid call for agents; files & chats use direct DB queries —
-    rows are sorted into the right bucket regardless of the source path."""
+    """Store agents use hybrid search; private buckets use scoped DB reads."""
 
     def hybrid_side_effect(*, content_types, **_):
-        type_set = {ct.value for ct in content_types}
-        if "LIBRARY_AGENT" in type_set or "STORE_AGENT" in type_set:
-            return (
-                [
-                    {
-                        "content_id": "agent-1",
-                        "content_type": ContentType.LIBRARY_AGENT,
-                        "metadata": {"name": "My Agent"},
-                        "combined_score": 0.8,
-                        "updated_at": datetime.datetime(2024, 1, 1),
-                    },
-                    {
-                        "content_id": "store-1",
-                        "content_type": ContentType.STORE_AGENT,
-                        "metadata": {"name": "Store Agent", "categories": ["ai"]},
-                        "combined_score": 0.7,
-                        "updated_at": datetime.datetime(2024, 1, 2),
-                    },
-                ],
-                2,
-            )
-        return ([], 0)
+        assert content_types == [ContentType.STORE_AGENT]
+        return (
+            [
+                {
+                    "content_id": "store-1",
+                    "content_type": ContentType.STORE_AGENT,
+                    "metadata": {"name": "Store Agent", "categories": ["ai"]},
+                    "combined_score": 0.7,
+                    "updated_at": datetime.datetime(2024, 1, 2),
+                }
+            ],
+            1,
+        )
 
     _mock_recent_sources(
         mocker,
@@ -191,15 +181,16 @@ async def test_global_search_buckets_results_by_content_type(mocker):
     mock_shim.unified_hybrid_search = AsyncMock(side_effect=hybrid_side_effect)
     with patch("backend.api.features.search.service.search", return_value=mock_shim):
         result = await service.global_search(
-            query="anything", user_id="u1", per_type_limit=4
+            query="anything",
+            user_id="u1",
+            organization_id="org-1",
+            team_id="team-1",
+            per_type_limit=4,
         )
 
-    # Only the agents bucket still goes through unified_hybrid_search;
-    # files and chats now route through direct DB queries (see
-    # _files_bucket / _chats_bucket).
     assert mock_shim.unified_hybrid_search.await_count == 1
 
-    assert [a.id for a in result.agents] == ["agent-1", "store-1"]
+    assert [a.id for a in result.agents] == ["a-1", "store-1"]
     assert [a.type for a in result.agents] == ["library_agent", "store_agent"]
     assert [f.id for f in result.files] == ["file-1"]
     assert result.files[0].type == "workspace_file"
@@ -230,13 +221,24 @@ async def test_global_search_respects_per_type_limit(mocker):
     # Agents/chats are out of scope here — stub them to empty so the
     # gather() in global_search resolves cleanly.
     patcher, _ = _patch_hybrid(([], 0))
+    mocker.patch.object(
+        service,
+        "_library_agents_bucket",
+        new=AsyncMock(return_value=[]),
+    )
     mocker.patch(
         "backend.api.features.search.service.get_user_sessions",
         new=AsyncMock(return_value=([], 0)),
     )
 
     with patcher:
-        result = await service.global_search(query="x", user_id="u1", per_type_limit=3)
+        result = await service.global_search(
+            query="x",
+            user_id="u1",
+            organization_id="org-1",
+            team_id="team-1",
+            per_type_limit=3,
+        )
 
     # Rendered response is trimmed to per_type_limit even though the
     # bucket fetched more for reranking.
@@ -264,21 +266,43 @@ async def test_global_search_bucket_failure_does_not_kill_other_buckets(mocker):
     )
 
     patcher, _ = _patch_hybrid(([], 0))
+    mocker.patch.object(
+        service,
+        "_library_agents_bucket",
+        new=AsyncMock(return_value=[]),
+    )
     with patcher:
-        result = await service.global_search(query="x", user_id="u1")
+        result = await service.global_search(
+            query="x", user_id="u1", organization_id="org-1", team_id="team-1"
+        )
 
     assert result.files == []  # failed bucket -> empty, not 500
     assert [c.id for c in result.chats] == ["chat-1"]
 
 
 @pytest.mark.asyncio
-async def test_global_search_forwards_user_id_to_every_bucket():
-    patcher, mock_shim = _patch_hybrid(([], 0))
-    with patcher:
-        await service.global_search(query="x", user_id="user-42")
+async def test_global_search_forwards_scope_to_every_bucket():
+    agents = AsyncMock(return_value=[])
+    store_agents = AsyncMock(return_value=[])
+    files = AsyncMock(return_value=[])
+    chats = AsyncMock(return_value=[])
+    with (
+        patch.object(service, "_library_agents_bucket", agents),
+        patch.object(service, "_search_bucket", store_agents),
+        patch.object(service, "_files_bucket", files),
+        patch.object(service, "_chats_bucket", chats),
+    ):
+        await service.global_search(
+            query="x",
+            user_id="user-42",
+            organization_id="org-1",
+            team_id="team-1",
+        )
 
-    for call in mock_shim.unified_hybrid_search.await_args_list:
-        assert call.kwargs["user_id"] == "user-42"
+    agents.assert_awaited_once_with("x", "user-42", "org-1", "team-1", 4)
+    store_agents.assert_awaited_once_with("x", "user-42", [ContentType.STORE_AGENT], 4)
+    files.assert_awaited_once_with("user-42", "org-1", "team-1", 4, query="x")
+    chats.assert_awaited_once_with("user-42", "org-1", "team-1", 4, query="x")
 
 
 # ============================================================================
@@ -300,7 +324,9 @@ async def test_global_search_empty_query_returns_recent_buckets(mocker):
     # Patch the hybrid shim too so we can assert it's NOT invoked.
     patcher, mock_shim = _patch_hybrid(([], 0))
     with patcher:
-        result = await service.global_search(query="   ", user_id="u1")
+        result = await service.global_search(
+            query="   ", user_id="u1", organization_id="org-1", team_id="team-1"
+        )
 
     assert isinstance(result, GlobalSearchResponse)
     assert [a.id for a in result.agents] == ["a-1"]
@@ -314,15 +340,33 @@ async def test_global_search_empty_query_returns_recent_buckets(mocker):
 
 
 @pytest.mark.asyncio
-async def test_global_search_empty_query_caches_per_user(mocker):
-    """Two empty-query calls with the same args reuse the cached response."""
+async def test_global_search_empty_query_caches_per_tenant_scope(mocker):
+    """The cache is shared within, but never across, exact tenant scopes."""
     mock_lib = _mock_recent_sources(mocker)
 
-    await service.global_search(query="", user_id="u1", per_type_limit=3)
-    await service.global_search(query="", user_id="u1", per_type_limit=3)
+    await service.global_search(
+        query="",
+        user_id="u1",
+        organization_id="org-1",
+        team_id="team-1",
+        per_type_limit=3,
+    )
+    await service.global_search(
+        query="",
+        user_id="u1",
+        organization_id="org-1",
+        team_id="team-1",
+        per_type_limit=3,
+    )
+    await service.global_search(
+        query="",
+        user_id="u1",
+        organization_id="org-1",
+        team_id="team-2",
+        per_type_limit=3,
+    )
 
-    # Underlying list_library_agents was hit once — second call was cached.
-    assert mock_lib.list_library_agents.await_count == 1
+    assert mock_lib.list_library_agents.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -331,7 +375,9 @@ async def test_global_search_empty_query_handles_user_without_workspace(mocker):
     creating a workspace as a side-effect."""
     _mock_recent_sources(mocker)  # workspace=None by default
 
-    result = await service.global_search(query="", user_id="u1")
+    result = await service.global_search(
+        query="", user_id="u1", organization_id="org-1", team_id="team-1"
+    )
     assert result.files == []
 
 
@@ -339,7 +385,9 @@ async def test_global_search_empty_query_handles_user_without_workspace(mocker):
 async def test_global_search_empty_query_untitled_chat_falls_back(mocker):
     _mock_recent_sources(mocker, sessions=[_fake_chat_session(title=None)])
 
-    result = await service.global_search(query="", user_id="u1")
+    result = await service.global_search(
+        query="", user_id="u1", organization_id="org-1", team_id="team-1"
+    )
     assert result.chats[0].title == "Untitled chat"
 
 
@@ -444,7 +492,9 @@ async def test_files_bucket_reranks_by_relevance_not_freshness(mocker):
         new=AsyncMock(return_value=MagicMock(id="ws-1")),
     )
 
-    result = await service._files_bucket("u1", limit=1, query="quarterly")
+    result = await service._files_bucket(
+        "u1", "org-1", "team-1", limit=1, query="quarterly"
+    )
 
     # The stale startswith match must outrank the fresh contains matches.
     assert [f.id for f in result] == ["f-old"]
@@ -471,7 +521,9 @@ async def test_chats_bucket_reranks_by_relevance_not_recency(mocker):
         new=AsyncMock(return_value=(sessions, len(sessions))),
     )
 
-    result = await service._chats_bucket("u1", limit=1, query="report")
+    result = await service._chats_bucket(
+        "u1", "org-1", "team-1", limit=1, query="report"
+    )
 
     # Exact case-insensitive match wins despite being older.
     assert [c.id for c in result] == ["s-old"]

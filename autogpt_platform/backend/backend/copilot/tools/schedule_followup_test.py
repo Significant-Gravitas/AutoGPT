@@ -275,7 +275,7 @@ async def test_session_id_override_targets_a_different_owned_session(tool, sessi
     mock_user_db().get_user_by_id = AsyncMock(return_value=mock_user)
 
     mock_get_session = AsyncMock(
-        return_value=MagicMock(expert_id=None)
+        return_value=MagicMock(organization_id=None, team_id=None, expert_id=None)
     )  # session exists + owned
     mock_client = AsyncMock()
     mock_client.add_copilot_turn_schedule = AsyncMock(return_value=_info())
@@ -327,7 +327,7 @@ async def test_session_id_override_rejects_session_not_owned(tool, session):
 async def test_session_id_override_rejects_different_memory_scope(tool, session):
     session.expert_id = "expert-a"
     other_session_id = "session-for-expert-b"
-    other_session = MagicMock(expert_id="expert-b")
+    other_session = MagicMock(organization_id=None, team_id=None, expert_id="expert-b")
     mock_get_session = AsyncMock(return_value=other_session)
     mock_client = AsyncMock()
 
@@ -352,7 +352,9 @@ async def test_session_id_override_rejects_different_memory_scope(tool, session)
 async def test_session_id_override_accepts_same_expert_scope(tool, session):
     session.expert_id = "expert-a"
     other_session_id = "another-session-for-expert-a"
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-a"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(organization_id=None, team_id=None, expert_id="expert-a")
+    )
     mock_user_db = MagicMock()
     mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
     mock_client = AsyncMock()

@@ -199,7 +199,7 @@ async def _compose_fresh_briefing(
     # costs one round-trip's latency rather than three. The library lookup
     # can't join them — it needs the graph ids the executions resolve to.
     experts, executions, reviews = await asyncio.gather(
-        experts_db().list_experts(user_id),
+        experts_db().list_experts(user_id, personal_only=True),
         # Filter and bound in the query: a user running minute-crons can
         # accumulate thousands of executions a day, and every one of them
         # would otherwise be serialized over the DatabaseManager RPC just to
@@ -209,19 +209,27 @@ async def _compose_fresh_briefing(
             created_time_gte=window_start,
             statuses=_BRIEFED_STATUSES,
             limit=_EXECUTION_FETCH_LIMIT,
+            personal_only=True,
         ),
         # One page, deliberately wider than _MAX_DECISION_ITEMS: the extra
         # rows aren't rendered, they're what makes decision_total (and the
         # "…and N more" line) a real number rather than the render cap.
         # A user past _PENDING_REVIEW_PAGE_SIZE waiting decisions therefore
         # sees the total reported at that ceiling.
-        review_db().get_pending_reviews_for_user(user_id, 1, _PENDING_REVIEW_PAGE_SIZE),
+        review_db().get_pending_reviews_for_user(
+            user_id,
+            1,
+            _PENDING_REVIEW_PAGE_SIZE,
+            personal_only=True,
+        ),
     )
     # Resolve only the graphs actually referenced, rather than paging the
     # library: paging it would drop the very agent being briefed for a user
     # with >100 agents, leaving an unlinkable "Agent" row.
     graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
-    refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
+    refs = await library_db().get_library_agent_refs_by_graph_ids(
+        user_id, graph_ids, personal_only=True
+    )
     agent_info: dict[str, AgentInfo] = {
         ref.graph_id: AgentInfo(ref.name or DEFAULT_AGENT_NAME, ref.id) for ref in refs
     }

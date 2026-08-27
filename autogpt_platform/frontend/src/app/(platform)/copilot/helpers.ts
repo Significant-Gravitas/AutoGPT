@@ -1,5 +1,6 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { getOrgContextHeaders } from "@/services/org-team/headers";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -37,6 +38,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getOrgContextHeaders(),
   };
 }
 

@@ -21,7 +21,7 @@ from backend.util.logging import TruncatedLogger
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[ReviewAlerts]")
 
 
-async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
+async def sync_awaiting_review(user_id: str, graph_id: str, graph_exec_id: str) -> None:
     """Raise, update or clear the review-queue alert for one agent.
 
     Never raises: a notification must not fail the review flow that triggered
@@ -32,20 +32,31 @@ async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
             where={
                 "userId": user_id,
                 "graphId": graph_id,
+                "graphExecId": graph_exec_id,
                 "status": ReviewStatus.WAITING,
             },
             order={"createdAt": "asc"},
         )
-        cause_key = f"awaiting_review:{graph_id}"
+        cause_key = f"awaiting_review:{graph_exec_id}"
         if not waiting:
             await alerts_db.resolve_alert_condition(user_id, cause_key)
             return
 
         oldest = waiting[0].createdAt
         metadata = await get_graph_metadata(graph_id=graph_id)
+        scope = {(row.organizationId, row.teamId) for row in waiting}
+        if len(scope) != 1:
+            raise ValueError("Pending reviews for one execution have mixed scopes")
+        organization_id, team_id = next(iter(scope))
+        agent_name = f"Agent {graph_id[:8]}"
+        if metadata is not None and (
+            metadata.organization_id,
+            metadata.team_id,
+        ) == (organization_id, team_id):
+            agent_name = metadata.name or agent_name
         cause = AwaitingReviewCause(
             cta_path=f"/library/agents/{graph_id}/reviews",
-            agent=metadata.name if metadata else f"Agent {graph_id[:8]}",
+            agent=agent_name,
             count=len(waiting),
             since_label=f"{oldest.day} {oldest.strftime('%b')}, {oldest.strftime('%H:%M')}",
         )
@@ -54,6 +65,9 @@ async def sync_awaiting_review(user_id: str, graph_id: str) -> None:
             cause=AlertCause.AWAITING_REVIEW,
             cause_key=cause_key,
             data=cause.model_dump(mode="json"),
+            organization_id=organization_id,
+            team_id=team_id,
+            source_graph_execution_id=graph_exec_id,
         )
     except Exception:
         logger.warning(

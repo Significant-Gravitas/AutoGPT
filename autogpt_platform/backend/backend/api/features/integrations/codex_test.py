@@ -30,6 +30,10 @@ client = fastapi.testclient.TestClient(app)
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 
+async def _run_with_credential_lease(action, _leases):
+    return await action
+
+
 @pytest.fixture(autouse=True)
 def setup_auth(mocker):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
@@ -597,8 +601,14 @@ def test_codex_rate_limits_returns_safe_snapshot():
 
 def test_codex_delete_logs_out_then_deletes_even_if_logout_fails():
     credentials = _credentials()
+    lease = MagicMock(credentials=credentials)
+    lease.release = AsyncMock()
     with (
         patch("backend.api.features.integrations.router.creds_manager") as manager,
+        patch(
+            "backend.api.features.integrations.router.get_all_webhooks_by_creds",
+            new=AsyncMock(return_value=[]),
+        ),
         patch(
             "backend.api.features.integrations.router.remove_all_webhooks_for_credentials",
             new=AsyncMock(),
@@ -607,16 +617,23 @@ def test_codex_delete_logs_out_then_deletes_even_if_logout_fails():
             "backend.api.features.integrations.router.revoke_codex_credentials",
             new=AsyncMock(return_value=False),
         ) as revoke,
+        patch(
+            "backend.api.features.integrations.router.run_with_credential_lease_guard",
+            new=_run_with_credential_lease,
+        ),
     ):
         manager.store.get_creds_by_id = AsyncMock(return_value=credentials)
-        manager.delete = AsyncMock()
+        manager.acquire_lease = AsyncMock(return_value=lease)
 
         response = client.delete("/codex/credentials/codex-credential?force=true")
 
     assert response.status_code == 200
     assert response.json() == {"deleted": True, "revoked": False}
-    revoke.assert_awaited_once_with(manager, TEST_USER_ID, "codex-credential")
-    manager.delete.assert_not_awaited()
+    manager.acquire_lease.assert_awaited_once_with(TEST_USER_ID, "codex-credential")
+    revoke.assert_awaited_once_with(
+        manager, TEST_USER_ID, "codex-credential", lease=lease
+    )
+    lease.release.assert_awaited_once()
 
 
 @pytest.mark.asyncio

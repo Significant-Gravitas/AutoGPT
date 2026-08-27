@@ -46,6 +46,8 @@ class PendingHumanReviewModel(BaseModel):
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
+    organization_id: str | None = None
+    team_id: str | None = None
     payload: SafeJsonData = Field(description="The actual data payload awaiting review")
     instructions: str | None = Field(
         description="Instructions or message for the reviewer", default=None
@@ -105,6 +107,8 @@ class PendingHumanReviewModel(BaseModel):
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
+            organization_id=review.organizationId,
+            team_id=review.teamId,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,

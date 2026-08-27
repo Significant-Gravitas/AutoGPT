@@ -28,12 +28,18 @@ from backend.copilot.tools.graphiti_forget import mark_edges_superseded
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
-from .memory_model import HeldMemory, HeldMemoryListResponse, MemoryActionResult
+from .memory_model import (
+    ActiveMemoryListResponse,
+    HeldMemory,
+    HeldMemoryListResponse,
+    MemoryActionResult,
+)
 
 logger = logging.getLogger(__name__)
 
 # Reason stamped on the retracted edge's expiration_reason for the audit trail.
 _REJECT_REASON = "org_admin_reject"
+_REVOKE_REASON = "org_admin_revoke"
 
 _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
 
@@ -76,7 +82,7 @@ async def _org_shared_groups(
     groups: list[tuple[str, MemoryTier, str | None, str | None]] = [
         (derive_org_group_id(org_id), MemoryTier.org, None, None)
     ]
-    teams = await prisma.team.find_many(where={"orgId": org_id})
+    teams = await prisma.team.find_many(where={"orgId": org_id, "archivedAt": None})
     for team in teams:
         try:
             team_group = derive_team_group_id(team.id)
@@ -106,6 +112,25 @@ LIMIT $limit
 _HELD_LOCATE_QUERY = """
 MATCH ()-[e:RELATES_TO {uuid: $u}]->()
 WHERE e.group_id = $g AND e.status = 'tentative' AND e.expired_at IS NULL
+RETURN e.uuid AS uuid
+"""
+
+_ACTIVE_LIST_QUERY = """
+MATCH (src:Entity)-[e:RELATES_TO]->(tgt:Entity)
+WHERE e.group_id = $g AND e.status = 'active' AND e.expired_at IS NULL
+RETURN e.uuid AS uuid,
+       e.name AS name,
+       e.fact AS fact,
+       e.source_kind AS source_kind,
+       e.provenance AS provenance,
+       toString(e.created_at) AS created_at
+ORDER BY e.created_at DESC
+LIMIT $limit
+"""
+
+_ACTIVE_LOCATE_QUERY = """
+MATCH ()-[e:RELATES_TO {uuid: $u}]->()
+WHERE e.group_id = $g AND e.status = 'active' AND e.expired_at IS NULL
 RETURN e.uuid AS uuid
 """
 
@@ -148,6 +173,42 @@ async def list_held_memories(org_id: str, limit: int = 50) -> HeldMemoryListResp
     return HeldMemoryListResponse(org_id=org_id, items=items[:limit])
 
 
+async def list_active_memories(
+    org_id: str, limit: int = 50
+) -> ActiveMemoryListResponse:
+    groups = await _org_shared_groups(org_id)
+    items: list[HeldMemory] = []
+    for group_id, tier, team_id, team_name in groups:
+        driver = _open_driver(group_id)
+        try:
+            result = await driver.execute_query(
+                _ACTIVE_LIST_QUERY, g=group_id, limit=limit
+            )
+            rows = result[0] if result else []
+        except ResponseError as error:
+            if not _is_missing_graph_error(error):
+                raise
+            rows = []
+        finally:
+            await driver.close()
+        for row in rows:
+            items.append(
+                HeldMemory(
+                    id=str(row.get("uuid", "")),
+                    tier=tier.value,
+                    team_id=team_id,
+                    team_name=team_name,
+                    name=row.get("name"),
+                    fact=row.get("fact"),
+                    created_at=row.get("created_at"),
+                    source_kind=row.get("source_kind"),
+                    provenance=row.get("provenance"),
+                )
+            )
+    items.sort(key=lambda memory: memory.created_at or "", reverse=True)
+    return ActiveMemoryListResponse(org_id=org_id, items=items[:limit])
+
+
 async def _locate_held_edge(
     org_id: str, memory_id: str
 ) -> tuple[str, MemoryTier, str | None] | None:
@@ -175,6 +236,27 @@ async def _locate_held_edge(
     return None
 
 
+async def _locate_active_edge(
+    org_id: str, memory_id: str
+) -> tuple[str, MemoryTier, str | None] | None:
+    for group_id, tier, team_id, _team_name in await _org_shared_groups(org_id):
+        driver = _open_driver(group_id)
+        try:
+            result = await driver.execute_query(
+                _ACTIVE_LOCATE_QUERY, u=memory_id, g=group_id
+            )
+            rows = result[0] if result else []
+        except ResponseError as error:
+            if not _is_missing_graph_error(error):
+                raise
+            rows = []
+        finally:
+            await driver.close()
+        if rows:
+            return group_id, tier, team_id
+    return None
+
+
 async def approve_held_memory(
     org_id: str, memory_id: str, actor_user_id: str
 ) -> MemoryActionResult:
@@ -187,7 +269,9 @@ async def approve_held_memory(
     group_id, tier, team_id = located
     driver = _open_driver(group_id)
     try:
-        applied = await _promote_if_tentative(driver, memory_id)
+        applied = await _promote_if_tentative(
+            driver, memory_id, actor_user_id=actor_user_id
+        )
     finally:
         await driver.close()
     return MemoryActionResult(
@@ -224,6 +308,36 @@ async def reject_held_memory(
     return MemoryActionResult(
         id=memory_id,
         action="reject",
+        applied=memory_id in succeeded,
+        tier=tier.value,
+        team_id=team_id,
+    )
+
+
+async def revoke_active_memory(
+    org_id: str, memory_id: str, actor_user_id: str
+) -> MemoryActionResult:
+    located = await _locate_active_edge(org_id, memory_id)
+    if located is None:
+        raise NotFoundError(
+            f"Active memory {memory_id} not found in this organization's shared tiers"
+        )
+    group_id, tier, team_id = located
+    driver = _open_driver(group_id)
+    try:
+        succeeded, _failed = await mark_edges_superseded(
+            driver,
+            [memory_id],
+            reason=_REVOKE_REASON,
+            new_status="superseded",
+            user_id=actor_user_id,
+            group_id=group_id,
+        )
+    finally:
+        await driver.close()
+    return MemoryActionResult(
+        id=memory_id,
+        action="revoke",
         applied=memory_id in succeeded,
         tier=tier.value,
         team_id=team_id,

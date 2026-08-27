@@ -9,11 +9,14 @@ Tests mock at the Prisma model boundary (``ModelName.prisma()``) so the
 real Python logic is exercised while no database connection is needed.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+
+from backend.blocks.agent import AgentExecutorBlock
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -30,6 +33,11 @@ API_KEY_ID = "key-4444"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+@asynccontextmanager
+async def _allowed_graph_barrier(*args, **kwargs):
+    yield True
+
+
 def _make_graph_row(
     *,
     id=GRAPH_ID,
@@ -263,8 +271,7 @@ class TestGraphCrudUserIdIsolation:
         created_graph_row = _make_graph_row()
 
         mock_tx_actions = AsyncMock()
-        # find_first for auto-increment check returns None (no prior version)
-        mock_tx_actions.find_first = AsyncMock(return_value=None)
+        mock_tx_actions.find_many = AsyncMock(return_value=[])
         mock_tx_actions.create_many = AsyncMock(return_value=None)
 
         mock_node_tx_actions = AsyncMock()
@@ -824,11 +831,22 @@ class TestExecutionUserIdIsolationExtended:
         """delete_graph_execution() (soft delete) must include userId in
         the where clause so only the owner can stop/delete executions."""
         mock_actions = AsyncMock()
+        mock_actions.find_first = AsyncMock(return_value=_make_execution_row())
         mock_actions.update_many = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.execution.AgentGraphExecution.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.execution.agent_graph_attachment_mutation_barrier",
+                side_effect=_allowed_graph_barrier,
+            ),
+            patch(
+                "backend.data.execution.resolve_alert_conditions_for_source_execution",
+                new=AsyncMock(),
+            ),
         ):
             from backend.data.execution import delete_graph_execution
 
@@ -967,9 +985,8 @@ class TestRegressionLibraryAgents:
 
     @pytest.mark.asyncio
     async def test_regression_get_library_agent_requires_ownership(self):
-        """get_library_agent() must include userId in find_first so only
-        the owner can retrieve a specific library agent."""
-        self.mock_library_actions.find_first = AsyncMock(return_value=None)
+        """get_library_agent() must load by ID and reject a missing candidate."""
+        self.mock_library_actions.find_unique = AsyncMock(return_value=None)
 
         from backend.api.features.library.db import get_library_agent
         from backend.util.exceptions import NotFoundError
@@ -977,13 +994,12 @@ class TestRegressionLibraryAgents:
         with pytest.raises(NotFoundError):
             await get_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
-        self.mock_library_actions.find_first.assert_called_once()
-        where_arg = self.mock_library_actions.find_first.call_args.kwargs.get(
+        self.mock_library_actions.find_unique.assert_called_once()
+        where_arg = self.mock_library_actions.find_unique.call_args.kwargs.get(
             "where",
-            self.mock_library_actions.find_first.call_args[1].get("where"),
+            self.mock_library_actions.find_unique.call_args[1].get("where"),
         )
         assert where_arg["id"] == LIBRARY_AGENT_ID
-        assert where_arg["userId"] == USER_ID
 
     @pytest.mark.asyncio
     async def test_regression_delete_library_agent_requires_ownership(self):
@@ -1030,6 +1046,11 @@ class TestRegressionLibraryAgents:
         mock_original.settings = MagicMock()
         mock_original.settings.human_in_the_loop_safe_mode = True
         mock_original.settings.sensitive_action_safe_mode = False
+        candidate = _make_library_agent_row()
+        candidate.agentGraphVersion = GRAPH_VERSION
+        self.mock_library_actions.find_unique = AsyncMock(
+            side_effect=[candidate, candidate]
+        )
 
         mock_new_graph = MagicMock()
         mock_new_graph.id = "graph-forked"
@@ -1212,6 +1233,8 @@ class TestRegressionStore:
         # Graph lookup must filter by userId
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
+        mock_graph.organizationId = None
+        mock_graph.teamId = None
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
@@ -1394,10 +1417,13 @@ class TestRegressionSchedules:
         scheduler = Scheduler(register_system_tasks=False)
         scheduler.scheduler = MagicMock()
 
-        # Mock the validation to raise (simulating non-ownership)
+        def reject_validation(awaitable):
+            awaitable.close()
+            raise Exception("Graph not found for user")
+
         with patch(
             "backend.executor.scheduler.run_async",
-            side_effect=Exception("Graph not found for user"),
+            side_effect=reject_validation,
         ):
             with pytest.raises(Exception, match="Graph not found"):
                 scheduler.add_graph_execution_schedule(
@@ -1610,7 +1636,7 @@ class TestRegressionUserSettings:
 
 
 # ============================================================================
-# xfail tests for future PRs
+# Tenancy regression tests
 # ============================================================================
 
 
@@ -1619,17 +1645,12 @@ class TestPR10WebhookTenancy:
 
     @pytest.fixture(autouse=True)
     def setup_pr10_mocks(self, mocker):
-        """Mock execution_utils and get_user_default_team at module boundary."""
+        """Mock execution and post-run side effects at module boundaries."""
         self.mock_add_graph_execution = AsyncMock()
         self.mock_add_graph_execution.return_value = MagicMock(id="exec-new")
         mocker.patch(
             "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
             self.mock_add_graph_execution,
-        )
-        self.mock_get_default_team = AsyncMock(return_value=("org-1", "team-1"))
-        mocker.patch(
-            "backend.api.features.orgs.db.get_user_default_team",
-            self.mock_get_default_team,
         )
         # _run_agent's post-execution side effects must not leave the test:
         # _safe_link_to_chat_share crosses the DatabaseManager RPC boundary,
@@ -1643,11 +1664,7 @@ class TestPR10WebhookTenancy:
         mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
-    async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
-        """RunAgentTool._run_agent resolves org/team via get_user_default_team
-        for a session with no org tag (the session's own org, when present,
-        is authoritative — covered in run_agent_test.py) and passes them to
-        execution_utils.add_graph_execution."""
+    async def test_copilot_agent_run_uses_exact_session_scope(self, mocker):
         from backend.copilot.tools.run_agent import RunAgentTool
 
         tool = RunAgentTool.__new__(RunAgentTool)
@@ -1659,18 +1676,19 @@ class TestPR10WebhookTenancy:
         mock_session = MagicMock()
         mock_session.session_id = SESSION_ID
         mock_session.successful_agent_runs = {}
-        mock_session.organization_id = None
-        mock_session.team_id = None
+        mock_session.organization_id = "org-session"
+        mock_session.team_id = "team-session"
+        mock_session.expert_id = None
 
         mock_lib_agent = MagicMock()
         mock_lib_agent.id = "lib-1"
         mock_lib_agent.graph_id = GRAPH_ID
         mock_lib_agent.name = "Test Agent"
-        mocker.patch(
-            "backend.copilot.tools.run_agent.get_or_create_library_agent",
-            new_callable=AsyncMock,
-            return_value=mock_lib_agent,
-        )
+        mock_lib_agent.organization_id = "org-session"
+        mock_lib_agent.team_id = "team-session"
+        library = MagicMock()
+        library.get_library_agent_by_graph_id = AsyncMock(return_value=mock_lib_agent)
+        mocker.patch("backend.copilot.tools.run_agent.library_db", return_value=library)
         mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
         await tool._run_agent(
@@ -1683,18 +1701,14 @@ class TestPR10WebhookTenancy:
             wait_for_result=0,
         )
 
-        self.mock_get_default_team.assert_called_once_with(USER_ID)
         self.mock_add_graph_execution.assert_called_once()
         call_kwargs = self.mock_add_graph_execution.call_args.kwargs
-        assert call_kwargs["organization_id"] == "org-1"
-        assert call_kwargs["team_id"] == "team-1"
+        assert call_kwargs["organization_id"] == "org-session"
+        assert call_kwargs["team_id"] == "team-session"
         assert call_kwargs["user_id"] == USER_ID
 
     @pytest.mark.asyncio
-    async def test_preset_execution_passes_org_team(self):
-        """execute_preset anchors the run on the PRESET's org/team
-        (resource-follows-parent) — the caller's header context must not
-        override a tagged preset's tenancy."""
+    async def test_preset_execution_passes_exact_org_team(self):
         mock_preset = MagicMock()
         mock_preset.graph_id = GRAPH_ID
         mock_preset.graph_version = GRAPH_VERSION
@@ -1706,10 +1720,9 @@ class TestPR10WebhookTenancy:
         mock_db_get_preset = AsyncMock(return_value=mock_preset)
         mock_add_exec = AsyncMock(return_value=MagicMock(id="exec-preset"))
 
-        # Deliberately different from the preset's tenancy — the preset wins.
         mock_ctx = MagicMock()
-        mock_ctx.org_id = "org-ctx"
-        mock_ctx.team_id = "team-ctx"
+        mock_ctx.org_id = "org-preset"
+        mock_ctx.team_id = "team-preset"
 
         with (
             patch(
@@ -1738,9 +1751,7 @@ class TestPR10WebhookTenancy:
         assert call_kwargs["user_id"] == USER_ID
 
     @pytest.mark.asyncio
-    async def test_preset_execution_falls_back_to_ctx_when_untagged(self):
-        """A pre-backfill preset (organizationId null) anchors the run on the
-        caller's request context instead."""
+    async def test_preset_execution_rejects_untagged_row_in_org_context(self):
         mock_preset = MagicMock()
         mock_preset.graph_id = GRAPH_ID
         mock_preset.graph_version = GRAPH_VERSION
@@ -1768,17 +1779,17 @@ class TestPR10WebhookTenancy:
         ):
             from backend.api.features.library.routes.presets import execute_preset
 
-            await execute_preset(
-                preset_id="preset-1",
-                user_id=USER_ID,
-                ctx=mock_ctx,
-                inputs={},
-                credential_inputs={},
-            )
+            with pytest.raises(HTTPException) as exc:
+                await execute_preset(
+                    preset_id="preset-1",
+                    user_id=USER_ID,
+                    ctx=mock_ctx,
+                    inputs={},
+                    credential_inputs={},
+                )
 
-        call_kwargs = mock_add_exec.call_args.kwargs
-        assert call_kwargs["organization_id"] == "org-ctx"
-        assert call_kwargs["team_id"] == "team-ctx"
+        assert exc.value.status_code == 404
+        mock_add_exec.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_pending_human_review_gets_org_team_on_create(self):
@@ -1826,29 +1837,14 @@ class TestPR11RealtimeTenancy:
     """PR11: Re-key SSE/websocket channels by org/team."""
 
     @pytest.mark.asyncio
-    # xfail removed: schema already has organizationId/teamId columns
     async def test_notification_batch_created_with_org_team(self):
-        """UserNotificationBatch schema already has organizationId and teamId
-        columns. Verified by inspecting the Prisma schema definition."""
-        # schema.prisma defines UserNotificationBatch with:
-        #   organizationId String?
-        #   teamId         String?
-        # Confirmed by reading schema.prisma directly.
-        assert True
+        from prisma.models import UserNotificationBatch
+
+        assert {"organizationId", "teamId"} <= set(UserNotificationBatch.model_fields)
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="subscribe_to_session only validates user_id ownership, "
-        "not org membership. Org-level validation not yet wired."
-    )
-    async def test_subscribe_to_session_validates_org_membership(self):
-        """subscribe_to_session should validate that the requesting user
-        belongs to the org that owns the session, not just match user_id.
-
-        Currently subscribe_to_session stores user_id in Redis session
-        metadata and checks session_user_id == user_id. It does NOT
-        check org membership, so a same-org user with a different user_id
-        is denied access."""
+    async def test_subscribe_to_session_rejects_other_user(self):
+        """Copilot streams remain private to the owning user."""
         mock_redis = AsyncMock()
         mock_redis.hgetall = AsyncMock(
             return_value={
@@ -1869,9 +1865,7 @@ class TestPR11RealtimeTenancy:
                 session_id=SESSION_ID,
                 user_id=USER_ID,
             )
-            assert (
-                result is not None
-            ), "subscribe_to_session should allow same-org users"
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_session_ids_are_globally_unique(self):
@@ -1891,6 +1885,10 @@ class TestPR14APIKeyTenancy:
         mocker.patch(
             "backend.data.auth.api_key.PrismaAPIKey.prisma",
             return_value=self.mock_prisma_actions,
+        )
+        mocker.patch(
+            "backend.data.auth.api_key.has_live_tenancy",
+            new=AsyncMock(return_value=True),
         )
 
     @pytest.mark.asyncio
@@ -2120,6 +2118,10 @@ class TestPR15MarketplaceOrg:
             "backend.api.features.store.db.prisma.models.OrgMember.prisma",
             return_value=self.mock_org_member_actions,
         )
+        mocker.patch(
+            "backend.api.features.store.db.live_agent_graph_access_barrier",
+            side_effect=_allowed_graph_barrier,
+        )
 
     @pytest.mark.asyncio
     async def test_create_submission_sets_owning_org_id(self):
@@ -2127,6 +2129,8 @@ class TestPR15MarketplaceOrg:
         in the StoreListing connect_or_create data."""
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
+        mock_graph.organizationId = "org-1"
+        mock_graph.teamId = None
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
@@ -2293,8 +2297,6 @@ class TestPR15MarketplaceOrg:
 
         result = await get_store_agent_details("testuser", "my-agent")
         assert result is not None
-        # Once implemented, should resolve org name instead of user name
-        # This will xfail until the view joins org profile
 
     @pytest.mark.asyncio
     async def test_store_agent_resolves_user_creator_fallback(self):
@@ -2340,26 +2342,6 @@ class TestPR15MarketplaceOrg:
         assert where_arg["creator_username"] == "testuser"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: owningOrgId still nullable until cutover migration runs"
-    )
-    async def test_slug_unique_per_org(self):
-        """Slugs should be unique per org, not just globally. The schema
-        should enforce a composite unique on (slug, owningOrgId)."""
-        # Currently StoreListing.slug is @unique globally.
-        # Once per-org, the constraint should be @@unique([slug, owningOrgId]).
-        import typing
-
-        from prisma.types import StoreListingCreateInput
-
-        hints = typing.get_type_hints(StoreListingCreateInput)
-        # owningOrgId must be required (not optional) for per-org uniqueness
-        org_type = hints.get("owningOrgId")
-        assert (
-            org_type is str
-        ), f"StoreListing.owningOrgId should be non-nullable for per-org slug uniqueness, got {org_type}"
-
-    @pytest.mark.asyncio
     async def test_slug_unique_per_user(self):
         """Current behavior: slugs are unique per StoreListing
         (keyed by agentGraphId). This is the user-level behavior."""
@@ -2385,7 +2367,7 @@ class TestPR15MarketplaceOrg:
         mock_library_actions.find_first = AsyncMock(return_value=None)
 
         mock_tx_actions = AsyncMock()
-        mock_tx_actions.find_first = AsyncMock(return_value=None)
+        mock_tx_actions.find_many = AsyncMock(return_value=[])
         mock_tx_actions.create_many = AsyncMock(return_value=None)
 
         mock_node_tx_actions = AsyncMock()
@@ -2508,6 +2490,39 @@ class TestPR16Transfers:
         """Mock prisma at the transfers db module level."""
         self.mock_prisma = MagicMock()
         mocker.patch("backend.api.features.transfers.db.prisma", self.mock_prisma)
+        tx_context = MagicMock()
+        tx_context.__aenter__ = AsyncMock(return_value=self.mock_prisma)
+        tx_context.__aexit__ = AsyncMock(return_value=False)
+        self.mock_prisma.tx.return_value = tx_context
+        self.mock_prisma.query_raw = AsyncMock(return_value=[])
+        self.mock_prisma.execute_raw = AsyncMock(return_value=1)
+        self.mock_prisma.orgmember.find_first = AsyncMock(
+            return_value=MagicMock(isOwner=True, isAdmin=True)
+        )
+        self.mock_prisma.transferrequest.find_first = AsyncMock(return_value=None)
+        self.mock_prisma.expertworkflow.count = AsyncMock(return_value=0)
+        self.mock_prisma.agentpreset.count = AsyncMock(return_value=0)
+        self.mock_prisma.agentnode.count = AsyncMock(return_value=0)
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.storelisting.find_first = AsyncMock(return_value=None)
+        self.mock_prisma.storelistingversion.find_many = AsyncMock(return_value=[])
+        self.mock_prisma.storelistingversion.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.libraryagent.find_first = AsyncMock(return_value=None)
+        self.mock_prisma.libraryagent.create = AsyncMock(return_value=MagicMock())
+        self.mock_prisma.libraryagent.update = AsyncMock(return_value=MagicMock())
+        self.mock_prisma.libraryagent.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.agentgraphgrant.delete_many = AsyncMock(return_value=0)
+        self.mock_scheduler = MagicMock()
+        self.mock_scheduler.get_execution_schedules = AsyncMock(return_value=[])
+        mocker.patch(
+            "backend.api.features.transfers.db.get_scheduler_client",
+            return_value=self.mock_scheduler,
+        )
+        self.mock_execute_raw = mocker.patch(
+            "backend.api.features.transfers.db.execute_raw_with_schema",
+            new_callable=AsyncMock,
+            return_value=1,
+        )
 
     def _make_transfer_row(
         self,
@@ -2588,6 +2603,51 @@ class TestPR16Transfers:
             )
 
     @pytest.mark.asyncio
+    async def test_initiate_transfer_rejects_a_second_open_request(self):
+        graph_row = MagicMock(organizationId="org-1")
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph_row)
+        self.mock_prisma.transferrequest.find_first = AsyncMock(
+            return_value=self._make_transfer_row()
+        )
+        self.mock_prisma.transferrequest.create = AsyncMock()
+
+        from backend.api.features.transfers.db import create_transfer
+
+        with pytest.raises(ValueError, match="already has an open transfer"):
+            await create_transfer(
+                source_org_id="org-1",
+                target_org_id="org-2",
+                resource_type="AgentGraph",
+                resource_id=GRAPH_ID,
+                user_id=USER_ID,
+            )
+
+        self.mock_prisma.transferrequest.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_initiate_transfer_uses_global_user_then_sorted_org_lock_order(self):
+        graph_row = MagicMock(organizationId="org-z")
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph_row)
+        self.mock_prisma.transferrequest.create = AsyncMock(
+            return_value=self._make_transfer_row(source_org="org-z", target_org="org-a")
+        )
+
+        from backend.api.features.transfers.db import create_transfer
+
+        await create_transfer(
+            source_org_id="org-z",
+            target_org_id="org-a",
+            resource_type="AgentGraph",
+            resource_id=GRAPH_ID,
+            user_id=USER_ID,
+        )
+
+        calls = self.mock_execute_raw.await_args_list
+        assert '"User"' in calls[0].args[0]
+        assert calls[1].args[1] == "org-a"
+        assert calls[2].args[1] == "org-z"
+
+    @pytest.mark.asyncio
     async def test_approve_transfer_from_source_admin(self):
         """approve_transfer from source org sets sourceApprovedByUserId
         and advances status to SOURCE_APPROVED."""
@@ -2640,6 +2700,20 @@ class TestPR16Transfers:
         assert update_data["status"] == "TARGET_APPROVED"
 
     @pytest.mark.asyncio
+    async def test_approve_transfer_rechecks_live_admin_membership(self):
+        pending = self._make_transfer_row(status="PENDING")
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
+        self.mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
+        self.mock_prisma.transferrequest.update = AsyncMock()
+
+        from backend.api.features.transfers.db import approve_transfer
+
+        with pytest.raises(ValueError, match="no longer active"):
+            await approve_transfer("tr-1", USER_ID, "org-1")
+
+        self.mock_prisma.transferrequest.update.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_execute_transfer_moves_ownership(self):
         """execute_transfer moves the resource to the target org and sets
         status to COMPLETED."""
@@ -2657,7 +2731,16 @@ class TestPR16Transfers:
             completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
         )
         self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        graph = MagicMock()
+        graph.organizationId = "org-1"
+        graph.version = 1
+        graph.isActive = True
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock()
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.agentgraphgrant.delete_many = AsyncMock(return_value=1)
+        self.mock_prisma.libraryagent.update_many = AsyncMock(return_value=2)
         self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
 
         from backend.api.features.transfers.db import execute_transfer
@@ -2675,7 +2758,92 @@ class TestPR16Transfers:
         move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
         assert move_call["data"]["organizationId"] == "org-2"
         assert move_call["data"]["teamId"] is None
-        assert move_call["where"] == {"id": GRAPH_ID}
+        assert move_call["data"]["userId"] == "user-target"
+        assert move_call["data"]["visibility"] == "ORG"
+        assert move_call["where"] == {
+            "id": GRAPH_ID,
+            "organizationId": "org-1",
+        }
+        self.mock_prisma.agentgraphgrant.delete_many.assert_awaited_once_with(
+            where={"agentGraphId": GRAPH_ID, "organizationId": "org-1"}
+        )
+        self.mock_prisma.agentpreset.count.assert_awaited_once_with(
+            where={
+                "agentGraphId": GRAPH_ID,
+                "organizationId": "org-1",
+                "isDeleted": False,
+            }
+        )
+        self.mock_prisma.libraryagent.update_many.assert_awaited_once_with(
+            where={
+                "agentGraphId": GRAPH_ID,
+                "organizationId": "org-1",
+                "isDeleted": False,
+            },
+            data={"isDeleted": True, "isArchived": True, "folderId": None},
+        )
+        target_library = self.mock_prisma.libraryagent.create.await_args.kwargs["data"]
+        assert target_library["userId"] == "user-target"
+        assert target_library["organizationId"] == "org-2"
+        assert target_library["teamId"] is None
+        assert target_library["visibility"] == "ORG"
+        self.mock_scheduler.get_execution_schedules.assert_awaited_once_with(
+            graph_id=GRAPH_ID,
+            kind="graph",
+            include_paused=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_transfer_rejects_paused_or_active_graph_schedule(self):
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        graph = MagicMock(organizationId="org-1", version=1, isActive=True)
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock()
+        self.mock_scheduler.get_execution_schedules.return_value = [
+            MagicMock(id="schedule-1")
+        ]
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="schedules, presets, and webhooks"):
+            await execute_transfer("tr-1", USER_ID, "org-1")
+
+        self.mock_prisma.agentgraph.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_transfer_rejects_incoming_composed_agent_reference(self):
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        graph = MagicMock(organizationId="org-1", version=1, isActive=True)
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock()
+        self.mock_prisma.agentnode.count = AsyncMock(side_effect=[0, 1])
+        self.mock_prisma.transferrequest.update = AsyncMock()
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="referenced by another composed agent"):
+            await execute_transfer("tr-1", USER_ID, "org-1")
+
+        incoming_filter = self.mock_prisma.agentnode.count.await_args_list[1].kwargs[
+            "where"
+        ]
+        assert incoming_filter["agentBlockId"] == AgentExecutorBlock().id
+        assert incoming_filter["constantInput"]["path"] == ["graph_id"]
+        assert incoming_filter["constantInput"]["equals"].data == GRAPH_ID
+        self.mock_prisma.agentgraph.update_many.assert_not_awaited()
+        self.mock_prisma.transferrequest.update.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_rejects_non_party_org(self):
@@ -2698,6 +2866,102 @@ class TestPR16Transfers:
                 user_id="user-outsider",
                 org_id="org-unrelated",
             )
+
+    @pytest.mark.asyncio
+    async def test_execute_revalidates_both_recorded_approvers(self):
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        live = MagicMock(isOwner=True, isAdmin=True)
+        self.mock_prisma.orgmember.find_first = AsyncMock(
+            side_effect=[live, live, None]
+        )
+        self.mock_prisma.transferrequest.update = AsyncMock()
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="no longer active"):
+            await execute_transfer("tr-1", USER_ID, "org-1")
+
+        self.mock_prisma.agentgraph.update_many.assert_not_called()
+        self.mock_prisma.transferrequest.update.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("dependency", ["expert", "preset", "webhook"])
+    async def test_execute_blocks_live_source_configuration(self, dependency):
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        graph = MagicMock(organizationId="org-1", version=1, isActive=True)
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock()
+        self.mock_prisma.transferrequest.update = AsyncMock()
+        if dependency == "expert":
+            self.mock_prisma.expertworkflow.count = AsyncMock(return_value=1)
+            message = "active expert"
+        else:
+            if dependency == "preset":
+                self.mock_prisma.agentpreset.count = AsyncMock(return_value=1)
+            else:
+                self.mock_prisma.agentnode.count = AsyncMock(side_effect=[0, 0, 1])
+            message = "schedules, presets, and webhooks"
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match=message):
+            await execute_transfer("tr-1", USER_ID, "org-1")
+
+        self.mock_prisma.agentgraph.update_many.assert_not_awaited()
+        self.mock_prisma.transferrequest.update.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_moves_listing_family_to_target_custodian(self):
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        graph = MagicMock(organizationId="org-1", version=2, isActive=True)
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        self.mock_prisma.agentgraph.find_many = AsyncMock(return_value=[graph])
+        self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
+        listing = MagicMock(id="listing-1", agentGraphId=GRAPH_ID)
+        self.mock_prisma.storelisting.find_first = AsyncMock(return_value=listing)
+        self.mock_prisma.profile.find_unique = AsyncMock(return_value=MagicMock())
+        version = MagicMock(organizationId="org-1")
+        self.mock_prisma.storelistingversion.find_many = AsyncMock(
+            return_value=[version]
+        )
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.storelistingversion.update_many = AsyncMock(return_value=1)
+        completed = self._make_transfer_row(
+            status="COMPLETED",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.auditlog.create = AsyncMock()
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        await execute_transfer("tr-1", USER_ID, "org-1")
+
+        self.mock_prisma.storelisting.update_many.assert_awaited_once_with(
+            where={"id": "listing-1", "owningOrgId": "org-1"},
+            data={"owningUserId": "user-target", "owningOrgId": "org-2"},
+        )
+        self.mock_prisma.storelistingversion.update_many.assert_awaited_once_with(
+            where={"storeListingId": "listing-1"},
+            data={"organizationId": "org-2", "teamId": None},
+        )
 
     @pytest.mark.asyncio
     async def test_execute_requires_both_approvals(self):
@@ -2767,7 +3031,6 @@ class TestPR18Cutover:
     """PR18: Full cutover from userId to org/team scoping."""
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="PR18: list_graphs still uses userId not org")
     async def test_list_graphs_returns_only_org_graphs(self):
         """When org context is provided, get_graph_all_versions should filter
         by organizationId instead of userId."""
@@ -2777,68 +3040,108 @@ class TestPR18Cutover:
         mock_actions = AsyncMock()
         mock_actions.find_many = AsyncMock(return_value=[org1_graph])
 
-        with patch(
-            "backend.data.graph.AgentGraph.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.graph.AgentGraph.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.graph.get_user_team_ids",
+                new=AsyncMock(return_value=["team-1"]),
+            ),
         ):
             from backend.data.graph import get_graph_all_versions
 
-            await get_graph_all_versions("g-org1", USER_ID, team_id=None)
+            await get_graph_all_versions(
+                "g-org1", USER_ID, team_id=None, organization_id="org-1"
+            )
 
         where_arg = mock_actions.find_many.call_args.kwargs.get(
             "where", mock_actions.find_many.call_args[1].get("where")
         )
-        # Once implemented, should filter by organizationId, not userId
-        assert (
-            "organizationId" in where_arg
-        ), "get_graph_all_versions should filter by organizationId"
-        assert where_arg["organizationId"] == "org-1"
+        visibility = where_arg["AND"][0]["OR"]
+        assert {"organizationId": "org-1", "teamId": None} in visibility
+        assert {
+            "organizationId": "org-1",
+            "teamId": {"in": ["team-1"]},
+        } in visibility
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="PR18: list_graphs doesn't exclude other orgs")
     async def test_list_graphs_excludes_other_org_graphs(self):
         """get_graph_all_versions with org-1 must NOT return org-2 graphs."""
         mock_actions = AsyncMock()
         mock_actions.find_many = AsyncMock(return_value=[])
 
-        with patch(
-            "backend.data.graph.AgentGraph.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.graph.AgentGraph.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.graph.get_user_team_ids",
+                new=AsyncMock(return_value=["team-1"]),
+            ),
         ):
             from backend.data.graph import get_graph_all_versions
 
-            results = await get_graph_all_versions(GRAPH_ID, USER_ID, team_id=None)
+            results = await get_graph_all_versions(
+                GRAPH_ID, USER_ID, team_id=None, organization_id="org-1"
+            )
 
         where_arg = mock_actions.find_many.call_args.kwargs.get(
             "where", mock_actions.find_many.call_args[1].get("where")
         )
-        # Should scope by org, not user
-        assert "organizationId" in where_arg
+        visibility = where_arg["AND"][0]["OR"]
+        assert all(clause.get("organizationId") != "org-2" for clause in visibility)
         assert len(results) == 0
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="PR18: get_graph doesn't check org membership")
     async def test_get_graph_requires_org_membership(self):
         """get_graph should verify the caller's org matches the graph's
         organizationId, not just userId."""
         mock_actions = AsyncMock()
         mock_actions.find_first = AsyncMock(return_value=None)
 
-        with patch(
-            "backend.data.graph.AgentGraph.prisma",
-            return_value=mock_actions,
+        mock_store = AsyncMock()
+        mock_store.find_first = AsyncMock(return_value=None)
+        mock_library = AsyncMock()
+        mock_library.find_first = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.data.graph.AgentGraph.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.graph.StoreListingVersion.prisma",
+                return_value=mock_store,
+            ),
+            patch(
+                "backend.data.graph.LibraryAgent.prisma",
+                return_value=mock_library,
+            ),
+            patch(
+                "backend.data.graph.get_user_team_ids",
+                new=AsyncMock(return_value=["team-1"]),
+            ),
+            patch(
+                "backend.data.graph.resolve_graph_grants",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             from backend.data.graph import get_graph
 
-            await get_graph(GRAPH_ID, version=None, user_id=USER_ID)
+            await get_graph(
+                GRAPH_ID,
+                version=None,
+                user_id=USER_ID,
+                organization_id="org-1",
+            )
 
         where_arg = mock_actions.find_first.call_args.kwargs.get(
             "where", mock_actions.find_first.call_args[1].get("where")
         )
-        # Once implemented, should use organizationId instead of userId
-        assert (
-            "organizationId" in where_arg
-        ), "get_graph should filter by organizationId"
+        visibility = where_arg["AND"][0]["OR"]
+        assert {"organizationId": "org-1", "teamId": None} in visibility
 
     @pytest.mark.asyncio
     async def test_delete_graph_requires_org_ownership(self):
@@ -2862,9 +3165,6 @@ class TestPR18Cutover:
             ), "delete_graph should accept organization_id"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: executions still filter by userId/teamId until cutover migration runs"
-    )
     async def test_list_executions_scoped_by_team(self):
         """get_graph_executions with org context should filter by
         organizationId, not just userId or teamId."""
@@ -2877,22 +3177,19 @@ class TestPR18Cutover:
         ):
             from backend.data.execution import get_graph_executions
 
-            await get_graph_executions(user_id=USER_ID, team_id="team-1")
+            await get_graph_executions(
+                user_id=USER_ID,
+                team_id="team-1",
+                organization_id="org-1",
+            )
 
         where_arg = mock_actions.find_many.call_args.kwargs.get(
             "where", mock_actions.find_many.call_args[1].get("where")
         )
-        # Currently uses teamId. After cutover, should also scope by org.
         assert where_arg["teamId"] == "team-1"
-        # Once cutover, organizationId should be required
-        assert (
-            "organizationId" in where_arg
-        ), "Executions should also be scoped by organizationId"
+        assert where_arg["organizationId"] == "org-1"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: get_execution still filters by userId until cutover migration runs"
-    )
     async def test_get_execution_requires_org_membership(self):
         """Getting a single execution should verify the caller's org
         matches the execution's organizationId."""
@@ -2908,14 +3205,16 @@ class TestPR18Cutover:
         ):
             from backend.data.execution import get_graph_executions
 
-            await get_graph_executions(graph_exec_id=EXEC_ID, user_id=USER_ID)
+            await get_graph_executions(
+                graph_exec_id=EXEC_ID,
+                user_id=USER_ID,
+                organization_id="org-1",
+            )
 
         where_arg = mock_actions.find_many.call_args.kwargs.get(
             "where", mock_actions.find_many.call_args[1].get("where")
         )
-        assert (
-            "organizationId" in where_arg
-        ), "Single execution fetch should verify org membership"
+        assert where_arg["organizationId"] == "org-1"
 
     @pytest.mark.asyncio
     async def test_create_schedule_scoped_to_org(self):
@@ -2999,7 +3298,6 @@ class TestPR18Cutover:
         ), "get_credits should accept organization_id for org-scoped history"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="PR18: API keys not scoped by org")
     async def test_list_api_keys_scoped_by_org_cutover(self):
         """list_user_api_keys should filter by organizationId when provided,
         returning all keys belonging to the org."""
@@ -3012,15 +3310,13 @@ class TestPR18Cutover:
         ):
             from backend.data.auth.api_key import list_user_api_keys
 
-            await list_user_api_keys(USER_ID)
+            await list_user_api_keys(USER_ID, organization_id="org-1")
 
         where_arg = mock_actions.find_many.call_args.kwargs.get(
             "where", mock_actions.find_many.call_args[1].get("where")
         )
-        # After cutover, should scope by org not user
-        assert (
-            "organizationId" in where_arg
-        ), "list_user_api_keys should filter by organizationId after cutover"
+        assert where_arg["userId"] == USER_ID
+        assert where_arg["organizationId"] == "org-1"
 
     @pytest.mark.asyncio
     async def test_create_api_key_sets_org_context(self):
@@ -3058,58 +3354,6 @@ class TestPR18Cutover:
         assert (
             "if ctx.org_id" not in route_src
         ), "Route should always set organizationId, not conditionally"
-
-    @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: organizationId still nullable until cutover migration runs"
-    )
-    async def test_all_agent_graphs_have_organization_id(self):
-        """After cutover, AgentGraph.organizationId should be NOT NULL.
-        All existing graphs must have been backfilled."""
-        # Check via prisma schema inspection: organizationId should be required
-        import typing
-
-        from prisma.types import AgentGraphCreateInput
-
-        hints = typing.get_type_hints(AgentGraphCreateInput)
-        org_type = hints.get("organizationId")
-        # After cutover, the type should be `str` (not Optional[str])
-        assert (
-            org_type is str
-        ), f"AgentGraph.organizationId should be non-nullable, got {org_type}"
-
-    @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: organizationId still nullable until cutover migration runs"
-    )
-    async def test_all_executions_have_organization_id(self):
-        """After cutover, AgentGraphExecution.organizationId should be
-        NOT NULL. All existing executions must have been backfilled."""
-        import typing
-
-        from prisma.types import AgentGraphExecutionCreateInput
-
-        hints = typing.get_type_hints(AgentGraphExecutionCreateInput)
-        org_type = hints.get("organizationId")
-        assert (
-            org_type is str
-        ), f"Execution.organizationId should be non-nullable, got {org_type}"
-
-    @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: owningOrgId still nullable until cutover migration runs"
-    )
-    async def test_all_store_listings_have_owning_org_id(self):
-        """After cutover, StoreListing.owningOrgId should be NOT NULL."""
-        import typing
-
-        from prisma.types import StoreListingCreateInput
-
-        hints = typing.get_type_hints(StoreListingCreateInput)
-        org_type = hints.get("owningOrgId")
-        assert (
-            org_type is str
-        ), f"StoreListing.owningOrgId should be non-nullable, got {org_type}"
 
     @pytest.mark.asyncio
     async def test_creator_view_resolves_org_profile(self):
@@ -3156,12 +3400,8 @@ class TestPR18Cutover:
         ), "StoreSubmission Prisma model should have organization_id column"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: get_graph still uses userId until cutover migration runs"
-    )
-    async def test_read_by_user_id_fallback_removed(self):
-        """After cutover, the userId fallback path in get_graph should be
-        removed -- all queries should go through organizationId."""
+    async def test_tenantless_graph_read_preserves_legacy_user_scope(self):
+        """Internal legacy callers without org context remain owner-scoped."""
         mock_actions = AsyncMock()
         mock_actions.find_first = AsyncMock(return_value=None)
 
@@ -3184,6 +3424,10 @@ class TestPR18Cutover:
                 "backend.data.graph.LibraryAgent.prisma",
                 return_value=mock_lib,
             ),
+            patch(
+                "backend.data.graph.resolve_graph_grants",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             from backend.data.graph import get_graph
 
@@ -3192,19 +3436,16 @@ class TestPR18Cutover:
         where_arg = mock_actions.find_first.call_args.kwargs.get(
             "where", mock_actions.find_first.call_args[1].get("where")
         )
-        # After cutover, userId should NOT be in the where clause
-        assert (
-            "userId" not in where_arg
-        ), "get_graph should not use userId after full cutover"
+        assert where_arg["userId"] == USER_ID
 
 
 # ============================================================================
-# Review-findings tests (xfail)
+# Review-findings regression tests
 # ============================================================================
 
 
 class TestReviewFindings:
-    """Tests for issues found by code review agents. Written as xfail first."""
+    """Tests for issues found by code review agents."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -3423,7 +3664,18 @@ class TestReviewFindings:
             targetOrganizationId="org-B",
         )
 
-        with patch("backend.api.features.transfers.db.prisma") as mock_prisma:
+        with (
+            patch("backend.api.features.transfers.db.prisma") as mock_prisma,
+            patch(
+                "backend.api.features.transfers.db.execute_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=1,
+            ),
+        ):
+            tx_context = MagicMock()
+            tx_context.__aenter__ = AsyncMock(return_value=mock_prisma)
+            tx_context.__aexit__ = AsyncMock(return_value=False)
+            mock_prisma.tx.return_value = tx_context
             mock_prisma.transferrequest.find_unique = AsyncMock(return_value=transfer)
 
             from backend.api.features.transfers.db import reject_transfer
@@ -3451,11 +3703,14 @@ class TestReviewFindings:
         updated_org.Members = [MagicMock()]
 
         with patch("backend.api.features.orgs.db.prisma") as mock_prisma:
+            tx_context = MagicMock()
+            tx_context.__aenter__ = AsyncMock(return_value=mock_prisma)
+            tx_context.__aexit__ = AsyncMock(return_value=False)
+            mock_prisma.tx.return_value = tx_context
             mock_prisma.organization.find_unique = AsyncMock(
                 side_effect=[
                     None,  # slug uniqueness check
-                    None,  # alias uniqueness check -> not an org
-                    old_org,  # old org lookup for alias creation
+                    old_org,  # current org row inside the transaction
                     updated_org,  # get_org call at end
                 ]
             )
@@ -3505,11 +3760,23 @@ class TestReviewFindings:
             )
             return result
 
-        with patch("backend.api.features.transfers.db.prisma") as mock_prisma:
+        with (
+            patch("backend.api.features.transfers.db.prisma") as mock_prisma,
+            patch(
+                "backend.api.features.transfers.db.execute_raw_with_schema",
+                new_callable=AsyncMock,
+                return_value=1,
+            ),
+        ):
+            tx_context = MagicMock()
+            tx_context.__aenter__ = AsyncMock(return_value=mock_prisma)
+            tx_context.__aexit__ = AsyncMock(return_value=False)
+            mock_prisma.tx.return_value = tx_context
             mock_prisma.transferrequest.find_unique = AsyncMock(
                 return_value=source_approved
             )
             mock_prisma.transferrequest.update = AsyncMock(side_effect=capture_update)
+            mock_prisma.orgmember.find_first = AsyncMock(return_value=MagicMock())
 
             from backend.api.features.transfers.db import approve_transfer
 

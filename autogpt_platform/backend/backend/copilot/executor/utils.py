@@ -20,6 +20,8 @@ from backend.copilot.active_turns import (
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.tenancy import live_resource_access_barrier
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 
 logger = logging.getLogger(__name__)
@@ -391,6 +393,41 @@ async def schedule_turn(
         )
 
 
+async def schedule_turn_if_live(
+    *,
+    session_id: str,
+    user_id: str,
+    turn_id: str,
+    message: str,
+    tool_call_id: str,
+    tool_name: str,
+    is_user_message: bool,
+    organization_id: str | None,
+    team_id: str | None,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            return False
+        await schedule_turn(
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=message,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            is_user_message=is_user_message,
+            organization_id=organization_id,
+            team_id=team_id,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+        )
+        return True
+
+
 async def dispatch_turn(
     slot: TurnSlot,
     *,
@@ -481,6 +518,52 @@ async def dispatch_turn(
 
 
 async def schedule_chat_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    message_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
+    message_already_persisted: bool = False,
+    is_user_message: bool = True,
+    context: dict[str, str] | None = None,
+    file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    mode: CopilotMode | None = None,
+    model: CopilotLLMModel | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    permissions: CopilotPermissions | None = None,
+    request_arrival_at: float = 0.0,
+) -> str | None:
+    async with live_resource_access_barrier(
+        user_id, organization_id, team_id, "execute"
+    ) as allowed:
+        if not allowed:
+            raise NotAuthorizedError("Resource scope is inactive")
+        return await _schedule_chat_turn_locked(
+            session_id=session_id,
+            user_id=user_id,
+            message=message,
+            message_id=message_id,
+            message_metadata=message_metadata,
+            message_already_persisted=message_already_persisted,
+            is_user_message=is_user_message,
+            context=context,
+            file_ids=file_ids,
+            organization_id=organization_id,
+            team_id=team_id,
+            mode=mode,
+            model=model,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            permissions=permissions,
+            request_arrival_at=request_arrival_at,
+        )
+
+
+async def _schedule_chat_turn_locked(
     *,
     session_id: str,
     user_id: str,

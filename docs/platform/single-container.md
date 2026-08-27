@@ -55,6 +55,13 @@ docker buildx bake \
 IMAGE=autogpt-platform:single-container-dev
 ```
 
+This bake target compiles the self-hosted organization, expert-team, memory,
+artifact/workspace, and chat-sharing surfaces into the frontend and enables the
+matching backend expert and memory gates. `NEXT_PUBLIC_*` flags are build-time
+values; changing them in a container's runtime environment cannot alter an
+already-built frontend image. The Dockerfile arguments default to `false`, so
+custom build targets must opt into the surfaces they intend to ship.
+
 Commands below use the shell variable `IMAGE`, whether it identifies the
 Docker Hub image, a pinned digest, or the local build.
 
@@ -541,6 +548,7 @@ The named volume mounted at `/data` contains all durable appliance state:
 | `/data/valkey` | Three-node Valkey state |
 | `/data/falkordb` | Graphiti memory data |
 | `/data/workspaces` | User workspaces |
+| `/data/media` | Uploaded media files |
 | `/data/home` and `/data/frontend-home` | Application home directories |
 | `/data/cache` | Regenerable backend and Next.js caches (excluded from backups) |
 
@@ -923,6 +931,7 @@ same `RESTORE_IMAGE`:
       test -d /data/valkey/17002
       test -d /data/falkordb
       test -d /data/workspaces
+      test -d /data/media
       test -d /data/home
       test -d /data/frontend-home
       quote="$(printf "\047")"

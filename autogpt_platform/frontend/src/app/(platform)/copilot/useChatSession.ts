@@ -28,11 +28,13 @@ import { latestExpertSessionParams } from "./expertSessionQuery";
 interface UseChatSessionOptions {
   dryRun?: boolean;
   expertId?: string | null;
+  createRequestInit?: RequestInit;
 }
 
 export function useChatSession({
   dryRun = false,
   expertId = null,
+  createRequestInit,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
@@ -212,7 +214,7 @@ export function useChatSession({
     }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
-    usePostV2CreateSession();
+    usePostV2CreateSession({ request: createRequestInit });
 
   async function createSession(options?: { expertKickoff?: boolean }) {
     if (sessionId) return sessionId;

@@ -18,6 +18,7 @@ from backend.api.features.experts.models import Expert, ExpertSoulFieldsPatch
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import (
@@ -110,6 +111,10 @@ class UpdateExpertSoulTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "view"
 
     async def _execute(
         self,
@@ -229,6 +234,10 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
 
     async def _execute(
         self,

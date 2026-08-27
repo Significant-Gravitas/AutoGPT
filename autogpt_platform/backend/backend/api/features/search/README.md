@@ -1,7 +1,7 @@
 # search
 
 Shared search infrastructure for the platform. Anything that searches or
-embeds *user/store/library/workspace/chat* content imports from here.
+embeds public store content or exact-scoped library content imports from here.
 
 ## Modules
 
@@ -13,11 +13,12 @@ embeds *user/store/library/workspace/chat* content imports from here.
   `cleanup_orphaned_embeddings`, `get_embedding_stats`).
 - **`hybrid_search.py`** — `unified_hybrid_search` engine + BM25
   reranking (`tokenize`, `bm25_rerank`). Searches the
-  `UnifiedContentEmbedding` table across every content type with
+  `UnifiedContentEmbedding` table across registered embedding types with
   combined semantic + lexical + recency + category scoring.
 - **`content_handlers.py`** — pluggable per-`ContentType` handlers
-  (store agent, block, doc, library agent, workspace file, chat
-  session). Used by the embedding backfill/cleanup loops.
+  (store agent, block, doc, library agent). Used by the embedding
+  backfill/cleanup loops. Workspace files and chat sessions use direct,
+  exact-scoped database search and are never sent to an embedding provider.
 - **`service.py` / `routes.py`** — the `/api/search/global` endpoint
   used by the global search modal.
 
@@ -27,7 +28,7 @@ embeds *user/store/library/workspace/chat* content imports from here.
 |---|---|
 | Generic engine (above) | `search/` |
 | Store-listing wrappers (`store_embedding`, `hybrid_search` over store agents) | `store/embeddings.py`, `store/hybrid_search.py` |
-| Per-feature background indexing | `library/embeddings.py`, `workspace/embeddings.py`, `copilot/chat_session_embeddings.py` |
+| Per-feature background indexing | `library/embeddings.py` |
 
 **Rule:** anything used by more than one feature lives here. Feature-
 specific wrappers (a SQL join that pulls store-agent metadata, the

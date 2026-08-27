@@ -262,7 +262,13 @@ async def test_turn_prefix_forwards_user_id_for_ownership():
     ):
         await build_builder_context_turn_prefix(session, "owner-xyz")
 
-    agent_json_mock.assert_awaited_once_with("graph-1", "owner-xyz")
+    agent_json_mock.assert_awaited_once_with(
+        "graph-1",
+        "owner-xyz",
+        organization_id=None,
+        team_id=None,
+        exact_scope=True,
+    )
 
 
 @pytest.mark.asyncio

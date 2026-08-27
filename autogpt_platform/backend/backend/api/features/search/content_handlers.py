@@ -49,6 +49,10 @@ class ContentItem:
     searchable_text: str  # Combined text for embedding
     metadata: dict[str, Any]  # Content-specific metadata
     user_id: str | None = None  # For user-scoped content
+    organization_id: str | None = None
+    team_id: str | None = None
+    source_graph_id: str | None = None
+    source_graph_version: int | None = None
 
 
 class ContentHandler(ABC):
@@ -733,6 +737,10 @@ class LibraryAgentHandler(ContentHandler):
             SELECT
                 la.id,
                 la."userId",
+                la."organizationId",
+                la."teamId",
+                la."agentGraphId",
+                la."agentGraphVersion",
                 g.name,
                 g.description,
                 g.instructions
@@ -766,6 +774,10 @@ class LibraryAgentHandler(ContentHandler):
                     searchable_text=searchable_text,
                     metadata={"name": name},
                     user_id=row["userId"],
+                    organization_id=row["organizationId"],
+                    team_id=row["teamId"],
+                    source_graph_id=row["agentGraphId"],
+                    source_graph_version=row["agentGraphVersion"],
                 )
             )
         return items
@@ -1047,6 +1059,4 @@ CONTENT_HANDLERS: dict[ContentType, ContentHandler] = {
     ContentType.BLOCK: BlockHandler(),
     ContentType.DOCUMENTATION: DocumentationHandler(),
     ContentType.LIBRARY_AGENT: LibraryAgentHandler(),
-    ContentType.WORKSPACE_FILE: WorkspaceFileHandler(),
-    ContentType.CHAT_SESSION: ChatSessionHandler(),
 }

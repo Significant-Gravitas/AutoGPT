@@ -1,11 +1,12 @@
 import { getPostV1CreateExecutionScheduleMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import * as invalidateSchedules from "@/services/schedules/invalidate-schedules";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -34,6 +35,17 @@ const agent = {
   name: "My agent",
   recommended_schedule_cron: null,
 } as unknown as LibraryAgent;
+
+beforeEach(() => {
+  window.localStorage.clear();
+  useOrgTeamStore.setState({
+    activeOrgID: "org-1",
+    activeTeamID: null,
+    orgs: [],
+    teams: [],
+    isLoaded: true,
+  });
+});
 
 afterEach(() => {
   toastMock.mockClear();

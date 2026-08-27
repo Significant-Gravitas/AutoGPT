@@ -4,6 +4,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from backend.data.db_accessors import live_resource_lease
+
 from ._format import (
     extract_episode_body,
     extract_episode_body_raw,
@@ -65,6 +67,44 @@ async def fetch_warm_context(
 
 
 async def _fetch(
+    user_id: str,
+    message: str,
+    expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str | None:
+    if organization_id is None:
+        return await _fetch_authorized(user_id, message, expert_id, None, None)
+
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "view"
+    ) as allowed:
+        if allowed:
+            action = _fetch_authorized(
+                user_id, message, expert_id, organization_id, team_id
+            )
+            return (
+                await allowed.run(action) if hasattr(allowed, "run") else await action
+            )
+
+    if team_id is not None:
+        async with live_resource_lease(
+            user_id, organization_id, None, "view"
+        ) as org_allowed:
+            if org_allowed:
+                action = _fetch_authorized(
+                    user_id, message, expert_id, organization_id, None
+                )
+                return (
+                    await org_allowed.run(action)
+                    if hasattr(org_allowed, "run")
+                    else await action
+                )
+
+    return await _fetch_authorized(user_id, message, expert_id, None, None)
+
+
+async def _fetch_authorized(
     user_id: str,
     message: str,
     expert_id: str | None = None,

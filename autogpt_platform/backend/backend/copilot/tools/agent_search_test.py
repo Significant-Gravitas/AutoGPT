@@ -151,6 +151,8 @@ class TestLibraryUUIDLookup:
         mock_agent.new_output = False
         mock_agent.graph_id = agent_id
         mock_agent.graph_version = 1
+        mock_agent.organization_id = None
+        mock_agent.team_id = None
         mock_agent.input_schema = {}
         mock_agent.output_schema = {}
         mock_agent.trigger_setup_info = None
@@ -292,6 +294,8 @@ class TestLibraryUUIDLookup:
             version=1,
             user_id=_TEST_USER_ID,
             for_export=True,
+            organization_id=None,
+            team_id=None,
         )
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -411,6 +415,8 @@ class TestEnrichAgentsWithGraph:
         mock_agent.new_output = False
         mock_agent.graph_id = graph_id
         mock_agent.graph_version = 1
+        mock_agent.organization_id = None
+        mock_agent.team_id = None
         mock_agent.input_schema = {}
         mock_agent.output_schema = {}
         mock_agent.trigger_setup_info = None
@@ -620,7 +626,13 @@ class TestEnrichAgentsWithGraph:
         fake_graph.id = "graph-1"
 
         async def mock_get_graph(
-            graph_id, *, version=None, user_id=None, for_export=False
+            graph_id,
+            *,
+            version=None,
+            user_id=None,
+            for_export=False,
+            organization_id=None,
+            team_id=None,
         ):
             if graph_id == "fast-graph":
                 return fake_graph

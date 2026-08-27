@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
@@ -53,6 +54,16 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+@asynccontextmanager
+async def _acquired_session_lock(*_args, **_kwargs):
+    yield True
+
+
+@asynccontextmanager
+async def _allowed_live_access(*_args, **_kwargs):
+    yield True
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1565,6 +1576,8 @@ async def test_get_or_create_builder_session_returns_existing_when_owned(
     existing_session.session_id = "sess-existing"
     library_agent = mocker.MagicMock(
         id="lib-1",
+        organization_id=None,
+        team_id=None,
         settings=mocker.MagicMock(builder_chat_session_id="sess-existing"),
     )
     library_db_mock = mocker.MagicMock(
@@ -1598,6 +1611,8 @@ async def test_get_or_create_builder_session_writes_pointer_on_create(
     so the next call resumes the same chat."""
     library_agent = mocker.MagicMock(
         id="lib-1",
+        organization_id=None,
+        team_id=None,
         settings=mocker.MagicMock(builder_chat_session_id=None),
     )
     library_db_mock = mocker.MagicMock(
@@ -1605,6 +1620,7 @@ async def test_get_or_create_builder_session_writes_pointer_on_create(
         update_library_agent=mocker.AsyncMock(),
     )
     mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch("backend.copilot.model._get_session_lock", _acquired_session_lock)
     mocker.patch(
         "backend.copilot.model.get_chat_session",
         new_callable=mocker.AsyncMock,
@@ -1637,6 +1653,8 @@ async def test_get_or_create_builder_session_recreates_when_pointer_stale(
     fall through to creating a fresh session and updating the pointer."""
     library_agent = mocker.MagicMock(
         id="lib-1",
+        organization_id=None,
+        team_id=None,
         settings=mocker.MagicMock(builder_chat_session_id="sess-gone"),
     )
     library_db_mock = mocker.MagicMock(
@@ -1644,6 +1662,7 @@ async def test_get_or_create_builder_session_recreates_when_pointer_stale(
         update_library_agent=mocker.AsyncMock(),
     )
     mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch("backend.copilot.model._get_session_lock", _acquired_session_lock)
     mocker.patch(
         "backend.copilot.model.get_chat_session",
         new_callable=mocker.AsyncMock,
@@ -1662,6 +1681,118 @@ async def test_get_or_create_builder_session_recreates_when_pointer_stale(
     assert result is new_session
     create_mock.assert_awaited_once()
     library_db_mock.update_library_agent.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_builder_session_rejects_library_agent_from_another_team(
+    mocker: MockerFixture,
+) -> None:
+    library_agent = mocker.MagicMock(
+        id="lib-other",
+        organization_id="org-1",
+        team_id="team-2",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.has_live_resource_access",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session", new_callable=mocker.AsyncMock
+    )
+
+    with pytest.raises(NotFoundError):
+        await get_or_create_builder_session(
+            "u1", "graph-1", organization_id="org-1", team_id="team-1"
+        )
+
+    create.assert_not_awaited()
+    library_db_mock.update_library_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_builder_session_replaces_cross_team_pointer(
+    mocker: MockerFixture,
+) -> None:
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        organization_id="org-1",
+        team_id="team-1",
+        settings=mocker.MagicMock(builder_chat_session_id="sess-other"),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    other = ChatSession.new(
+        "u1",
+        dry_run=False,
+        builder_graph_id="graph-1",
+        organization_id="org-1",
+        team_id="team-2",
+    )
+    other.session_id = "sess-other"
+    fresh = ChatSession.new(
+        "u1",
+        dry_run=False,
+        builder_graph_id="graph-1",
+        organization_id="org-1",
+        team_id="team-1",
+    )
+    fresh.session_id = "sess-fresh"
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch("backend.copilot.model._get_session_lock", _acquired_session_lock)
+    mocker.patch(
+        "backend.copilot.model.live_resource_access_barrier", _allowed_live_access
+    )
+    mocker.patch(
+        "backend.copilot.model.has_live_resource_access",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new=mocker.AsyncMock(return_value=other),
+    )
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new=mocker.AsyncMock(return_value=fresh),
+    )
+
+    result = await get_or_create_builder_session(
+        "u1", "graph-1", organization_id="org-1", team_id="team-1"
+    )
+
+    assert result is fresh
+    create.assert_awaited_once()
+    settings = library_db_mock.update_library_agent.await_args.kwargs["settings"]
+    assert settings.builder_chat_session_id == "sess-fresh"
+
+
+@pytest.mark.asyncio
+async def test_builder_session_rejects_revoked_scope_before_lookup(
+    mocker: MockerFixture,
+) -> None:
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.has_live_resource_access",
+        new=mocker.AsyncMock(return_value=False),
+    )
+
+    with pytest.raises(NotFoundError):
+        await get_or_create_builder_session(
+            "u1", "graph-1", organization_id="org-1", team_id="team-1"
+        )
+
+    library_db_mock.get_library_agent_by_graph_id.assert_not_awaited()
 
 
 def test_chat_message_from_db_round_trips_created_at() -> None:

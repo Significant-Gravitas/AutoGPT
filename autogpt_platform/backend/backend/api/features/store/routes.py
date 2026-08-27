@@ -1,17 +1,22 @@
 import logging
 import urllib.parse
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import Query, Security
 from pydantic import BaseModel
 
 import backend.data.graph
 import backend.util.json
 from backend.api.features.search import hybrid_search as search_engine
+from backend.api.live_auth import requires_live_resource_permission
+from backend.data.db_accessors import live_resource_lease
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -27,6 +32,26 @@ router = fastapi.APIRouter()
 
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
+PUBLIC_SEARCH_CONTENT_TYPES = (
+    prisma.enums.ContentType.STORE_AGENT,
+    prisma.enums.ContentType.BLOCK,
+    prisma.enums.ContentType.DOCUMENTATION,
+)
+_PUBLIC_SEARCH_CONTENT_TYPE_SET = frozenset(PUBLIC_SEARCH_CONTENT_TYPES)
+
+
+@asynccontextmanager
+async def _live_store_media_action(
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> AsyncIterator[None]:
+    async with live_resource_lease(
+        user_id, organization_id, team_id, "create"
+    ) as allowed:
+        if not allowed:
+            raise fastapi.HTTPException(status_code=403, detail="Access revoked")
+        yield
 
 
 ##############################################
@@ -93,6 +118,18 @@ async def unified_search(
 
     Combines semantic (embedding-based) and lexical (text-based) search for best results.
     """
+    if content_types is None:
+        content_types = list(PUBLIC_SEARCH_CONTENT_TYPES)
+    elif private_types := set(content_types) - _PUBLIC_SEARCH_CONTENT_TYPE_SET:
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=(
+                "Store search only supports public content types: "
+                + ", ".join(
+                    sorted(content_type.value for content_type in private_types)
+                )
+            ),
+        )
 
     # Perform unified hybrid search
     results, total = await search_engine.unified_hybrid_search(
@@ -333,6 +370,9 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
 )
 async def get_my_unpublished_agents(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     sort_by: store_model.MyAgentsSortBy = Query(
@@ -347,6 +387,8 @@ async def get_my_unpublished_agents(
         page_size=page_size,
         sort_by=sort_by,
         search_query=search_query,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return agents
 
@@ -360,8 +402,8 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
     ),
 ) -> bool:
     """Delete a marketplace listing submission"""
@@ -369,6 +411,7 @@ async def delete_submission(
         user_id=user_id,
         submission_id=submission_id,
         organization_id=getattr(ctx, "org_id", None),
+        team_id_restriction=ctx.team_id,
     )
     return result
 
@@ -381,8 +424,8 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
     ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
@@ -402,6 +445,7 @@ async def get_submissions(
         statuses=parsed_statuses,
         sort_key=sort_key,
         sort_dir=sort_dir,
+        team_id_restriction=ctx.team_id,
     )
     return listings
 
@@ -436,16 +480,11 @@ def _parse_status_filter(
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
     ),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
-    # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
-    # this function is invoked outside FastAPI's dependency-injection path
-    # (e.g. some integration tests). ``getattr`` with a default returns
-    # None instead of raising AttributeError on the sentinel.
-    org_id = getattr(ctx, "org_id", None)
     result = await store_db.create_store_submission(
         user_id=user_id,
         graph_id=submission_request.graph_id,
@@ -461,7 +500,8 @@ async def create_submission(
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary or "Initial Submission",
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
-        organization_id=org_id,
+        organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
     return result
 
@@ -476,8 +516,8 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
     ),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
@@ -485,6 +525,7 @@ async def edit_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
         organization_id=getattr(ctx, "org_id", None),
+        team_id_restriction=ctx.team_id,
         name=submission_request.name,
         video_url=submission_request.video_url,
         agent_output_demo_url=submission_request.agent_output_demo_url,
@@ -508,10 +549,15 @@ async def edit_submission(
 async def upload_submission_media(
     file: fastapi.UploadFile,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
+    ),
 ) -> str:
     """Upload media for a marketplace listing submission"""
-    media_url = await store_media.upload_media(user_id=user_id, file=file)
-    return media_url
+    async with _live_store_media_action(user_id, ctx.org_id, ctx.team_id):
+        return await store_media.upload_media(
+            user_id=user_id, file=file, organization_id=ctx.org_id
+        )
 
 
 class ImageURLResponse(BaseModel):
@@ -527,37 +573,46 @@ class ImageURLResponse(BaseModel):
 async def generate_image(
     graph_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = requires_live_resource_permission(
+        OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
+    ),
 ) -> ImageURLResponse:
     """
     Generate an image for a marketplace listing submission based on the properties
     of a given graph.
     """
-    graph = await backend.data.graph.get_graph(
-        graph_id=graph_id, version=None, user_id=user_id
-    )
+    async with _live_store_media_action(user_id, ctx.org_id, ctx.team_id):
+        graph = await backend.data.graph.get_graph(
+            graph_id=graph_id,
+            version=None,
+            user_id=user_id,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+        )
 
-    if not graph:
-        raise NotFoundError(f"Agent graph #{graph_id} not found")
-    # Use .jpeg here since we are generating JPEG images
-    filename = f"agent_{graph_id}.jpeg"
+        if not graph:
+            raise NotFoundError(f"Agent graph #{graph_id} not found")
+        filename = f"agent_{graph_id}.jpeg"
 
-    existing_url = await store_media.check_media_exists(user_id, filename)
-    if existing_url:
-        logger.info(f"Using existing image for agent graph {graph_id}")
-        return ImageURLResponse(image_url=existing_url)
-    # Generate agent image as JPEG
-    image = await store_image_gen.generate_agent_image(agent=graph)
+        existing_url = await store_media.check_media_exists(
+            user_id, filename, organization_id=ctx.org_id
+        )
+        if existing_url:
+            logger.info(f"Using existing image for agent graph {graph_id}")
+            return ImageURLResponse(image_url=existing_url)
+        image = await store_image_gen.generate_agent_image(agent=graph)
+        image_file = fastapi.UploadFile(
+            file=image,
+            filename=filename,
+        )
+        image_url = await store_media.upload_media(
+            user_id=user_id,
+            file=image_file,
+            use_file_name=True,
+            organization_id=ctx.org_id,
+        )
 
-    # Create UploadFile with the correct filename and content_type
-    image_file = fastapi.UploadFile(
-        file=image,
-        filename=filename,
-    )
-    image_url = await store_media.upload_media(
-        user_id=user_id, file=image_file, use_file_name=True
-    )
-
-    return ImageURLResponse(image_url=image_url)
+        return ImageURLResponse(image_url=image_url)
 
 
 ##############################################

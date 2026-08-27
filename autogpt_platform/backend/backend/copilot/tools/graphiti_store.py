@@ -17,12 +17,13 @@ from backend.copilot.graphiti.memory_model import (
 )
 from backend.copilot.graphiti.tiers import (
     TierError,
+    can_write_org_memory,
     hold_buffer_enabled,
     is_org_admin,
-    is_org_member,
     resolve_store_team,
 )
 from backend.copilot.model import ChatSession
+from backend.data.tenancy import ResourceAccess
 
 from .base import BaseTool
 from .models import ErrorResponse, MemoryStoreResponse, ToolResponseBase
@@ -178,6 +179,10 @@ class MemoryStoreTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    @property
+    def resource_access(self) -> ResourceAccess:
+        return "create"
+
     async def _execute(
         self,
         user_id: str | None,
@@ -264,6 +269,8 @@ class MemoryStoreTool(BaseTool):
         resolved_tier = tier if tier in ("personal", "team", "org") else "personal"
         memory_status = MemoryStatus.active
         target_group_id: str | None = None  # None → personal path in enqueue
+        resource_org_id: str | None = None
+        resource_team_id: str | None = None
 
         if resolved_tier == "org":
             org_id = session.organization_id
@@ -278,10 +285,10 @@ class MemoryStoreTool(BaseTool):
             # Re-verify ACTIVE org membership: session.organization_id is only
             # checked at session creation, so a revoked/stale membership must
             # not reach the org write path (mirrors the team tier below).
-            if not await is_org_member(user_id, org_id):
+            if not await can_write_org_memory(user_id, org_id):
                 return ErrorResponse(
                     message=(
-                        "You are not an active member of this organization, so "
+                        "You do not have resource access to this organization, so "
                         "you cannot store to its organization memory."
                     ),
                     session_id=session.session_id,
@@ -290,6 +297,7 @@ class MemoryStoreTool(BaseTool):
             held = (not admin) and await hold_buffer_enabled(org_id)
             memory_status = MemoryStatus.tentative if held else MemoryStatus.active
             target_group_id = derive_org_group_id(org_id)
+            resource_org_id = org_id
 
         elif resolved_tier == "team":
             org_id = session.organization_id
@@ -311,6 +319,8 @@ class MemoryStoreTool(BaseTool):
             held = (not admin) and await hold_buffer_enabled(org_id)
             memory_status = MemoryStatus.tentative if held else MemoryStatus.active
             target_group_id = derive_team_group_id(membership.team_id)
+            resource_org_id = org_id
+            resource_team_id = membership.team_id
 
         envelope = MemoryEnvelope(
             content=content,
@@ -323,18 +333,13 @@ class MemoryStoreTool(BaseTool):
             procedure=procedure_model,
         )
 
-        # Shared-tier writes stamp their governed status/provenance onto the
-        # edge so it survives graphiti's text-based extraction (personal
-        # writes keep the existing default-status path untouched).
-        edge_metadata: dict | None = None
-        if resolved_tier != "personal":
-            edge_metadata = {
-                "status": memory_status.value,
-                "source_kind": resolved_source.value,
-                "scope": scope,
-                "confidence": None,
-                "provenance": provenance,
-            }
+        edge_metadata = {
+            "status": memory_status.value,
+            "source_kind": resolved_source.value,
+            "scope": scope,
+            "confidence": None,
+            "provenance": provenance,
+        }
 
         episode_body = envelope.model_dump_json()
 
@@ -363,6 +368,8 @@ class MemoryStoreTool(BaseTool):
             expert_id=session.expert_id,
             group_id=target_group_id,
             edge_metadata=edge_metadata,
+            organization_id=resource_org_id,
+            team_id=resource_team_id,
         )
 
         if not queued:

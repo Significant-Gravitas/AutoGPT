@@ -26,13 +26,15 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
     origin: str | None = "interactive",
+    organization_id: str | None = "org-1",
+    team_id: str | None = "team-1",
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
     sess.user_id = user_id
     sess.dry_run = False
-    sess.organization_id = None
-    sess.team_id = None
+    sess.organization_id = organization_id
+    sess.team_id = team_id
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.delegated_by_session_id = None
@@ -58,6 +60,8 @@ def _expert(
     expert.color = "violet"
     expert.is_archived = is_archived
     expert.schedules_paused_at = schedules_paused_at
+    expert.organization_id = "org-1"
+    expert.team_id = "team-1"
     return expert
 
 
@@ -75,10 +79,16 @@ def roster(monkeypatch):
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
+    db.resolve_private_expert_tenancy = AsyncMock(
+        side_effect=lambda _user_id, expert_id: (
+            experts[expert_id].organization_id,
+            experts[expert_id].team_id,
+        )
+    )
     for module in (
         "delegate_to_expert",
-        "get_sub_session_result",
         "expert_delegation",
+        "get_sub_session_result",
     ):
         monkeypatch.setattr(
             f"backend.copilot.tools.{module}.experts_db", lambda: db, raising=True
@@ -105,7 +115,13 @@ def mock_sessions(monkeypatch):
     created: list[MagicMock] = []
 
     async def fake_create(user_id, **kwargs):
-        sess = _session(user_id, f"inner-{len(created) + 1}", kwargs.get("expert_id"))
+        sess = _session(
+            user_id,
+            f"inner-{len(created) + 1}",
+            kwargs.get("expert_id"),
+            organization_id=kwargs.get("organization_id"),
+            team_id=kwargs.get("team_id"),
+        )
         sess.dry_run = kwargs.get("dry_run", False)
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
@@ -359,6 +375,22 @@ class TestValidation:
         )
         assert isinstance(r, ErrorResponse)
         assert "paused" in r.message
+
+    @pytest.mark.asyncio
+    async def test_target_from_another_workspace_is_rejected(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].team_id = "other-team"
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "on this team" in response.message
+        assert mock_sessions == []
         mock_turn.assert_not_awaited()
 
 
@@ -532,6 +564,10 @@ class TestPollScope:
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
             AsyncMock(return_value=("running", SessionResult())),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            AsyncMock(return_value=None),
         )
         parent = _session(session_id="s1", expert_id="expert-a")
         await DelegateToExpertTool()._execute(
@@ -720,6 +756,10 @@ class TestBorrowedThreadLimits:
             "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
             AsyncMock(return_value=("running", SessionResult())),
         )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            AsyncMock(return_value=None),
+        )
         parent = _session(session_id="s1", expert_id="expert-a")
         await self._delegate(parent)
 
@@ -750,6 +790,10 @@ class TestBorrowedThreadLimits:
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
             AsyncMock(return_value=("running", SessionResult())),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            AsyncMock(return_value=None),
         )
         await self._delegate(_session(session_id="s1", expert_id="expert-a"))
 
@@ -828,3 +872,50 @@ class TestCallerNameFraming:
         )
 
         assert "from a teammate," in mock_turn.await_args.kwargs["message"]
+
+
+class TestDelegationTenantScope:
+    @pytest.mark.asyncio
+    async def test_new_delegation_inherits_parent_org_team(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(organization_id="org-1", team_id="team-1"),
+            expert_id="expert-b",
+            prompt="do it",
+            wait_for_result=0,
+        )
+
+        assert (mock_sessions[0].organization_id, mock_sessions[0].team_id) == (
+            "org-1",
+            "team-1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_same_parent_id_from_another_team(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(
+                session_id="s1", organization_id="org-1", team_id="team-2"
+            ),
+            expert_id="expert-b",
+            prompt="first",
+            wait_for_result=0,
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(
+                session_id="s1", organization_id="org-1", team_id="team-1"
+            ),
+            expert_id="expert-b",
+            prompt="continue",
+            delegated_session_id="inner-1",
+            wait_for_result=0,
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "not a delegation you started" in response.message
