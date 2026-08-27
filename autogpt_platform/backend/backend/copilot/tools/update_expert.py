@@ -23,7 +23,6 @@ from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
 from .expert_proposal import (
-    PROPOSAL_TTL_MINUTES,
     ExpertChangeProposal,
     ExpertSoulSnapshot,
     autopilot_session_guard,
@@ -191,13 +190,7 @@ class UpdateExpertTool(BaseTool):
             ),
         )
         return ExpertChangeProposedResponse(
-            message=(
-                f"Nothing changed yet. Show the user exactly how {expert.name} "
-                "would be rewritten, including anything this replaces. Only "
-                "after they explicitly approve, call confirm_expert_change "
-                f"with this confirmation_id; it expires in "
-                f"{PROPOSAL_TTL_MINUTES} minutes."
-            ),
+            message=f"{expert.name}'s update is ready for review. Nothing has changed yet.",
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,

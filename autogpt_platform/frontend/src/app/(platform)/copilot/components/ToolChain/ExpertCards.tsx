@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { CARD } from "./ResultCards";
-import { asObject, str } from "./resultHelpers";
+import { asItems, asObject, str } from "./resultHelpers";
 import { useCardResize } from "./useCardResize";
 
 export const EXPERT_CHANGE_TOOLS = new Set([
@@ -25,6 +25,7 @@ export const EXPERT_CHANGE_TOOLS = new Set([
 
 interface Props {
   output: Record<string, unknown>;
+  applied?: boolean;
 }
 
 const APPLIED_LABELS: Record<string, string> = {
@@ -41,15 +42,79 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
   );
 }
 
+export function ExpertChangeCard({ output }: Props) {
+  const results = asItems(output.results);
+  if (!results) return <ExpertSingleCard output={output} />;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {results.map((result) =>
+        str(result, "outcome") === "applied" ? (
+          <ExpertSingleCard
+            key={expertResultKey(result)}
+            output={result}
+            applied
+          />
+        ) : (
+          <ExpertBatchNotice key={expertResultKey(result)} result={result} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function expertResultKey(result: Record<string, unknown>) {
+  return (
+    str(result, "confirmation_id") ??
+    ["proposed_name", "kind", "outcome", "reason"]
+      .map((field) => str(result, field) ?? "")
+      .join(":")
+  );
+}
+
+const REASON_COPY: Record<string, string> = {
+  already_applied: "This expert was already added. Nothing was repeated.",
+  expired: "This preview expired before approval.",
+  not_approved: "This preview was not approved.",
+  unwatermarked: "This preview is too old to apply.",
+  wrong_chat: "This preview belongs to another chat.",
+  limit_reached: "Your team is at its current limit.",
+  workspace_unavailable: "The expert workspace was temporarily unavailable.",
+  expert_moved: "This expert changed after the preview.",
+  template_gone: "This expert is no longer available.",
+  unexpected_failure: "This change could not be applied.",
+};
+
+function ExpertBatchNotice({ result }: { result: Record<string, unknown> }) {
+  const done = str(result, "outcome") === "already_applied";
+  const name = str(result, "proposed_name");
+  const reason = str(result, "reason") ?? "unexpected_failure";
+  return (
+    <div className={cn(CARD, "w-full rounded-3xl p-2.5")}>
+      <p className="flex items-center gap-1.5 text-[13px] font-medium text-zinc-800">
+        {done && (
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={13}
+            className="text-emerald-600"
+          />
+        )}
+        {name ? `${name}: ` : ""}
+        {done ? "Already Hired" : "Not added"}
+      </p>
+      <p className="mt-1 text-xs text-zinc-500">{REASON_COPY[reason]}</p>
+    </div>
+  );
+}
+
 /** An expert inside the chain — either a hire/raise preview awaiting the
  *  user's OK (given in chat, nothing created yet) or the teammate
  *  ``confirm_expert_change`` actually created. Once they exist, the card
  *  offers the two things the user does next: adjust them or talk to them. */
-export function ExpertChangeCard({ output }: Props) {
+function ExpertSingleCard({ output, applied: forcedApplied }: Props) {
   const [expanded, setExpanded] = useState(false);
   const detailsID = useId();
   const { contentRef, height } = useCardResize(expanded);
-  const applied = output.applied === true;
+  const applied = forcedApplied ?? output.applied === true;
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;
 

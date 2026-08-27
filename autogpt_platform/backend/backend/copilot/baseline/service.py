@@ -76,7 +76,7 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
-    get_delegation_supplement,
+    get_expert_team_supplement,
     get_graphiti_supplement,
 )
 from backend.copilot.rate_limit import build_budget_ctx
@@ -1843,7 +1843,9 @@ async def stream_chat_completion_baseline(
     experts_enabled = bool(user_id) and await is_feature_enabled(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
-    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    delegation_supplement = get_expert_team_supplement(
+        experts_enabled=experts_enabled, expert_id=session.expert_id
+    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps

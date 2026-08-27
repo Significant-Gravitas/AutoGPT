@@ -114,6 +114,67 @@ describe("expert change cards", () => {
     expect(screen.queryByText(/Couldn't set up/)).toBeNull();
   });
 
+  it("renders every applied roster member as Hired or Raised", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "Team ready: Otto, Scout.",
+          applied: true,
+          results: [
+            {
+              confirmation_id: "c-1",
+              outcome: "applied",
+              kind: "hire",
+              expert: { id: "exp-otto", name: "Otto", role: "Inbox" },
+            },
+            {
+              confirmation_id: "c-2",
+              outcome: "applied",
+              kind: "raise",
+              expert: { id: "exp-scout", name: "Scout", role: "Research" },
+            },
+          ],
+          experts: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Otto")).toBeDefined();
+    expect(screen.getByText("Scout")).toBeDefined();
+    expect(screen.getByText("Hired")).toBeDefined();
+    expect(screen.getByText("Raised")).toBeDefined();
+  });
+
+  it("never exposes internal failure instructions or ids", () => {
+    render(
+      <ToolResult
+        row={row("confirm_expert_change", {
+          type: "expert_change_batch_applied",
+          message: "Internal result",
+          applied: false,
+          results: [
+            {
+              confirmation_id: "private-id",
+              proposed_name: "Scout",
+              outcome: "failed",
+              reason: "expired",
+              error: "Call hire_expert again with confirmation_id private-id.",
+            },
+          ],
+          experts: [],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Scout: Not added")).toBeDefined();
+    expect(
+      screen.getByText("This preview expired before approval."),
+    ).toBeDefined();
+    expect(screen.queryByText(/private-id/)).toBeNull();
+    expect(screen.queryByText(/hire_expert/)).toBeNull();
+  });
+
   it("renders a handoff as the receiving teammate's sub-session", () => {
     render(
       <ToolResult

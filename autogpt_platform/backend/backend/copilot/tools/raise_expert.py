@@ -253,13 +253,7 @@ class RaiseExpertTool(BaseTool):
             ),
         )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing created yet. Read the full charter back to the "
-                "user — name, role, color, what this expert owns, where "
-                "they stop, voice and weekly budget — and only after they "
-                "explicitly approve, call confirm_expert_change with this "
-                "confirmation_id."
-            ),
+            message=f"{preview.name}'s charter is ready for review. Nothing has been created yet.",
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,

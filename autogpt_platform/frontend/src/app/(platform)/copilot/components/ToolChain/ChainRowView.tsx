@@ -130,6 +130,7 @@ export function ChainRowView({ row, isLast }: Props) {
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
+      !row.groupedProposal &&
       ((row.output !== undefined && row.output !== "") ||
         liveSubSession ||
         pendingExpertChange);

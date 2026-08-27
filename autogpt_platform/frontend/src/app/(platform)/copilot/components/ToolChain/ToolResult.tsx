@@ -54,6 +54,7 @@ import {
   stripBaseFields,
 } from "./resultHelpers";
 import { SubSessionPendingCard } from "./SubSessionLive";
+import { TeamPreviewCard } from "./TeamPreviewCard/TeamPreviewCard";
 import {
   FileCard,
   KeyValueList,
@@ -279,6 +280,11 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "hire_expert":
     case "raise_expert":
+      if (row.groupedProposal) return null;
+      if (row.teamProposals)
+        return <TeamPreviewCard proposals={row.teamProposals} />;
+      if (output) return <ExpertChangeCard output={output} />;
+      return row.state === "running" ? <ExpertChangeCardSkeleton /> : null;
     case "update_expert":
     case "confirm_expert_change":
       if (output) return <ExpertChangeCard output={output} />;

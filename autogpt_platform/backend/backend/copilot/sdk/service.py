@@ -110,7 +110,7 @@ from ..permissions import (
     apply_tool_permissions,
 )
 from ..prompting import (
-    get_delegation_supplement,
+    get_expert_team_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -4698,7 +4698,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         experts_enabled = bool(user_id) and await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
         )
-        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        delegation_supplement = get_expert_team_supplement(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's

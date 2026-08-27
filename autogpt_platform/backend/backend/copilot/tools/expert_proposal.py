@@ -37,6 +37,7 @@ from backend.util.exceptions import (
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
+    ExpertChangeError,
     ExpertChangeKind,
     ExpertChangePreview,
     ExpertSummary,
@@ -97,8 +98,9 @@ def _consumed_key(confirmation_id: str) -> str:
     return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
 
 
-def _stale_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _stale_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="expired",
         message=(
             "This confirmation_id is unknown or has expired — previews last "
             f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
@@ -111,8 +113,9 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _unapproved_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _unapproved_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="not_approved",
         message=(
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
@@ -122,8 +125,9 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _unwatermarked_preview_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="unwatermarked",
         message=(
             "This preview was created before the approval check and carries "
             "no record of the turn it answered, so it cannot be confirmed. "
@@ -134,8 +138,9 @@ def _unwatermarked_preview_error(session_id: str) -> ErrorResponse:
     )
 
 
-def _already_confirmed_error(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
+def _already_confirmed_error(session_id: str) -> ExpertChangeError:
+    return ExpertChangeError(
+        reason="already_applied",
         message=(
             "You already confirmed this change, so there is nothing left to "
             "apply — tell the user it is done. Call "
@@ -197,7 +202,8 @@ def autopilot_session_guard(
     the confirm step.
     """
     if not user_id:
-        return ErrorResponse(
+        return ExpertChangeError(
+            reason="wrong_chat",
             message="Please sign in to change the team.",
             session_id=session.session_id,
         )
@@ -359,13 +365,12 @@ def _hire_message(name: str, failed_workflows: list[str]) -> str:
     told to name them rather than announce an unqualified success.
     """
     if not failed_workflows:
-        return f"{name} is hired and on the team. Tell the user who joined and what they own."
+        return f"{name} is Hired and ready on the team."
     workflows = ", ".join(failed_workflows)
     return (
         f"{name} joined the team, but {len(failed_workflows)} of their "
-        f"workflows could not be installed: {workflows}. Tell the user who "
-        "joined, name the workflows that failed, and say those need to be "
-        f"added from {name}'s team page before that part of the job can run."
+        f"workflows could not be installed: {workflows}. Add them from "
+        f"{name}'s team page before that part of the job can run."
     )
 
 
@@ -388,10 +393,7 @@ async def _apply_raise(
     except Exception as e:
         return _raise_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=(
-            f"{result.expert.name} is raised and on the team. Tell the user "
-            "who joined and what they own."
-        ),
+        message=f"{result.expert.name} is Raised and ready on the team.",
         session_id=session_id,
         kind="raise",
         expert=_summary(result.expert),
@@ -441,7 +443,7 @@ async def _apply_update(
     if updated is None:
         return _stale_expert_error(session_id)
     return ExpertChangeAppliedResponse(
-        message=f"{updated.name} is updated. Tell the user exactly what changed.",
+        message=f"{updated.name} is Updated.",
         session_id=session_id,
         kind="update",
         expert=_summary(updated),
@@ -520,8 +522,7 @@ def _raise_failure_response(error: Exception, session_id: str) -> ErrorResponse:
         )
     if isinstance(error, RaisedExpertLifetimeLimitExceededError):
         return _limit_error(
-            f"This account has raised its lifetime maximum of {error.limit} "
-            "experts.",
+            f"This account has raised its lifetime maximum of {error.limit} experts.",
             session_id,
         )
     return _unexpected_failure(error, session_id, "raise_expert")

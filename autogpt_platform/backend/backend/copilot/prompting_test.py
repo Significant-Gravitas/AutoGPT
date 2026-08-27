@@ -81,6 +81,64 @@ class TestToolDiscoveryPriorityAntiPattern:
         assert 'find_block(query="<service> <action>")' in result
 
 
+class TestFlaggedExpertOperatingPolicies:
+    def test_flag_off_adds_zero_bytes_to_the_assembled_prompt(self):
+        unchanged = "base-system\nshared-tools"
+        assembled = unchanged + prompting.get_expert_team_supplement(
+            experts_enabled=False,
+            expert_id=None,
+        )
+
+        assert assembled.encode() == unchanged.encode()
+
+    def test_autopilot_receives_head_of_ai_policy(self):
+        result = prompting.get_expert_team_supplement(
+            experts_enabled=True,
+            expert_id=None,
+        )
+
+        assert "Head of AI operating policy" in result
+        assert "own the founder's overall outcome" in result
+        assert "Delegate independent work concurrently" in result
+        assert "founder must never have to coordinate, poll, or nudge" in result
+        assert "Expert employee operating policy" not in result
+
+    def test_expert_receives_employee_policy_without_staffing_permission(self):
+        result = prompting.get_expert_team_supplement(
+            experts_enabled=True,
+            expert_id="expert-1",
+        )
+
+        assert "Expert employee operating policy" in result
+        assert "report to AutoPilot" in result
+        assert "Do not hire, raise, edit, or otherwise staff teammates" in result
+        assert "Head of AI operating policy" not in result
+
+    def test_manager_policy_limits_questions_and_keeps_other_work_moving(self):
+        result = prompting.get_delegation_supplement()
+
+        flattened = " ".join(result.split())
+        assert (
+            "Ask only for information or credentials only the founder holds"
+            in flattened
+        )
+        assert "does not pause independent work" in result
+        assert "reasonable degraded-result fallback" in result
+        assert "Stop on a verified hard failure" in result
+
+    def test_manager_uses_fresh_phase_for_new_work(self):
+        result = prompting.get_delegation_supplement()
+
+        assert "create a new task phase" in result
+        assert "fresh criteria, owners, and estimates" in result
+
+    def test_work_item_wake_replaces_long_polling(self):
+        result = prompting.get_delegation_supplement()
+
+        assert "do not spin in a polling turn" in result
+        assert "wakes its manager once" in result
+
+
 class TestGraphitiMemoryScope:
     def test_supplement_describes_assistant_scoped_memory(self):
         result = prompting.get_graphiti_supplement()

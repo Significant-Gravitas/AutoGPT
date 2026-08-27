@@ -127,6 +127,7 @@ class ResponseType(str, Enum):
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    EXPERT_CHANGE_BATCH_APPLIED = "expert_change_batch_applied"
     TEAM_ROSTER = "team_roster"
 
 
@@ -329,6 +330,10 @@ class ErrorResponse(ToolResponseBase):
     execution_id: str | None = None
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+class ExpertChangeError(ErrorResponse):
+    reason: str
 
 
 class SubSessionProgressSnapshot(BaseModel):
@@ -657,6 +662,26 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     kind: ExpertChangeKind
     expert: ExpertSummary
     failed_workflows: list[str] = Field(default_factory=list)
+
+
+ExpertChangeOutcome = Literal["applied", "already_applied", "failed"]
+
+
+class ExpertChangeBatchResult(BaseModel):
+    confirmation_id: str
+    outcome: ExpertChangeOutcome
+    proposed_name: str | None = None
+    kind: ExpertChangeKind | None = None
+    expert: ExpertSummary | None = None
+    failed_workflows: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class ExpertChangeBatchAppliedResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.EXPERT_CHANGE_BATCH_APPLIED
+    applied: bool
+    results: list[ExpertChangeBatchResult]
+    experts: list[ExpertSummary]
 
 
 # Agent generation models

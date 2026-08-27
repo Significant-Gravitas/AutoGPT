@@ -33,6 +33,7 @@ import { ChainRowView } from "./ChainRowView";
 import {
   type ChainRow,
   getChainHeading,
+  groupTeamProposalRows,
   isLiftedSetupRow,
   markSupersededSubSessionRows,
   toChainRow,
@@ -102,19 +103,21 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const rows = useMemo(
     () =>
-      markSupersededSubSessionRows(
-        parts
-          .map((part, i) => toChainRow(part, i))
-          .filter((row): row is ChainRow => row !== null)
-          // Unanswered clarifying questions and setup cards render their work
-          // in the card below the chain — their rows are lifted out of view.
-          .map((row) =>
-            pendingQuestions?.callIds.includes(row.key)
-              ? { ...row, requiresAction: true, lifted: true }
-              : isLiftedSetupRow(row)
-                ? { ...row, lifted: true }
-                : row,
-          ),
+      groupTeamProposalRows(
+        markSupersededSubSessionRows(
+          parts
+            .map((part, i) => toChainRow(part, i))
+            .filter((row): row is ChainRow => row !== null)
+            // Unanswered clarifying questions and setup cards render their work
+            // in the card below the chain — their rows are lifted out of view.
+            .map((row) =>
+              pendingQuestions?.callIds.includes(row.key)
+                ? { ...row, requiresAction: true, lifted: true }
+                : isLiftedSetupRow(row)
+                  ? { ...row, lifted: true }
+                  : row,
+            ),
+        ),
       ),
     [parts, pendingQuestions],
   );

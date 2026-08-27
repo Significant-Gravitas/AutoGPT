@@ -137,12 +137,7 @@ class HireExpertTool(BaseTool):
             ),
         )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing hired yet. Show the user who would join, what they "
-                "own, and that the hire draws on the shared weekly budget. "
-                "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
-            ),
+            message=f"{preview.name} is ready for review. Nothing has been hired yet.",
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,

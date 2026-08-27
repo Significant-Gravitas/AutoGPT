@@ -30,6 +30,7 @@ from .hire_expert import HireExpertTool
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
+    ExpertChangeBatchAppliedResponse,
     ExpertChangePreview,
     ExpertChangeProposedResponse,
 )
@@ -482,6 +483,85 @@ class TestUpdate:
 
 
 class TestConfirm:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_one_user_approval_applies_a_whole_roster(self):
+        with _env() as db:
+            session = make_session(_USER)
+            hire = await _hire(session, template_id="tpl-scout")
+            raised = await _raise(session, **_CHARTER)
+            assert isinstance(hire, ExpertChangeProposedResponse)
+            assert isinstance(raised, ExpertChangeProposedResponse)
+
+            response = await _confirm(
+                _approve(session),
+                confirmation_ids=[hire.confirmation_id, raised.confirmation_id],
+            )
+
+        assert isinstance(response, ExpertChangeBatchAppliedResponse)
+        assert response.applied is True
+        assert [result.outcome for result in response.results] == [
+            "applied",
+            "applied",
+        ]
+        assert [expert.name for expert in response.experts] == ["Scout", "Otto"]
+        db.hire_expert.assert_awaited_once()
+        db.create_raised_expert.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_repeating_a_batch_is_idempotent(self):
+        with _env() as db:
+            session = make_session(_USER)
+            preview = await _hire(session, template_id="tpl-scout")
+            assert isinstance(preview, ExpertChangeProposedResponse)
+            await _confirm(
+                _approve(session), confirmation_ids=[preview.confirmation_id]
+            )
+            response = await _confirm(
+                _approve(session), confirmation_ids=[preview.confirmation_id]
+            )
+
+        assert isinstance(response, ExpertChangeBatchAppliedResponse)
+        assert response.applied is True
+        assert response.results[0].outcome == "already_applied"
+        assert db.hire_expert.await_count == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "value",
+        [None, 7, {}, ["valid", None], []],
+    )
+    async def test_null_or_malformed_batch_is_safe(self, value):
+        with _env() as db:
+            response = await _confirm(make_session(_USER), confirmation_ids=value)
+
+        assert isinstance(response, ErrorResponse)
+        db.hire_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_partial_batch_names_the_expert_that_failed(self):
+        second = _template("tpl-otto")
+        second.name = "Otto"
+        with _env(templates=[_template(), second]) as db:
+            db.hire_expert.side_effect = [
+                SimpleNamespace(expert=_created("Scout", "exp-1"), failed_preloads=[]),
+                ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT),
+            ]
+            session = make_session(_USER)
+            scout = await _hire(session, template_id="tpl-scout")
+            otto = await _hire(session, template_id="tpl-otto")
+            assert isinstance(scout, ExpertChangeProposedResponse)
+            assert isinstance(otto, ExpertChangeProposedResponse)
+
+            response = await _confirm(
+                _approve(session),
+                confirmation_ids=[scout.confirmation_id, otto.confirmation_id],
+            )
+
+        assert isinstance(response, ExpertChangeBatchAppliedResponse)
+        assert response.results[1].proposed_name == "Otto"
+        assert response.results[1].outcome == "failed"
+        assert "Otto was not added" in response.message
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_confirm_hires_exactly_what_was_previewed(self):
         redis = _FakeRedis()
