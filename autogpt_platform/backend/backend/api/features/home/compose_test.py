@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
 
-from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.experts.models import (
+    Expert,
+    ExpertWorkItem,
+    ExpertWorkflowRef,
+)
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
@@ -60,6 +64,36 @@ def _cost_summary(
     )
 
 
+def _work_item(status: str, *, completed_at: datetime | None = None) -> ExpertWorkItem:
+    return ExpertWorkItem(
+        id=f"work-{status}",
+        expert_id="hired",
+        manager_session_id="manager-1",
+        delegated_session_id="delegated-1",
+        project_phase="Launch",
+        task_title="Find launch partners",
+        expected_deliverable="A verified partner shortlist",
+        deliverable_mode="message",
+        success_criteria=[],
+        dependencies=[],
+        source_artifacts=[],
+        constraints=[],
+        approval_boundaries=[],
+        estimate_minutes=30,
+        progress=60 if status == "running" else 100,
+        status=status,
+        result="Two verified partners" if status == "delivered" else None,
+        blocker=None,
+        confidence="verified" if status == "delivered" else "unknown",
+        artifacts=[],
+        created_at=NOW,
+        updated_at=NOW,
+        started_at=NOW,
+        completed_at=completed_at,
+        link=f"/copilot?sessionId=delegated-1&workItemId=work-{status}",
+    )
+
+
 def test_templates_and_archived_experts_are_left_off_the_dashboard() -> None:
     dashboard = compose_home_dashboard(
         now=NOW,
@@ -80,6 +114,46 @@ def test_templates_and_archived_experts_are_left_off_the_dashboard() -> None:
     assert [agent.expert.id for agent in dashboard.agents] == ["hired"]
     assert dashboard.team.total == 1
     assert [item.id for item in dashboard.attention] == ["setup-hired"]
+
+
+def test_active_delegated_work_marks_expert_working_and_reaches_active_tasks() -> None:
+    dashboard = compose_home_dashboard(
+        now=NOW,
+        experts=[_expert("hired")],
+        executions=[],
+        reviews=[],
+        schedules=[],
+        library_refs=[],
+        cost_summary=_cost_summary(),
+        credits_balance=100,
+        timezone_name="UTC",
+        work_items=[_work_item("running")],
+    )
+
+    assert dashboard.agents[0].status == "working"
+    assert dashboard.team.working == 1
+    assert dashboard.active_tasks[0].work_item_id == "work-running"
+    assert dashboard.work_items[0].progress == 60
+
+
+def test_delivered_delegated_work_appears_in_home_outcomes() -> None:
+    dashboard = compose_home_dashboard(
+        now=NOW,
+        experts=[_expert("hired")],
+        executions=[],
+        reviews=[],
+        schedules=[],
+        library_refs=[],
+        cost_summary=_cost_summary(),
+        credits_balance=100,
+        timezone_name="UTC",
+        work_items=[_work_item("delivered", completed_at=NOW)],
+    )
+
+    outcome = dashboard.briefing.outcomes[0]
+    assert outcome.work_item_id == "work-delivered"
+    assert outcome.summary == "Two verified partners"
+    assert outcome.confidence == "verified"
 
 
 def test_expert_spend_reaches_the_agent_rows_and_the_team_total() -> None:

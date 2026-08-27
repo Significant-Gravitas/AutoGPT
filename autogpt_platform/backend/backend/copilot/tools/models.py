@@ -491,6 +491,7 @@ class DelegatedArtifact(BaseModel):
 class DelegatedExpertStatusResponse(SubSessionStatusResponse):
     """Compact result contract returned only for cross-expert delegation."""
 
+    work_item_id: str | None = None
     deliverable_mode: Literal["message", "workspace_files"]
     summary: str | None = None
     criteria: list[DelegatedCriterionState] = Field(default_factory=list)
@@ -498,6 +499,15 @@ class DelegatedExpertStatusResponse(SubSessionStatusResponse):
     artifacts: list[DelegatedArtifact] = Field(default_factory=list)
     artifact_count: int = 0
     tool_call_count: int = 0
+
+
+class DelegatedWorkReportedResponse(ToolResponseBase):
+    """Acknowledgement returned to an expert after a structured handoff."""
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    work_item_id: str
+    status: Literal["delivered", "partial", "blocked_manager", "failed"]
+    manager_notified: bool
 
 
 class InputValidationErrorResponse(ToolResponseBase):

@@ -800,6 +800,52 @@ def test_list_expert_runs_unknown_expert_returns_404(
     assert response.status_code == 404
 
 
+def test_list_expert_work_is_hidden_when_flag_is_off(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    load = mocker.patch(
+        "backend.api.features.experts.routes.work_items.list_expert_work",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/experts/expert-1/work")
+
+    assert response.status_code == 404
+    load.assert_not_awaited()
+
+
+def test_list_expert_work_returns_owned_history(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    load = mocker.patch(
+        "backend.api.features.experts.routes.work_items.list_expert_work",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get("/experts/expert-1/work")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    load.assert_awaited_once_with(test_user_id, "expert-1")
+
+
 # ─── Soul ──────────────────────────────────────────────────────────────
 
 

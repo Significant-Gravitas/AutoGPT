@@ -9,7 +9,7 @@ run finishing at 10:30am shows up on the next poll rather than tomorrow morning.
 from datetime import datetime, timedelta
 from typing import Literal
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import Expert, ExpertWorkItem
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.briefing.outcome import (
     as_utc,
@@ -33,15 +33,25 @@ def compose_briefing(
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
     persisted: BriefingContent | None = None,
+    work_items: list[ExpertWorkItem] | None = None,
 ) -> HomeBriefing:
+    delegated = work_items or []
     if persisted is None:
         window_start = now - _BRIEFING_WINDOW
+        outcomes = _live_outcomes(
+            executions, window_start, now, expert_by_id, agent_by_graph
+        )
+        outcomes.extend(_work_outcomes(delegated, window_start, expert_by_id))
+        outcomes.sort(
+            key=lambda outcome: (
+                outcome.status == "completed",
+                -(outcome.occurred_at or now).timestamp(),
+            )
+        )
         return _briefing(
             generated_at=now,
             window_started_at=window_start,
-            outcomes=_live_outcomes(
-                executions, window_start, now, expert_by_id, agent_by_graph
-            ),
+            outcomes=outcomes,
             source="live",
         )
 
@@ -55,6 +65,11 @@ def compose_briefing(
         )
         if outcome.id not in anchored_ids
     ]
+    fresh.extend(
+        outcome
+        for outcome in _work_outcomes(delegated, generated_at, expert_by_id)
+        if outcome.id not in anchored_ids
+    )
     # Stable sort: failures need a decision so they lead, and within a status
     # group the briefing's own ordering survives ahead of the newer runs.
     merged = anchored + fresh
@@ -159,6 +174,36 @@ def _live_outcomes(
     return [
         _outcome(_run_item(execution, expert_by_id, agent_by_graph), expert_by_id)
         for execution in terminal
+    ]
+
+
+def _work_outcomes(
+    work_items: list[ExpertWorkItem],
+    since: datetime,
+    expert_by_id: dict[str, Expert],
+) -> list[HomeBriefingOutcome]:
+    return [
+        HomeBriefingOutcome(
+            id=item.id,
+            work_item_id=item.id,
+            status="completed",
+            title=item.task_title,
+            summary=item.result or item.expected_deliverable,
+            expert=(
+                to_home_expert(expert_by_id[item.expert_id])
+                if item.expert_id in expert_by_id
+                else None
+            ),
+            agent_name="Delegated expert work",
+            occurred_at=as_utc_or_none(item.completed_at),
+            link=item.link,
+            confidence=item.confidence,
+            artifacts=item.artifacts,
+        )
+        for item in work_items
+        if item.status == "delivered"
+        and item.completed_at is not None
+        and as_utc(item.completed_at) >= since
     ]
 
 

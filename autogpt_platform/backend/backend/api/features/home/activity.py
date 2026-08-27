@@ -1,11 +1,17 @@
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import Expert, ExpertWorkItem
 from backend.copilot.briefing.outcome import as_utc_or_none, run_link
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .helpers import UNKNOWN_AGENT, AgentRef, parse_datetime, to_home_expert
-from .models import HomeActiveTask, HomeDailyActivity, HomeUpcomingTask, HomeWeekSummary
+from .models import (
+    HomeActiveTask,
+    HomeDailyActivity,
+    HomeUpcomingTask,
+    HomeWeekSummary,
+    HomeWorkItem,
+)
 
 _MAX_ACTIVE = 3
 _MAX_UPCOMING = 4
@@ -15,15 +21,61 @@ def compose_active_tasks(
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    work_items: list[ExpertWorkItem] | None = None,
 ) -> list[HomeActiveTask]:
     active = [
         execution
         for execution in executions
         if execution.status in {ExecutionStatus.RUNNING, ExecutionStatus.QUEUED}
     ]
+    tasks = [
+        _active_task(execution, expert_by_id, agent_by_graph) for execution in active
+    ]
+    tasks.extend(
+        HomeActiveTask(
+            id=item.id,
+            work_item_id=item.id,
+            title=item.task_title,
+            status="running" if item.status == "running" else "queued",
+            expert=(
+                to_home_expert(expert_by_id[item.expert_id])
+                if item.expert_id in expert_by_id
+                else None
+            ),
+            started_at=item.started_at or item.created_at,
+            link=item.link,
+            expected_deliverable=item.expected_deliverable,
+            progress=item.progress,
+        )
+        for item in work_items or []
+        if item.status in {"queued", "running"}
+    )
+    tasks.sort(
+        key=lambda task: task.started_at.timestamp() if task.started_at else 0,
+        reverse=True,
+    )
+    return tasks[:_MAX_ACTIVE]
+
+
+def compose_work_items(
+    work_items: list[ExpertWorkItem], expert_by_id: dict[str, Expert]
+) -> list[HomeWorkItem]:
     return [
-        _active_task(execution, expert_by_id, agent_by_graph)
-        for execution in active[:_MAX_ACTIVE]
+        HomeWorkItem(
+            id=item.id,
+            title=item.task_title,
+            expected_deliverable=item.expected_deliverable,
+            status=item.status,
+            expert=to_home_expert(expert_by_id[item.expert_id]),
+            progress=item.progress,
+            blocker=item.blocker,
+            confidence=item.confidence,
+            artifacts=item.artifacts,
+            updated_at=item.updated_at,
+            link=item.link,
+        )
+        for item in work_items
+        if item.expert_id in expert_by_id
     ]
 
 

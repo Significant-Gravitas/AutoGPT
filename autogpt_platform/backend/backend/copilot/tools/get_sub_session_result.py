@@ -22,6 +22,8 @@ import logging
 import time
 from typing import Any, Literal
 
+from backend.api.features.experts import work_items
+from backend.api.features.experts.models import ExpertWorkArtifact, ExpertWorkStatus
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import ChatSession, get_chat_session
@@ -249,7 +251,16 @@ class GetSubSessionResultTool(BaseTool):
             else None
         )
         if delegate is not None:
-            return delegated_response_from_outcome(
+            work_item = (
+                await work_items.get_latest_work_for_manager(
+                    user_id=user_id,
+                    delegated_session_id=inner_session_id,
+                    manager_session_id=session.session_id,
+                )
+                if session.session_id
+                else None
+            )
+            response = delegated_response_from_outcome(
                 outcome=outcome,
                 result=result,
                 inner_session_id=inner_session_id,
@@ -258,7 +269,39 @@ class GetSubSessionResultTool(BaseTool):
                 workspace_files=workspace_files,
                 deliverable_mode=_delegated_deliverable_mode(sub),
                 expert=delegate,
+                work_item_id=work_item.id if work_item else None,
             )
+            if work_item:
+                status: ExpertWorkStatus
+                if response.status == "queued":
+                    status = "queued"
+                elif response.status == "running":
+                    status = "running"
+                elif response.status == "completed":
+                    status = "delivered"
+                elif response.status == "incomplete":
+                    status = "partial"
+                else:
+                    status = "failed"
+                await work_items.record_delegation_outcome(
+                    work_item_id=work_item.id,
+                    user_id=user_id,
+                    status=status,
+                    result=response.summary,
+                    blocker="; ".join(response.blockers) or None,
+                    progress=100 if status == "delivered" else None,
+                    artifacts=[
+                        ExpertWorkArtifact(
+                            name=artifact.name,
+                            uri=artifact.read_path,
+                            mime_type=artifact.mime_type,
+                            size_bytes=artifact.size_bytes,
+                        )
+                        for artifact in response.artifacts
+                    ],
+                    parent_seen=outcome in {"completed", "failed"},
+                )
+            return response
         return apply_delegated_expert(
             response_from_outcome(
                 outcome=outcome,

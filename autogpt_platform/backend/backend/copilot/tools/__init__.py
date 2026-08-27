@@ -54,6 +54,7 @@ from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .report_delegated_result import ReportDelegatedResultTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -124,6 +125,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
+    "report_delegated_result": ReportDelegatedResultTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
@@ -201,6 +203,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # A handoff transfers a task between experts, so it needs a caller with
     # an expert identity to hand it off from.
     "handoff_to_expert": "experts",
+    "report_delegated_result": "experts",
     # Staffing the team is the user's call, made in the Autopilot chat — an
     # expert must not hire its own teammates.  The engines disable this
     # group whenever the session HAS an expert_id (the opposite gate to

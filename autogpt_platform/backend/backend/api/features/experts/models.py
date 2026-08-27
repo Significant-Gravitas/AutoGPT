@@ -16,6 +16,15 @@ ExpertRunStatus = Literal[
     "failed",
     "review",
 ]
+ExpertWorkStatus = Literal[
+    "queued",
+    "running",
+    "delivered",
+    "partial",
+    "blocked_manager",
+    "failed",
+]
+ExpertWorkConfidence = Literal["verified", "likely", "unknown", "disqualified"]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -166,6 +175,47 @@ class ExpertRun(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
+
+
+class ExpertWorkCriterion(BaseModel):
+    criterion: str
+    status: Literal["met", "unmet", "unknown"] = "unknown"
+    evidence: str | None = None
+
+
+class ExpertWorkArtifact(BaseModel):
+    name: str
+    uri: str
+    mime_type: str | None = None
+    size_bytes: int | None = None
+
+
+class ExpertWorkItem(BaseModel):
+    id: str
+    expert_id: str
+    manager_session_id: str
+    delegated_session_id: str
+    project_phase: str
+    task_title: str
+    expected_deliverable: str
+    deliverable_mode: Literal["message", "workspace_files"]
+    success_criteria: list[ExpertWorkCriterion]
+    dependencies: list[str]
+    source_artifacts: list[ExpertWorkArtifact]
+    constraints: list[str]
+    approval_boundaries: list[str]
+    estimate_minutes: int | None
+    progress: int
+    status: ExpertWorkStatus
+    result: str | None
+    blocker: str | None
+    confidence: ExpertWorkConfidence
+    artifacts: list[ExpertWorkArtifact]
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    link: str
 
 
 class ExpertDetachPreview(BaseModel):

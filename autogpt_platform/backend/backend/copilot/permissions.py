@@ -120,6 +120,7 @@ ToolName = Literal[
     "move_folder",
     "post_to_chat_platform",
     "raise_expert",
+    "report_delegated_result",
     "read_skill",
     "read_workspace_file",
     "run_agent",

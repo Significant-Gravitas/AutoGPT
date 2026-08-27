@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.api.features.experts.models import ExpertWorkArtifact
 
 
 class HomeExpert(BaseModel):
@@ -45,6 +46,10 @@ class HomeBriefingOutcome(BaseModel):
     duration_seconds: float = 0
     cost_cents: int = 0
     link: str | None = None
+    work_item_id: str | None = None
+    blocker: str | None = None
+    confidence: Literal["verified", "likely", "unknown", "disqualified"] | None = None
+    artifacts: list[ExpertWorkArtifact] = []
 
 
 class HomeBriefing(BaseModel):
@@ -71,6 +76,25 @@ class HomeActiveTask(BaseModel):
     expert: HomeExpert | None = None
     started_at: datetime | None = None
     link: str | None = None
+    work_item_id: str | None = None
+    expected_deliverable: str | None = None
+    progress: int | None = None
+
+
+class HomeWorkItem(BaseModel):
+    id: str
+    title: str
+    expected_deliverable: str
+    status: Literal[
+        "queued", "running", "delivered", "partial", "blocked_manager", "failed"
+    ]
+    expert: HomeExpert
+    progress: int
+    blocker: str | None = None
+    confidence: Literal["verified", "likely", "unknown", "disqualified"]
+    artifacts: list[ExpertWorkArtifact]
+    updated_at: datetime
+    link: str
 
 
 class HomeUpcomingTask(BaseModel):
@@ -128,6 +152,7 @@ class HomeDashboardResponse(BaseModel):
     attention: list[HomeAttentionItem]
     briefing: HomeBriefing
     active_tasks: list[HomeActiveTask]
+    work_items: list[HomeWorkItem] = []
     upcoming_tasks: list[HomeUpcomingTask]
     team: HomeTeamSummary
     agents: list[HomeAgentStatus]

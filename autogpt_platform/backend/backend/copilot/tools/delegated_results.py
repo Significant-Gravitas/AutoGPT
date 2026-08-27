@@ -58,6 +58,7 @@ def delegated_response_from_outcome(
     elapsed: float,
     expert: DelegatedExpertInfo,
     deliverable_mode: DeliverableMode,
+    work_item_id: str | None = None,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
 ) -> DelegatedExpertStatusResponse:
     """Translate a delegated turn without returning its tool transcript."""
@@ -71,6 +72,7 @@ def delegated_response_from_outcome(
         "expert": expert,
         "deliverable_mode": deliverable_mode,
         "tool_call_count": len(result.tool_calls),
+        "work_item_id": work_item_id,
     }
 
     if outcome == "queued":

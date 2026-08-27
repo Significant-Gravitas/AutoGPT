@@ -30,9 +30,15 @@ expert handing work back to one already waiting on it
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts import work_items
+from backend.api.features.experts.models import (
+    Expert,
+    ExpertWorkArtifact,
+    ExpertWorkCriterion,
+)
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import (
     ChatSession,
@@ -131,6 +137,66 @@ class DelegateToExpertTool(BaseTool):
                     ),
                     "default": "message",
                 },
+                "task_title": {
+                    "type": "string",
+                    "description": "Short founder-readable title for this work item.",
+                    "default": "",
+                },
+                "project_phase": {
+                    "type": "string",
+                    "description": "Current project phase this work belongs to.",
+                    "default": "",
+                },
+                "expected_deliverable": {
+                    "type": "string",
+                    "description": "The concrete outcome or files the expert must return.",
+                    "default": "",
+                },
+                "success_criteria": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Observable conditions that define done.",
+                    "default": [],
+                },
+                "dependencies": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Work or decisions this task depends on.",
+                    "default": [],
+                },
+                "source_artifacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "uri": {"type": "string"},
+                            "mime_type": {"type": "string"},
+                            "size_bytes": {"type": "integer"},
+                        },
+                        "required": ["name", "uri"],
+                    },
+                    "description": "Persistent inputs the expert can open.",
+                    "default": [],
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Scope, quality, timing, or implementation constraints.",
+                    "default": [],
+                },
+                "approval_boundaries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Actions that still require manager or founder approval.",
+                    "default": [],
+                },
+                "estimate_minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10080,
+                    "description": "Best estimate for this attempt in minutes.",
+                },
             },
             "required": ["expert_id", "prompt"],
         }
@@ -146,6 +212,15 @@ class DelegateToExpertTool(BaseTool):
         delegated_session_id: str = "",
         wait_for_result: int = 60,
         deliverable_mode: DeliverableMode = "message",
+        task_title: str = "",
+        project_phase: str = "",
+        expected_deliverable: str = "",
+        success_criteria: list[str] | None = None,
+        dependencies: list[str] | None = None,
+        source_artifacts: list[dict[str, Any]] | None = None,
+        constraints: list[str] | None = None,
+        approval_boundaries: list[str] | None = None,
+        estimate_minutes: int | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         target_id = expert_id.strip()
@@ -157,6 +232,8 @@ class DelegateToExpertTool(BaseTool):
             return self._error("Authentication required", session)
         if deliverable_mode not in ("message", "workspace_files"):
             return self._error("deliverable_mode is invalid", session)
+        if not session.session_id:
+            return self._error("This chat cannot manage delegated work.", session)
         if target_id == session.expert_id:
             return self._error(
                 "You are that expert — do the work yourself, or use "
@@ -191,6 +268,39 @@ class DelegateToExpertTool(BaseTool):
             return inner_session_id
 
         caller = await self._caller_name(user_id, session.expert_id)
+        criteria = [
+            ExpertWorkCriterion(criterion=value.strip())
+            for value in success_criteria or []
+            if isinstance(value, str) and value.strip()
+        ]
+        artifacts = _source_artifacts(source_artifacts or [])
+        timeout = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
+        work_item = await work_items.create_work_item(
+            user_id=user_id,
+            expert_id=target.id,
+            manager_session_id=session.session_id,
+            delegated_session_id=inner_session_id,
+            project_phase=project_phase.strip(),
+            task_title=_task_title(task_title, prompt),
+            expected_deliverable=(expected_deliverable.strip() or prompt.strip()),
+            deliverable_mode=deliverable_mode,
+            success_criteria=criteria,
+            dependencies=_clean_strings(dependencies),
+            source_artifacts=artifacts,
+            constraints=_clean_strings(constraints),
+            approval_boundaries=_clean_strings(approval_boundaries),
+            estimate_minutes=(
+                max(1, min(estimate_minutes, 10_080))
+                if isinstance(estimate_minutes, int)
+                else None
+            ),
+            manager_wait_expires_at=(
+                datetime.now(timezone.utc) + timedelta(seconds=timeout)
+                if timeout > 0
+                else None
+            ),
+        )
+        await work_items.mark_work_started(work_item.id, user_id)
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
@@ -200,8 +310,9 @@ class DelegateToExpertTool(BaseTool):
                 system_context,
                 prompt,
                 deliverable_mode=deliverable_mode,
+                work_item=work_item,
             ),
-            timeout=max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS)),
+            timeout=timeout,
             permissions=get_current_permissions(),
             tool_call_id=(
                 f"delegate:{session.session_id}" if session.session_id else "delegate"
@@ -214,7 +325,7 @@ class DelegateToExpertTool(BaseTool):
             if outcome == "completed"
             else None
         )
-        return delegated_response_from_outcome(
+        response = delegated_response_from_outcome(
             outcome=outcome,
             result=result,
             inner_session_id=inner_session_id,
@@ -222,6 +333,7 @@ class DelegateToExpertTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
             deliverable_mode=deliverable_mode,
+            work_item_id=work_item.id,
             expert=DelegatedExpertInfo(
                 id=target.id,
                 name=target.name,
@@ -230,6 +342,14 @@ class DelegateToExpertTool(BaseTool):
                 color=target.color,
             ),
         )
+        await _record_work_outcome(
+            work_item.id,
+            user_id,
+            response,
+            parent_seen=outcome
+            in {"completed", "failed", "rejected_concurrent_turn_cap"},
+        )
+        return response
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
@@ -340,6 +460,7 @@ def _handoff_message(
     prompt: str,
     *,
     deliverable_mode: DeliverableMode,
+    work_item,
 ) -> str:
     """Frame the task so the teammate knows a colleague — not the user — asked.
 
@@ -354,6 +475,21 @@ def _handoff_message(
         "final message. If the task needs something only the user can "
         "provide, say what is missing instead of guessing.]"
     )
+    preamble += (
+        f"\n\n[Work item: {work_item.id}\n"
+        f"Phase: {work_item.project_phase or 'Unspecified'}\n"
+        f"Task: {work_item.task_title}\n"
+        f"Expected deliverable: {work_item.expected_deliverable}\n"
+        f"Success criteria: {_lines(work_item.success_criteria)}\n"
+        f"Dependencies: {_lines(work_item.dependencies)}\n"
+        f"Source artifacts: {_artifact_lines(work_item.source_artifacts)}\n"
+        f"Constraints: {_lines(work_item.constraints)}\n"
+        f"Approval boundaries: {_lines(work_item.approval_boundaries)}\n"
+        f"Estimate: {work_item.estimate_minutes or 'not provided'} minutes.\n"
+        "Before ending, call report_delegated_result with this work item id. "
+        "Report questions or missing context as blocked_manager, never as a "
+        "founder-facing blocker.]"
+    )
     if system_context.strip():
         preamble += f"\n\n[Context: {system_context.strip()}]"
     if deliverable_mode == "workspace_files":
@@ -364,3 +500,70 @@ def _handoff_message(
             "not deliverables.]"
         )
     return f"{preamble}\n\n{prompt}"
+
+
+def _task_title(title: str, prompt: str) -> str:
+    candidate = title.strip() or prompt.strip().splitlines()[0]
+    return candidate[:160] or "Delegated expert task"
+
+
+def _clean_strings(values: list[str] | None) -> list[str]:
+    return [value.strip()[:1_000] for value in values or [] if value.strip()]
+
+
+def _source_artifacts(values: list[dict[str, Any]]) -> list[ExpertWorkArtifact]:
+    artifacts: list[ExpertWorkArtifact] = []
+    for value in values[:50]:
+        try:
+            artifacts.append(ExpertWorkArtifact.model_validate(value))
+        except (ValueError, TypeError):
+            continue
+    return artifacts
+
+
+def _lines(values) -> str:
+    if not values:
+        return "none"
+    return "; ".join(
+        value.criterion if isinstance(value, ExpertWorkCriterion) else str(value)
+        for value in values
+    )
+
+
+def _artifact_lines(values: list[ExpertWorkArtifact]) -> str:
+    return "; ".join(f"{item.name}: {item.uri}" for item in values) or "none"
+
+
+async def _record_work_outcome(
+    work_item_id: str,
+    user_id: str,
+    response,
+    *,
+    parent_seen: bool,
+) -> None:
+    if response.status in {"queued", "running"}:
+        status = response.status
+    elif response.status == "completed":
+        status = "delivered"
+    elif response.status == "incomplete":
+        status = "partial"
+    else:
+        status = "failed"
+    await work_items.record_delegation_outcome(
+        work_item_id=work_item_id,
+        user_id=user_id,
+        status=status,
+        result=response.summary,
+        blocker="; ".join(response.blockers) or None,
+        progress=100 if status == "delivered" else None,
+        artifacts=[
+            ExpertWorkArtifact(
+                name=artifact.name,
+                uri=artifact.read_path,
+                mime_type=artifact.mime_type,
+                size_bytes=artifact.size_bytes,
+            )
+            for artifact in response.artifacts
+        ],
+        parent_seen=parent_seen,
+    )

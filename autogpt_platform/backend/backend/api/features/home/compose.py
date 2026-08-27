@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import Expert, ExpertWorkItem
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
@@ -9,7 +9,12 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week_summary
+from .activity import (
+    compose_active_tasks,
+    compose_upcoming_tasks,
+    compose_week_summary,
+    compose_work_items,
+)
 from .agents import compose_agent_statuses, compose_team_summary
 from .attention import compose_attention_items
 from .briefing import compose_briefing
@@ -30,7 +35,9 @@ def compose_home_dashboard(
     timezone_name: str,
     questions: list[ChatSessionInfo] | None = None,
     persisted_briefing: BriefingContent | None = None,
+    work_items: list[ExpertWorkItem] | None = None,
 ) -> HomeDashboardResponse:
+    delegated_work = work_items or []
     hired = [
         expert
         for expert in experts
@@ -50,6 +57,11 @@ def compose_home_dashboard(
         if execution.expert_id
         and execution.status in {ExecutionStatus.RUNNING, ExecutionStatus.QUEUED}
     }
+    running_expert_ids.update(
+        item.expert_id
+        for item in delegated_work
+        if item.status in {"queued", "running"}
+    )
     agents = compose_agent_statuses(
         experts=hired,
         running_expert_ids=running_expert_ids,
@@ -76,8 +88,12 @@ def compose_home_dashboard(
             expert_by_id=expert_by_id,
             agent_by_graph=agent_by_graph,
             persisted=persisted_briefing,
+            work_items=delegated_work,
         ),
-        active_tasks=compose_active_tasks(executions, expert_by_id, agent_by_graph),
+        active_tasks=compose_active_tasks(
+            executions, expert_by_id, agent_by_graph, delegated_work
+        ),
+        work_items=compose_work_items(delegated_work, expert_by_id),
         upcoming_tasks=compose_upcoming_tasks(schedules, expert_by_schedule),
         team=compose_team_summary(agents),
         agents=agents,

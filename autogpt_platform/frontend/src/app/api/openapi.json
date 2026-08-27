@@ -6392,6 +6392,48 @@
         }
       }
     },
+    "/api/experts/{expert_id}/work": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Work",
+        "operationId": "list_expert_work",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ExpertWorkItem" },
+                  "title": "Response List Expert Work"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert work is unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/workflows": {
       "post": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -19276,6 +19318,180 @@
         "title": "ExpertSoulUpdatedResponse",
         "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
       },
+      "ExpertWorkArtifact": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "uri": { "type": "string", "title": "Uri" },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": ["name", "uri"],
+        "title": "ExpertWorkArtifact"
+      },
+      "ExpertWorkCriterion": {
+        "properties": {
+          "criterion": { "type": "string", "title": "Criterion" },
+          "status": {
+            "type": "string",
+            "enum": ["met", "unmet", "unknown"],
+            "title": "Status",
+            "default": "unknown"
+          },
+          "evidence": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": ["criterion"],
+        "title": "ExpertWorkCriterion"
+      },
+      "ExpertWorkItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "manager_session_id": {
+            "type": "string",
+            "title": "Manager Session Id"
+          },
+          "delegated_session_id": {
+            "type": "string",
+            "title": "Delegated Session Id"
+          },
+          "project_phase": { "type": "string", "title": "Project Phase" },
+          "task_title": { "type": "string", "title": "Task Title" },
+          "expected_deliverable": {
+            "type": "string",
+            "title": "Expected Deliverable"
+          },
+          "deliverable_mode": {
+            "type": "string",
+            "enum": ["message", "workspace_files"],
+            "title": "Deliverable Mode"
+          },
+          "success_criteria": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkCriterion" },
+            "type": "array",
+            "title": "Success Criteria"
+          },
+          "dependencies": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Dependencies"
+          },
+          "source_artifacts": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkArtifact" },
+            "type": "array",
+            "title": "Source Artifacts"
+          },
+          "constraints": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Constraints"
+          },
+          "approval_boundaries": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Approval Boundaries"
+          },
+          "estimate_minutes": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Estimate Minutes"
+          },
+          "progress": { "type": "integer", "title": "Progress" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "delivered",
+              "partial",
+              "blocked_manager",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "result": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Result"
+          },
+          "blocker": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocker"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["verified", "likely", "unknown", "disqualified"],
+            "title": "Confidence"
+          },
+          "artifacts": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkArtifact" },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "link": { "type": "string", "title": "Link" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "expert_id",
+          "manager_session_id",
+          "delegated_session_id",
+          "project_phase",
+          "task_title",
+          "expected_deliverable",
+          "deliverable_mode",
+          "success_criteria",
+          "dependencies",
+          "source_artifacts",
+          "constraints",
+          "approval_boundaries",
+          "estimate_minutes",
+          "progress",
+          "status",
+          "result",
+          "blocker",
+          "confidence",
+          "artifacts",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at",
+          "link"
+        ],
+        "title": "ExpertWorkItem"
+      },
       "ExpertWorkflowRef": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -20544,6 +20760,18 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "work_item_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Item Id"
+          },
+          "expected_deliverable": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expected Deliverable"
+          },
+          "progress": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Progress"
           }
         },
         "type": "object",
@@ -20718,6 +20946,30 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "work_item_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Item Id"
+          },
+          "blocker": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocker"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["verified", "likely", "unknown", "disqualified"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Confidence"
+          },
+          "artifacts": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkArtifact" },
+            "type": "array",
+            "title": "Artifacts",
+            "default": []
           }
         },
         "type": "object",
@@ -20753,6 +21005,12 @@
             "items": { "$ref": "#/components/schemas/HomeActiveTask" },
             "type": "array",
             "title": "Active Tasks"
+          },
+          "work_items": {
+            "items": { "$ref": "#/components/schemas/HomeWorkItem" },
+            "type": "array",
+            "title": "Work Items",
+            "default": []
           },
           "upcoming_tasks": {
             "items": { "$ref": "#/components/schemas/HomeUpcomingTask" },
@@ -20874,6 +21132,64 @@
           "daily"
         ],
         "title": "HomeWeekSummary"
+      },
+      "HomeWorkItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "expected_deliverable": {
+            "type": "string",
+            "title": "Expected Deliverable"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "delivered",
+              "partial",
+              "blocked_manager",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "expert": { "$ref": "#/components/schemas/HomeExpert" },
+          "progress": { "type": "integer", "title": "Progress" },
+          "blocker": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocker"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["verified", "likely", "unknown", "disqualified"],
+            "title": "Confidence"
+          },
+          "artifacts": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkArtifact" },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "link": { "type": "string", "title": "Link" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "expected_deliverable",
+          "status",
+          "expert",
+          "progress",
+          "confidence",
+          "artifacts",
+          "updated_at",
+          "link"
+        ],
+        "title": "HomeWorkItem"
       },
       "HostScopedCredentials": {
         "properties": {

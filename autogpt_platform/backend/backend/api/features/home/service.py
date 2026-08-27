@@ -10,8 +10,8 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
 )
 from backend.api.features.executions.review.model import PendingHumanReviewModel
-from backend.api.features.experts import experts_db
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts import experts_db, work_items
+from backend.api.features.experts.models import Expert, ExpertWorkItem
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
@@ -53,6 +53,7 @@ class HomeSourceData(BaseModel):
     credits_balance: int | None
     questions: list[ChatSessionInfo]
     timezone_name: str
+    expert_work: list[ExpertWorkItem]
 
 
 async def build_home_dashboard(
@@ -91,6 +92,7 @@ async def build_home_dashboard(
         timezone_name=data.timezone_name,
         questions=data.questions,
         persisted_briefing=persisted_briefing,
+        work_items=data.expert_work,
     )
 
 
@@ -173,6 +175,7 @@ async def _load_home_source_data(
     )
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
+    expert_work_task = asyncio.create_task(_get_expert_work(user_id=user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
     # otherwise leave the rest detached with their exceptions never retrieved.
     started: list[asyncio.Task[Any]] = [
@@ -184,6 +187,7 @@ async def _load_home_source_data(
         credits_task,
         questions_task,
         user_task,
+        expert_work_task,
     ]
     await asyncio.gather(*started)
     user = user_task.result()
@@ -198,6 +202,7 @@ async def _load_home_source_data(
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
+        expert_work=expert_work_task.result(),
     )
 
 
@@ -229,6 +234,19 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
     except Exception:
         logger.warning(
             "Home could not load pending questions for user %s",
+            user_id[:_LOG_ID_CHARS],
+        )
+        return []
+
+
+async def _get_expert_work(*, user_id: str) -> list[ExpertWorkItem]:
+    try:
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+            return []
+        return await work_items.list_user_work(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load expert work for user %s",
             user_id[:_LOG_ID_CHARS],
         )
         return []

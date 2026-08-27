@@ -22,6 +22,44 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .models import ErrorResponse, SubSessionStatusResponse
 
 
+@pytest.fixture(autouse=True)
+def mock_work_items(monkeypatch):
+    created: list[MagicMock] = []
+
+    async def create_work_item(**kwargs):
+        item = MagicMock()
+        item.id = f"work-{len(created) + 1}"
+        item.project_phase = kwargs["project_phase"]
+        item.task_title = kwargs["task_title"]
+        item.expected_deliverable = kwargs["expected_deliverable"]
+        item.success_criteria = kwargs["success_criteria"]
+        item.dependencies = kwargs["dependencies"]
+        item.source_artifacts = kwargs["source_artifacts"]
+        item.constraints = kwargs["constraints"]
+        item.approval_boundaries = kwargs["approval_boundaries"]
+        item.estimate_minutes = kwargs["estimate_minutes"]
+        created.append(item)
+        return item
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegate_to_expert.work_items.create_work_item",
+        create_work_item,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegate_to_expert.work_items.mark_work_started",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.delegate_to_expert.work_items.record_delegation_outcome",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.work_items.get_latest_work_for_manager",
+        AsyncMock(return_value=None),
+    )
+    return created
+
+
 def _session(
     user_id: str = "alice",
     session_id: str = "s1",
@@ -592,7 +630,7 @@ class TestDelegation:
 
     @pytest.mark.asyncio
     async def test_resume_reuses_own_delegation_thread(
-        self, roster, mock_turn, mock_sessions
+        self, roster, mock_turn, mock_sessions, mock_work_items
     ):
         parent = _session(session_id="s1")
         await DelegateToExpertTool()._execute(
@@ -609,8 +647,16 @@ class TestDelegation:
             prompt="follow up",
             delegated_session_id="inner-1",
             wait_for_result=0,
+            success_criteria=["New evidence is cited"],
+            estimate_minutes=45,
         )
         assert len(mock_sessions) == 1, "resume must not open a second thread"
+        assert len(mock_work_items) == 2, "each attempt needs a fresh work item"
+        assert mock_work_items[0].id != mock_work_items[1].id
+        assert (
+            mock_work_items[1].success_criteria[0].criterion == "New evidence is cited"
+        )
+        assert mock_work_items[1].estimate_minutes == 45
         assert mock_turn.await_args.kwargs["session_id"] == "inner-1"
 
 

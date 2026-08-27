@@ -3,7 +3,7 @@ import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import experts_db, scheduling, work_items
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -15,6 +15,7 @@ from backend.api.features.experts.models import (
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertWorkItem,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -22,6 +23,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
     validate_avatar_url,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 router = APIRouter(
     prefix="/experts",
@@ -282,6 +284,25 @@ async def list_expert_runs(
         return await experts_db.list_expert_runs(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.get(
+    "/{expert_id}/work",
+    operation_id="list_expert_work",
+    responses={404: {"description": "Expert work is unavailable"}},
+)
+async def list_expert_work(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertWorkItem]:
+    if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+        raise fastapi.HTTPException(
+            status_code=404, detail="Expert work is unavailable"
+        )
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise fastapi.HTTPException(status_code=404, detail="Expert not found")
+    return await work_items.list_expert_work(user_id, expert_id)
 
 
 @router.patch(
