@@ -53,6 +53,23 @@ class TestCredentialsSurfacingGuardrails:
         assert "call the tool first" in result
 
 
+class TestSdkSafetyGuidance:
+    def test_sdk_prompt_protects_credentials_and_git_state(self):
+        for use_e2b in (False, True):
+            result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+
+            assert "Never expose, print, or log secrets" in result
+            assert (
+                "Do not create commits, push changes, or modify Git configuration"
+                in result
+            )
+            assert (
+                "For security-related requests, assist only with defensive work"
+                in result
+            )
+            assert "gh auth setup-git` credential-helper" in result
+
+
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability
     gap without calling ``find_block`` first — this is the regression the
