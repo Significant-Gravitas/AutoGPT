@@ -1253,14 +1253,18 @@ async def _record_workflow_contract(
         "expectedOutputs": expected_outputs,
         "cadence": cadence,
     }
+    has_contract = False
     for field, value in values.items():
         cleaned = value.strip() if value else ""
         if not cleaned:
             continue
+        has_contract = True
         await prisma.models.ExpertWorkflow.prisma().update_many(
             where={"id": row.id, field: None},
             data={field: cleaned},
         )
+    if not has_contract:
+        return row
     refreshed = await prisma.models.ExpertWorkflow.prisma().find_unique(
         where={"id": row.id},
         include=_WORKFLOW_ROW_INCLUDE,

@@ -27,11 +27,15 @@
     "weekly_spend": 0,
     "workflows": [
       {
+        "cadence": null,
         "description": "Writes SEO-optimized blog posts",
+        "expected_inputs": null,
+        "expected_outputs": null,
         "graph_id": "graph-1",
         "id": "workflow-ref-1",
         "library_agent_id": "library-agent-1",
         "name": "SEO Blog Writer",
+        "purpose": null,
         "schedule_cron": null,
         "schedule_id": null,
         "store_listing_version_id": "listing-version-1"
