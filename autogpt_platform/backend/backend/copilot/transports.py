@@ -12,14 +12,18 @@ this contract is the one the UI will keep.
 """
 
 import logging
-from typing import Optional, get_args
+from typing import Callable, Optional, get_args
 
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.data.model import Credentials
 from backend.data.user import get_user_default_chat_route, set_user_default_chat_route
-from backend.integrations.codex.access import has_codex_access_for_discovery
+from backend.util.entitlements import has_entitlement_for_discovery
+from backend.copilot.subscription_providers import (
+    SubscriptionProviderProfile,
+    linked_profiles,
+)
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -87,16 +91,17 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
             default=False,
         )
     ]
-    transports.extend(
-        ChatTransportResponse(
-            auth_provider="codex",
-            credential_id=credentials.id,
-            label="ChatGPT",
-            available=True,
-            default=False,
+    for profile in linked_profiles():
+        transports.extend(
+            ChatTransportResponse(
+                auth_provider=profile.key,
+                credential_id=credentials.id,
+                label=profile.display_name,
+                available=True,
+                default=False,
+            )
+            for credentials in await _linked_credentials(user_id, profile)
         )
-        for credentials in await _valid_codex_credentials(user_id)
-    )
 
     saved_provider, saved_credential_id = await get_user_default_chat_route(user_id)
     _mark_default(transports, saved_provider, saved_credential_id)
@@ -139,9 +144,13 @@ async def save_default_chat_route(
         await set_user_default_chat_route(user_id, None, None)
         return await get_chat_transports(user_id)
 
-    if route.auth_provider == "platform" and route.credential_id is not None:
+    # A linked account is identified by its credential; the platform route is
+    # the deployment's own key and has none. Which provider it is does not
+    # change that rule, so it is not asked here.
+    is_linked = route.auth_provider != "platform"
+    if not is_linked and route.credential_id is not None:
         raise InvalidDefaultChatRoute("codex_credential_not_allowed")
-    if route.auth_provider == "codex" and route.credential_id is None:
+    if is_linked and route.credential_id is None:
         raise InvalidDefaultChatRoute("codex_credential_required")
 
     transports = await get_chat_transports(user_id)
@@ -151,7 +160,7 @@ async def save_default_chat_route(
         # this never confirms another user's credential id.
         raise InvalidDefaultChatRoute(
             "codex_credential_not_found"
-            if route.auth_provider == "codex"
+            if is_linked
             else "chat_transport_not_configured"
         )
 
@@ -205,8 +214,11 @@ def _automatic_default(
     )
     if platform is not None:
         return platform
-    codex = [transport for transport in available if transport.auth_provider == "codex"]
-    return codex[0] if len(codex) == 1 else None
+    # With no platform route, a single linked account is an unambiguous
+    # answer; two would be a choice, and choosing for the user is not this
+    # function's job.
+    linked = [t for t in available if t.auth_provider != "platform"]
+    return linked[0] if len(linked) == 1 else None
 
 
 def _find_transport(
@@ -226,24 +238,52 @@ def _find_transport(
     )
 
 
-async def _valid_codex_credentials(user_id: str) -> list[Credentials]:
-    if not await has_codex_access_for_discovery(user_id):
+async def _linked_credentials(
+    user_id: str, profile: SubscriptionProviderProfile
+) -> list[Credentials]:
+    """Usable credentials this user holds for one linked provider.
+
+    Discovery deliberately hides a provider the user is not entitled to
+    rather than listing it as unavailable: an offer they cannot take is the
+    upsell's job to explain, not this list's.
+    """
+    if profile.entitlement is not None and not await has_entitlement_for_discovery(
+        user_id, profile.entitlement
+    ):
+        return []
+    if profile.credential_provider is None:
         return []
     credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, "codex"
+        user_id, profile.credential_provider.value
     )
-    return [
-        credential
-        for credential in credentials
-        if _is_valid_codex_credentials(credential)
-    ]
+    return [c for c in credentials if _is_usable_credential(profile, c)]
 
 
-def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
+def _is_usable_credential(
+    profile: SubscriptionProviderProfile, credentials: Credentials | None
+) -> bool:
+    """Whether a stored credential can actually start a turn.
+
+    A row existing is not enough -- a provider whose tokens live inside an
+    opaque bundle can have a row that no longer decodes, and offering it
+    would produce a connection that fails on first use.
+    """
     if credentials is None or credentials.type != "oauth2":
         return False
+    validate = _CREDENTIAL_VALIDATORS.get(profile.key)
+    return validate(credentials) if validate else True
+
+
+def _codex_bundle_decodes(credentials: Credentials) -> bool:
     try:
         bundle_from_credentials(credentials)
     except CodexAuthBundleError:
         return False
     return True
+
+
+# Providers whose stored credential needs more than "is an oauth2 row" before
+# it can be offered. Absent = the row itself is enough.
+_CREDENTIAL_VALIDATORS: dict[str, Callable[[Credentials], bool]] = {
+    "codex": _codex_bundle_decodes,
+}

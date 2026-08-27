@@ -52,9 +52,12 @@ def _codex_credentials(credential_id: str = "cred-codex") -> OAuth2Credentials:
 def transport_env(mocker: pytest_mock.MockerFixture):
     """Hosted deployment, entitled user, no connections, nothing saved."""
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
+    # Patched where transports calls it: entitlement discovery is asked
+    # generically now, with the entitlement coming from the provider's row
+    # rather than from a codex-shaped helper.
     mocker.patch.object(
         transports,
-        "has_codex_access_for_discovery",
+        "has_entitlement_for_discovery",
         new=AsyncMock(return_value=True),
     )
     mocker.patch.object(
@@ -148,7 +151,7 @@ async def test_disconnected_account_heals_to_the_server_pick() -> None:
 async def test_lost_entitlement_heals_to_the_server_pick() -> None:
     _connect("cred-codex")
     _saved("codex", "cred-codex")
-    transports.has_codex_access_for_discovery.return_value = False
+    transports.has_entitlement_for_discovery.return_value = False
 
     assert _default_of(await get_chat_transports(USER_ID)) == ("platform", None)
 
@@ -309,7 +312,7 @@ async def test_an_account_the_user_does_not_own_is_rejected() -> None:
 @pytest.mark.asyncio
 async def test_chatgpt_is_not_saveable_without_the_entitlement() -> None:
     _connect("cred-codex")
-    transports.has_codex_access_for_discovery.return_value = False
+    transports.has_entitlement_for_discovery.return_value = False
 
     with pytest.raises(InvalidDefaultChatRoute) as error:
         await save_default_chat_route(

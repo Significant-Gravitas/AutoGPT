@@ -31,6 +31,7 @@ from backend.integrations.codex.access import (
     CODEX_MINIMUM_PLAN_ERROR,
     has_codex_access_for_discovery,
 )
+from backend.copilot.subscription_providers import profile_for
 from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
@@ -262,13 +263,11 @@ def _offer(
 
 
 def _provider_family(auth_provider: CopilotLlmAuthProvider) -> str:
-    # Presentation grouping, not the credential discriminator: ChatGPT OAuth
-    # and an OpenAI API key are one family and two very different credentials.
-    return "openai" if auth_provider == "codex" else "autogpt"
+    return profile_for(auth_provider).provider_family
 
 
 def _auth_method(auth_provider: CopilotLlmAuthProvider) -> str:
-    return "chatgpt_oauth" if auth_provider == "codex" else "deployment"
+    return profile_for(auth_provider).auth_method
 
 
 def _is_hosted() -> bool:
@@ -276,9 +275,11 @@ def _is_hosted() -> bool:
 
 
 def _backed_by_label(transport: ChatTransportResponse) -> str:
-    if transport.auth_provider == "codex":
-        return "Your ChatGPT plan"
-    return "Your AutoGPT plan" if _is_hosted() else "This server's chat provider"
+    # The platform row is the one thing the table cannot state flatly: what
+    # backs it depends on whether this deployment bills anyone.
+    if transport.auth_provider == "platform" and not _is_hosted():
+        return "This server's chat provider"
+    return profile_for(transport.auth_provider).backed_by_label
 
 
 def _description(transport: ChatTransportResponse) -> str:
@@ -288,22 +289,13 @@ def _description(transport: ChatTransportResponse) -> str:
     self-hosted line says what it actually has instead of denying something
     that was never there.
     """
-    if transport.auth_provider == "codex":
-        return (
-            "New chats are backed by your ChatGPT plan, and spend no "
-            "AutoGPT credits."
-        )
-    if _is_hosted():
-        return "New chats are backed by your AutoGPT plan, and spend AutoGPT credits."
-    return "New chats are backed by the chat provider configured on this server."
+    if transport.auth_provider == "platform" and not _is_hosted():
+        return "New chats are backed by the chat provider configured on this server."
+    return profile_for(transport.auth_provider).description
 
 
 def _limitations(transport: ChatTransportResponse) -> list[str]:
-    limitations: list[str] = []
-    if transport.auth_provider == "codex":
-        # Stated because it is a real edge a user can hit, not a policy note:
-        # the builder panel rejects a codex route outright.
-        limitations.append("The agent builder's chat panel always runs on AutoGPT.")
+    limitations = list(profile_for(transport.auth_provider).limitations)
     if transport.auth_provider == "platform" and not is_deployment_chat_available():
         limitations.append("No chat provider is configured on this server yet.")
     return limitations

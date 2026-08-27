@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
@@ -7,6 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import BehaveAs, Settings
+
+logger = logging.getLogger(__name__)
 
 
 class Entitlement(str, Enum):
@@ -82,6 +85,30 @@ async def has_entitlement(user_id: str, entitlement: Entitlement) -> bool:
 
     tier = await _get_user_subscription_tier(user_id)
     return _TIER_RANK[tier] >= _TIER_RANK[policy.minimum_tier]
+
+
+async def has_entitlement_for_discovery(user_id: str, entitlement: Entitlement) -> bool:
+    """Entitlement check for deciding whether to *show* something.
+
+    Fails closed and never raises. A lookup that errors hides the offer
+    rather than taking the surface down with it -- listing connections is not
+    a good enough reason to fail someone's page, and an offer wrongly hidden
+    for one render costs less than one wrongly shown, which would produce a
+    connection that refuses on first use.
+
+    Enforcement asks a different question and lives elsewhere: use
+    ``require_entitlement`` where the answer decides whether to spend.
+    """
+    try:
+        return await has_entitlement(user_id, entitlement)
+    except Exception:
+        logger.warning(
+            "Could not resolve entitlement %s for user %s; hiding it",
+            entitlement,
+            user_id,
+            exc_info=True,
+        )
+        return False
 
 
 async def require_entitlement(user_id: str, entitlement: Entitlement) -> None:
