@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { founderSafeArtifactName, founderSafeText } from "./founder-safe-text";
+import {
+  founderSafeArtifactName,
+  founderSafeMarkdown,
+  founderSafeText,
+} from "./founder-safe-text";
 
 describe("founderSafeText", () => {
   it("removes paths, ids, JSON, shell output, and internal context", () => {
@@ -28,5 +32,25 @@ describe("founderSafeText", () => {
     expect(founderSafeArtifactName("/sessions/secret/launch-plan.md")).toBe(
       "launch-plan.md",
     );
+  });
+
+  it("preserves useful markdown structure while removing internal details", () => {
+    const safe = founderSafeMarkdown(
+      "## Delivered\n\n- Report: /tmp/private/report.md\n- Next step",
+      "Safe update",
+    );
+
+    expect(safe).toBe(
+      "## Delivered\n\n- Report: a workspace file\n- Next step",
+    );
+  });
+
+  it("preserves exact workspace artifact links", () => {
+    const uri =
+      "workspace://550e8400-e29b-41d4-a716-446655440000#text/markdown";
+
+    expect(
+      founderSafeMarkdown(`[Launch plan](${uri})`, "Safe update"),
+    ).toContain(uri);
   });
 });

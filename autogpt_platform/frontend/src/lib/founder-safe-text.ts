@@ -8,9 +8,20 @@ const UUID =
 const INTERNAL_ID =
   /\b(?:tool(?:_call)?|graph|block|session|execution|node(?:_exec)?)[_-]?id\s*[:=]\s*["']?[a-z0-9._:-]+["']?/gi;
 const INLINE_JSON = /\{[^{}\n]{1,2000}\}/g;
+const WORKSPACE_URI = /workspace:\/\/[^\s)\]]+/g;
 
-export function founderSafeText(value: string, fallback: string) {
-  const trimmed = value.trim();
+function sanitizeFounderText(
+  value: string,
+  fallback: string,
+  separator: string,
+) {
+  const workspaceUris: string[] = [];
+  const trimmed = value
+    .replace(WORKSPACE_URI, (uri) => {
+      const index = workspaceUris.push(uri) - 1;
+      return `__FOUNDER_WORKSPACE_${index}__`;
+    })
+    .trim();
   if (
     (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
     (trimmed.startsWith("[") && trimmed.endsWith("]"))
@@ -30,11 +41,24 @@ export function founderSafeText(value: string, fallback: string) {
       (line) =>
         !/^\s*(?:\$ |stdout\s*:|stderr\s*:|exit\s+code\s*:)/i.test(line),
     )
-    .join(" ")
-    .replace(/\s+/g, " ")
+    .join(separator)
+    .replace(separator === " " ? /\s+/g : /[\t ]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  return safe || fallback;
+  const restored = safe.replace(
+    /__FOUNDER_WORKSPACE_(\d+)__/g,
+    (_, index: string) => workspaceUris[Number(index)] ?? "",
+  );
+  return restored || fallback;
+}
+
+export function founderSafeText(value: string, fallback: string) {
+  return sanitizeFounderText(value, fallback, " ");
+}
+
+export function founderSafeMarkdown(value: string, fallback: string) {
+  return sanitizeFounderText(value, fallback, "\n");
 }
 
 export function founderSafeArtifactName(value: string) {

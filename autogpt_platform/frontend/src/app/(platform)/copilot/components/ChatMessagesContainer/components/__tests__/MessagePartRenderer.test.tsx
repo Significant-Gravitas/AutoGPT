@@ -205,6 +205,35 @@ describe("MessagePartRenderer text branch", () => {
     );
   });
 
+  it("redacts developer-only details from founder-facing assistant text", () => {
+    const part = {
+      type: "text",
+      text: [
+        "Prepared /tmp/private/report.json",
+        "tool_call_id=call-1 graph_id=graph-1",
+        '{"query":"secret search payload"}',
+        "$ cat /tmp/private/report.json",
+        "Ready for review.",
+      ].join("\n"),
+    } as unknown as Part;
+
+    render(
+      <MessagePartRenderer
+        part={part}
+        messageID="m1"
+        partIndex={0}
+        founderMode
+      />,
+    );
+
+    const text = screen.getByTestId("message-response").textContent ?? "";
+    expect(text).toContain("Prepared a workspace file");
+    expect(text).toContain("Ready for review.");
+    expect(text).not.toMatch(
+      /\/tmp|tool_call_id|graph_id|secret search payload|\$ cat/,
+    );
+  });
+
   it("renders a <video> for video: alt, an <img> for image alt, and nothing for empty src", () => {
     const part = { type: "text", text: "media" } as unknown as Part;
     const { container } = render(

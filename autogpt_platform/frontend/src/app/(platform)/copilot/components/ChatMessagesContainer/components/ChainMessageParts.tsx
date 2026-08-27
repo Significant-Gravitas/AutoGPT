@@ -67,6 +67,7 @@ export function ChainMessageParts({
         liveCompactionCallId={liveCompactionCallId}
         liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        founderMode={founderMode}
       />
     );
   });

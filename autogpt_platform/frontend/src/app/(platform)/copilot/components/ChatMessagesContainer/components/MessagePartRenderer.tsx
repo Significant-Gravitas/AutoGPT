@@ -1,5 +1,6 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { founderSafeMarkdown } from "@/lib/founder-safe-text";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
@@ -150,6 +151,7 @@ interface Props {
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
   isCurrentlyStreaming?: boolean;
+  founderMode?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -164,6 +166,7 @@ export function MessagePartRenderer({
   liveCompactionCallId,
   liveCompactionStats,
   isCurrentlyStreaming,
+  founderMode = false,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -187,9 +190,11 @@ export function MessagePartRenderer({
       );
     }
     case "text": {
-      const { markerType, markerText, cleanText } = parseSpecialMarkers(
-        part.text,
-      );
+      const visibleText = founderMode
+        ? founderSafeMarkdown(part.text, "AutoPilot shared an update.")
+        : part.text;
+      const { markerType, markerText, cleanText } =
+        parseSpecialMarkers(visibleText);
 
       if (markerType === "error" || markerType === "retryable_error") {
         const lowerMarker = markerText.toLowerCase();
