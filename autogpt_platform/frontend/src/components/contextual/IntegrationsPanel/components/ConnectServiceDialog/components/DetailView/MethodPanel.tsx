@@ -7,7 +7,7 @@ import {
 } from "../../helpers";
 import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
 import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
-import { useProviderConnectCopy } from "./useProviderConnectCopy";
+import { useSubscriptionProvider } from "@/lib/oauth/useSubscriptionProvider";
 import { SubscriptionConnectExplainer } from "./SubscriptionConnectExplainer";
 import { OAuthConnectButton } from "./OAuthConnectButton";
 import { UnsupportedNotice } from "./UnsupportedNotice";
@@ -28,7 +28,7 @@ interface Props {
 
 export function MethodPanel({ method, provider, onSuccess }: Props) {
   const authProvider = getAuthProvider(provider, method);
-  const connectCopy = useProviderConnectCopy(authProvider);
+  const connectCopy = useSubscriptionProvider(authProvider);
   if (method === AuthType.oauth2) {
     return (
       <div className="flex flex-col gap-4">
@@ -41,7 +41,7 @@ export function MethodPanel({ method, provider, onSuccess }: Props) {
         <OAuthConnectButton
           provider={authProvider}
           providerName={connectCopy.displayName ?? provider.name}
-          buttonLabel={connectCopy.buttonLabel ?? undefined}
+          buttonLabel={connectCopy.connectButtonLabel ?? undefined}
           termsNotice={connectCopy.termsCompany ?? undefined}
           onSuccess={onSuccess}
         />

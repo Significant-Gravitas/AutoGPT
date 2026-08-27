@@ -24,7 +24,7 @@ import {
   processCredentialDeletion,
   resolveActionTarget,
 } from "./helpers";
-import { useOAuthLoginTimeout } from "@/lib/oauth/useOAuthLoginTimeout";
+import { useSubscriptionProvider } from "@/lib/oauth/useSubscriptionProvider";
 
 export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
 
@@ -80,7 +80,7 @@ export function useCredentialsInput({
   );
   // Read before the loading guard below: a hook cannot be called after an
   // early return, and the value is only used at click time anyway.
-  const loginTimeout = useOAuthLoginTimeout(credentials?.provider);
+  const subscription = useSubscriptionProvider(credentials?.provider);
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
   const oauthFlowIdRef = useRef(0);
@@ -280,7 +280,7 @@ export function useCredentialsInput({
           stateToken: state_token,
           cancelUrl: cancel_url,
           preOpenedWindow,
-          timeout: loginTimeout,
+          timeout: subscription.loginTimeoutMs,
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).
@@ -496,6 +496,9 @@ export function useCredentialsInput({
     isLoading: false as const,
     provider,
     providerName,
+    /** What a person calls this account, when it is a linked subscription
+     *  rather than an ordinary integration. Null for everything else. */
+    subscriptionName: subscription.displayName,
     supportsApiKey,
     supportsOAuth2,
     supportsDeviceCode,
@@ -529,6 +532,8 @@ export function useCredentialsInput({
       userCredentials.length > 0,
       provider,
       supportsDeviceCode,
+      subscription.connectButtonLabel,
+      subscription.displayName,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,

@@ -76,6 +76,7 @@ export function CredentialsInput({
   const {
     provider,
     providerName,
+    subscriptionName,
     supportsApiKey,
     supportsOAuth2,
     supportsDeviceCode,
@@ -194,7 +195,7 @@ export function CredentialsInput({
             <OAuthFlowWaitingModal
               open={isOAuth2FlowInProgress}
               onClose={cancelOAuthFlow}
-              providerName={provider === "codex" ? "ChatGPT" : providerName}
+              providerName={subscriptionName ?? providerName}
               popupBlocked={oAuthPopupBlocked}
             />
           )}

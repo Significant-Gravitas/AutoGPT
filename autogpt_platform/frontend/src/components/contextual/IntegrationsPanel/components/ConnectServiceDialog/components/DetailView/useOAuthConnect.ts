@@ -16,7 +16,7 @@ import {
 } from "@/lib/oauth-popup";
 
 import { getOAuthErrorMessage } from "./helpers";
-import { useOAuthLoginTimeout } from "@/lib/oauth/useOAuthLoginTimeout";
+import { useSubscriptionProvider } from "@/lib/oauth/useSubscriptionProvider";
 
 interface Args {
   provider: string;
@@ -24,7 +24,7 @@ interface Args {
 }
 
 export function useOAuthConnect({ provider, onSuccess }: Args) {
-  const loginTimeout = useOAuthLoginTimeout(provider);
+  const subscription = useSubscriptionProvider(provider);
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
   const isPendingRef = useRef(false);
@@ -84,7 +84,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
           stateToken: state_token,
           cancelUrl: cancel_url,
           preOpenedWindow,
-          timeout: loginTimeout,
+          timeout: subscription.loginTimeoutMs,
           // BroadcastChannel + localStorage listeners are the only delivery
           // path when the flow runs in a tab without window.opener (the iOS
           // fallback) — the callback page already writes to both.

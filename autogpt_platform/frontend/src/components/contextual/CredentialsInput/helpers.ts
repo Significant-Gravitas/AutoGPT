@@ -148,6 +148,15 @@ export function getActionButtonText(
   hasExistingCredentials: boolean,
   provider?: string,
   supportsDeviceCode: boolean = false,
+  /**
+   * The provider's own name for signing in ("Sign in with ChatGPT"), when
+   * this is a subscription the server describes. Passed in rather than
+   * decided here: this used to read `provider === "codex"` and answer with
+   * ChatGPT's copy, so every later provider silently got "Add account".
+   */
+  subscriptionConnectLabel?: string | null,
+  /** What a person calls the account, for the reconnect wording. */
+  subscriptionDisplayName?: string | null,
 ): string {
   const multipleTypes =
     countSupportedTypes(
@@ -162,10 +171,10 @@ export function getActionButtonText(
     return hasExistingCredentials ? "Add another credential" : "Add credential";
   }
 
-  if (provider === "codex" && supportsOAuth2) {
+  if (subscriptionConnectLabel && supportsOAuth2) {
     return hasExistingCredentials
-      ? "Reconnect ChatGPT"
-      : "Sign in with ChatGPT";
+      ? `Reconnect ${subscriptionDisplayName ?? subscriptionConnectLabel}`
+      : subscriptionConnectLabel;
   }
 
   if (hasExistingCredentials) {

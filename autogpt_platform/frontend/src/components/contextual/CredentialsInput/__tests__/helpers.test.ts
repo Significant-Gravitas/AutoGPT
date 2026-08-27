@@ -128,13 +128,56 @@ describe("getActionButtonText", () => {
       );
     });
 
-    it("uses ChatGPT sign-in copy for the internal Codex provider", () => {
+    it("uses the subscription's own sign-in copy when the server supplies it", () => {
+      // The label used to be chosen here from the provider's name, which is
+      // the one place that cannot be told when a provider is added. Passing
+      // it in means a second subscription gets its own wording rather than
+      // quietly falling through to "Add account".
       expect(
-        getActionButtonText(true, false, false, false, false, "codex"),
+        getActionButtonText(
+          true,
+          false,
+          false,
+          false,
+          false,
+          "codex",
+          false,
+          "Sign in with ChatGPT",
+          "ChatGPT",
+        ),
       ).toBe("Sign in with ChatGPT");
       expect(
-        getActionButtonText(true, false, false, false, true, "codex"),
+        getActionButtonText(
+          true,
+          false,
+          false,
+          false,
+          true,
+          "codex",
+          false,
+          "Sign in with ChatGPT",
+          "ChatGPT",
+        ),
       ).toBe("Reconnect ChatGPT");
+      expect(
+        getActionButtonText(
+          true,
+          false,
+          false,
+          false,
+          false,
+          "github_copilot",
+          false,
+          "Sign in with GitHub",
+          "GitHub Copilot",
+        ),
+      ).toBe("Sign in with GitHub");
+    });
+
+    it("falls back to the generic copy for a provider the server does not describe", () => {
+      expect(
+        getActionButtonText(true, false, false, false, false, "codex"),
+      ).toBe("Add account");
     });
   });
 

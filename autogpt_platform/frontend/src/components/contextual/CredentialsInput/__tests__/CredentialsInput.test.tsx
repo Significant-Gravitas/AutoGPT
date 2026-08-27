@@ -57,6 +57,9 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
+import { getGetV2ListProviderModelTiersMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
+import { server } from "@/mocks/mock-server";
 
 const mockUseCredentials = useCredentials as unknown as ReturnType<
   typeof vi.fn
@@ -125,9 +128,28 @@ function makeBackendAPI(overrides: Partial<BackendAPI> = {}) {
   };
 }
 
+// The sign-in button says what the provider calls the act, and the server
+// is what knows that. Without this the input renders its generic "Add
+// account" copy, which is correct behaviour for a provider nobody has
+// described -- just not what these tests are about.
+const CHATGPT_TIERS = {
+  provider_family: "openai",
+  display_name: "ChatGPT",
+  auth_provider: "codex",
+  connect_button_label: "Sign in with ChatGPT",
+  terms_company: "OpenAI",
+  login_timeout_seconds: 900,
+  tiers: [],
+} as ProviderTiers;
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseBackendAPI.mockReturnValue(makeBackendAPI());
+  server.use(
+    getGetV2ListProviderModelTiersMockHandler200({
+      providers: [CHATGPT_TIERS],
+    }),
+  );
 });
 
 afterEach(() => {
@@ -208,7 +230,9 @@ describe("CredentialsInput – OAuth flow", () => {
     );
 
     expect(await screen.findByText("OpenAI credentials")).toBeDefined();
-    const signInButton = screen.getByRole("button", {
+    // findByRole, not getByRole: the label is the provider's own word for
+    // the act and arrives with the server's description of it.
+    const signInButton = await screen.findByRole("button", {
       name: "Sign in with ChatGPT",
     });
     fireEvent.click(signInButton);
@@ -873,7 +897,7 @@ describe("CredentialsInput – a removed connection", () => {
     ).toBeDefined();
 
     fireEvent.click(
-      screen.getByRole("button", { name: /sign in with chatgpt/i }),
+      await screen.findByRole("button", { name: /sign in with chatgpt/i }),
     );
 
     await waitFor(() => expect(screen.queryByText(/was removed/i)).toBeNull());
