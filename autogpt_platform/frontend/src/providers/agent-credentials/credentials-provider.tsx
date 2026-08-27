@@ -239,33 +239,32 @@ export default function CredentialsProvider({
     [upsertCredentials, storeMCPCredentials, onFailToast],
   );
 
-  /** Stores a static bearer token for an MCP server and refreshes the cached list. */
+  /** Stores a static bearer token for an MCP server and refreshes the cached list.
+   *
+   * Unlike its siblings this does not toast on failure — it is called from a
+   * dialog that shows the failure inline, next to the token field the user has
+   * to correct. Toasting as well would report one failure twice. */
   const mcpStoreToken = useCallback(
     async (
       server_url: string,
       token: string,
     ): Promise<CredentialsMetaResponse> => {
-      try {
-        const response = await postV2StoreABearerTokenForAnMcpServer({
-          server_url,
-          token,
-        });
-        if (response.status !== 200) throw response.data;
-        const credsMeta: CredentialsMetaResponse = {
-          ...response.data,
-          title: response.data.title ?? undefined,
-          scopes: response.data.scopes ?? undefined,
-          username: response.data.username ?? undefined,
-          host: response.data.host ?? undefined,
-        };
-        storeMCPCredentials(credsMeta.host ?? server_url, credsMeta);
-        return credsMeta;
-      } catch (error) {
-        onFailToast("save MCP API token")(error);
-        throw error;
-      }
+      const response = await postV2StoreABearerTokenForAnMcpServer({
+        server_url,
+        token,
+      });
+      if (response.status !== 200) throw response.data;
+      const credsMeta: CredentialsMetaResponse = {
+        ...response.data,
+        title: response.data.title ?? undefined,
+        scopes: response.data.scopes ?? undefined,
+        username: response.data.username ?? undefined,
+        host: response.data.host ?? undefined,
+      };
+      storeMCPCredentials(credsMeta.host ?? server_url, credsMeta);
+      return credsMeta;
     },
-    [storeMCPCredentials, onFailToast],
+    [storeMCPCredentials],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */

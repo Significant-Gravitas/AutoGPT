@@ -149,7 +149,7 @@ describe("CredentialsProvider — mcpStoreToken", () => {
     );
   });
 
-  it("surfaces a toast and rethrows when the request fails", async () => {
+  it("rethrows without toasting when the request fails", async () => {
     mockStoreToken.mockResolvedValue({ status: 500, data: { detail: "boom" } });
 
     const getStoreToken = setup();
@@ -158,7 +158,9 @@ describe("CredentialsProvider — mcpStoreToken", () => {
     await expect(
       getStoreToken()!("https://mcp.datafa.st/mcp", "tok"),
     ).rejects.toBeDefined();
-    expect(onFailToast).toHaveBeenCalledWith("save MCP API token");
+    // The only caller renders the failure inline next to the token field, so
+    // a toast here would report the same failure twice.
+    expect(onFailToast).not.toHaveBeenCalledWith("save MCP API token");
     // The stale credential must survive a failed store.
     expect(screen.getByTestId("ids").textContent).toBe("old-cred");
   });
