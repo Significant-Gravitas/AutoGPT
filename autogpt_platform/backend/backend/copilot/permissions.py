@@ -104,6 +104,7 @@ ToolName = Literal[
     "get_sub_session_result",
     "handoff_to_expert",
     "hire_expert",
+    "install_expert_workflow",
     "list_agent_triggers",
     "list_chat_platform_channels",
     "list_folders",
