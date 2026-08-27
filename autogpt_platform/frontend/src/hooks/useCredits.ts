@@ -51,7 +51,7 @@ export default function useCredits({
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
-    setAutoTopUpConfig(response);
+    if (response) setAutoTopUpConfig(response);
   }, [api]);
 
   useEffect(() => {
