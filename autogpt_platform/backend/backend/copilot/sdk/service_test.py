@@ -1008,6 +1008,7 @@ class TestSystemPromptPreset:
     def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
         """The default config passes only AutoGPT's Copilot system prompt."""
         cfg = cfg_mod.ChatConfig(
+            _env_file=None,
             use_openrouter=False,
             api_key=None,
             base_url=None,

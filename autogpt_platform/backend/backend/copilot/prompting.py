@@ -450,21 +450,6 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 """
 
 
-# SDK-only replacement for safety guidance supplied by the Claude Code preset.
-_SDK_SAFETY_NOTES = """
-### Security and repository safety
-- For security-related requests, assist only with defensive work. Refuse
-  requests intended to harm systems, steal data or credentials, evade
-  detection, or gain unauthorized access.
-- Never expose, print, or log secrets, access tokens, API keys, or credentials.
-  Do not read or transmit credential values; let pre-authenticated tools use
-  them only for the user's requested operation.
-- Do not create commits, push changes, or modify Git configuration unless the
-  user explicitly asks. The documented `gh auth setup-git` credential-helper
-  refresh after reconnection is the only exception.
-"""
-
-
 # Environment-specific supplement templates
 def _build_storage_supplement(
     working_dir: str,
@@ -640,7 +625,7 @@ def get_sdk_supplement(use_e2b: bool) -> str:
         if use_e2b
         else _get_local_storage_supplement("/tmp/copilot-<session-id>")
     )
-    return base + _SDK_SAFETY_NOTES + _USER_FOLLOW_UP_NOTE
+    return base + _USER_FOLLOW_UP_NOTE
 
 
 def get_delegation_supplement() -> str:
