@@ -26,9 +26,7 @@ export function ActiveRow({ item }: Props) {
       </span>
       <div className="min-w-0 flex-1">
         <Text variant="body-medium" className="truncate text-zinc-900">
-          {item.work_item_id
-            ? founderSafeText(item.title, "Expert work in progress")
-            : item.title}
+          {founderSafeText(item.title, "Expert work in progress")}
         </Text>
         <Text variant="small" className="truncate text-zinc-500">
           {item.status === "queued"

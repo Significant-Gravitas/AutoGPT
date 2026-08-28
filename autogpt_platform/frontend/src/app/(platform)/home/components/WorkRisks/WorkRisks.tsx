@@ -64,11 +64,21 @@ export function WorkRisks({ dashboard }: Props) {
             <RiskRow
               key={outcome.id}
               href={outcome.link}
-              title={outcome.title}
-              description={outcome.summary}
-              expertName={outcome.expert?.name ?? outcome.agent_name}
+              title={founderSafeText(outcome.title, "Work needs attention")}
+              description={founderSafeText(
+                outcome.summary,
+                "AutoPilot is reviewing the next safe step.",
+              )}
+              expertName={
+                outcome.expert?.name ??
+                (outcome.agent_name === "Agent task"
+                  ? "AutoPilot"
+                  : outcome.agent_name)
+              }
               expertAvatar={outcome.expert?.avatar_url}
-              label={outcome.status === "partial" ? "Needs attention" : "Failed"}
+              label={
+                outcome.status === "partial" ? "Needs attention" : "Failed"
+              }
             />
           ))}
         </div>

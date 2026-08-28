@@ -19,8 +19,14 @@ function isTodoItem(value: unknown): value is TodoItem {
 
 // Walks the message history backwards for the most recent TodoWrite tool call
 // and returns its task list (the copilot's live plan).
-export function getLatestTaskList(messages: UIMessage[]): TodoItem[] | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
+export function getLatestTaskList(
+  messages: UIMessage[],
+  options: { currentTurnOnly?: boolean } = {},
+): TodoItem[] | null {
+  const latestUserMessage = options.currentTurnOnly
+    ? messages.findLastIndex((message) => message.role === "user")
+    : -1;
+  for (let i = messages.length - 1; i > latestUserMessage; i--) {
     const parts = messages[i]?.parts;
     if (!parts) continue;
     for (let j = parts.length - 1; j >= 0; j--) {

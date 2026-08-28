@@ -327,7 +327,11 @@ export const ChatContainer = ({
                     {isTaskBarEnabled && (
                       <div className="relative z-10">
                         <TaskProgressBar
-                          todos={getLatestTaskList(messages) ?? []}
+                          todos={
+                            getLatestTaskList(messages, {
+                              currentTurnOnly: isFounderMode,
+                            }) ?? []
+                          }
                           isStreaming={isStreaming}
                           founderMode={isFounderMode}
                         />

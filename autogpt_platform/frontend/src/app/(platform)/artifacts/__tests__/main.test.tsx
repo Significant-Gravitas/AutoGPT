@@ -15,9 +15,10 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
-const { setFlagStatusMock } = vi.hoisted(() => {
+const { setFlagStatusMock, hireExpertsFlagMock } = vi.hoisted(() => {
   return {
     setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
+    hireExpertsFlagMock: vi.fn(() => true),
   };
 });
 
@@ -25,14 +26,19 @@ const { setFlagStatusMock } = vi.hoisted(() => {
 // flag overrides must persist across renders; restore the default afterward.
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  hireExpertsFlagMock.mockReturnValue(true);
 });
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS_PAGE: "artifacts-page",
     AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+    HIRE_EXPERTS: "hire-experts",
   },
-  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
+  useGetFlag: (flag: string) =>
+    flag === "hire-experts"
+      ? hireExpertsFlagMock()
+      : flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
 }));
 
@@ -150,6 +156,62 @@ describe("ArtifactsPage - basic rendering", () => {
     expect(await screen.findByText("report.pdf")).toBeDefined();
     expect(screen.getByText("data.csv")).toBeDefined();
     expect(screen.getAllByTestId("artifacts-list-item").length).toBe(2);
+  });
+
+  test("shows founder deliverables before technical files", async () => {
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [
+          makeFile({
+            id: "deliverable",
+            name: "phase0_positioning_icp.md",
+            metadata: {
+              title: "Positioning brief",
+              owner_name: "Maya",
+              purpose: "Choose the first customer segment",
+              verification: "verified",
+            },
+          }),
+          makeFile({ id: "sdk", name: "sdk-12345678-abcd.json" }),
+          makeFile({ id: "agent", name: "agent.json" }),
+          makeFile({ id: "state", name: "build_state.json" }),
+        ],
+        offset: 0,
+        has_more: false,
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("Positioning brief")).toBeDefined();
+    expect(screen.getByText(/Maya · Verified ·/)).toBeDefined();
+    expect(screen.queryByText("agent.json")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Technical files (3)" }),
+    );
+
+    expect(await screen.findByText("agent.json")).toBeDefined();
+    expect(screen.getByText("build_state.json")).toBeDefined();
+    expect(screen.getByText("sdk-12345678-abcd.json")).toBeDefined();
+  });
+
+  test("keeps legacy file visibility unchanged when hire experts is off", async () => {
+    hireExpertsFlagMock.mockReturnValue(false);
+    useStorageHandler();
+    server.use(
+      getListWorkspaceFilesMockHandler({
+        files: [makeFile({ id: "agent", name: "agent.json" })],
+        offset: 0,
+        has_more: false,
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("agent.json")).toBeDefined();
+    expect(screen.queryByText(/technical files/i)).toBeNull();
   });
 
   test("renders the error card when the API fails", async () => {

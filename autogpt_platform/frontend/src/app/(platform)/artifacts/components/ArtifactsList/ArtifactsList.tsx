@@ -18,10 +18,15 @@ interface Props {
   isError: boolean;
   error: unknown;
   hasSearchTerm: boolean;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  onLoadMore: () => void;
+  pagination: {
+    hasMore: boolean;
+    isLoading: boolean;
+    onLoadMore: () => void;
+  };
   listKey: string;
+  founderView?: {
+    hasHiddenTechnicalFiles: boolean;
+  };
 }
 
 const GRID_VARIANTS: Variants = {
@@ -37,13 +42,13 @@ export function ArtifactsList({
   isError,
   error,
   hasSearchTerm,
-  hasMore,
-  isLoadingMore,
-  onLoadMore,
+  pagination,
   listKey,
+  founderView,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [openFile, setOpenFile] = useState<WorkspaceFileItem | null>(null);
+  const founderMode = founderView !== undefined;
 
   if (isLoading) {
     return (
@@ -71,15 +76,28 @@ export function ArtifactsList({
 
   if (files.length === 0) {
     return (
-      <div
-        className="flex min-h-[20rem] flex-col items-center justify-center gap-4 p-8 text-center"
-        data-testid="artifacts-empty"
-      >
-        <FileTypeMarquee />
-        <Text variant="h5" className="text-zinc-700">
-          {hasSearchTerm ? "No files match your search" : "No files yet"}
-        </Text>
-      </div>
+      <>
+        <div
+          className="flex min-h-[20rem] flex-col items-center justify-center gap-4 p-8 text-center"
+          data-testid="artifacts-empty"
+        >
+          <FileTypeMarquee />
+          <Text variant="h5" className="text-zinc-700">
+            {founderView?.hasHiddenTechnicalFiles
+              ? "No deliverables yet"
+              : hasSearchTerm
+                ? "No files match your search"
+                : "No files yet"}
+          </Text>
+        </div>
+        {founderMode ? (
+          <LoadMoreSentinel
+            hasMore={pagination.hasMore}
+            isLoading={pagination.isLoading}
+            onLoadMore={pagination.onLoadMore}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -94,13 +112,18 @@ export function ArtifactsList({
         animate={reduceMotion ? undefined : "show"}
       >
         {files.map((file) => (
-          <ArtifactCard key={file.id} file={file} onOpen={setOpenFile} />
+          <ArtifactCard
+            key={file.id}
+            file={file}
+            onOpen={setOpenFile}
+            founderMode={founderMode}
+          />
         ))}
       </motion.ul>
       <LoadMoreSentinel
-        hasMore={hasMore}
-        isLoading={isLoadingMore}
-        onLoadMore={onLoadMore}
+        hasMore={pagination.hasMore}
+        isLoading={pagination.isLoading}
+        onLoadMore={pagination.onLoadMore}
       />
       {openFile ? (
         <FileViewerModal

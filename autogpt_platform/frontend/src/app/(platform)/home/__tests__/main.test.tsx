@@ -235,6 +235,36 @@ test("does not expose weekly spend or account balances", async () => {
   expect(screen.queryByText("15,600")).toBeNull();
 });
 
+test("redacts internal paths and identifiers from Home work summaries", async () => {
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      outcomes: [
+        {
+          ...dashboard.briefing.outcomes[0],
+          title: "Report from /tmp/copilot-session/raw.json",
+          summary:
+            "execution_id=exec-secret for 357dd4a1-acc7-4942-a317-c6d47e5ade6a",
+        },
+      ],
+    },
+    active_tasks: [
+      {
+        ...dashboard.active_tasks[0],
+        title: "Building /tmp/copilot-session/build_state.json",
+      },
+    ],
+  });
+
+  render(<HomePage />);
+
+  expect(await screen.findAllByText(/workspace file/)).not.toHaveLength(0);
+  expect(screen.queryByText(/\/tmp\/copilot-session/)).toBeNull();
+  expect(screen.queryByText(/exec-secret/)).toBeNull();
+  expect(screen.queryByText(/357dd4a1-acc7/)).toBeNull();
+});
+
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
   mockDashboard({
     ...dashboard,
@@ -345,7 +375,6 @@ test("keeps partial workflow delivery in Risks instead of Delivered", async () =
     briefing: {
       ...dashboard.briefing,
       outcomes: [
-        dashboard.briefing.outcomes[0],
         {
           ...dashboard.briefing.outcomes[1],
           status: "partial",

@@ -39,20 +39,16 @@ export function OutcomeRow({ outcome }: Props) {
       </span>
       <div className="min-w-0 flex-1">
         <Text variant="body-medium" className="text-pretty text-zinc-950">
-          {outcome.work_item_id
-            ? founderSafeText(outcome.title, "Expert deliverable")
-            : outcome.title}
+          {founderSafeText(outcome.title, "Expert deliverable")}
         </Text>
         <Text
           variant="body"
           className="mt-1 line-clamp-2 text-pretty text-zinc-600"
         >
-          {outcome.work_item_id
-            ? founderSafeText(
-                outcome.summary,
-                "The expert delivered an outcome for AutoPilot to review.",
-              )
-            : outcome.summary}
+          {founderSafeText(
+            outcome.summary,
+            "The expert delivered an outcome for AutoPilot to review.",
+          )}
         </Text>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
           {outcome.expert ? (
@@ -62,7 +58,9 @@ export function OutcomeRow({ outcome }: Props) {
               size={22}
             />
           ) : null}
-          <span>{outcome.expert?.name ?? outcome.agent_name}</span>
+          <span>
+            {outcome.expert?.name ?? founderAgentName(outcome.agent_name)}
+          </span>
           <span aria-hidden="true">·</span>
           <span>{formatOccurredAt(outcome.occurred_at)}</span>
           {outcome.duration_seconds ? (
@@ -114,6 +112,10 @@ export function OutcomeRow({ outcome }: Props) {
       {content}
     </Link>
   );
+}
+
+function founderAgentName(value: string) {
+  return value === "Agent task" ? "AutoPilot" : value;
 }
 
 function confidenceLabel(

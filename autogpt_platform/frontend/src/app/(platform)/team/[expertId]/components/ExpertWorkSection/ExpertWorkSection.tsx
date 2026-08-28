@@ -146,6 +146,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
           graphId={activeRun.graph_id}
           executionId={activeRun.execution_id}
           runLink={activeRun.link}
+          founderMode
         />
       ) : null}
     </section>

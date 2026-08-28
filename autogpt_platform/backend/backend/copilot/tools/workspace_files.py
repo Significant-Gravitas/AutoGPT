@@ -4,8 +4,12 @@ import base64
 import logging
 import mimetypes
 import os
+import re
 from typing import Any, Optional
 
+import prisma.models
+
+from backend.api.features.experts import work_items
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
@@ -19,6 +23,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -32,6 +37,76 @@ _MAX_FILE_SIZE_MB = Config().max_file_size_mb
 # Sentinel file_id used when a tool-result file is read directly from the local
 # host filesystem (rather than from workspace storage).
 _LOCAL_TOOL_RESULT_FILE_ID = "local"
+
+_TECHNICAL_ARTIFACT_NAMES = {"agent.json", "build_state.json"}
+_SDK_ARTIFACT_NAME = re.compile(r"^sdk-[0-9a-f-]{8,}\.json$", re.I)
+
+
+async def _workspace_artifact_metadata(
+    user_id: str,
+    session: ChatSession,
+    filename: str,
+    path: str | None,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {"origin": "agent-created"}
+    try:
+        enabled = await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+    except Exception:
+        logger.warning(
+            "Could not resolve founder artifact metadata flag", exc_info=True
+        )
+        return metadata
+    if not enabled:
+        return metadata
+
+    normalized_name = os.path.basename(filename).lower()
+    normalized_path = (path or "").strip().lower()
+    technical = (
+        normalized_name in _TECHNICAL_ARTIFACT_NAMES
+        or _SDK_ARTIFACT_NAME.fullmatch(normalized_name) is not None
+        or "/tool-outputs/" in f"/{normalized_path.lstrip('/')}"
+    )
+    metadata.update(
+        {
+            "audience": "internal" if technical else "founder",
+            "artifact_role": "diagnostic" if technical else "deliverable",
+            "title": filename,
+            "verification": "unknown",
+            "owner_type": "expert" if session.expert_id else "autopilot",
+            "owner_name": "AutoPilot",
+        }
+    )
+    if not session.expert_id:
+        return metadata
+
+    metadata["owner_id"] = session.expert_id
+    try:
+        expert = await prisma.models.Expert.prisma().find_first(
+            where={
+                "id": session.expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        if expert is not None:
+            metadata["owner_name"] = expert.name
+        active_work = await work_items.get_active_work_for_session(
+            user_id=user_id,
+            delegated_session_id=session.session_id,
+            expert_id=session.expert_id,
+        )
+        if active_work is not None:
+            metadata.update(
+                {
+                    "work_item_id": active_work.id,
+                    "project_phase": active_work.project_phase,
+                    "purpose": active_work.expected_deliverable,
+                }
+            )
+    except Exception:
+        logger.warning("Could not enrich founder artifact metadata", exc_info=True)
+    return metadata
 
 
 async def _resolve_write_content(
@@ -894,13 +969,19 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             manager = await get_workspace_manager(user_id, session_id)
+            metadata = await _workspace_artifact_metadata(
+                user_id,
+                session,
+                filename,
+                path,
+            )
             rec = await manager.write_file(
                 content=content_bytes,
                 filename=filename,
                 path=path,
                 mime_type=mime_type,
                 overwrite=overwrite,
-                metadata={"origin": "agent-created"},
+                metadata=metadata,
             )
 
             # Build informative source label and message.

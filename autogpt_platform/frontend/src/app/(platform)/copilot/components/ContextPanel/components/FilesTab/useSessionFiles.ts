@@ -3,6 +3,8 @@
 import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { isTechnicalWorkspaceFile } from "@/lib/workspace-file-visibility";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
 import { isUploadedFile } from "./helpers";
@@ -13,6 +15,7 @@ export interface SessionFile {
 }
 
 export function useSessionFiles(sessionId: string | null) {
+  const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
   const messages = useCopilotStreamStore((s) =>
     sessionId ? s.messageSnapshots[sessionId] : undefined,
   );
@@ -36,10 +39,16 @@ export function useSessionFiles(sessionId: string | null) {
     }
   }
 
-  const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
-    item,
-    messageID: fileIdToMessageId.get(item.id) ?? null,
-  }));
+  const files: SessionFile[] = (query.data?.files ?? []).flatMap((item) =>
+    isFounderMode && isTechnicalWorkspaceFile(item)
+      ? []
+      : [
+          {
+            item,
+            messageID: fileIdToMessageId.get(item.id) ?? null,
+          },
+        ],
+  );
 
   const uploaded = files.filter((f) => isUploadedFile(f.item));
   const generated = files.filter((f) => !isUploadedFile(f.item));

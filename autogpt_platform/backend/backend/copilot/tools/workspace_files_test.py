@@ -3,8 +3,10 @@
 import base64
 import os
 import shutil
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import prisma.models
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
@@ -23,6 +25,7 @@ from backend.copilot.tools.workspace_files import (
     _read_local_tool_result,
     _resolve_write_content,
     _validate_ephemeral_path,
+    _workspace_artifact_metadata,
 )
 
 # Re-export so pytest discovers the session-scoped fixture
@@ -30,6 +33,14 @@ setup_test_data = setup_test_data
 
 # We need to mock make_session_path to return a known temp dir for tests.
 # The real one uses WORKSPACE_PREFIX = "/tmp/copilot-"
+
+
+@pytest.fixture(autouse=True)
+def disable_hire_experts_flag(monkeypatch):
+    monkeypatch.setattr(
+        "backend.copilot.tools.workspace_files.is_feature_enabled",
+        AsyncMock(return_value=False),
+    )
 
 
 @pytest.fixture
@@ -172,6 +183,78 @@ class TestResolveWriteContent:
         # source_path="" should be normalised to None, so only content counts
         result = await _resolve_write_content("hello", "", "", "s1")
         assert result == b"hello"
+
+
+async def test_workspace_artifact_metadata_keeps_legacy_shape_when_flag_off():
+    session = make_session("user-1")
+    with patch(
+        "backend.copilot.tools.workspace_files.is_feature_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        metadata = await _workspace_artifact_metadata(
+            "user-1", session, "report.md", "/report.md"
+        )
+
+    assert metadata == {"origin": "agent-created"}
+
+
+async def test_workspace_artifact_metadata_links_expert_work():
+    session = make_session("user-1")
+    session.expert_id = "expert-1"
+    expert_manager = SimpleNamespace(
+        find_first=AsyncMock(return_value=SimpleNamespace(name="Nova"))
+    )
+    active_work = SimpleNamespace(
+        id="work-1",
+        project_phase="Phase 1",
+        expected_deliverable="A verified lead list",
+    )
+    with (
+        patch(
+            "backend.copilot.tools.workspace_files.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(
+            prisma.models.Expert,
+            "prisma",
+            return_value=expert_manager,
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files.work_items.get_active_work_for_session",
+            new=AsyncMock(return_value=active_work),
+        ),
+    ):
+        metadata = await _workspace_artifact_metadata(
+            "user-1", session, "leads.csv", "/leads.csv"
+        )
+
+    assert metadata == {
+        "origin": "agent-created",
+        "audience": "founder",
+        "artifact_role": "deliverable",
+        "title": "leads.csv",
+        "verification": "unknown",
+        "owner_type": "expert",
+        "owner_name": "Nova",
+        "owner_id": "expert-1",
+        "work_item_id": "work-1",
+        "project_phase": "Phase 1",
+        "purpose": "A verified lead list",
+    }
+
+
+async def test_workspace_artifact_metadata_marks_builder_files_internal():
+    session = make_session("user-1")
+    with patch(
+        "backend.copilot.tools.workspace_files.is_feature_enabled",
+        new=AsyncMock(return_value=True),
+    ):
+        metadata = await _workspace_artifact_metadata(
+            "user-1", session, "build_state.json", "/build_state.json"
+        )
+
+    assert metadata["audience"] == "internal"
+    assert metadata["artifact_role"] == "diagnostic"
 
 
 # ---------------------------------------------------------------------------

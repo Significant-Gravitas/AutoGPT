@@ -80,6 +80,40 @@ describe("WorkOutputSheet", () => {
     expect(screen.getByText("Heading text")).toBeDefined();
   });
 
+  it("redacts internal document details in founder mode", () => {
+    setOutputs({
+      result: [
+        "Report saved at /tmp/copilot-session/raw.json with execution_id=exec-123.",
+      ],
+    });
+    render(<WorkOutputSheet {...baseProps} outputType="doc" founderMode />);
+
+    expect(screen.queryByText(/\/tmp\/copilot-session/)).toBeNull();
+    expect(screen.queryByText(/exec-123/)).toBeNull();
+    expect(screen.getByText(/workspace file/)).toBeDefined();
+  });
+
+  it("hides internal table columns in founder mode", () => {
+    setOutputs({
+      result: [
+        [
+          {
+            company: "Acme",
+            graph_id: "graph-secret",
+            source_path: "/tmp/leads.csv",
+          },
+        ],
+      ],
+    });
+    render(<WorkOutputSheet {...baseProps} outputType="table" founderMode />);
+
+    expect(screen.getByText("company")).toBeDefined();
+    expect(screen.getByText("Acme")).toBeDefined();
+    expect(screen.queryByText("graph_id")).toBeNull();
+    expect(screen.queryByText("source_path")).toBeNull();
+    expect(screen.queryByText("graph-secret")).toBeNull();
+  });
+
   it("renders an image for image output", () => {
     setOutputs({ result: ["https://cdn.example.com/chart.png"] });
     render(<WorkOutputSheet {...baseProps} outputType="image" />);

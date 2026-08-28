@@ -525,7 +525,7 @@ export function ChatMessagesContainer({
                   from={message.role}
                   key={message.id}
                   data-message-id={message.id}
-                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                  className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:300ms]"
                 >
                   <MessageContent className="group-[.is-assistant]:bg-transparent">
                     <WatcherCard metadata={watcherMetadata} />
@@ -552,10 +552,14 @@ export function ChatMessagesContainer({
                   from={message.role}
                   key={message.id}
                   data-message-id={message.id}
-                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                  className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:300ms]"
                 >
                   <MessageContent className="group-[.is-assistant]:bg-transparent">
-                    <WorkCard metadata={runMetadata} preview={preview} />
+                    <WorkCard
+                      metadata={runMetadata}
+                      preview={preview}
+                      founderMode={isFounderMode}
+                    />
                   </MessageContent>
                 </Message>
               );
@@ -633,7 +637,7 @@ export function ChatMessagesContainer({
                 from={message.role}
                 key={message.id}
                 data-message-id={message.id}
-                className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:300ms]"
               >
                 <MessageContent
                   className={
@@ -759,7 +763,7 @@ export function ChatMessagesContainer({
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both [animation-duration:300ms]"
             >
               <MessageContent className="text-[1rem] leading-relaxed">
                 {indicator}

@@ -25,6 +25,14 @@ function messageWithTodoWrite(todos: unknown, state?: string): UIMessage {
   } as unknown as UIMessage;
 }
 
+function userMessage(id: string): UIMessage {
+  return {
+    id,
+    role: "user",
+    parts: [{ type: "text", text: "Start a new phase" }],
+  } as UIMessage;
+}
+
 describe("getLatestTaskList", () => {
   it("returns null when there are no TodoWrite parts", () => {
     const messages = [
@@ -71,6 +79,28 @@ describe("getLatestTaskList", () => {
 
   it("returns null when todos is not an array", () => {
     expect(getLatestTaskList([messageWithTodoWrite({})])).toBeNull();
+  });
+
+  it("does not reuse a completed plan from a previous founder turn", () => {
+    const messages = [
+      messageWithTodoWrite([todo("Old phase", "completed")]),
+      userMessage("new-request"),
+    ];
+
+    expect(getLatestTaskList(messages)).not.toBeNull();
+    expect(getLatestTaskList(messages, { currentTurnOnly: true })).toBeNull();
+  });
+
+  it("uses the plan created after the latest founder request", () => {
+    const messages = [
+      messageWithTodoWrite([todo("Old phase", "completed")]),
+      userMessage("new-request"),
+      messageWithTodoWrite([todo("New phase", "in_progress")]),
+    ];
+
+    expect(
+      getLatestTaskList(messages, { currentTurnOnly: true })?.[0].content,
+    ).toBe("New phase");
   });
 });
 

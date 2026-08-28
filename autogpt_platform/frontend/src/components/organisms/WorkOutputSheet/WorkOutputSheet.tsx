@@ -6,6 +6,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { founderSafeMarkdown, founderSafeText } from "@/lib/founder-safe-text";
 import {
   Sheet,
   SheetContent,
@@ -36,6 +37,7 @@ interface Props {
   graphId: string;
   executionId: string;
   runLink?: string | null;
+  founderMode?: boolean;
 }
 
 export function WorkOutputSheet({
@@ -47,6 +49,7 @@ export function WorkOutputSheet({
   graphId,
   executionId,
   runLink,
+  founderMode = false,
 }: Props) {
   const shouldFetch = open && outputType !== "unknown";
   const detailsQuery = useGetV1GetExecutionDetails(graphId, executionId, {
@@ -72,7 +75,9 @@ export function WorkOutputSheet({
         className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-xl"
       >
         <SheetHeader className="text-left">
-          <SheetTitle className="truncate">{title}</SheetTitle>
+          <SheetTitle className="truncate">
+            {founderMode ? founderSafeText(title, "Work output") : title}
+          </SheetTitle>
         </SheetHeader>
         <WorkOutputBody
           outputType={outputType}
@@ -81,6 +86,7 @@ export function WorkOutputSheet({
           isLoading={shouldFetch && detailsQuery.isLoading}
           isError={detailsQuery.isError}
           runLink={runLink}
+          founderMode={founderMode}
         />
       </SheetContent>
     </Sheet>
@@ -94,6 +100,7 @@ interface BodyProps {
   isLoading: boolean;
   isError: boolean;
   runLink?: string | null;
+  founderMode: boolean;
 }
 
 function WorkOutputBody({
@@ -103,6 +110,7 @@ function WorkOutputBody({
   isLoading,
   isError,
   runLink,
+  founderMode,
 }: BodyProps) {
   if (outputType === "unknown") {
     return <RunLinkFallback runLink={runLink} />;
@@ -124,7 +132,14 @@ function WorkOutputBody({
   if (outputType === "table") {
     const rows = asTableRows(primary);
     if (!rows) return <RunLinkFallback runLink={runLink} />;
-    return <OutputTable title={title} rows={rows} runLink={runLink} />;
+    return (
+      <OutputTable
+        title={title}
+        rows={rows}
+        runLink={runLink}
+        founderMode={founderMode}
+      />
+    );
   }
 
   if (outputType === "image") {
@@ -132,9 +147,12 @@ function WorkOutputBody({
   }
 
   if (outputType === "doc" && typeof primary === "string") {
+    const document = founderMode
+      ? founderSafeMarkdown(primary, "The deliverable has no safe preview.")
+      : primary;
     return (
       <div className="prose prose-sm max-w-none">
-        <MessageResponse>{primary}</MessageResponse>
+        <MessageResponse>{document}</MessageResponse>
       </div>
     );
   }
@@ -172,16 +190,24 @@ function OutputTable({
   title,
   rows,
   runLink,
+  founderMode,
 }: {
   title: string;
   rows: Record<string, unknown>[];
   runLink?: string | null;
+  founderMode: boolean;
 }) {
   const visibleRows = rows.slice(0, MAX_PREVIEW_ROWS);
   const allColumns = tableColumns(visibleRows);
-  const columns = allColumns.slice(0, MAX_PREVIEW_COLUMNS);
+  const founderColumns = founderMode
+    ? allColumns.filter((column) => !isInternalColumn(column))
+    : allColumns;
+  const columns = founderColumns.slice(0, MAX_PREVIEW_COLUMNS);
+  const displayRows = founderMode
+    ? visibleRows.map((row) => sanitizeFounderRow(row, columns))
+    : visibleRows;
   const truncated =
-    rows.length > visibleRows.length || allColumns.length > columns.length;
+    rows.length > visibleRows.length || founderColumns.length > columns.length;
 
   return (
     <div className="space-y-3">
@@ -190,23 +216,42 @@ function OutputTable({
           variant="secondary"
           size="small"
           onClick={() =>
-            downloadCsv(`${title || "run"}.csv`, toCsv(visibleRows, columns))
+            downloadCsv(`${title || "run"}.csv`, toCsv(displayRows, columns))
           }
         >
           Export CSV
         </Button>
       </div>
-      <OutputTablePreview rows={visibleRows} columns={columns} />
+      <OutputTablePreview rows={displayRows} columns={columns} />
       {truncated ? (
         <OutputTableTruncationNotice
           visibleRowCount={visibleRows.length}
           rowCount={rows.length}
           visibleColumnCount={columns.length}
-          columnCount={allColumns.length}
+          columnCount={founderColumns.length}
           runLink={runLink}
         />
       ) : null}
     </div>
+  );
+}
+
+function isInternalColumn(column: string) {
+  const key = column
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return /^(?:graph|block|node|execution|tool_call|session|library_agent|credential|storage_path|source_path|raw|json)(?:_id|_ids|_path|_output)?$/.test(
+    key,
+  );
+}
+
+function sanitizeFounderRow(row: Record<string, unknown>, columns: string[]) {
+  return Object.fromEntries(
+    columns.map((column) => [
+      column,
+      founderSafeText(cellText(row[column]), "Not available"),
+    ]),
   );
 }
 

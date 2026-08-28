@@ -40,10 +40,17 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  workspaceFileOwner,
+  workspaceFilePurpose,
+  workspaceFileTitle,
+  workspaceFileVerification,
+} from "@/lib/workspace-file-visibility";
 
 interface Props {
   file: WorkspaceFileItem;
   onOpen: (file: WorkspaceFileItem) => void;
+  founderMode?: boolean;
 }
 
 const CARD_VARIANTS: Variants = {
@@ -62,13 +69,17 @@ const REDUCED_CARD_VARIANTS: Variants = {
   show: { opacity: 1, transition: { duration: 0.2 } },
 };
 
-export function ArtifactCard({ file, onOpen }: Props) {
+export function ArtifactCard({ file, onOpen, founderMode = false }: Props) {
   const origin = deriveFileOrigin(file.path);
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
   const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const dragImageRef = useRef<HTMLElement | null>(null);
+  const displayTitle = founderMode ? workspaceFileTitle(file) : file.name;
+  const owner = founderMode ? workspaceFileOwner(file) : "";
+  const purpose = founderMode ? workspaceFilePurpose(file) : "";
+  const verification = founderMode ? workspaceFileVerification(file) : "";
 
   // Clean up a leftover drag-image node if the card unmounts mid-drag (before
   // dragend fires), so the off-screen element isn't leaked into the DOM.
@@ -122,15 +133,33 @@ export function ArtifactCard({ file, onOpen }: Props) {
             <Text
               variant="body-medium"
               className="truncate text-zinc-900"
-              title={file.name}
+              title={displayTitle}
             >
-              {file.name}
+              {displayTitle}
             </Text>
-            <Text variant="small" className="truncate text-zinc-500">
-              {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
-              {formatFileSize(file.size_bytes)} ·{" "}
-              {formatRelativeDate(file.created_at)}
-            </Text>
+            {founderMode ? (
+              <>
+                <Text variant="small" className="truncate text-zinc-500">
+                  {owner ? `${owner} · ` : ""}
+                  {verification ? `${verification} · ` : ""}
+                  {formatRelativeDate(file.created_at)}
+                </Text>
+                {purpose ? (
+                  <Text
+                    variant="small"
+                    className="mt-0.5 line-clamp-2 text-zinc-500"
+                  >
+                    {purpose}
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <Text variant="small" className="truncate text-zinc-500">
+                {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
+                {formatFileSize(file.size_bytes)} ·{" "}
+                {formatRelativeDate(file.created_at)}
+              </Text>
+            )}
           </div>
           <div className="pointer-events-auto">
             <CardMenu

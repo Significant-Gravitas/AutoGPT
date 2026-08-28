@@ -46,4 +46,21 @@ describe("WorkCard", () => {
       screen.getByRole("link", { name: "Open run details" }),
     ).toBeDefined();
   });
+
+  it("redacts internal preview details in founder mode", () => {
+    render(
+      <WorkCard
+        metadata={{
+          ...baseMeta,
+          graphName: "Lead report /tmp/copilot-session/raw.json",
+        }}
+        preview="execution_id=exec-123 at /tmp/copilot-session/raw.json"
+        founderMode
+      />,
+    );
+
+    expect(screen.queryByText(/\/tmp\/copilot-session/)).toBeNull();
+    expect(screen.queryByText(/exec-123/)).toBeNull();
+    expect(screen.getAllByText(/workspace file/).length).toBeGreaterThan(0);
+  });
 });

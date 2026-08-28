@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Transition, Variants } from "framer-motion";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import {
+  Flag,
+  useFlagStatus,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
+import { isTechnicalWorkspaceFile } from "@/lib/workspace-file-visibility";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
@@ -42,11 +48,14 @@ const CLASSIC_MAIN =
   "container min-h-screen space-y-6 pb-20 pt-16 sm:px-8 md:px-12";
 
 export default function ArtifactsPage() {
+  // anchor: existing AutoGPT Files; diverge by showing founder deliverables before diagnostics
   const { enabled: isEnabled, ready: flagReady } = useFlagStatus(
     Flag.ARTIFACTS_PAGE,
   );
+  const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
   const { showNewLayout } = usePlatformChrome();
   const reduceMotion = useReducedMotion();
+  const [showTechnicalFiles, setShowTechnicalFiles] = useState(false);
   const {
     files,
     isLoading,
@@ -67,6 +76,13 @@ export default function ArtifactsPage() {
 
   const isSearching = searchTerm.length > 0;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+  const technicalFileCount = isFounderMode
+    ? files.filter(isTechnicalWorkspaceFile).length
+    : 0;
+  const visibleFiles =
+    isFounderMode && !showTechnicalFiles
+      ? files.filter((file) => !isTechnicalWorkspaceFile(file))
+      : files;
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
@@ -96,11 +112,13 @@ export default function ArtifactsPage() {
             variant={showNewLayout ? "large" : "body"}
             className="max-w-prose text-zinc-600"
           >
-            Every file your agents generate or use in the Builder lives here —
-            ready to reuse, download, or share.
+            {isFounderMode
+              ? "The deliverables your AI team creates, ready to review, download, or share."
+              : "Every file your agents generate or use in the Builder lives here — ready to reuse, download, or share."}
           </Text>
         </motion.div>
         <motion.div
+          className="flex items-center gap-2"
           variants={variants}
           initial="hidden"
           animate="show"
@@ -123,12 +141,24 @@ export default function ArtifactsPage() {
           <StorageUsage />
         </motion.div>
         <motion.div
+          className="flex items-center gap-2"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.24 }}
         >
           <OriginFilter value={originFilter} onChange={setOriginFilter} />
+          {isFounderMode && technicalFileCount > 0 ? (
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => setShowTechnicalFiles((current) => !current)}
+            >
+              {showTechnicalFiles
+                ? "Hide technical files"
+                : `Technical files (${technicalFileCount})`}
+            </Button>
+          ) : null}
         </motion.div>
       </div>
       {selectedFolderId !== null ? (
@@ -162,15 +192,25 @@ export default function ArtifactsPage() {
         transition={{ delay: reduceMotion ? 0 : 0.32 }}
       >
         <ArtifactsList
-          files={files}
+          files={visibleFiles}
+          founderView={
+            isFounderMode
+              ? {
+                  hasHiddenTechnicalFiles:
+                    !showTechnicalFiles && technicalFileCount > 0,
+                }
+              : undefined
+          }
           isLoading={isLoading}
           isError={isError}
           error={error}
           hasSearchTerm={searchTerm.length > 0}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          onLoadMore={loadMore}
-          listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
+          pagination={{
+            hasMore,
+            isLoading: isLoadingMore,
+            onLoadMore: loadMore,
+          }}
+          listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}|${showTechnicalFiles}`}
         />
       </motion.div>
     </main>
