@@ -1341,24 +1341,17 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
-    A caller may read a graph version when either:
-
-    1. it is theirs — owned by ``user_id``, or visible to them through the
-       org/team rules below, or
-    2. they have that exact version in their library AND that version has been
-       submitted to the marketplace.
-
-    Being in the library is *not* enough on its own, and neither is a
-    marketplace submission the caller never added to their library.
+    Access: the caller owns it, or has that exact version in their library
+    AND that version was submitted to the marketplace. Neither half of the
+    latter suffices alone.
 
     With ``organization_id`` (from a membership-verified RequestContext),
     org/team visibility rules apply — a member can open any graph the
     list endpoints show them (own + org-home + member-team graphs).
 
-    ``skip_access_check=True`` drops all of that and fetches the row directly;
-    it is for callers that have already authorized the read themselves (the
-    executor, and the marketplace install/download paths, which validate the
-    StoreListingVersion instead).
+    ``skip_access_check=True`` is for callers that authorized the read
+    themselves: the executor, and the marketplace install/download paths,
+    which validate the StoreListingVersion instead.
 
     See also: `get_graph_as_admin()` which bypasses ownership and marketplace
     checks for admin-only routes.
@@ -1396,9 +1389,8 @@ async def get_graph(
             order={"version": "desc"},
         )
 
-    # Non-owner access: the user must have this exact graph version in their
-    # library AND that version must have been submitted to the marketplace.
-    # Neither half grants access on its own — see `graph_in_library_filter()`.
+    # The only non-owner path. A store listing on its own must not grant
+    # access, so there is deliberately no marketplace lookup beside this one.
     if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, version),
@@ -1422,12 +1414,8 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-# A graph version counts as "submitted to the marketplace" once its listing
-# version leaves DRAFT: PENDING, APPROVED and REJECTED all mean the creator
-# actually pushed it to the store at some point. Deleted or unavailable
-# listings still count — taking a listing down does not retroactively
-# un-submit the version, and users who downloaded it while it was live keep
-# their copy ("you added it, you keep it").
+# PENDING is included so admin review can open a not-yet-approved submission
+# from the reviewer's library. A deleted listing still counts as once-submitted.
 SUBMITTED_TO_MARKETPLACE: Final = (
     SubmissionStatus.PENDING,
     SubmissionStatus.APPROVED,
@@ -1438,18 +1426,11 @@ SUBMITTED_TO_MARKETPLACE: Final = (
 def graph_in_library_filter(
     user_id: str, graph_id: str, version: int | None
 ) -> LibraryAgentWhereInput:
-    """Predicate for non-owner read access to a graph version.
+    """Non-owner read access: version in the user's library AND submitted.
 
-    A user who does not own a graph may read a version of it only when both:
-
-    1. the version is in their library (not deleted, not archived), and
-    2. that same version has been submitted to the marketplace.
-
-    Expressed as one joined query on purpose: `AgentGraph` on a `LibraryAgent`
-    row is the exact `(id, version)` pair, so the `StoreListingVersions.some`
-    clause can only match a submission of *that* version. Checking the two
-    halves in separate queries would let them resolve to different versions
-    when `version is None`.
+    One joined query, not two: `AgentGraph` here is the exact `(id, version)`
+    pair, so separate queries could match the library row and the submission
+    on different versions when `version is None`.
     """
     where: LibraryAgentWhereInput = {
         "userId": user_id,

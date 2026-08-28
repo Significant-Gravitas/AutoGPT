@@ -296,11 +296,8 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
-    # `skip_access_check` is required here: the user is installing the agent
-    # precisely because it is not yet in their library, so get_graph() cannot
-    # authorize the read. `resolve_store_version_for_library(admin=False)`
-    # authorizes it instead, by matching the listing version against
-    # `installable_store_version_where()` — asserted just below.
+    # `skip_access_check` is required: the agent isn't in the user's library
+    # yet, so get_graph() would deny the install it is being called for.
     mock_regular.assert_awaited_once_with(
         graph_id=GRAPH_ID,
         version=GRAPH_VERSION,
@@ -317,12 +314,8 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 @pytest.mark.asyncio
 async def test_library_member_can_view_pending_agent_in_builder() -> None:
     """After adding a pending agent to their library, the user should be
-    able to load the graph in the builder via get_graph().
-
-    This is why a PENDING submission counts as "submitted to the marketplace":
-    the admin review flow adds a not-yet-approved agent to the reviewer's
-    library and then opens it in the builder. Requiring APPROVED here would
-    break review.
+    able to load the graph in the builder via get_graph(). This is why
+    PENDING counts as submitted — requiring APPROVED would break review.
     """
     mock_graph = _make_mock_graph()
     mock_graph_model = MagicMock(name="GraphModel")
@@ -351,8 +344,7 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         )
 
     assert result is mock_graph_model, "Library membership should grant graph access"
-    # The submission requirement travels in the same query as the library
-    # lookup, so PENDING must be one of the statuses it accepts.
+    # Review would break if PENDING were not an accepted status.
     lib_where = mock_lib_prisma.return_value.find_first.await_args.kwargs["where"]
     statuses = {
         clause["submissionStatus"]

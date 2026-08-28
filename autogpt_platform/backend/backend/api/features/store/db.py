@@ -1404,11 +1404,8 @@ async def get_my_agents(
 async def get_agent(store_listing_version_id: str) -> GraphModel:
     """Get agent using the version ID and store listing version ID.
 
-    Serves the public download endpoint, so authorization is the listing
-    itself: only a publicly installable version may be handed out. That check
-    replaces the graph-level one, hence `skip_access_check` — `get_graph()`
-    now only answers for the owner or for a library holder, and this caller is
-    neither.
+    Unauthenticated endpoint: the installable-listing check below *is* the
+    authorization, so `get_graph()` is told to skip its own (it would deny).
     """
     slv = await prisma.models.StoreListingVersion.prisma().find_first(
         where={

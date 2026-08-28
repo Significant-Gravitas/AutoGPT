@@ -949,16 +949,8 @@ def test_mcp_credential_combine_no_discriminator_values():
 
 # --------------- get_graph access-control truth table --------------- #
 #
-# A caller may read a graph version when EITHER:
-#   1. they own it (or it is visible to them via org/team rules), OR
-#   2. they have that exact version in their library AND that version has
-#      been submitted to the marketplace (any status but DRAFT).
-#
-# Neither half of (2) grants access on its own. A marketplace submission the
-# caller never added to their library is not readable, and a library entry for
-# a version that was never submitted is not readable either.
-#
-# get_graph_as_admin() and skip_access_check=True bypass all of it.
+# Access: owner, OR (in library AND submitted). "Submitted" is any status but
+# DRAFT. get_graph_as_admin() and skip_access_check=True bypass all of it.
 #
 # | User     | Owns? | Submitted   | Library          | Version | Result  | Test
 # |----------|-------|-------------|------------------|---------|---------|-----
@@ -1016,10 +1008,8 @@ class _LibraryRow:
 def _library_row_matches(row: _LibraryRow, where: dict[str, Any]) -> bool:
     """Evaluate `graph_in_library_filter()`'s where-clause against a row.
 
-    Deliberately supports only the operators that predicate uses — scalar
-    equality plus the `AgentGraph.is.StoreListingVersions.some.OR[]` join —
-    and raises on anything else, so a future rewrite of the predicate can't
-    quietly start passing here without the matcher being updated too.
+    Raises on any operator it doesn't implement, so a rewritten predicate
+    can't silently keep passing here without this matcher being updated too.
     """
     for key, expected in where.items():
         if key == "AgentGraph":
@@ -1049,9 +1039,8 @@ def _fake_graph_db(
 ) -> tuple[MagicMock, MagicMock]:
     """Build AgentGraph/LibraryAgent prisma doubles that honour their where-clause.
 
-    The graph itself always exists and is owned by `owner_id`; the AgentGraph
-    lookup returns it only when the where-clause's ownership scoping matches,
-    which is what `get_graph()` relies on for the ownership tier.
+    The graph always exists and is owned by `owner_id`, so denial can only
+    come from the where-clause — never from a missing row.
     """
     db_graph = _make_mock_db_graph(owner_id)
 
@@ -1079,9 +1068,7 @@ def _fake_graph_db(
     return ag_prisma, lib_prisma
 
 
-# Every combination of (owner / not owner) x (in library / not) x (submitted /
-# not submitted). Access is expected iff the caller owns the graph, or has it
-# in their library AND the version was submitted to the marketplace.
+# Every combination of (owner / not) x (in library / not) x (submitted / not).
 @pytest.mark.parametrize(
     ("is_owner", "in_library", "submitted", "expect_access"),
     [
@@ -1345,10 +1332,7 @@ async def test_get_graph_archived_library_agent_denied() -> None:
 async def test_get_graph_anonymous_denied_for_submitted_graph() -> None:
     """Anonymous callers (user_id=None) have no library, so they can never
     satisfy the access rule — not even for an approved marketplace agent.
-
-    The public marketplace download path authorizes itself against the
-    StoreListingVersion and calls get_graph with skip_access_check instead;
-    see `store.db.get_agent()`.
+    The public download path goes through `store.db.get_agent()` instead.
     """
     graph_id = "graph-id"
 

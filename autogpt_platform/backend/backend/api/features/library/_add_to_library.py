@@ -77,12 +77,8 @@ async def resolve_graph_model_for_library(
 ) -> GraphModel:
     """Resolve the graph for an already-validated marketplace version.
 
-    The non-admin path passes `skip_access_check` because the caller has
-    already authorized this read: `resolve_store_version_for_library()`
-    matched the listing version against `installable_store_version_where()`,
-    and the graph id/version come from that same row. `get_graph()` cannot
-    authorize it itself — the user is installing the agent precisely because
-    it is not yet in their library.
+    `skip_access_check`: the agent isn't in the user's library yet, so
+    `get_graph()` would deny; `resolve_store_version_for_library()` authorized.
     """
     ag = _require_graph(store_listing_version)
 

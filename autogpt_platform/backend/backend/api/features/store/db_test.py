@@ -1167,9 +1167,8 @@ async def test_get_agent_requires_installable_listing_version(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_agent_skips_graph_access_check(mocker):
-    """The caller is anonymous, so `get_graph()` can't authorize the read —
-    it is neither the owner nor a library holder. `get_agent()` authorizes
-    against the listing instead and passes `skip_access_check`."""
+    """The caller is anonymous, so `get_graph()` would deny — `get_agent()`
+    authorizes against the listing instead and passes `skip_access_check`."""
     mock_slv = mocker.Mock()
     mock_slv.agentGraphId = "graph-1"
     mock_slv.agentGraphVersion = 3
