@@ -73,13 +73,9 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-# Hard cap on a single provider HTTP request. Mirrors
-# ``backend/blocks/llm.py::LLM_REQUEST_TIMEOUT_SECONDS``. Healthy
-# non-streaming Messages / Responses calls finish in seconds; anything
-# past 120s is almost certainly a stalled socket and retries-on-timeout
-# would compound into multi-hour worst cases. Batch and flex paths
-# override this where appropriate.
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 120
+# Non-streaming calls emit no bytes until the completion is done, so this has
+# to cover the whole generation — a slow long answer is not a stalled socket.
+DEFAULT_REQUEST_TIMEOUT_SECONDS: float = settings.config.llm_request_timeout_seconds
 
 # Provider names accepted by ``call_provider``. Kept as a string Literal
 # (not an enum) so the helper stays provider-name-agnostic — callers
@@ -279,8 +275,9 @@ async def call_provider(
         )
     except asyncio.TimeoutError as exc:
         raise TimeoutError(
-            f"LLM request to {provider}/{model} exceeded "
-            f"{timeout_seconds}s and was cancelled."
+            f"LLM request to {provider}/{model} exceeded {timeout_seconds}s and "
+            "was cancelled. If the model was still generating, lower `max_tokens`, "
+            "shorten the prompt, or pick a faster model."
         ) from exc
 
 

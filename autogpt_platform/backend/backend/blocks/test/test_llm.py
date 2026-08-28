@@ -1463,6 +1463,13 @@ class TestAnthropicCacheControl:
 class TestLLMRequestTimeout:
     """Test that llm_call enforces a hard request timeout regardless of provider."""
 
+    def test_timeout_leaves_room_under_the_node_cap(self):
+        # A per-call deadline at or above the node cap means the node cap fires
+        # first, losing the provider/model detail (and the hint) in the error.
+        from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
+        assert llm.LLM_REQUEST_TIMEOUT_SECONDS < DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     @pytest.mark.asyncio
     async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
         """A hanging provider call must not park the caller indefinitely."""

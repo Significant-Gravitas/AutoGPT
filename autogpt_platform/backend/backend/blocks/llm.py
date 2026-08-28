@@ -59,13 +59,9 @@ fmt = TextFormatter(autoescape=False)
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
-# Hard cap on a single provider HTTP request. Healthy non-streaming Responses /
-# Messages calls finish in seconds; anything past this is almost certainly a
-# stalled socket (server keeping connection alive but starving response bytes,
-# which the SDK's read-timeout doesn't reliably detect on its own). Lower than
-# the SDK defaults (typically 600s) so retries-on-timeout don't compound into
-# multi-hour worst cases when a block makes many sequential calls.
-LLM_REQUEST_TIMEOUT_SECONDS = 120
+# Non-streaming calls emit no bytes until the completion is done, so this has
+# to cover the whole generation — a slow long answer is not a stalled socket.
+LLM_REQUEST_TIMEOUT_SECONDS: float = settings.config.llm_request_timeout_seconds
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
@@ -254,7 +250,9 @@ async def llm_call(
     except asyncio.TimeoutError as e:
         raise TimeoutError(
             f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
-            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled."
+            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled. If the "
+            "model was still generating, lower `max_tokens`, shorten the prompt, "
+            "or pick a faster model."
         ) from e
 
 

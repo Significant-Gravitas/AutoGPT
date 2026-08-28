@@ -1403,10 +1403,13 @@ class TestUtf8Sanitization:
 
 
 class TestDefaults:
-    def test_default_timeout_is_120_seconds(self):
-        # Pin the SLA — anything bigger and a stalled provider can park
-        # an executor thread for too long.
-        assert DEFAULT_REQUEST_TIMEOUT_SECONDS == 120
+    def test_default_timeout_tracks_the_setting(self):
+        from backend.util.settings import Settings
+
+        assert (
+            DEFAULT_REQUEST_TIMEOUT_SECONDS
+            == Settings().config.llm_request_timeout_seconds
+        )
 
 
 # ---------------------------------------------------------------------------

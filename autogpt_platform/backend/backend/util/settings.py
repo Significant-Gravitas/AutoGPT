@@ -178,6 +178,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=300,
         description="The default timeout in seconds, for RPC client calls.",
     )
+    llm_request_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        description=(
+            "Wall-clock cap on a single LLM provider request. The block path is "
+            "non-streaming: the provider sends no bytes until the whole completion "
+            "is ready, so this deadline has to cover the full generation, not just "
+            "time-to-first-byte. 600s matches the OpenAI/Anthropic SDK defaults and "
+            "the ~10 min ceiling those APIs impose on non-streaming requests. Keep "
+            "it well under the per-node wall-clock cap "
+            "(DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS, 30 min) or that fires first "
+            "with a less actionable error."
+        ),
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
