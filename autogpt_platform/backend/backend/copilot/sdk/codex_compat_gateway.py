@@ -780,8 +780,11 @@ def _serialize_messages(value: object) -> str:
         if not isinstance(message, dict):
             raise TypeError("Each message must be an object")
         role = message.get("role")
-        if role not in {"user", "assistant"}:
-            raise ValueError("Message roles must be user or assistant")
+        # CLI 2.1.248+ injects mid-conversation "system" turns (e.g. reminders)
+        # inline in `messages`, not just the top-level `system` field — a real
+        # Anthropic API capability our fake gateway must now also accept.
+        if role not in {"user", "assistant", "system"}:
+            raise ValueError("Message roles must be user, assistant, or system")
         normalized.append(
             {
                 "role": role,
