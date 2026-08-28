@@ -1,6 +1,6 @@
 # Agent collaboration architecture (TODO T15)
 
-**Status:** plan → two parallel roasts (§10) → smallest working slice (§9).
+**Status:** plan → two parallel roasts (§11) → smallest working slice (§9).
 Branch `pwuts/agent-collab-architecture`, worktree `AutoGPT4`.
 
 ---
@@ -78,12 +78,14 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
 
 - **Permission narrowing at delegation.** All three spawn tools pass
   `permissions=get_current_permissions()` — the parent's own filter, verbatim
-  — and offer no way to give a child *less*. An interactive chat has `None`
-  (unrestricted), so every child of an interactive chat is unrestricted.
-  Also: `CopilotPermissions._parent` is a `PrivateAttr` and is dropped when
-  the entry is serialised onto the queue, so `AutoPilotBlock`'s block-filter
-  chain does not survive the hop (the tool whitelist does — it is stored
-  as an intersected list).
+  — and offer no way to give a child *less*. Precisely: a child's authority
+  *equals* its parent's; it does not widen, and it cannot narrow. That is why
+  intersection is the envelope's default rather than an option. Also:
+  `CopilotPermissions._parent` is a `PrivateAttr` and is dropped when the
+  entry is serialised onto the queue, so `AutoPilotBlock`'s block-filter
+  chain does not survive the hop (the tool whitelist does — it is stored as
+  an intersected list). *(Logged in the shared findings ledger as
+  security-sensitive; see §11.)*
 - **Budget for delegated LLM turns.** The delegate tool's own docstring says
   it: "only graph executions accrue weekly spend; the delegated
   conversation's own LLM cost does not." A child's turn draws from the
@@ -92,10 +94,12 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
   (6 h) regardless of the parent's wait.
 - **Fan-out bound.** A node may spawn any number of children per turn; only
   the per-user in-flight cap stops it.
-- **Depth that survives `run_sub_session`.** A sub-session writes no
-  `delegated_by_session_id`, so `A → run_sub_session → delegate → …` starts
-  a fresh count. Depth 3 is therefore a bound on *consecutive* delegations,
-  not on the tree.
+- **Depth that survives `run_sub_session`.** The chain bound is computed by
+  walking `delegated_by_session_id`, and a same-identity sub-session does
+  not write that field. Depth 3 is therefore a bound on *consecutive
+  cross-expert* hops, not on the tree — which is why the envelope carries
+  depth as a field every spawn kind increments. *(Logged in the shared
+  findings ledger as security-sensitive; see §11.)*
 - **Taint.** There is no taint tracking on `dev`. T9's (`AutoGPT3`,
   `pwuts/autopilot-auto-mode`) is branch-only. `child_session_origin` returns
   the parent's origin — so an *interactive* parent mints an *interactive*
@@ -247,7 +251,13 @@ Report:
 ```
 
 `needs_input` and `needs_approval` are **the escalation channel, and they go
-up the tree.** A child cannot ask a human — the delegate preamble already
+up the tree.** When a `needs_approval` reaches a root and becomes a human
+approval card, the card's headline and arguments must be composed
+server-side from the envelope and the tool registry — never from a
+model-supplied field. T9's roast recorded (findings ledger) that the existing
+review card can render one string while a different payload executes; an
+escalation surface that inherits that would make the tree's one human
+checkpoint the weakest node in it. A child cannot ask a human — the delegate preamble already
 says so, and `copilot/db.py:951` already hides a delegated child's
 `pending_question` from Home. What is new is that the parent treats a
 `needs_*` report as *its* next step (the delegation supplement already says
@@ -547,16 +557,26 @@ scoping, typed report. Each is a named follow-up.
 
 ---
 
-## 10. The roasts
+## 10. Sensitive findings — where they are described
+
+Two of §1.3's grounding facts are logged in `~/code/agpt/.claude/log/findings.jsonl`
+as security-sensitive (permissions equal on descent with no narrowing path;
+depth bound not counting same-identity sub-sessions). They are described in
+this file only as facts and design consequences — §1.3 (two bullets), §3.2
+(the `tools` and `depth` rows), §4 (invariants 1 and 3). No worked sequence
+appears anywhere in this repository. Disclosure routing is Reinier's call;
+this branch is not pushed.
+
+## 11. The roasts
 
 Two sub-agents, in parallel, different jobs. Both were given this file and
 the code and told to break it, not improve it. Recorded verbatim in summary
 below, with what changed and what I rejected.
 
-### 10.1 Architecture roast
+### 11.1 Architecture roast
 
 *(pending)*
 
-### 10.2 Value roast
+### 11.2 Value roast
 
 *(pending)*
