@@ -49,6 +49,10 @@ def _session(
     sess.metadata.llm_auth_provider = "platform"
     sess.metadata.llm_credential_id = None
     sess.metadata.origin = origin
+    # Explicit: a bare MagicMock attribute is "not None", which would make a
+    # legacy sub look like one with provenance and fail the creator check.
+    sess.metadata.delegated_by_session_id = None
+    sess.metadata.handed_off_from_expert_id = None
     sess.expert_id = expert_id
     return sess
 
@@ -154,10 +158,15 @@ def mock_model(monkeypatch):
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
         origin: str = "interactive",
+        delegated_by_expert_id: str | None = None,
+        delegated_by_session_id: str | None = None,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"
         sess.metadata.origin = origin
+        sess.metadata.delegated_by_expert_id = delegated_by_expert_id
+        sess.metadata.delegated_by_session_id = delegated_by_session_id
+        sess.metadata.handed_off_from_expert_id = None
         sess.user_id = user_id
         sess.dry_run = dry_run
         sess.organization_id = organization_id
@@ -322,6 +331,8 @@ class TestRunSubSession:
         ``autopilot_session_guard`` lets reach the staffing tools.
         """
         interactive_sub = _session("alice", "other-session", origin="interactive")
+        # Passes the creator check so the origin check is what refuses.
+        interactive_sub.metadata.delegated_by_session_id = "s1"
 
         async def fake_get(_session_id: str):
             return interactive_sub
@@ -354,6 +365,7 @@ class TestRunSubSession:
         """
         legacy_sub = _session("alice", "other-session", origin=None)
         legacy_sub.messages = []
+        legacy_sub.metadata.delegated_by_session_id = "s1"
 
         async def fake_get(_session_id: str):
             return legacy_sub
@@ -372,6 +384,47 @@ class TestRunSubSession:
 
         assert not isinstance(result, ErrorResponse)
         assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
+
+    @pytest.mark.asyncio
+    async def test_resume_requires_the_creating_session(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Same scope is not enough: a sibling (or the sub itself) must not be
+        able to queue a prompt into a sub it did not open."""
+        someone_elses_sub = _session("alice", "other-session", origin="automation")
+        someone_elses_sub.metadata.delegated_by_session_id = "sibling-session"
+
+        async def fake_get(_session_id: str):
+            return someone_elses_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "not started by this session" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_records_its_creator(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1", expert_id="expert-a"),
+            prompt="do it",
+            wait_for_result=0,
+        )
+        created = mock_model["created"][0]
+        assert created.metadata.delegated_by_session_id == "s1"
+        assert created.metadata.delegated_by_expert_id == "expert-a"
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
@@ -588,6 +641,7 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_wait_returns_running(self, monkeypatch, mock_waiter):
         sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -622,6 +676,7 @@ class TestGetSubSessionResult:
         sub = MagicMock(
             user_id="alice", expert_id=None, messages=[]
         )  # not terminal-looking
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -659,6 +714,7 @@ class TestGetSubSessionResult:
         wait_for_session_result — it rebuilds the response from the
         persisted message instead."""
         sub = MagicMock(user_id="alice", expert_id=None)
+        sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "already done"
@@ -705,6 +761,7 @@ class TestGetSubSessionResult:
         prior.content = "OLD stale result"
         prior.tool_calls = None
         sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -744,6 +801,7 @@ class TestGetSubSessionResult:
         """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
         without waiting for the sub to finish (the worker will finalise)."""
         sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+        sub.metadata.delegated_by_session_id = None
 
         async def fake_get(_sid):
             return sub
@@ -774,6 +832,7 @@ class TestGetSubSessionResult:
         populated from the authoritative workspace listing."""
 
         sub = MagicMock(user_id="alice", expert_id=None)
+        sub.metadata.delegated_by_session_id = None
         assistant = MagicMock()
         assistant.role = "assistant"
         assistant.content = "done — see the docs I wrote"

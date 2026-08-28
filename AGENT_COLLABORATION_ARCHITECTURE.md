@@ -150,11 +150,13 @@ as a degenerate case.
 | **delegate** | `delegate_to_expert` | the target expert | report, pollable by the parent | yes, within envelope | its parent |
 | **isolate** | `run_sub_session` | same as parent | report, pollable by the parent | yes, within envelope | its parent |
 | **handoff** | `handoff_to_expert` | the target expert | nothing (`transferred`) | yes, within envelope | **the human** — the node is re-rooted |
-| **consult** | T10 `consult_teammate` | the target expert's soul only | a typed verdict, inline | **no** — no tools, no session | n/a (stateless) |
+| **consult** | T10 `consult_teammate` | a fixed frame + the target's declared boundaries | a report with `findings` (= T10's verdict), inline | **no** — `tools = ∅`, no session | n/a (stateless) |
 
 `handoff` is the only edge that changes who a node reports to, and it does so
 in exactly one direction: toward the human. There is no edge that makes a
-node report to a sibling, a peer, or a third expert.
+node report to a sibling, a peer, or a third expert. All four carry the
+same brief and return the same report shape — §2.6 is the table of what
+each one requires and promises.
 
 ### 2.3 The Envelope, the Ledger, and the Provenance — three carriers, three lifetimes
 
@@ -263,6 +265,7 @@ are the T10 lesson turned into a schema:
 ```
 SpawnRequest:
   task: str                     # what to do, written for someone who cannot see this thread
+  content: str | None           # inline payload, bounded — for edges whose child has no tool to read a reference
   artefacts: list[str]          # workspace paths — REFERENCES, not capabilities (see below)
   authority: str | None         # what the caller asserts the child may assume/commit to  (T10) — optional
   acceptance: str               # what "done" looks like, in a form the child can check itself against
@@ -270,6 +273,11 @@ SpawnRequest:
   max_seconds: int              # deadline request — clamped, never raised
   tools: list[str] | None       # narrowing request — intersected, never widened
 ```
+
+`content` exists because §2.6's schema test found it missing: a tool-less
+edge (T10's consult) cannot follow a reference, so the payload has to ride
+in the brief. It is bounded (T10 uses 8,000 chars) and it is the *only*
+slot whose size is bounded by the platform rather than the caller.
 
 On `artefacts`, corrected after the roast (§11.1 finding 2): the workspace is
 **user-scoped and flat** (`util/workspace.py`) — any session can read, and
@@ -331,10 +339,17 @@ enumerated, and one-directional*.
 Report:
   status: done | needs_input | needs_approval | failed | out_of_budget | out_of_time
   summary: str
+  findings: list[{quote: str, reason: str}]   # verbatim evidence — the bait-audit shape (T5: 97.9% self-agreement)
   artefacts: list[str]            # what the child wrote, by path (list_sub_workspace_files enumerates; it does not scope)
   tainted: bool                   # the child's envelope bit — a reader of this report inherits it
   asked: str | None               # the question, when status is needs_input / needs_approval
 ```
+
+`findings` is the field that makes a report *checkable* rather than
+*readable*: each entry carries a verbatim quote the parent can locate in
+the artefact. It is T5's bait-audit shape generalised — the form that
+scored 97.9% self-agreement where holistic rubrics scored ρ = 0.24 — and it
+is what T10's `block` verdict is made of. §2.6 shows the mapping.
 
 `tainted` on the report is the half of the taint rule the first draft
 missed: taint flows **down by inheritance and up by report**. A parent that
@@ -358,6 +373,93 @@ says so, and `copilot/db.py:951` already hides a delegated child's
 human — it becomes an `ask_question` / a gate card. Escalation therefore
 travels the same edges as reports, in the same direction, and there is no
 node from which it can go sideways.
+
+### 2.6 Edge types — the brief/report is the mechanism; `consult_teammate` is edge type #1
+
+Reinier read T10 and this file side by side and saw a large, vaguely
+defined overlap. It is exact, not vague: T10's `consult_teammate` passes
+work plus the authority it claims and receives a structured verdict with
+verbatim quotes. That *is* a brief and a report. T10 built one concrete
+instance of the general mechanism before the general mechanism was
+written down, and this section subsumes it rather than running two payload
+shapes side by side.
+
+**The schema test.** Can the brief/report express T10's consult exactly,
+without special-casing? Slot by slot:
+
+| T10 consult | brief / report | fit |
+|---|---|---|
+| `content` — the draft, inline, ≤ 8,000 chars | `SpawnRequest.content` | **was missing**; added in §2.4. A tool-less child cannot follow an artefact reference, so the payload must ride in the brief. |
+| `question` — "does this commit the company to anything the user did not authorise?" | `task` | direct |
+| the caller's declared authority | `authority` | direct — and required for this edge type (optional in general) |
+| implied: "flag any commitment not covered" | `acceptance` | direct |
+| verdict `pass` | `status = done`, `findings = []` | derived, not stored |
+| verdict `block` + `quotes` | `status = done`, `findings = [{quote, reason}, …]` | **needed `findings`**; added in §2.5 |
+| verdict `insufficient` naming the missing fact | `status = needs_input`, `asked = <the missing fact>` | direct — and it is the same escalation channel every edge uses |
+
+Two slots were missing and both were the schema's fault, not the edge's.
+Both additions turned out to be general: `content` is what any tool-less
+edge needs, and `findings` is what the refund-audit leaves in §3.5 return
+— the general report was already going to need a quote-carrying channel
+and had not admitted it.
+
+**T10's constraints, taken as constraints on the general design.** T10
+removed three things deliberately, and each removal was a reason:
+
+- *Tool-less by construction, so recursion is impossible.* In envelope
+  terms: `tools = ∅` (the empty set is the strongest ceiling; `None` is the
+  weakest) and no session. A consult is a node on the ledger — it is
+  admitted and its one completion is charged — but it has no turn that
+  could spawn. General edges *do* have tools, and the honest statement is
+  that for them recursion is **bounded, not impossible**: depth ≤ 3, nodes
+  ≤ `max_nodes`, spend ≤ ceiling, all checked at the chokepoint. That is
+  weaker than T10's guarantee, and it is acceptable only because work
+  needs tools and a check does not. An edge type declares which of the two
+  it is; nothing is allowed to be "a check with tools".
+- *No memory read, no memory write.* Reads would need a tool loop; writes
+  would leak one identity's context into another's store one consult at a
+  time. In the general design memory *writes* are descent-denied by
+  default for every child (§3.6, and §11.1 finding 1 is why); memory
+  *reads* are allowed to work edges because a delegated expert without its
+  own memory is not that expert. A check edge gets neither.
+- *A fixed, soul-free judge.* T5 showed persona judges swing the measured
+  dimension across the full range, and T10 then measured the teammate's
+  identity contributing **3/18** over "a check happens at all" — what the
+  identity actually supplied was its *declared boundaries*, i.e. policy,
+  not judgement. So the general rule: **identity on an edge buys
+  structural things — a memory namespace, integrations, workflows — and
+  declared policy. It is never assumed to buy judgement.** Check-type edges
+  run a fixed frame with the target's boundaries as policy input; work-type
+  edges run under the target's soul because the soul is where the
+  structural things are attached.
+
+**What T10 measured, used here instead of asserted.** Supplying the
+authority list: +6/18 on a byte-identical prompt (§2.4). The structured
+frame vs a naive "is anything wrong?": no score gain (12 vs 9, both 15 with
+policy) but a scope gain — 0–1 off-topic objections in 12–15 against 3 in
+12 (§3.5). Identity over "a check at all": 3/18. Together these say the
+value of the mechanism is in *what crosses the edge* (authority) and *what
+shape comes back* (in-scope findings), not in who is on the other side.
+That is the whole reason the brief and report are typed and the edge types
+are few.
+
+**How the two compose, and what a second edge type looks like.** An edge
+type is a tuple: an envelope preset, the brief slots it requires, the
+report shape it promises, and whether its frame is fixed or identity-borne.
+
+| edge type | envelope preset | required brief slots | report | frame |
+|---|---|---|---|---|
+| **#1 consult** (T10, shipped) | `tools = ∅`, leaf, no session, one completion | `content`, `authority`, `task` | `done` + `findings` / `needs_input` + `asked` | fixed; target's boundaries as policy |
+| **#2 quarantine read** (the §3.5 leaf) | `tools = {read_workspace_file}`, leaf, born-tainted | `artefacts`, `acceptance` | `done` + `findings` with quotes; `tainted = true` | fixed |
+| **#3 delegate / isolate** (exists) | `ALL − DESCENT_DENIED`, `may_spawn` optional | `task`, `acceptance` | any status; `artefacts` | identity-borne (delegate) / spawner's (isolate) |
+| **#4 handoff** (exists) | as #3, re-roots | `task` | none to the spawner | identity-borne |
+
+Edge type #2 is the one this design adds and the one §3.5 needs: it is
+#1 with one read tool and an artefact list instead of inline content. It
+is what turns "read 200 untrusted threads" into 14 leaves that cannot
+act. Anyone proposing a fifth payload shape in a month should be able to
+write it as a row in this table; if they cannot, it is not an edge type,
+it is a framework.
 
 ---
 
@@ -725,10 +827,10 @@ that is data by reference, and it is what artefacts are.
 
 ## 5. Where T10 and T9 slot in
 
-**T10's `consult_teammate`** is the `consult` edge: an envelope with
-no spawning, `tools = ∅`, one bounded completion charged to the tree, no
-session. It needs nothing from this design except the `authority` slot,
-which it already discovered it needs. The pod reviewer becomes "the expert
+**T10's `consult_teammate`** is edge type #1 (§2.6): an envelope with no
+spawning, `tools = ∅`, one bounded completion charged to the tree, no
+session, and a brief/report that the general schema expresses exactly once
+`content` and `findings` were added. The pod reviewer becomes "the expert
 the pod's members should consult before committing", exactly as T10 had it.
 
 **T9's gate** reads `envelope.tainted` as a taint source alongside its

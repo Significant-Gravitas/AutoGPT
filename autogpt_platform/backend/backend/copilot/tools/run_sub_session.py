@@ -38,6 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.tree import SpawnRequest
 
 from .base import BaseTool
 from .models import (
@@ -161,6 +162,18 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            # Only the session that opened a sub may steer it: same scope is
+            # not enough, or any sibling — or the sub itself — could queue a
+            # prompt into it under its envelope rather than their own.
+            if owned.metadata.delegated_by_session_id != session.session_id:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} was not "
+                        "started by this session. Leave empty to start a fresh "
+                        "sub."
+                    ),
+                    session_id=session.session_id,
+                )
             # Subs are created as automations below, so only a sub may be
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
@@ -201,6 +214,10 @@ class RunSubSessionTool(BaseTool):
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
+                # Provenance doubles as the resume capability above and as
+                # the poll capability in get_sub_session_result.
+                delegated_by_expert_id=session.expert_id,
+                delegated_by_session_id=session.session_id,
                 # A sub is machine-driven whatever opened it: its prompt is
                 # written by the parent model, not typed by the user, and no
                 # tool restriction applies to it. Inheriting an "interactive"
@@ -224,6 +241,10 @@ class RunSubSessionTool(BaseTool):
             permissions=get_current_permissions(),
             tool_call_id=(f"sub:{session.session_id}" if session.session_id else "sub"),
             tool_name="run_sub_session",
+            # An isolate is a leaf: it works in a clean context, it does not
+            # grow the tree.
+            spawn=SpawnRequest(may_spawn=False),
+            allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
         workspace_files = (
@@ -444,6 +465,18 @@ def response_from_outcome(
             ),
             session_id=parent_session_id,
             status="running",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        )
+
+    if outcome == "refused":
+        # The turn never started; the tree or the target said why.
+        return SubSessionStatusResponse(
+            message=result.refusal or f"{actor} could not start this task.",
+            session_id=parent_session_id,
+            status="error",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,

@@ -20,8 +20,10 @@ from openai.types.completion_usage import PromptTokensDetails
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
+from .context import get_current_envelope
 from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
+from .tree import charge_turn
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +232,10 @@ async def persist_and_record_usage(
             cost_microdollars=cost_microdollars,
             skip_daily=skip_daily,
         )
+        # Same charge, second ledger: the tree this turn belongs to.
+        envelope = get_current_envelope()
+        if envelope is not None:
+            await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0

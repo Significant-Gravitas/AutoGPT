@@ -32,6 +32,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.tree import SpawnRequest, TreeRefusal
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -47,6 +48,7 @@ SessionOutcome = Literal[
     "running",
     "queued",
     "rejected_concurrent_turn_cap",
+    "refused",
 ]
 
 
@@ -69,6 +71,9 @@ class SessionResult:
     total_tokens: int = 0
     queued: bool = False
     pending_buffer_length: int = 0
+    # Why the turn never started, when the outcome is ``refused``. Written
+    # for the model: it names the bound that was hit.
+    refusal: str = ""
 
 
 async def wait_for_session_result(
@@ -137,8 +142,15 @@ async def run_copilot_turn_via_queue(
     permissions: "CopilotPermissions | None" = None,
     tool_call_id: str,
     tool_name: str,
+    spawn: SpawnRequest | None = None,
+    allow_queue: bool = True,
 ) -> tuple[SessionOutcome, SessionResult]:
     """Dispatch a copilot turn onto the queue and wait for its result.
+
+    ``spawn`` is what the caller asks for the child's tree envelope; the
+    chokepoint clamps it. ``allow_queue=False`` refuses the in-flight
+    fallback below: a spawn tool must never append its prompt into a turn
+    that is already running under a different envelope.
 
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
@@ -178,6 +190,14 @@ async def run_copilot_turn_via_queue(
         raise RuntimeError("copilot_session_not_found")
 
     if await is_turn_in_flight(session_id):
+        if not allow_queue:
+            return "refused", SessionResult(
+                refusal=(
+                    "That session already has a turn in flight, so this task "
+                    "cannot be handed to it right now. Wait for it to finish, "
+                    "or start a fresh one."
+                )
+            )
         logger.info(
             "[queue] session=%s has a turn in flight; queueing message "
             "(tool=%s) into pending buffer instead of starting a new turn",
@@ -223,7 +243,10 @@ async def run_copilot_turn_via_queue(
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
             permissions=permissions,
+            spawn=spawn,
         )
+    except TreeRefusal as refused:
+        return "refused", SessionResult(refusal=refused.message)
     except ConcurrentTurnLimitError:
         # Sub-AutoPilot / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a

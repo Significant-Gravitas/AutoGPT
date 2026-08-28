@@ -435,6 +435,19 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    tree_ceiling_microdollars: int = Field(
+        default=2_000_000,
+        ge=0,
+        description="Max metered LLM spend for one root turn and everything it "
+        "spawns, in microdollars; clamped to the user's remaining daily/weekly "
+        "cap. Checked at turn start, so overshoot is at most one turn's cost.",
+    )
+    tree_max_nodes: int = Field(
+        default=8,
+        ge=1,
+        description="Max turns (root included) one root turn may spawn, "
+        "counted per tree rather than per node so it is enforceable atomically.",
+    )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
         ge=0,

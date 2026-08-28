@@ -688,6 +688,14 @@ class CoPilotProcessor:
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
+            envelope = entry.envelope
+            if (
+                envelope is not None
+                and session.metadata.source_platform
+                and not envelope.tainted
+            ):
+                # A chat-platform session's prompt is authored off-platform.
+                envelope = envelope.model_copy(update={"tainted": True})
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
@@ -698,6 +706,7 @@ class CoPilotProcessor:
                 mode=effective_mode,
                 model=entry.model,
                 permissions=entry.permissions,
+                envelope=envelope,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id

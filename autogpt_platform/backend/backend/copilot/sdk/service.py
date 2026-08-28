@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
     from ..permissions import CopilotPermissions
+    from ..tree import TurnEnvelope
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -4367,6 +4368,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
@@ -4741,6 +4743,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sandbox=e2b_sandbox,
             sdk_cwd=sdk_cwd,
             permissions=permissions,
+            envelope=envelope,
         )
 
         if (

@@ -152,6 +152,7 @@ from backend.util.tool_call_loop import (
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
+    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -1614,6 +1615,7 @@ async def stream_chat_completion_baseline(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    envelope: "TurnEnvelope | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
@@ -2133,6 +2135,7 @@ async def stream_chat_completion_baseline(
         sandbox=e2b_sandbox,
         sdk_cwd=working_dir,
         permissions=permissions,
+        envelope=envelope,
     )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)

@@ -41,6 +41,7 @@ from backend.copilot.model import (
     get_chat_session,
 )
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.copilot.tree import SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -193,6 +194,9 @@ class DelegateToExpertTool(BaseTool):
                 f"delegate:{session.session_id}" if session.session_id else "delegate"
             ),
             tool_name="delegate_to_expert",
+            # A teammate keeps their own teammates; depth still bounds the chain.
+            spawn=SpawnRequest(may_spawn=True),
+            allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
         workspace_files = (
