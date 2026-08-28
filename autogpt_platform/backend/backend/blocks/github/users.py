@@ -1,5 +1,3 @@
-import logging
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -17,8 +15,6 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-
-logger = logging.getLogger(__name__)
 
 TEST_USER_PAYLOAD = {
     "login": "octocat",

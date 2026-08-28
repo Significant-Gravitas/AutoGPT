@@ -31,6 +31,7 @@ _Add technical explanation here._
 | subject_type | Type of the notification subject (e.g. 'Issue', 'PullRequest', 'Release') | str |
 | subject_url | URL of the notification subject on GitHub | str |
 | repository | Full name of the repository (owner/repo) | str |
+| updated_at | ISO 8601 timestamp of the last update to the thread | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
