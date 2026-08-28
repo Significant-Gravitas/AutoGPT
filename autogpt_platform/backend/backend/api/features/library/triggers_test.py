@@ -442,7 +442,7 @@ async def test_update_expert_trigger_keeps_personal_scope():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
 
@@ -463,7 +463,7 @@ async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
         await update_triggered_preset(
             user_id=_USER,
             preset_id="preset-1",
-            inputs={"repo": "owner/repo"},
+            inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
             credentials={},
         )
 
@@ -488,7 +488,7 @@ async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailabl
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"repo": "owner/repo"},
+                inputs={"_node_input_mask_trigger": {"repo": "owner/repo"}},
                 credentials={},
             )
 

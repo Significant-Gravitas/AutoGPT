@@ -31,6 +31,9 @@ def _preset(inputs):
     preset.user_id = "user-1"
     preset.inputs = inputs
     preset.credentials = {}
+    # Explicit: a MagicMock attribute would be truthy, sending the preset down
+    # the private-expert tenancy branch instead of the plain execution path.
+    preset.expert_id = None
     return preset
 
 
