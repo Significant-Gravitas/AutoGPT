@@ -159,15 +159,12 @@ async def test_new_direct_expert_receives_active_project_context(monkeypatch):
         AsyncMock(return_value=True),
     )
     get_context = AsyncMock(return_value=_context())
-    monkeypatch.setattr(
-        "backend.copilot.expert_context.get_project_context_for_session",
-        get_context,
-    )
     db = MagicMock()
     db.get_expert = AsyncMock(
         return_value=SimpleNamespace(is_archived=False, workflows=[])
     )
     db.list_experts = AsyncMock(return_value=[])
+    db.get_project_context_for_session = get_context
     monkeypatch.setattr("backend.copilot.expert_context.experts_db", lambda: db)
 
     rendered = await build_expert_context(
@@ -191,12 +188,9 @@ async def test_flag_off_never_loads_project_context(monkeypatch):
         AsyncMock(return_value=False),
     )
     get_context = AsyncMock()
-    monkeypatch.setattr(
-        "backend.copilot.expert_context.get_project_context_for_session",
-        get_context,
-    )
     db = MagicMock()
     db.list_experts = AsyncMock(return_value=[])
+    db.get_project_context_for_session = get_context
     monkeypatch.setattr("backend.copilot.expert_context.experts_db", lambda: db)
 
     rendered = await build_expert_context("user-1", None, session_id="manager-session")
@@ -281,14 +275,12 @@ async def test_manager_updates_context_with_canonical_workspace_artifact(monkeyp
         "backend.copilot.tools.update_project_context._enabled",
         AsyncMock(return_value=True),
     )
-    monkeypatch.setattr(
-        "backend.copilot.tools.update_project_context.project_context.get_manager_project_context",
-        AsyncMock(return_value=None),
-    )
     upsert = AsyncMock(return_value=_context())
+    db = MagicMock()
+    db.get_manager_project_context = AsyncMock(return_value=None)
+    db.upsert_project_context = upsert
     monkeypatch.setattr(
-        "backend.copilot.tools.update_project_context.project_context.upsert_project_context",
-        upsert,
+        "backend.copilot.tools.update_project_context.experts_db", lambda: db
     )
     workspace = MagicMock()
     workspace.get_file_info = AsyncMock(
@@ -352,14 +344,12 @@ async def test_inaccessible_artifact_prevents_context_update(monkeypatch):
         "backend.copilot.tools.update_project_context._enabled",
         AsyncMock(return_value=True),
     )
-    monkeypatch.setattr(
-        "backend.copilot.tools.update_project_context.project_context.get_manager_project_context",
-        AsyncMock(return_value=None),
-    )
     upsert = AsyncMock()
+    db = MagicMock()
+    db.get_manager_project_context = AsyncMock(return_value=None)
+    db.upsert_project_context = upsert
     monkeypatch.setattr(
-        "backend.copilot.tools.update_project_context.project_context.upsert_project_context",
-        upsert,
+        "backend.copilot.tools.update_project_context.experts_db", lambda: db
     )
     workspace = MagicMock()
     workspace.get_file_info = AsyncMock(return_value=None)

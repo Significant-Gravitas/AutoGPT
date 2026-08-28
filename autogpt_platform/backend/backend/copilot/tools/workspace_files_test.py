@@ -6,7 +6,6 @@ import shutil
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import prisma.models
 import pytest
 
 from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
@@ -201,9 +200,6 @@ async def test_workspace_artifact_metadata_keeps_legacy_shape_when_flag_off():
 async def test_workspace_artifact_metadata_links_expert_work():
     session = make_session("user-1")
     session.expert_id = "expert-1"
-    expert_manager = SimpleNamespace(
-        find_first=AsyncMock(return_value=SimpleNamespace(name="Nova"))
-    )
     active_work = SimpleNamespace(
         id="work-1",
         project_phase="Phase 1",
@@ -214,14 +210,12 @@ async def test_workspace_artifact_metadata_links_expert_work():
             "backend.copilot.tools.workspace_files.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ),
-        patch.object(
-            prisma.models.Expert,
-            "prisma",
-            return_value=expert_manager,
-        ),
         patch(
-            "backend.copilot.tools.workspace_files.work_items.get_active_work_for_session",
-            new=AsyncMock(return_value=active_work),
+            "backend.copilot.tools.workspace_files.experts_db",
+            return_value=SimpleNamespace(
+                get_expert=AsyncMock(return_value=SimpleNamespace(name="Nova")),
+                get_active_work_for_session=AsyncMock(return_value=active_work),
+            ),
         ),
     ):
         metadata = await _workspace_artifact_metadata(

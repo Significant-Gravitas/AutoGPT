@@ -6,7 +6,8 @@ from uuid import uuid4
 import prisma.enums
 import prisma.models
 from prisma import Prisma
-from pydantic import TypeAdapter
+from prisma.errors import UniqueViolationError
+from pydantic import BaseModel, TypeAdapter
 
 from backend.api.features.experts.models import (
     ExpertWorkArtifact,
@@ -15,6 +16,9 @@ from backend.api.features.experts.models import (
     ExpertWorkItem,
     ExpertWorkStatus,
 )
+from backend.copilot import db as chat_db
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+from backend.data.db import transaction
 from backend.util.json import SafeJson
 
 _TERMINAL_STATUSES = {
@@ -41,6 +45,118 @@ _CONFIDENCE_TO_DB = {
 _DB_TO_CONFIDENCE = {value: key for key, value in _CONFIDENCE_TO_DB.items()}
 _CRITERIA_ADAPTER = TypeAdapter(list[ExpertWorkCriterion])
 _ARTIFACT_ADAPTER = TypeAdapter(list[ExpertWorkArtifact])
+
+
+class DelegationPersistenceRecord(BaseModel):
+    session: ChatSessionInfo
+    work_item: ExpertWorkItem
+    created: bool
+
+
+async def persist_delegation_attempt(
+    *,
+    session_id: str,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    metadata: ChatSessionMetadata,
+    expert_id: str,
+    manager_session_id: str,
+    project_phase: str,
+    task_title: str,
+    expected_deliverable: str,
+    deliverable_mode: Literal["message", "workspace_files"],
+    success_criteria: list[ExpertWorkCriterion],
+    dependencies: list[str],
+    source_artifacts: list[ExpertWorkArtifact],
+    constraints: list[str],
+    approval_boundaries: list[str],
+    estimate_minutes: int | None,
+    manager_wait_expires_at: datetime | None,
+    work_item_id: str,
+    create_session: bool,
+) -> DelegationPersistenceRecord:
+    """Atomically persist a delegated session and its work item.
+
+    This function is exposed by DatabaseManager so Prisma-less Copilot workers
+    never open a transaction on their disconnected process-local client.
+    """
+    try:
+        if create_session:
+            async with transaction() as tx:
+                persisted = await chat_db.create_chat_session_in_transaction(
+                    tx,
+                    session_id,
+                    user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                    metadata=metadata,
+                    expert_id=expert_id,
+                )
+                item = await create_work_item(
+                    user_id=user_id,
+                    expert_id=expert_id,
+                    manager_session_id=manager_session_id,
+                    delegated_session_id=session_id,
+                    project_phase=project_phase,
+                    task_title=task_title,
+                    expected_deliverable=expected_deliverable,
+                    deliverable_mode=deliverable_mode,
+                    success_criteria=success_criteria,
+                    dependencies=dependencies,
+                    source_artifacts=source_artifacts,
+                    constraints=constraints,
+                    approval_boundaries=approval_boundaries,
+                    estimate_minutes=estimate_minutes,
+                    manager_wait_expires_at=manager_wait_expires_at,
+                    work_item_id=work_item_id,
+                    client=tx,
+                )
+        else:
+            persisted = await chat_db.get_chat_session_metadata(session_id)
+            if persisted is None or persisted.user_id != user_id:
+                raise ValueError("Delegated session is unavailable")
+            item = await create_work_item(
+                user_id=user_id,
+                expert_id=expert_id,
+                manager_session_id=manager_session_id,
+                delegated_session_id=session_id,
+                project_phase=project_phase,
+                task_title=task_title,
+                expected_deliverable=expected_deliverable,
+                deliverable_mode=deliverable_mode,
+                success_criteria=success_criteria,
+                dependencies=dependencies,
+                source_artifacts=source_artifacts,
+                constraints=constraints,
+                approval_boundaries=approval_boundaries,
+                estimate_minutes=estimate_minutes,
+                manager_wait_expires_at=manager_wait_expires_at,
+                work_item_id=work_item_id,
+            )
+        return DelegationPersistenceRecord(
+            session=persisted,
+            work_item=item,
+            created=True,
+        )
+    except UniqueViolationError:
+        persisted = await chat_db.get_chat_session_metadata(session_id)
+        item = await get_work_item(work_item_id, user_id)
+        if persisted is None or item is None:
+            raise RuntimeError("A delegation retry found incomplete persistence state")
+        if (
+            persisted.user_id != user_id
+            or persisted.expert_id != expert_id
+            or item.manager_session_id != manager_session_id
+            or item.delegated_session_id != session_id
+            or item.expert_id != expert_id
+        ):
+            raise RuntimeError("A delegation retry did not match its assignment")
+        return DelegationPersistenceRecord(
+            session=persisted,
+            work_item=item,
+            created=False,
+        )
 
 
 async def create_work_item(

@@ -22,7 +22,6 @@ import logging
 import time
 from typing import Any, Literal
 
-from backend.api.features.experts import work_items
 from backend.api.features.experts.models import ExpertWorkArtifact, ExpertWorkStatus
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
@@ -252,7 +251,7 @@ class GetSubSessionResultTool(BaseTool):
         )
         if delegate is not None:
             work_item = (
-                await work_items.get_latest_work_for_manager(
+                await experts_db().get_latest_work_for_manager(
                     user_id=user_id,
                     delegated_session_id=inner_session_id,
                     manager_session_id=session.session_id,
@@ -283,7 +282,7 @@ class GetSubSessionResultTool(BaseTool):
                     status = "partial"
                 else:
                     status = "failed"
-                await work_items.record_delegation_outcome(
+                await experts_db().record_delegation_outcome(
                     work_item_id=work_item.id,
                     user_id=user_id,
                     status=status,

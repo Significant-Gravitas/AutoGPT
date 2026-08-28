@@ -35,7 +35,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from backend.api.features.experts import work_items
 from backend.api.features.experts.models import (
     Expert,
     ExpertWorkArtifact,
@@ -64,6 +63,7 @@ from .expert_delegation import (
     unknown_target_message,
 )
 from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
+from .request_manager_handoff import RequestManagerHandoffTool
 from .run_sub_session import MAX_SUB_SESSION_WAIT_SECONDS, list_sub_workspace_files
 
 logger = logging.getLogger(__name__)
@@ -315,9 +315,25 @@ class DelegateToExpertTool(BaseTool):
                 create_session=not delegated_session_id.strip(),
             )
         except DelegationPersistenceError:
+            if session.expert_id:
+                return await self._route_persistence_failure(
+                    user_id=user_id,
+                    session=session,
+                    target=target,
+                    prompt=prompt,
+                    retryable=False,
+                )
             return self._persistence_error(session, retryable=False)
         except Exception:
             logger.warning("Could not persist delegated work", exc_info=True)
+            if session.expert_id:
+                return await self._route_persistence_failure(
+                    user_id=user_id,
+                    session=session,
+                    target=target,
+                    prompt=prompt,
+                    retryable=True,
+                )
             return self._persistence_error(session, retryable=True)
 
         expert_info = DelegatedExpertInfo(
@@ -334,7 +350,7 @@ class DelegateToExpertTool(BaseTool):
                 parent_session_id=session.session_id,
             )
 
-        await work_items.mark_work_started(work_item.id, user_id)
+        await experts_db().mark_work_started(work_item.id, user_id)
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session.session_id,
@@ -392,11 +408,33 @@ class DelegateToExpertTool(BaseTool):
                 else "The assignment record is inconsistent. Do not retry the same "
                 "request; start a fresh task phase."
             ),
-            details={
-                "code": "DELEGATION_PERSISTENCE_FAILED",
-                "retryable": retryable,
-            },
             session_id=session.session_id,
+        )
+
+    async def _route_persistence_failure(
+        self,
+        *,
+        user_id: str,
+        session: ChatSession,
+        target: Expert,
+        prompt: str,
+        retryable: bool,
+    ) -> ToolResponseBase:
+        return await RequestManagerHandoffTool()._execute(
+            user_id,
+            session,
+            task=prompt,
+            reason=(
+                f"The handoff to {target.name} could not be recorded safely. "
+                "AutoPilot must keep ownership and choose the next safe route."
+            ),
+            attempts=[
+                (
+                    f"Tried to assign the task to {target.name}; the assignment "
+                    f"service was {'temporarily unavailable' if retryable else 'inconsistent'}."
+                )
+            ],
+            recommended_expert=target.name,
         )
 
     async def _load_delegate_target(
@@ -655,7 +693,7 @@ async def _record_work_outcome(
         status = "partial"
     else:
         status = "failed"
-    await work_items.record_delegation_outcome(
+    await experts_db().record_delegation_outcome(
         work_item_id=work_item_id,
         user_id=user_id,
         status=status,

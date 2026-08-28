@@ -31,7 +31,6 @@ from backend.api.features.experts.models import (
     ExpertLearnedNote,
     ProjectContext,
 )
-from backend.api.features.experts.project_context import get_project_context_for_session
 from backend.data.db_accessors import expert_learned_notes_db, experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -247,7 +246,7 @@ async def _project_context_block(
     user_id: str, session_id: str, expert_id: str | None
 ) -> str:
     try:
-        context = await get_project_context_for_session(
+        context = await experts_db().get_project_context_for_session(
             user_id=user_id,
             session_id=session_id,
             expert_id=expert_id,

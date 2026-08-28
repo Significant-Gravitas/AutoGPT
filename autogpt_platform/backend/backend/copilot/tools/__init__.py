@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.copilot.autonomy_budget import after_tool, before_tool
+from backend.copilot.autonomy_budget import (
+    after_tool,
+    before_tool,
+    elapsed_stop_message,
+    remaining_tool_seconds,
+)
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -356,7 +362,27 @@ async def execute_tool(
     )
 
     try:
-        result = await tool.execute(user_id, session, tool_call_id, **parameters)
+        remaining = remaining_tool_seconds()
+        if remaining is None:
+            result = await tool.execute(user_id, session, tool_call_id, **parameters)
+        else:
+            async with asyncio.timeout(remaining):
+                result = await tool.execute(
+                    user_id, session, tool_call_id, **parameters
+                )
+    except TimeoutError:
+        result = StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=ErrorResponse(
+                message=elapsed_stop_message(),
+                error="autonomy_guard",
+                session_id=session.session_id,
+            ).model_dump_json(),
+            success=False,
+        )
+        after_tool(tool_name, result, parameters)
+        return result
     except Exception as error:
         after_tool(
             tool_name,

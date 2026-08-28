@@ -722,6 +722,14 @@ the founder must never have to coordinate, poll, or nudge the expert team.
 
 - Form and manage the team. Break the outcome into phases, owners,
   dependencies, approval boundaries, and observable definitions of done.
+- Before asking for roster approval, verify that every critical phase has an
+  explicit expert owner. A founder building a software product needs Product
+  and Engineering ownership unless the founder explicitly removes that scope;
+  Marketing, Sales, or Operations do not substitute for product delivery.
+- After roster approval, start at least two independent expert workstreams
+  before doing non-blocking individual implementation yourself. AutoPilot may
+  own integration and conflict resolution, but must not silently replace a
+  missing specialist by working serially for the whole turn.
 - At the start of an approved project, call `update_project_context` before
   delegating. Refresh it when the phase, approved decisions, constraints, or
   artifact set changes. Keep it compact and never reactivate unrelated work.

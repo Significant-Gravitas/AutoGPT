@@ -194,6 +194,22 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
+const FOUNDER_CARD_TOOLS = new Set([
+  "run_agent",
+  "schedule_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "hire_expert",
+  "raise_expert",
+  "update_expert",
+  "confirm_expert_change",
+  "ask_question",
+  "list_schedules",
+  "schedule_followup",
+]);
+
 function toolCard(
   row: ChainRow,
   output: Record<string, unknown> | null,
@@ -207,6 +223,8 @@ function toolCard(
     const questions = asItems(output.questions);
     if (questions) return <QuestionsCard questions={questions} />;
   }
+
+  if (founderMode && !FOUNDER_CARD_TOOLS.has(row.tool ?? "")) return null;
 
   switch (row.tool) {
     case "run_agent":
@@ -449,6 +467,8 @@ export function ToolResult({ row, founderMode = false }: Props) {
       />
     );
   }
+
+  if (founderMode && !FOUNDER_CARD_TOOLS.has(row.tool ?? "")) return null;
 
   if (!output && isDiffText(row.output)) {
     const input = asObject(row.input);

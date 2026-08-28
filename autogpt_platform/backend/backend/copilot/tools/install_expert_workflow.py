@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from backend.api.features.experts import workflow_state
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
@@ -212,7 +211,7 @@ class InstallExpertWorkflowTool(BaseTool):
             )
         validation = None
         if library_source:
-            validation = await workflow_state.get_passed_workflow_validation(
+            validation = await experts_db().get_passed_workflow_validation(
                 user_id=user_id,
                 library_agent_id=library_source,
                 delivery_target=(

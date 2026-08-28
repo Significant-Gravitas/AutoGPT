@@ -139,7 +139,7 @@ export function ToolChain({
   // Auto-open only while streaming; once the chain finishes (or on reload)
   // it collapses back to the heading, leaving just the action rows on
   // screen. A manual toggle overrides either direction and sticks.
-  const open = manualExpanded ?? isStreaming;
+  const open = manualExpanded ?? (isStreaming && !founderMode);
   const windowMode = isStreaming && !expanded && !hasRequiredAction;
   // Action-required cards (credential setup etc.) stay on screen by default:
   // a chain that has collapsed on its own still shows its action rows. An

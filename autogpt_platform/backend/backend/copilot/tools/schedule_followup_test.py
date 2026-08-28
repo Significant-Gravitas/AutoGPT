@@ -435,6 +435,33 @@ async def test_cron_schedules_recurring(tool, session):
     assert call_kwargs["user_timezone"] == "UTC"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+async def test_flagged_recurring_work_requires_deterministic_workflow(
+    tool, session, expert_id
+):
+    session.expert_id = expert_id
+    mock_client = AsyncMock()
+
+    with (
+        patch(
+            f"{_TOOL_PATH}.is_feature_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="weekly content",
+            cron="0 9 * * 1",
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "expert_workflow_required"
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # COPILOT_SCHEDULED_FOLLOWUPS LaunchDarkly kill-switch
 # ---------------------------------------------------------------------------

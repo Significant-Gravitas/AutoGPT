@@ -3,10 +3,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from backend.api.features.experts import project_context
 from backend.api.features.experts.models import ProjectContextArtifact
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import experts_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
@@ -114,9 +114,8 @@ class UpdateProjectContextTool(BaseTool):
                 session,
             )
 
-        existing = await project_context.get_manager_project_context(
-            user_id, session.session_id
-        )
+        db = experts_db()
+        existing = await db.get_manager_project_context(user_id, session.session_id)
         resolved_title = _text(title, 160) if title is not None else None
         if not resolved_title and existing is None:
             return self._error(
@@ -130,7 +129,7 @@ class UpdateProjectContextTool(BaseTool):
                 if artifacts is not None
                 else (existing.artifacts if existing else [])
             )
-            context = await project_context.upsert_project_context(
+            context = await db.upsert_project_context(
                 user_id=user_id,
                 manager_session_id=session.session_id,
                 title=final_title,

@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, as_utc
-from backend.executor.scheduler import GraphExecutionJobInfo
+from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
 from .models import HomeExpert
 
@@ -20,7 +20,8 @@ def to_home_expert(expert: Expert) -> HomeExpert:
 
 
 def experts_by_schedule(
-    experts: list[Expert], schedules: list[GraphExecutionJobInfo]
+    experts: list[Expert],
+    schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
 ) -> dict[str, Expert]:
     """Map job id to owning expert.
 

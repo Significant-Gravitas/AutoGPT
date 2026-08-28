@@ -30,6 +30,18 @@ describe("founderSafeText", () => {
     );
   });
 
+  it("turns infrastructure failures into founder-safe language", () => {
+    const safe = founderSafeText(
+      "<!-- internal --> Client is not connected to the query engine in /root/app; DELEGATION_PERSISTENCE_FAILED from EmailGeneratorBlock",
+      "Safe update",
+    );
+
+    expect(safe).toContain("the assignment service is unavailable");
+    expect(safe).toContain("internal service issue");
+    expect(safe).toContain("workflow step");
+    expect(safe).not.toMatch(/query engine|\/root|DELEGATION|GeneratorBlock/);
+  });
+
   it("shows only the public artifact name", () => {
     expect(founderSafeArtifactName("/sessions/secret/launch-plan.md")).toBe(
       "launch-plan.md",

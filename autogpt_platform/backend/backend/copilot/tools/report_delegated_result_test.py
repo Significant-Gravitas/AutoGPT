@@ -63,24 +63,19 @@ def dependencies(monkeypatch):
         "backend.copilot.tools.report_delegated_result.is_feature_enabled", enabled
     )
     monkeypatch.setattr(
-        "backend.copilot.tools.report_delegated_result.work_items.get_work_item",
-        get_item,
-    )
-    monkeypatch.setattr(
-        "backend.copilot.tools.report_delegated_result.work_items.report_work_item",
-        report,
-    )
-    monkeypatch.setattr(
-        "backend.copilot.tools.report_delegated_result.work_items.should_enqueue_parent_wake",
-        should_wake,
-    )
-    monkeypatch.setattr(
         "backend.copilot.tools.report_delegated_result.run_copilot_turn_via_queue",
         queue,
     )
     monkeypatch.setattr(
         "backend.copilot.tools.report_delegated_result.list_sub_workspace_files",
         AsyncMock(return_value=[]),
+    )
+    db = MagicMock()
+    db.get_work_item = get_item
+    db.report_work_item = report
+    db.should_enqueue_parent_wake = should_wake
+    monkeypatch.setattr(
+        "backend.copilot.tools.report_delegated_result.experts_db", lambda: db
     )
     return item, enabled, get_item, report, should_wake, queue
 

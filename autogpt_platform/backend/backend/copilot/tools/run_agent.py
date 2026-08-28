@@ -5,13 +5,18 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.experts import workflow_state
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
-from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.db_accessors import (
+    execution_db,
+    experts_db,
+    graph_db,
+    library_db,
+    user_db,
+)
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
@@ -116,7 +121,7 @@ async def _safe_record_workflow_run_start(
     if not await _expert_workflow_state_enabled(user_id):
         return
     try:
-        await workflow_state.record_workflow_run_start(
+        await experts_db().record_workflow_run_start(
             user_id=user_id,
             expert_id=session.expert_id,
             graph_id=graph.id,
@@ -151,7 +156,7 @@ async def _safe_record_workflow_result(
     serialized_failures: list[object] = [dict(failure) for failure in node_failures]
     try:
         if dry_run:
-            await workflow_state.record_workflow_validation(
+            await experts_db().record_workflow_validation(
                 user_id=user_id,
                 library_agent_id=library_agent_id,
                 graph_id=graph.id,
@@ -166,7 +171,7 @@ async def _safe_record_workflow_result(
                 outputs=outputs,
             )
         elif session.expert_id:
-            await workflow_state.finalize_workflow_run(
+            await experts_db().finalize_workflow_run(
                 user_id=user_id,
                 expert_id=session.expert_id,
                 graph_id=graph.id,

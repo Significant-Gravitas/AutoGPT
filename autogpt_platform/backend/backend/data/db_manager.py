@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import learned_notes_db as experts_learned_notes_db
+from backend.api.features.experts import project_context as experts_project_context
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.experts import work_items as experts_work_items
 from backend.api.features.experts import workflow_state as experts_workflow_state
 from backend.api.features.library.db import (
     add_store_agent_to_library,
@@ -540,6 +542,25 @@ class DatabaseManager(AppService):
     list_learned_notes = _(experts_learned_notes_db.list_learned_notes)
     promote_learned_notes = _(experts_learned_notes_db.promote_learned_notes)
     archive_notes_for_rules = _(experts_learned_notes_db.archive_notes_for_rules)
+    persist_delegation_attempt = _(experts_work_items.persist_delegation_attempt)
+    create_work_item = _(experts_work_items.create_work_item)
+    mark_work_started = _(experts_work_items.mark_work_started)
+    report_work_item = _(experts_work_items.report_work_item)
+    record_delegation_outcome = _(experts_work_items.record_delegation_outcome)
+    get_work_item = _(experts_work_items.get_work_item)
+    get_active_work_for_session = _(experts_work_items.get_active_work_for_session)
+    get_latest_work_for_manager = _(experts_work_items.get_latest_work_for_manager)
+    should_enqueue_parent_wake = _(experts_work_items.should_enqueue_parent_wake)
+    upsert_project_context = _(experts_project_context.upsert_project_context)
+    get_manager_project_context = _(experts_project_context.get_manager_project_context)
+    get_project_context_for_session = _(
+        experts_project_context.get_project_context_for_session
+    )
+    record_workflow_validation = _(experts_workflow_state.record_workflow_validation)
+    get_passed_workflow_validation = _(
+        experts_workflow_state.get_passed_workflow_validation
+    )
+    record_workflow_run_start = _(experts_workflow_state.record_workflow_run_start)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -925,6 +946,21 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_learned_notes = d.list_learned_notes
     promote_learned_notes = d.promote_learned_notes
     archive_notes_for_rules = d.archive_notes_for_rules
+    persist_delegation_attempt = d.persist_delegation_attempt
+    create_work_item = d.create_work_item
+    mark_work_started = d.mark_work_started
+    report_work_item = d.report_work_item
+    record_delegation_outcome = d.record_delegation_outcome
+    get_work_item = d.get_work_item
+    get_active_work_for_session = d.get_active_work_for_session
+    get_latest_work_for_manager = d.get_latest_work_for_manager
+    should_enqueue_parent_wake = d.should_enqueue_parent_wake
+    upsert_project_context = d.upsert_project_context
+    get_manager_project_context = d.get_manager_project_context
+    get_project_context_for_session = d.get_project_context_for_session
+    record_workflow_validation = d.record_workflow_validation
+    get_passed_workflow_validation = d.get_passed_workflow_validation
+    record_workflow_run_start = d.record_workflow_run_start
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata

@@ -3,7 +3,6 @@ from typing import Any, Literal, cast
 
 from pydantic import TypeAdapter, ValidationError
 
-from backend.api.features.experts import work_items
 from backend.api.features.experts.models import (
     ExpertWorkArtifact,
     ExpertWorkConfidence,
@@ -11,6 +10,7 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
+from backend.data.db_accessors import experts_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
@@ -168,7 +168,8 @@ class ReportDelegatedResultTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        item = await work_items.get_work_item(work_item_id.strip(), user_id)
+        db = experts_db()
+        item = await db.get_work_item(work_item_id.strip(), user_id)
         if (
             item is None
             or item.expert_id != session.expert_id
@@ -200,7 +201,7 @@ class ReportDelegatedResultTool(BaseTool):
                     "The required files were not promoted to the shared workspace."
                 )
 
-        updated_item, changed = await work_items.report_work_item(
+        updated_item, changed = await db.report_work_item(
             work_item_id=item.id,
             user_id=user_id,
             delegated_session_id=session.session_id,
@@ -221,9 +222,7 @@ class ReportDelegatedResultTool(BaseTool):
 
         manager_notified = False
         if changed:
-            should_enqueue = await work_items.should_enqueue_parent_wake(
-                item.id, user_id
-            )
+            should_enqueue = await db.should_enqueue_parent_wake(item.id, user_id)
             manager_notified = True
             if should_enqueue:
                 await run_copilot_turn_via_queue(

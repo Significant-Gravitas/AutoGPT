@@ -7,9 +7,6 @@ import os
 import re
 from typing import Any, Optional
 
-import prisma.models
-
-from backend.api.features.experts import work_items
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
@@ -23,6 +20,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.db_accessors import experts_db
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
@@ -81,17 +79,13 @@ async def _workspace_artifact_metadata(
 
     metadata["owner_id"] = session.expert_id
     try:
-        expert = await prisma.models.Expert.prisma().find_first(
-            where={
-                "id": session.expert_id,
-                "ownerUserId": user_id,
-                "isTemplate": False,
-                "isArchived": False,
-            }
+        db = experts_db()
+        expert = await db.get_expert(
+            user_id, session.expert_id, include_workflows=False
         )
         if expert is not None:
             metadata["owner_name"] = expert.name
-        active_work = await work_items.get_active_work_for_session(
+        active_work = await db.get_active_work_for_session(
             user_id=user_id,
             delegated_session_id=session.session_id,
             expert_id=session.expert_id,

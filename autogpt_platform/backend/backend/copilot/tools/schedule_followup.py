@@ -37,6 +37,7 @@ from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
@@ -202,6 +203,22 @@ class ScheduleFollowupTool(BaseTool):
             return ErrorResponse(
                 message="Provide exactly one of `delay_seconds` or `cron`.",
                 error="invalid_trigger",
+                session_id=current_session_id,
+            )
+
+        if cron is not None and await is_feature_enabled(
+            Flag.HIRE_EXPERTS,
+            user_id,
+            default=False,
+        ):
+            return ErrorResponse(
+                message=(
+                    "Recurring team work must use a tested, installed expert "
+                    "workflow. Search the library first; if none fits, create, "
+                    "validate, safe-test, install, and schedule one. Use this "
+                    "tool only for one-shot recovery follow-ups."
+                ),
+                error="expert_workflow_required",
                 session_id=current_session_id,
             )
 

@@ -47,18 +47,6 @@ def mock_work_items(monkeypatch):
         "backend.copilot.tools.delegate_to_expert.persist_delegation_attempt",
         persist_delegation_attempt,
     )
-    monkeypatch.setattr(
-        "backend.copilot.tools.delegate_to_expert.work_items.mark_work_started",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "backend.copilot.tools.delegate_to_expert.work_items.record_delegation_outcome",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(
-        "backend.copilot.tools.get_sub_session_result.work_items.get_latest_work_for_manager",
-        AsyncMock(return_value=None),
-    )
     return created
 
 
@@ -117,6 +105,9 @@ def roster(monkeypatch):
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
     db.resolve_private_expert_tenancy = AsyncMock(return_value=("org-1", None))
+    db.mark_work_started = AsyncMock()
+    db.record_delegation_outcome = AsyncMock()
+    db.get_latest_work_for_manager = AsyncMock(return_value=None)
     for module in (
         "delegate_to_expert",
         "get_sub_session_result",
@@ -493,10 +484,7 @@ class TestDelegation:
         )
 
         assert isinstance(response, ErrorResponse)
-        assert response.details == {
-            "code": "DELEGATION_PERSISTENCE_FAILED",
-            "retryable": True,
-        }
+        assert response.details is None
         assert "database URL" not in response.model_dump_json()
         mock_turn.assert_not_awaited()
 

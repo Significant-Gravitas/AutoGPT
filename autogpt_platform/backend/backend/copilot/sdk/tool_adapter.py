@@ -20,6 +20,8 @@ from mcp.types import ToolAnnotations
 from backend.copilot.autonomy_budget import (
     after_tool,
     before_tool,
+    elapsed_stop_message,
+    remaining_tool_seconds,
     start_autonomy_budget,
 )
 from backend.copilot.context import (
@@ -816,7 +818,16 @@ def _make_truncating_wrapper(
                 after_tool(tool_name, error, original_args)
                 return error
         try:
-            result = await fn(args)
+            remaining = remaining_tool_seconds()
+            if remaining is None:
+                result = await fn(args)
+            else:
+                async with asyncio.timeout(remaining):
+                    result = await fn(args)
+        except TimeoutError:
+            error = _mcp_error(elapsed_stop_message())
+            after_tool(tool_name, error, original_args)
+            return error
         except Exception as error:
             after_tool(
                 tool_name,

@@ -53,7 +53,7 @@ def compose_home_dashboard(
         for schedule in schedules
         if isinstance(schedule, GraphExecutionJobInfo)
     ]
-    expert_by_schedule = experts_by_schedule(hired, graph_schedules)
+    expert_by_schedule = experts_by_schedule(hired, schedules)
     running_expert_ids = {
         execution.expert_id
         for execution in executions

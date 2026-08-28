@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
+from backend.copilot.autonomy_budget import FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.expert_context import (
@@ -21,6 +22,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.explicit_learning import capture_explicit_correction
 from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -66,6 +68,10 @@ _CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 # at least the pool worker thread isn't blocked forever.
 _FAIL_CLOSE_REDIS_TIMEOUT = 10.0
 _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS = 5.0
+_AUTONOMY_LIMIT_MESSAGE = (
+    "AutoPilot paused this turn at its time limit. Completed work is saved, "
+    "and the team can continue from the latest state."
+)
 
 
 # Module-level symbol preserved for backward-compat with callers that import
@@ -559,6 +565,7 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        autonomy_deadline: float | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -585,6 +592,21 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+
+            await capture_explicit_correction(
+                user_id=entry.user_id,
+                session=session,
+                message=entry.message if entry.is_user_message else None,
+            )
+
+            if entry.user_id and await is_feature_enabled(
+                Flag.HIRE_EXPERTS,
+                entry.user_id,
+                default=False,
+            ):
+                autonomy_deadline = (
+                    time.monotonic() + FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS
+                )
 
             if entry.llm_auth_provider == "codex":
                 from backend.integrations.codex.access import enforce_codex_access
@@ -714,7 +736,25 @@ class CoPilotProcessor:
             # FE shows escalating ``StreamStatus`` messages during long
             # silent gaps (deep thinking, slow tool execution, inter-tool
             # gaps) instead of looping the generic "Thinking…" phrases.
-            heartbeat_stream = wrap_stream_with_heartbeat(raw_stream)
+            heartbeat_schedule = None
+            if autonomy_deadline is not None:
+                heartbeat_schedule = [
+                    (10.0, "Working on it…"),
+                    (30.0, "Still working — complex requests can take a moment…"),
+                    (60.0, "This is taking longer than usual…"),
+                    (
+                        FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS - 30,
+                        "Wrapping up this turn and saving completed work…",
+                    ),
+                    (
+                        FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS,
+                        _AUTONOMY_LIMIT_MESSAGE,
+                    ),
+                ]
+            heartbeat_stream = wrap_stream_with_heartbeat(
+                raw_stream,
+                schedule=heartbeat_schedule,
+            )
             published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
@@ -738,6 +778,13 @@ class CoPilotProcessor:
                         break
 
                     current_time = time.monotonic()
+                    if (
+                        autonomy_deadline is not None
+                        and current_time >= autonomy_deadline
+                    ):
+                        log.warning("Flagged turn reached hard autonomy deadline")
+                        error_msg = _AUTONOMY_LIMIT_MESSAGE
+                        break
                     if current_time - last_refresh >= refresh_interval:
                         cluster_lock.refresh()
                         last_refresh = current_time

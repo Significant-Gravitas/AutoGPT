@@ -11,6 +11,7 @@ FLAGGED_AUTONOMY_MAX_TOOL_CALLS = 36
 FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS = 8 * 60
 FLAGGED_AUTONOMY_MAX_AGENT_ROUNDS = 36
 FLAGGED_AUTONOMY_MAX_UNCHANGED_RESULTS = 2
+FLAGGED_AUTONOMY_FINAL_RESPONSE_RESERVE_SECONDS = 30
 
 _NON_PROGRESS_TYPES = {
     "error",
@@ -60,6 +61,28 @@ def bounded_agent_rounds(configured: int, *, enabled: bool) -> int:
     if not enabled:
         return configured
     return min(configured, FLAGGED_AUTONOMY_MAX_AGENT_ROUNDS)
+
+
+def remaining_tool_seconds() -> float | None:
+    """Return the flagged turn's remaining tool time.
+
+    A short reserve is kept for the model to turn a timed-out tool into a
+    truthful Delivered/Blocked/Fallback/Next response.
+    """
+    state = _state.get()
+    if state is None:
+        return None
+    elapsed = time.monotonic() - state.started_at
+    return max(
+        0.0,
+        FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS
+        - FLAGGED_AUTONOMY_FINAL_RESPONSE_RESERVE_SECONDS
+        - elapsed,
+    )
+
+
+def elapsed_stop_message() -> str:
+    return _stopped("elapsed").message or "This turn reached its time limit."
 
 
 def before_tool(

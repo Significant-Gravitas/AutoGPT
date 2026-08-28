@@ -120,11 +120,13 @@ def compose_upcoming_tasks(
                 )
             )
         else:
+            expert = expert_by_schedule.get(schedule.id)
             upcoming.append(
                 HomeUpcomingTask(
                     id=schedule.id,
                     title=schedule.name,
                     kind="followup",
+                    expert=to_home_expert(expert) if expert else None,
                     next_run_time=next_run,
                 )
             )

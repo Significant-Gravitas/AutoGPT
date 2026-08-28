@@ -24949,7 +24949,9 @@
           "expert_change_applied",
           "expert_change_batch_applied",
           "expert_workflow_installed",
-          "team_roster"
+          "team_roster",
+          "project_context_updated",
+          "manager_handoff_requested"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
