@@ -18,10 +18,10 @@ injected text is sitting in the arguments the classifier would be reading.
 """
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 from prisma.enums import ReviewStatus
+from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -48,9 +48,10 @@ _UNRECORDABLE = (
 )
 
 
-@dataclass(frozen=True)
-class Decision:
+class Decision(BaseModel):
     """``allowed`` is the only field the caller may act on."""
+
+    model_config = ConfigDict(frozen=True)
 
     allowed: bool
     reason: str = ""
