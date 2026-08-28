@@ -737,6 +737,13 @@ class TestGetLibraryAgentById:
         assert result is not None
         assert result["graph_id"] == "agent-123"
         assert result["name"] == "Test Agent"
+        mock_db.get_library_agent_by_graph_id.assert_awaited_once_with(
+            "user-123",
+            "agent-123",
+            organization_id=None,
+            team_id_restriction=None,
+            exact_scope=True,
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_library_agent_id(self):
@@ -759,6 +766,13 @@ class TestGetLibraryAgentById:
         assert result is not None
         assert result["graph_id"] == "graph-456"
         assert result["name"] == "Library Agent"
+        mock_db.get_library_agent.assert_awaited_once_with(
+            "library-id-123",
+            "user-123",
+            organization_id=None,
+            team_id_restriction=None,
+            exact_scope=True,
+        )
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found_by_either_method(self):

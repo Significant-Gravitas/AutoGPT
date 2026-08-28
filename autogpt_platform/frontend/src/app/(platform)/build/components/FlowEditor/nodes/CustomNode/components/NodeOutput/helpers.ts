@@ -29,11 +29,18 @@ export const getExecutionData = (
   return result.output_data?.[pinName];
 };
 
-export const createOutputItems = (dataArray: unknown[]): Array<OutputItem> => {
+export const createOutputItems = (
+  dataArray: unknown[],
+  scope?: { organizationId: string | null; teamId: string | null },
+): Array<OutputItem> => {
   const items: Array<OutputItem> = [];
 
   dataArray.forEach((value, index) => {
     const metadata: OutputMetadata = {};
+    if (scope) {
+      metadata.organizationId = scope.organizationId;
+      metadata.teamId = scope.teamId;
+    }
 
     if (
       typeof value === "object" &&

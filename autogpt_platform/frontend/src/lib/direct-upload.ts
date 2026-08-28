@@ -1,5 +1,9 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { environment } from "@/services/environment";
+import {
+  ORG_HEADER_NAME,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/header-names";
 
 interface WorkspaceUploadResponse {
   file_id: string;
@@ -66,12 +70,19 @@ interface DirectUploadArgs {
   path: string;
   file: File;
   searchParams?: Record<string, string>;
+  scope?: UploadTenantScope;
+}
+
+export interface UploadTenantScope {
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 async function postFileToBackend({
   path,
   file,
   searchParams,
+  scope,
 }: DirectUploadArgs): Promise<Response> {
   const { token, error: tokenError } = await getWebSocketToken();
   if (tokenError || !token) {
@@ -87,10 +98,18 @@ async function postFileToBackend({
 
   const formData = new FormData();
   formData.append("file", file);
+  const tenantHeaders = scope
+    ? {
+        ...(scope.organizationId
+          ? { [ORG_HEADER_NAME]: scope.organizationId }
+          : {}),
+        [TEAM_HEADER_NAME]: scope.teamId ?? "",
+      }
+    : {};
 
   return fetch(url.toString(), {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...tenantHeaders },
     body: formData,
     // Guard against a stalled connection leaving the UI stuck "Uploading…".
     // Generous so large (up to 50MB) uploads on slow links aren't cut off.
@@ -126,6 +145,7 @@ async function readUploadError(res: Response): Promise<string> {
 export async function uploadFileDirect(
   file: File,
   sessionID?: string,
+  scope?: UploadTenantScope,
 ): Promise<WorkspaceUploadResponse> {
   const res = await postFileToBackend({
     path: "/api/workspace/files/upload",
@@ -134,6 +154,7 @@ export async function uploadFileDirect(
       overwrite: "true",
       ...(sessionID ? { session_id: sessionID } : {}),
     },
+    scope,
   });
   if (!res.ok) throw new Error(await readUploadError(res));
   return res.json();
@@ -143,10 +164,14 @@ export async function uploadFileDirect(
  * Uploads store submission media (agent thumbnails, profile avatars) directly
  * to the backend. Returns the public URL of the stored media.
  */
-export async function uploadSubmissionMediaDirect(file: File): Promise<string> {
+export async function uploadSubmissionMediaDirect(
+  file: File,
+  scope?: UploadTenantScope,
+): Promise<string> {
   const res = await postFileToBackend({
     path: "/api/store/submissions/media",
     file,
+    scope,
   });
   if (!res.ok) throw new Error(await readUploadError(res));
   // The endpoint returns the URL as a JSON string.

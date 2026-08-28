@@ -269,24 +269,53 @@ describe("TeamsSection", () => {
 
   it("joins an open non-default team from its kebab menu", async () => {
     const joinSpy = vi.fn();
+    let joined = false;
     mockOrg({
       teams: [DEFAULT_TEAM, { ...OPEN_TEAM, is_member: false }, PRIVATE_TEAM],
     });
     server.use(
+      getGetV2ListWorkspacesMockHandler(() => [
+        DEFAULT_TEAM,
+        {
+          ...OPEN_TEAM,
+          is_member: joined,
+          member_count: joined ? 5 : 4,
+        },
+        PRIVATE_TEAM,
+      ]),
+      http.get("*/api/orgs/:orgId/workspaces/team-open/members", () =>
+        joined
+          ? HttpResponse.json([
+              teamMember({ user_id: OWNER_USER_ID, name: "Jane" }),
+              teamMember({ user_id: "user-bob", name: "Bob" }),
+            ])
+          : HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+      ),
       getPostV2SelfJoinOpenWorkspaceMockHandler(() => {
         joinSpy();
+        joined = true;
         return OPEN_TEAM;
       }),
     );
     render(<OrganizationSettingsPage />);
 
     await showTeamsTab();
+    const row = await expandTeamMembers("Marketing");
+    expect(
+      await within(row).findByText("Join this team to see its members."),
+    ).toBeDefined();
     await openTeamMenu("Marketing");
     fireEvent.click(screen.getByRole("menuitem", { name: "Join" }));
 
     await waitFor(() => {
       expect(joinSpy).toHaveBeenCalledTimes(1);
     });
+    await waitFor(() => {
+      expect(
+        within(row).getAllByTestId("team-member-preview-row"),
+      ).toHaveLength(2);
+    });
+    expect(within(row).queryByTestId("team-members-hint")).toBeNull();
   });
 
   it("never offers a Join action on the auto-joined default team", async () => {
@@ -615,7 +644,7 @@ describe("TeamsSection", () => {
 
     expect(
       await within(row).findByText(
-        "Private — join this team to see its members.",
+        "Private — ask a team admin to add you to see its members.",
       ),
     ).toBeDefined();
     // A denied roster stays inline — no error toast or card.

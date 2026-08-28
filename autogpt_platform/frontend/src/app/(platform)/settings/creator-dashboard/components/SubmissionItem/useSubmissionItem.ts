@@ -12,7 +12,7 @@ interface Args {
   submission: StoreSubmission;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
-  onDelete: (submissionId: string) => Promise<void>;
+  onDelete: (submission: StoreSubmission) => Promise<void>;
   creatorUsername?: string;
 }
 
@@ -45,7 +45,7 @@ export function useSubmissionItem({
   async function handleConfirmDelete() {
     setIsDeleting(true);
     try {
-      await onDelete(submission.listing_version_id);
+      await onDelete(submission);
       setConfirmDeleteOpen(false);
     } catch (err) {
       Sentry.captureException(err);

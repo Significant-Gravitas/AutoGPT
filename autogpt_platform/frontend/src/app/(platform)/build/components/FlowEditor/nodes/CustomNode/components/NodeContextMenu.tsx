@@ -17,6 +17,8 @@ import {
   MoreVerticalIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 type Props = {
   nodeId: string;
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
+  const tenantScope = useBuilderTenantScope();
   const { deleteElements } = useReactFlow();
 
   function handleCopy() {
@@ -61,7 +64,15 @@ export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
         {subGraphID && (
           <>
             <SecondaryDropdownMenuItem
-              onClick={() => window.open(`/build?flowID=${subGraphID}`)}
+              onClick={() =>
+                window.open(
+                  getBuilderHref({
+                    graphId: subGraphID,
+                    organizationId: tenantScope.organizationId,
+                    teamId: tenantScope.teamId,
+                  }),
+                )
+              }
             >
               <Icon
                 icon={LinkSquare01Icon}

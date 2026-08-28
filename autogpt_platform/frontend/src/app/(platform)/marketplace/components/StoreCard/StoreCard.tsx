@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props {
   agentName: string;
@@ -70,6 +71,7 @@ export function StoreCard({
               src={agentImage}
               alt={`${agentName} preview image`}
               fill
+              unoptimized={shouldBypassImageOptimization(agentImage)}
               className="object-cover"
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}

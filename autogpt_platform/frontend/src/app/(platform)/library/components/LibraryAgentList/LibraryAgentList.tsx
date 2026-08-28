@@ -125,6 +125,7 @@ export function LibraryAgentList({
     deletingFolder,
     setDeletingFolder,
     handleAgentDrop,
+    handleFolderSelect,
     handleFolderDeleted,
   } = useLibraryAgentList({
     searchTerm,
@@ -187,7 +188,7 @@ export function LibraryAgentList({
           <div className="mb-4 flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onFolderSelect(null)}
+              onClick={() => handleFolderSelect(null)}
               className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900"
             >
               <Icon icon={ArrowLeft02Icon} className="h-4 w-4" />
@@ -251,7 +252,7 @@ export function LibraryAgentList({
                           color={folder.color ?? undefined}
                           icon={folder.icon ?? "📁"}
                           onAgentDrop={handleAgentDrop}
-                          onClick={() => onFolderSelect(folder.id)}
+                          onClick={() => handleFolderSelect(folder)}
                           onEdit={() => setEditingFolder(folder)}
                           onDelete={() => setDeletingFolder(folder)}
                         />
@@ -274,10 +275,7 @@ export function LibraryAgentList({
                     >
                       <LibraryAgentCard
                         agent={agent}
-                        statusInfo={getAgentStatus(
-                          agentStatusMap,
-                          agent.graph_id,
-                        )}
+                        statusInfo={getAgentStatus(agentStatusMap, agent)}
                       />
                     </motion.div>
                   ))}

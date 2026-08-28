@@ -36,6 +36,8 @@ interface EditAgentFormProps {
   submission: StoreSubmissionEditRequest & {
     store_listing_version_id: string | undefined;
     graph_id: string;
+    organization_id: string | null;
+    team_id: string | null;
   };
   onClose: () => void;
   onSuccess: (submission: StoreSubmission) => void;
@@ -246,6 +248,8 @@ export function EditAgentForm({
               <AccordionContent className="px-1 pb-4 pt-0">
                 <ThumbnailImages
                   agentId={submission.graph_id}
+                  organizationId={submission.organization_id}
+                  teamId={submission.team_id}
                   onImagesChange={handleImagesChange}
                   initialImages={Array.from(
                     new Set(submission.image_urls || []),

@@ -29,6 +29,7 @@ from backend.notifications.gist import build_gist, fallback_gist
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
+from backend.util.tenancy_urls import builder_path, library_agent_path
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[Briefing]")
 settings = Settings()
@@ -193,15 +194,33 @@ async def _highlights(
         authorization_scopes=authorization_scopes,
     )
     runs_by_graph = {agent.graph_id: agent.runs for agent in agents}
-    return [
-        BriefingHighlight(
-            agent=run.agent,
-            gist=await _gist_for(user_id, run, runs_by_graph.get(run.graph_id, 1)),
-            link_label="See the run",
-            url=f"{base_url}/library/agents/{run.graph_id}/runs/{run.execution_id}",
+    highlights: list[BriefingHighlight] = []
+    for run in runs:
+        if run.library_agent_id:
+            path = library_agent_path(
+                run.library_agent_id,
+                run.organization_id,
+                run.team_id,
+                active_tab="runs",
+                active_item=run.execution_id,
+            )
+        else:
+            path = builder_path(
+                run.graph_id,
+                run.graph_version,
+                run.organization_id,
+                run.team_id,
+                execution_id=run.execution_id,
+            )
+        highlights.append(
+            BriefingHighlight(
+                agent=run.agent,
+                gist=await _gist_for(user_id, run, runs_by_graph.get(run.graph_id, 1)),
+                link_label="See the run",
+                url=f"{base_url}{path}",
+            )
         )
-        for run in runs
-    ]
+    return highlights
 
 
 async def _gist_for(user_id: str, run: ScoredRun, agent_runs: int) -> str:

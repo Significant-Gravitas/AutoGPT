@@ -118,6 +118,7 @@ async def get_library_agent_by_id(
             agent_id,
             organization_id=organization_id,
             team_id_restriction=team_id,
+            exact_scope=True,
         )
         if agent:
             logger.debug(f"Found library agent by graph_id: {agent.name}")
@@ -140,6 +141,7 @@ async def get_library_agent_by_id(
             user_id,
             organization_id=organization_id,
             team_id_restriction=team_id,
+            exact_scope=True,
         )
         if agent:
             logger.debug(f"Found library agent by library_id: {agent.name}")
@@ -746,6 +748,7 @@ async def get_agent_as_json(
                 agent_id,
                 organization_id=organization_id,
                 team_id_restriction=team_id,
+                exact_scope=exact_scope,
             )
             if library_agent is None:
                 library_agent = await library_db().get_library_agent(
@@ -753,6 +756,7 @@ async def get_agent_as_json(
                     user_id,
                     organization_id=organization_id,
                     team_id_restriction=team_id,
+                    exact_scope=exact_scope,
                 )
             if exact_scope and (
                 library_agent.organization_id,

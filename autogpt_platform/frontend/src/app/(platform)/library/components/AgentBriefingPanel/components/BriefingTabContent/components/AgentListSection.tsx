@@ -6,7 +6,10 @@ import { useState } from "react";
 import { getAgentStatusLabel, MAX_VISIBLE } from "../helpers";
 import { EmptyMessage } from "./EmptyMessage";
 import { AgentStatusFilter } from "@/app/(platform)/library/types";
-import { useAgentStatusMap } from "@/app/(platform)/library/hooks/useAgentStatus";
+import {
+  getAgentStatus,
+  useAgentStatusMap,
+} from "@/app/(platform)/library/hooks/useAgentStatus";
 import { SitrepItem } from "@/app/(platform)/library/components/SitrepItem/SitrepItem";
 
 interface Props {
@@ -19,7 +22,7 @@ export function AgentListSection({ activeTab, agents }: Props) {
   const statusMap = useAgentStatusMap(agents);
 
   const filtered = agents.filter((agent) => {
-    const status = statusMap.get(agent.graph_id)?.status;
+    const status = getAgentStatus(statusMap, agent).status;
     if (activeTab === "listening") return status === "listening";
     if (activeTab === "scheduled") return status === "scheduled";
     if (activeTab === "idle") return status === "idle";
@@ -56,6 +59,8 @@ export function AgentListSection({ activeTab, agents }: Props) {
               priority: status,
               message: getAgentStatusLabel(activeTab, agent),
               status,
+              organizationId: agent.organization_id ?? null,
+              teamId: agent.team_id ?? null,
             }}
           />
         ))}

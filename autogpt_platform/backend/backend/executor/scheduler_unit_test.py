@@ -1152,6 +1152,8 @@ async def test_execute_graph_forwards_expert_id():
         cron="0 7 * * *",
         input_data={},
         input_credentials={},
+        organization_id="expert-org",
+        team_id="expert-team",
         expert_id="expert-1",
     )
     mock_add = AsyncMock(return_value=MagicMock(id="exec-1"))
@@ -1198,6 +1200,37 @@ async def test_execute_graph_checks_live_tenancy_through_rpc(
     stub_live_tenancy_rpc.has_live_resource_access.assert_awaited_once_with(
         "user-1", "org-1", "team-1", "execute"
     )
+    mock_add.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_legacy_graph_fails_closed_when_scope_is_ambiguous(
+    stub_live_tenancy_rpc,
+):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-legacy",
+        user_id="user-1",
+        graph_id="graph-in-team-a-and-b",
+        graph_version=1,
+        cron="0 7 * * *",
+        input_data={},
+        input_credentials={},
+    )
+    stub_live_tenancy_rpc.resolve_unique_library_agent_scope = AsyncMock(
+        return_value=None
+    )
+    mock_add = AsyncMock()
+
+    with patch(
+        f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution",
+        new=mock_add,
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    stub_live_tenancy_rpc.resolve_unique_library_agent_scope.assert_awaited_once_with(
+        "user-1", "graph-in-team-a-and-b", 1
+    )
+    stub_live_tenancy_rpc.has_live_resource_access.assert_not_awaited()
     mock_add.assert_not_awaited()
 
 
@@ -1678,6 +1711,27 @@ class TestScheduleOrgVisibility:
             expert_id=expert_id,
         )
 
+    def _copilot_info(
+        self,
+        *,
+        user_id,
+        organization_id=None,
+        team_id=None,
+        sid="c1",
+    ):
+        return CopilotTurnJobInfo(
+            id=sid,
+            name="follow-up",
+            next_run_time="2026-05-22T10:00:00+00:00",
+            schedule_id=sid,
+            user_id=user_id,
+            session_id="session-1",
+            message="check status",
+            cron="* * * * *",
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
     def _run(self, infos, **kwargs):
         from unittest.mock import patch
 
@@ -1722,6 +1776,25 @@ class TestScheduleOrgVisibility:
         )
         assert [r.schedule_id for r in visible] == ["team-x-job"]
         assert hidden == []
+
+    def test_copilot_followups_are_owner_only_inside_shared_team(self):
+        infos = [
+            self._copilot_info(
+                user_id="teammate",
+                organization_id="org-1",
+                team_id="team-x",
+                sid="private-followup",
+            )
+        ]
+
+        result = self._run(
+            infos,
+            user_id="me",
+            organization_id="org-1",
+            team_ids=["team-x"],
+        )
+
+        assert result == []
 
     def test_other_org_schedule_hidden(self):
         infos = [

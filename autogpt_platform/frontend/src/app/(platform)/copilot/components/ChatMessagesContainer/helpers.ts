@@ -215,6 +215,7 @@ export function filePartToArtifactRef(
    *  per-token pattern from ``lib/share/routes.ts`` so its file URLs
    *  match without loosening the default. */
   pattern: RegExp = WORKSPACE_FILE_PATTERN,
+  fileUrlBuilder?: (fileId: string) => string,
 ): ArtifactRef | null {
   if (!file.url) return null;
   const match = file.url.match(pattern);
@@ -223,7 +224,7 @@ export function filePartToArtifactRef(
     id: match[1],
     title: file.filename || "File",
     mimeType: file.mediaType || null,
-    sourceUrl: file.url,
+    sourceUrl: fileUrlBuilder?.(match[1]) ?? file.url,
     origin,
   };
 }
@@ -296,7 +297,12 @@ export function getMessageArtifacts(
   for (const part of message.parts) {
     if (part.type === "file") {
       const origin = message.role === "user" ? "user-upload" : "agent";
-      const artifact = filePartToArtifactRef(part, origin, options.filePattern);
+      const artifact = filePartToArtifactRef(
+        part,
+        origin,
+        options.filePattern,
+        options.fileUrlBuilder,
+      );
       if (artifact) {
         byId.set(artifact.id, artifact);
       }
@@ -345,6 +351,7 @@ export function getMostRecentArtifact(
           part,
           origin,
           options.filePattern,
+          options.fileUrlBuilder,
         );
         if (
           artifact &&

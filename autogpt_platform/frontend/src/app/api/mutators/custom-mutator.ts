@@ -10,6 +10,7 @@ import { getDatafastAttribution } from "@/services/analytics/datafast-attributio
 import { environment } from "@/services/environment";
 import {
   getOrgContextHeaders,
+  ORG_HEADER_NAME,
   TEAM_HEADER_NAME,
 } from "@/services/org-team/headers";
 import { transformDates } from "./date-transformer";
@@ -69,10 +70,16 @@ export const customMutator = async <
   // scope (X-Team-Id: "" sentinel) via Orval's request options. The empty
   // sentinel means "ignore the active-team context and create in org-home";
   // strip it here so an empty value never reaches the backend on any path.
-  const perRequestTeamId = (
-    requestOptions.headers as Record<string, string> | undefined
-  )?.[TEAM_HEADER_NAME];
+  const requestHeaders = requestOptions.headers as
+    | Record<string, string>
+    | undefined;
+  const perRequestOrgId = requestHeaders?.[ORG_HEADER_NAME];
+  const perRequestTeamId = requestHeaders?.[TEAM_HEADER_NAME];
+  const forcePersonalScope = perRequestOrgId === "";
   const forceOrgHome = perRequestTeamId === "";
+  if (forcePersonalScope) {
+    delete headers[ORG_HEADER_NAME];
+  }
   if (forceOrgHome) {
     delete headers[TEAM_HEADER_NAME];
   }
@@ -92,6 +99,11 @@ export const customMutator = async <
     // A per-request team choice wins over the store-derived context: an
     // explicit id pins that team; the org-home sentinel drops the team header
     // so the create lands in org-home even when a team is active in the nav.
+    if (forcePersonalScope) {
+      delete headers[ORG_HEADER_NAME];
+    } else if (perRequestOrgId) {
+      headers[ORG_HEADER_NAME] = perRequestOrgId;
+    }
     if (forceOrgHome) {
       delete headers[TEAM_HEADER_NAME];
     } else if (perRequestTeamId) {

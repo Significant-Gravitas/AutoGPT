@@ -31,6 +31,8 @@ import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog"
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ShareAgentDialog } from "../../ShareAgentDialog/ShareAgentDialog";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -53,8 +55,16 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
   const hasTeams =
     useOrgTeamStore((s) => s.teams.length > 0) && showOrgSettings;
 
-  const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
-  const { mutateAsync: forkAgent } = usePostV2ForkLibraryAgent();
+  const tenantRequest = getTenantRequestInit(
+    agent.organization_id ?? null,
+    agent.team_id ?? null,
+  );
+  const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent({
+    request: tenantRequest,
+  });
+  const { mutateAsync: forkAgent } = usePostV2ForkLibraryAgent({
+    request: tenantRequest,
+  });
   const { mutateAsync: bulkMoveAgents } = usePostV2BulkMoveAgents({
     mutation: {
       onSuccess: () => {
@@ -66,6 +76,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         });
       },
     },
+    request: tenantRequest,
   });
 
   async function handleDuplicateAgent() {
@@ -180,7 +191,12 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
             <>
               <DropdownMenuItem asChild>
                 <Link
-                  href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                  href={getBuilderHref({
+                    graphId: agent.graph_id,
+                    graphVersion: agent.graph_version,
+                    organizationId: agent.organization_id ?? null,
+                    teamId: agent.team_id ?? null,
+                  })}
                   target="_blank"
                   className="flex items-center gap-2"
                   data-testid="library-agent-card-open-in-builder-link"
@@ -293,6 +309,8 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
         agentId={agent.id}
         agentName={agent.name}
         currentFolderId={agent.folder_id}
+        organizationId={agent.organization_id ?? null}
+        teamId={agent.team_id ?? null}
         isOpen={showMoveDialog}
         setIsOpen={setShowMoveDialog}
       />

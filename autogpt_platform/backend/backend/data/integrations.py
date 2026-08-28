@@ -228,6 +228,31 @@ async def find_webhook_by_credentials_and_props_any_tenant(
     return Webhook.from_db(webhook) if webhook else None
 
 
+async def adopt_dangling_legacy_webhook(
+    webhook_id: str,
+    *,
+    user_id: str,
+    organization_id: str,
+    team_id: str | None,
+) -> Webhook | None:
+    """Atomically adopt an unattached pre-tenancy webhook into one tenant."""
+    updated = await IntegrationWebhook.prisma().update_many(
+        where={
+            "id": webhook_id,
+            "userId": user_id,
+            "organizationId": None,
+            "teamId": None,
+            "AgentNodes": {"none": {}},
+            "AgentPresets": {"none": {}},
+        },
+        data={"organizationId": organization_id, "teamId": team_id},
+    )
+    if updated != 1:
+        return None
+    webhook = await IntegrationWebhook.prisma().find_unique(where={"id": webhook_id})
+    return Webhook.from_db(webhook) if webhook else None
+
+
 async def find_webhook_by_graph_and_props(
     user_id: str,
     provider: str,

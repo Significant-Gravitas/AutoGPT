@@ -1,10 +1,17 @@
 import {
   useGetV1ListExecutionSchedulesForAUser,
   useListCopilotFollowupSchedules,
+  getGetV1ListExecutionSchedulesForAUserQueryKey,
+  getListCopilotFollowupSchedulesQueryKey,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
@@ -17,17 +24,38 @@ function nextRunMs(item: { next_run_time?: string | null }): number {
 }
 
 export function useSchedulesPanel() {
+  const organizationId = useOrgTeamStore((state) => state.activeOrgID);
+  const teamId = useOrgTeamStore((state) => state.activeTeamID);
+  const isReady = useOrgTeamStore((state) => state.isLoaded);
   // Followups (copilot_turn) — the scheduled-message side of the
   // feature.  Stored via ``schedule_followup`` MCP tool.
   const copilotQuery = useListCopilotFollowupSchedules({
-    query: { select: (res) => okData(res) ?? [] },
+    query: {
+      select: (res) => okData(res) ?? [],
+      enabled: isReady,
+      queryKey: getTeamScopedQueryKey(
+        getListCopilotFollowupSchedulesQueryKey(),
+        organizationId,
+        teamId,
+      ),
+    },
+    request: getTenantRequestInit(organizationId, teamId, isReady),
   });
   // Graph schedules — recurring agent runs created via the agent
   // builder.  Same scheduler, different ``kind`` discriminator.  This
   // page now unifies both so users see ALL their pending automated
   // work in one place (briefing pill, this list, single Delete flow).
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [] },
+    query: {
+      select: (res) => okData(res) ?? [],
+      enabled: isReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListExecutionSchedulesForAUserQueryKey(),
+        organizationId,
+        teamId,
+      ),
+    },
+    request: getTenantRequestInit(organizationId, teamId, isReady),
   });
 
   const copilotItems: ScheduleItem[] = (copilotQuery.data ?? []).map(

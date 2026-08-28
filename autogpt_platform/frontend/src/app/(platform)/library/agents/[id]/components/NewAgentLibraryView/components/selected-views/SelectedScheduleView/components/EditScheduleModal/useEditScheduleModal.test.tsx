@@ -47,10 +47,12 @@ afterEach(() => {
 
 describe("useEditScheduleModal", () => {
   test("successful PATCH invalidates ALL schedule queries (regression: previously only invalidated per-graph)", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({}),
-    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const invalidateSpy = vi.spyOn(
       invalidateSchedules,
       "invalidateAllScheduleQueries",
@@ -72,16 +74,18 @@ describe("useEditScheduleModal", () => {
       );
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/schedules/sched-1",
+      "/api/proxy/api/schedules/sched-1",
       expect.objectContaining({ method: "PATCH" }),
     );
   });
 
   test("failed PATCH surfaces destructive toast and does NOT invalidate", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ message: "Bad cron" }),
-    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "Bad cron" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const invalidateSpy = vi.spyOn(
       invalidateSchedules,
       "invalidateAllScheduleQueries",

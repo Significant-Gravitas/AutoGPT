@@ -39,6 +39,43 @@ async def test_list_keys_org_mode_is_own_exact_org(mock_key_client):
 
 
 @pytest.mark.asyncio
+async def test_list_keys_org_home_includes_only_member_teams(mock_key_client):
+    await api_key.list_user_api_keys(
+        "u-1", organization_id="org-1", team_ids=["team-a", "team-b"]
+    )
+
+    where = mock_key_client.find_many.call_args.kwargs["where"]
+    assert where == {
+        "userId": "u-1",
+        "organizationId": "org-1",
+        "OR": [
+            {"teamIdRestriction": None},
+            {"teamIdRestriction": {"in": ["team-a", "team-b"]}},
+        ],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("team_id", [None, "team-1"])
+async def test_list_keys_exact_scope_distinguishes_org_home_and_team(
+    mock_key_client, team_id: str | None
+):
+    await api_key.list_user_api_keys(
+        "u-1",
+        organization_id="org-1",
+        team_id_restriction=team_id,
+        exact_scope=True,
+    )
+
+    where = mock_key_client.find_many.call_args.kwargs["where"]
+    assert where == {
+        "userId": "u-1",
+        "organizationId": "org-1",
+        "teamIdRestriction": team_id,
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_key_org_mode_is_exact(mock_key_client):
     mock_key_client.find_first.return_value = None
 
@@ -48,6 +85,31 @@ async def test_get_key_org_mode_is_exact(mock_key_client):
 
     mock_key_client.find_first.assert_awaited_once_with(
         where={"id": "key-1", "userId": "u-1", "organizationId": "org-1"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_key_exact_org_home_excludes_team_key(mock_key_client):
+    mock_key_client.find_first.return_value = None
+
+    assert (
+        await api_key.get_api_key_by_id(
+            "key-1",
+            "u-1",
+            organization_id="org-1",
+            team_id_restriction=None,
+            exact_scope=True,
+        )
+        is None
+    )
+
+    mock_key_client.find_first.assert_awaited_once_with(
+        where={
+            "id": "key-1",
+            "userId": "u-1",
+            "organizationId": "org-1",
+            "teamIdRestriction": None,
+        }
     )
 
 

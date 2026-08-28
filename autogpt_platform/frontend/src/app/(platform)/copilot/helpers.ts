@@ -1,6 +1,10 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import { getOrgContextHeaders } from "@/services/org-team/headers";
+import {
+  ORG_HEADER_NAME,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/header-names";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -29,7 +33,14 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
  */
-export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
+export interface CopilotTenantScope {
+  organizationId: string | null;
+  teamId: string | null;
+}
+
+export async function getCopilotAuthHeaders(
+  scope?: CopilotTenantScope,
+): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
@@ -38,7 +49,14 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
-    ...getOrgContextHeaders(),
+    ...(scope
+      ? {
+          ...(scope.organizationId
+            ? { [ORG_HEADER_NAME]: scope.organizationId }
+            : {}),
+          [TEAM_HEADER_NAME]: scope.teamId ?? "",
+        }
+      : getOrgContextHeaders()),
   };
 }
 

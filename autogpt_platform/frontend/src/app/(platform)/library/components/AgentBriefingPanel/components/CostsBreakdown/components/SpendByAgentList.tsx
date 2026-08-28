@@ -7,6 +7,8 @@ import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
 import Link from "next/link";
 import { useState } from "react";
 import type { AgentLookupEntry } from "../helpers";
+import { getTenantEntityKey } from "@/services/org-team/identity";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface Props {
   rollups: UserAgentCostRollup[];
@@ -37,7 +39,12 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
       </div>
       <ul className="flex flex-col gap-4">
         {visible.map((rollup) => {
-          const agent = agentLookup.get(rollup.graph_id);
+          const rollupKey = getTenantEntityKey(
+            rollup.graph_id,
+            rollup.organization_id,
+            rollup.team_id,
+          );
+          const agent = agentLookup.get(rollupKey);
           const label = agent?.name ?? `Agent ${rollup.graph_id.slice(0, 8)}`;
           const share = totalCents > 0 ? rollup.cost_cents / totalCents : 0;
           const sharePct = Math.round(share * 100);
@@ -46,7 +53,13 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
             share > 0 && sharePct === 0 ? "<1%" : `${sharePct}%`;
           const avgPerRun =
             rollup.run_count > 0 ? rollup.cost_cents / rollup.run_count : 0;
-          const href = agent ? `/library/agents/${agent.libraryAgentId}` : null;
+          const href = agent
+            ? getLibraryAgentHref(
+                agent.libraryAgentId,
+                agent.organizationId,
+                agent.teamId,
+              )
+            : null;
 
           const row = (
             <div className="flex flex-col gap-1">
@@ -89,7 +102,7 @@ export function SpendByAgentList({ rollups, agentLookup, totalCents }: Props) {
           );
 
           return (
-            <li key={rollup.graph_id}>
+            <li key={rollupKey}>
               {href ? (
                 <Link
                   href={href}

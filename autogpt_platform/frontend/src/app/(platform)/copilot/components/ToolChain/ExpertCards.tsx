@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { CARD } from "./ResultCards";
 import { asObject, str } from "./resultHelpers";
 import { useCardResize } from "./useCardResize";
+import { getCopilotExpertHref } from "@/services/org-team/builder";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
 
 export const EXPERT_CHANGE_TOOLS = new Set([
   "hire_expert",
@@ -46,6 +48,7 @@ function failedWorkflows(output: Record<string, unknown>): string[] {
  *  ``confirm_expert_change`` actually created. Once they exist, the card
  *  offers the two things the user does next: adjust them or talk to them. */
 export function ExpertChangeCard({ output }: Props) {
+  const scope = useCopilotTenantScope();
   const [expanded, setExpanded] = useState(false);
   const detailsID = useId();
   const { contentRef, height } = useCardResize(expanded);
@@ -145,7 +148,11 @@ export function ExpertChangeCard({ output }: Props) {
                 Edit
               </Link>
               <Link
-                href={`/copilot?expertId=${id}`}
+                href={getCopilotExpertHref(
+                  id,
+                  str(expert, "organization_id") ?? scope.organizationId,
+                  str(expert, "team_id") ?? scope.teamId,
+                )}
                 className="inline-flex h-7 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white transition-colors hover:bg-zinc-700"
               >
                 <Icon icon={BubbleChatIcon} size={13} />

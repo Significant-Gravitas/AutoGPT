@@ -96,6 +96,8 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
           outputKey={activeRun.output_key}
           graphId={activeRun.graph_id}
           executionId={activeRun.execution_id}
+          organizationId={activeRun.organization_id ?? null}
+          teamId={activeRun.team_id ?? null}
           runLink={activeRun.link}
         />
       ) : null}

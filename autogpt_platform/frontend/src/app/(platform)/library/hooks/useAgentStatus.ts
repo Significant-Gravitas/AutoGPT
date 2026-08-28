@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  useGetV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -19,6 +22,12 @@ import {
   toEndTime,
   SEVENTY_TWO_HOURS_MS,
 } from "./executionHelpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { getTenantEntityKey } from "@/services/org-team/identity";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 function deriveHealth(
   status: AgentStatus,
@@ -99,8 +108,20 @@ function computeAgentStatus(
 export function useAgentStatusMap(
   agents: LibraryAgent[],
 ): Map<string, AgentStatusInfo> {
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: {
+      enabled: isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListAllExecutionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
   return useMemo(() => {
@@ -108,17 +129,27 @@ export function useAgentStatusMap(
     const execsByGraph = new Map<string, GraphExecutionMeta[]>();
 
     for (const exec of executions ?? []) {
-      const list = execsByGraph.get(exec.graph_id);
+      const executionKey = getTenantEntityKey(
+        exec.graph_id,
+        exec.organization_id,
+        exec.team_id,
+      );
+      const list = execsByGraph.get(executionKey);
       if (list) {
         list.push(exec);
       } else {
-        execsByGraph.set(exec.graph_id, [exec]);
+        execsByGraph.set(executionKey, [exec]);
       }
     }
 
     for (const agent of agents) {
-      const agentExecs = execsByGraph.get(agent.graph_id) ?? [];
-      map.set(agent.graph_id, computeAgentStatus(agent, agentExecs));
+      const agentKey = getTenantEntityKey(
+        agent.graph_id,
+        agent.organization_id,
+        agent.team_id,
+      );
+      const agentExecs = execsByGraph.get(agentKey) ?? [];
+      map.set(agentKey, computeAgentStatus(agent, agentExecs));
     }
 
     return map;
@@ -140,14 +171,30 @@ const DEFAULT_STATUS: AgentStatusInfo = {
 
 export function getAgentStatus(
   statusMap: Map<string, AgentStatusInfo>,
-  graphID: string,
+  agent: LibraryAgent,
 ): AgentStatusInfo {
-  return statusMap.get(graphID) ?? DEFAULT_STATUS;
+  return (
+    statusMap.get(
+      getTenantEntityKey(agent.graph_id, agent.organization_id, agent.team_id),
+    ) ?? DEFAULT_STATUS
+  );
 }
 
 export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: {
+      enabled: isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListAllExecutionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
   return useMemo(() => {
@@ -168,8 +215,13 @@ export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
     if (executions) {
       const cutoff = Date.now() - SEVENTY_TWO_HOURS_MS;
       for (const exec of executions) {
+        const executionKey = getTenantEntityKey(
+          exec.graph_id,
+          exec.organization_id,
+          exec.team_id,
+        );
         if (isActive(exec.status)) {
-          activeGraphIds.add(exec.graph_id);
+          activeGraphIds.add(executionKey);
         }
         const endedTs = exec.ended_at
           ? new Date(
@@ -179,21 +231,26 @@ export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
             ).getTime()
           : 0;
         if (isFailed(exec.status) && endedTs > cutoff) {
-          errorGraphIds.add(exec.graph_id);
+          errorGraphIds.add(executionKey);
         }
         if (
           exec.status === AgentExecutionStatus.COMPLETED &&
           endedTs > cutoff
         ) {
-          completedGraphIds.add(exec.graph_id);
+          completedGraphIds.add(executionKey);
         }
       }
     }
 
     for (const agent of agents) {
-      if (activeGraphIds.has(agent.graph_id)) {
+      const agentKey = getTenantEntityKey(
+        agent.graph_id,
+        agent.organization_id,
+        agent.team_id,
+      );
+      if (activeGraphIds.has(agentKey)) {
         counts.running += 1;
-      } else if (errorGraphIds.has(agent.graph_id)) {
+      } else if (errorGraphIds.has(agentKey)) {
         counts.error += 1;
       } else if (agent.has_external_trigger) {
         counts.listening += 1;
@@ -202,7 +259,7 @@ export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
       } else {
         counts.idle += 1;
       }
-      if (completedGraphIds.has(agent.graph_id)) {
+      if (completedGraphIds.has(agentKey)) {
         counts.completed += 1;
       }
     }

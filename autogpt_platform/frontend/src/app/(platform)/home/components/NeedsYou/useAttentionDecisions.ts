@@ -24,16 +24,18 @@ export function useAttentionDecisions() {
     if (!item.review) return;
     setPending(item.id, true);
     try {
-      const response = await processReviews(
-        [
-          {
+      const response = await processReviews([
+        {
+          item: {
             node_exec_id: item.review.node_exec_id,
             approved,
             auto_approve_future: false,
           },
-        ],
-        [item.review.graph_exec_id],
-      );
+          graphExecId: item.review.graph_exec_id,
+          organizationId: item.review.organization_id ?? null,
+          teamId: item.review.team_id ?? null,
+        },
+      ]);
       if (response.status !== 200 || response.data.failed_count > 0) {
         const message = response.status === 200 ? response.data.error : null;
         throw new Error(message || "The review could not be processed.");

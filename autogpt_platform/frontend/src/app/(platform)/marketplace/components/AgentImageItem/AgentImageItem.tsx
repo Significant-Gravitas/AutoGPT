@@ -10,6 +10,7 @@ import {
 import { useAgentImageItem } from "./useAgentImageItem";
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface AgentImageItemProps {
   image: string;
@@ -75,6 +76,7 @@ export function AgentImageItem({
               src={image}
               alt="Image"
               fill
+              unoptimized={shouldBypassImageOptimization(image)}
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="rounded-xl object-cover"
               onLoad={() => setImageLoaded(true)}

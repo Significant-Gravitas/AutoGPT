@@ -23,6 +23,7 @@ from prisma import Json
 from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
+    AgentPreset,
     AgentGraphExecution,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
@@ -1066,6 +1067,21 @@ async def _create_graph_execution_locked(
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    if preset_id:
+        preset = await AgentPreset.prisma().find_first(
+            where={
+                "id": preset_id,
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
+                "organizationId": organization_id,
+                "teamId": team_id,
+                "isDeleted": False,
+            }
+        )
+        if preset is None:
+            raise ValueError(f"Preset #{preset_id} is unavailable for this execution")
+
     # Defense in depth: attribution must never cross users, even if a
     # caller forgets its ownership check. Only costs a query on the rare
     # expert-attributed path.
@@ -1129,7 +1145,10 @@ async def _create_graph_execution_locked(
         await LibraryAgent.prisma().update_many(
             where={
                 "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
                 "userId": user_id,
+                "organizationId": organization_id,
+                "teamId": team_id,
                 "OR": [
                     {"lastRunAt": None},
                     {"lastRunAt": {"lt": run_time}},

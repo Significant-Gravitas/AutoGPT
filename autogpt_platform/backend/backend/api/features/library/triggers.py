@@ -128,6 +128,42 @@ async def _setup_triggered_preset_locked(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
 
+    if expert_id:
+        expert_scope = await _resolve_private_expert_tenancy(
+            user_id,
+            expert_id,
+            not_found_message=f"Expert #{expert_id} not found",
+        )
+        if organization_id is not None and expert_scope != (
+            organization_id,
+            team_id,
+        ):
+            raise NotFoundError(f"Expert #{expert_id} not found")
+        organization_id, team_id = expert_scope
+
+    # A Marketplace fallback returns the publisher's GraphModel. Tenant IDs
+    # alone cannot identify ownership for personal resources because both the
+    # publisher and consumer have a ``(None, None)`` scope. Require the exact
+    # consumer library wrapper whenever the graph is not caller-owned, even
+    # when those scalar scope values happen to match.
+    if graph.user_id != user_id or (graph.organization_id, graph.team_id) != (
+        organization_id,
+        team_id,
+    ):
+        scoped_library_agent = await db.get_library_agent_by_graph_id(
+            user_id,
+            graph.id,
+            graph.version,
+            organization_id=organization_id,
+            team_id_restriction=team_id,
+            exact_scope=True,
+        )
+        if scoped_library_agent is None or (
+            scoped_library_agent.organization_id,
+            scoped_library_agent.team_id,
+        ) != (organization_id, team_id):
+            raise NotFoundError(f"Graph #{graph_id} is not accessible (anymore)")
+
     # ``expert_id`` is the calling context's authoritative scope: a session
     # expert for expert-scoped copilot sessions, ``None`` for AutoPilot
     # sessions AND for the HTTP route (which resolves graph-match attribution
@@ -146,16 +182,6 @@ async def _setup_triggered_preset_locked(
         ),
     }
 
-    if expert_id:
-        organization_id, team_id = await _resolve_private_expert_tenancy(
-            user_id,
-            expert_id,
-            not_found_message=f"Expert #{expert_id} not found",
-        )
-    else:
-        if organization_id is None:
-            organization_id, team_id = graph.organization_id, graph.team_id
-
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
         trigger_block=trigger_node.block,
@@ -166,23 +192,27 @@ async def _setup_triggered_preset_locked(
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
-            is_active=True,
-        ),
-        webhook_id=new_webhook.id,
-        expert_id=expert_id,
-        organization_id=organization_id,
-        team_id=team_id,
-        enforce_scope=True,
-    )
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=trigger_config_with_credentials,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
+            webhook_id=new_webhook.id,
+            expert_id=expert_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            enforce_scope=True,
+        )
+    except Exception:
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(
@@ -284,7 +314,10 @@ async def _update_triggered_preset_locked(
                     not_found_message=f"Preset #{preset_id} not found",
                 )
             else:
-                organization_id, team_id = graph.organization_id, graph.team_id
+                organization_id, team_id = (
+                    current.organization_id,
+                    current.team_id,
+                )
             trigger_config_with_credentials = {
                 **inputs,
                 **(
@@ -308,32 +341,36 @@ async def _update_triggered_preset_locked(
                     f"Could not update trigger configuration: {feedback}"
                 )
 
-    updated = await db.update_preset(
-        user_id=user_id,
-        preset_id=preset_id,
-        inputs=inputs,
-        credentials=credentials,
-        name=name,
-        description=description,
-        is_active=is_active,
-        organization_id=organization_id,
-        team_id=team_id,
-        enforce_team_scope=enforce_team_scope,
-    )
-
-    if trigger_inputs_updated:
-        new_webhook_id = new_webhook.id if new_webhook else None
-        updated = await db.set_preset_webhook(
-            user_id,
-            preset_id,
-            new_webhook_id,
-            organization_id,
-            team_id,
-            enforce_team_scope,
+    try:
+        updated = await db.update_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=inputs,
+            credentials=credentials,
+            name=name,
+            description=description,
+            is_active=is_active,
+            organization_id=organization_id,
+            team_id=team_id,
+            enforce_team_scope=enforce_team_scope,
         )
-        # Clean up the old webhook if it's no longer referenced.
-        if current.webhook_id and current.webhook_id != new_webhook_id:
-            await _prune_dangling_webhook(user_id, current.webhook_id)
+
+        if trigger_inputs_updated:
+            new_webhook_id = new_webhook.id if new_webhook else None
+            updated = await db.set_preset_webhook(
+                user_id,
+                preset_id,
+                new_webhook_id,
+                organization_id,
+                team_id,
+                enforce_team_scope,
+            )
+            if current.webhook_id and current.webhook_id != new_webhook_id:
+                await _prune_dangling_webhook(user_id, current.webhook_id)
+    except Exception:
+        if new_webhook and new_webhook.id != current.webhook_id:
+            await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
     return updated
 

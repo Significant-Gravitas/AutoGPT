@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from typing import NamedTuple, TypedDict
-from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
@@ -23,6 +22,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
+from backend.util.tenancy_urls import copilot_path
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
 from .narrative import compose_narrative
@@ -102,11 +102,20 @@ def compose_briefing(
     for review in reviews[:_MAX_DECISION_ITEMS]:
         if review.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
             session_id = review.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
-            link = f"/copilot?sessionId={quote(session_id)}"
+            link = copilot_path(
+                session_id,
+                review.organization_id,
+                review.team_id,
+            )
         else:
             info = agent_info_by_graph_id.get(review.graph_id)
             link = (
-                run_link(info.library_agent_id if info else None, review.graph_exec_id)
+                run_link(
+                    info.library_agent_id if info else None,
+                    review.graph_exec_id,
+                    review.organization_id,
+                    review.team_id,
+                )
                 or _LIBRARY_LINK
             )
         # _enrich_pending_reviews already resolved expert attribution on the

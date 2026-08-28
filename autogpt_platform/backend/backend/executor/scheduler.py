@@ -200,6 +200,27 @@ async def _execute_graph(**kwargs):
     start_time = asyncio.get_event_loop().time()
     db = get_database_manager_async_client()
     try:
+        if not args.organization_id and args.team_id is None:
+            resolved_scope = (
+                await db.resolve_private_expert_tenancy(
+                    args.user_id,
+                    args.expert_id,
+                )
+                if args.expert_id is not None
+                else await db.resolve_unique_library_agent_scope(
+                    args.user_id,
+                    args.graph_id,
+                    args.graph_version,
+                )
+            )
+            if resolved_scope is None:
+                logger.warning(
+                    "Skipping legacy scheduled graph %s because its tenant "
+                    "is not uniquely attributable",
+                    args.graph_id,
+                )
+                return
+            args.organization_id, args.team_id = resolved_scope
         if not await db.has_live_resource_access(
             args.user_id,
             args.organization_id,
@@ -2029,9 +2050,29 @@ class Scheduler(AppService):
         expert_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         if expert_id is not None:
-            organization_id, team_id = run_async(
+            expert_scope = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
+            if organization_id is not None and expert_scope != (
+                organization_id,
+                team_id,
+            ):
+                raise ValueError(
+                    f"Expert #{expert_id} does not belong to the requested workspace"
+                )
+            organization_id, team_id = expert_scope
+
+        if not organization_id and team_id is None:
+            resolved_scope = run_async(
+                get_database_manager_async_client().resolve_unique_library_agent_scope(
+                    user_id,
+                    graph_id,
+                    graph_version,
+                )
+            )
+            if resolved_scope is None:
+                raise ValueError(f"Graph #{graph_id} has no unique schedule tenant")
+            organization_id, team_id = resolved_scope
 
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -2042,6 +2083,8 @@ class Scheduler(AppService):
                 graph_inputs=input_data,
                 graph_version=graph_version,
                 graph_credentials_inputs=input_credentials,
+                organization_id=organization_id,
+                team_id_restriction=team_id,
             )
         )
 
@@ -2356,7 +2399,7 @@ class Scheduler(AppService):
         the org/team visibility rules apply instead of strict ownership:
         own legacy untagged schedules + org-home schedules + schedules of
         teams in *team_ids* (resolved by the caller, who has async DB access). Expert
-        schedules remain owner-only for scoped calls. Trusted global callers
+        and Copilot-turn schedules remain owner-only for scoped calls. Trusted global callers
         that provide neither *user_id* nor *organization_id* receive all jobs.
 
         Paused jobs (``next_run_time is None``) are hidden by default, which
@@ -2375,6 +2418,12 @@ class Scheduler(AppService):
             if info is None:
                 continue
             if kind is not None and info.kind != kind:
+                continue
+            if (
+                isinstance(info, CopilotTurnJobInfo)
+                and user_id is not None
+                and info.user_id != user_id
+            ):
                 continue
             if info.expert_id is not None:
                 if user_id is not None and info.user_id != user_id:

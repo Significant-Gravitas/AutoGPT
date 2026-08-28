@@ -23,6 +23,11 @@ import { useState } from "react";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
+import { getBuilderHref } from "@/services/org-team/builder";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 type Props = {
   agent: LibraryAgent;
@@ -43,7 +48,13 @@ export function EmptyTasks({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingAgent, setIsDeletingAgent] = useState(false);
 
-  const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
+  const scopeRequest = getTenantRequestInit(
+    agent.organization_id,
+    agent.team_id,
+  );
+  const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent({
+    request: scopeRequest,
+  });
 
   async function handleDeleteAgent() {
     if (!agent.id) return;
@@ -54,7 +65,11 @@ export function EmptyTasks({
       await deleteAgent({ libraryAgentId: agent.id });
 
       await queryClient.refetchQueries({
-        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+        queryKey: getTeamScopedQueryKey(
+          getGetV2ListLibraryAgentsQueryKey(),
+          agent.organization_id,
+          agent.team_id,
+        ),
       });
 
       toast({ title: "Agent deleted" });
@@ -80,18 +95,19 @@ export function EmptyTasks({
         agent.graph_id,
         agent.graph_version,
         { for_export: true },
+        scopeRequest,
       );
       if (res.status === 200) {
         const filename = `${agent.name}_v${agent.graph_version}.json`;
-        exportAsJSONFile(res.data as any, filename);
+        exportAsJSONFile(res.data, filename);
         toast({ title: "Agent exported" });
       } else {
         toast({ title: "Failed to export agent", variant: "destructive" });
       }
-    } catch (e: any) {
+    } catch (error: unknown) {
       toast({
         title: "Failed to export agent",
-        description: e?.message,
+        description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       });
     }
@@ -181,7 +197,12 @@ export function EmptyTasks({
           <div className="mt-4 flex items-center gap-2">
             <Button variant="secondary" size="small" asChild>
               <Link
-                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                href={getBuilderHref({
+                  graphId: agent.graph_id,
+                  graphVersion: agent.graph_version,
+                  organizationId: agent.organization_id ?? null,
+                  teamId: agent.team_id ?? null,
+                })}
                 target="_blank"
               >
                 Edit agent

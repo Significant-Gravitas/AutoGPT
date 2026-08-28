@@ -8,13 +8,24 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { chatShareUrl } from "@/lib/share/routes";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 type Props = {
   sessionId: string;
+  organizationId: string | null;
+  teamId: string | null;
   open: boolean;
 };
 
-export function useShareChatDialog({ sessionId, open }: Props) {
+export function useShareChatDialog({
+  sessionId,
+  organizationId,
+  teamId,
+  open,
+}: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -36,8 +47,14 @@ export function useShareChatDialog({ sessionId, open }: Props) {
     useGetV2GetChatShareState(sessionId, {
       query: {
         enabled: open,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetChatShareStateQueryKey(sessionId),
+          organizationId,
+          teamId,
+        ),
         select: (res) => (res.status === 200 ? res.data : undefined),
       },
+      request: getTenantRequestInit(organizationId, teamId),
     });
 
   // Hydrate local state from the backend payload so the modal opens
@@ -54,10 +71,15 @@ export function useShareChatDialog({ sessionId, open }: Props) {
 
   const invalidateState = () =>
     queryClient.invalidateQueries({
-      queryKey: getGetV2GetChatShareStateQueryKey(sessionId),
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetChatShareStateQueryKey(sessionId),
+        organizationId,
+        teamId,
+      ),
     });
 
   const { mutate: enable, isPending: isEnabling } = usePostV2EnableChatSharing({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onSuccess: (res) => {
         if (res.status !== 200) {
@@ -89,6 +111,7 @@ export function useShareChatDialog({ sessionId, open }: Props) {
 
   const { mutate: disable, isPending: isDisabling } =
     useDeleteV2DisableChatSharing({
+      request: getTenantRequestInit(organizationId, teamId),
       mutation: {
         onSuccess: () => {
           setIsShared(false);

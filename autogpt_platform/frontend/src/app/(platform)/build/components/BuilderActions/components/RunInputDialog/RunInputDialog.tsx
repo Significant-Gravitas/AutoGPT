@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { Clock01Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 export const RunInputDialog = ({
   isOpen,
@@ -29,6 +30,7 @@ export const RunInputDialog = ({
   const hasInputs = useGraphStore((state) => state.hasInputs);
   const hasCredentials = useGraphStore((state) => state.hasCredentials);
   const inputSchema = useGraphStore((state) => state.inputSchema);
+  const tenantScope = useBuilderTenantScope();
 
   const {
     credentialFields,
@@ -111,6 +113,8 @@ export const RunInputDialog = ({
                       formContext={{
                         showHandles: false,
                         size: "large",
+                        organizationId: tenantScope.organizationId,
+                        teamId: tenantScope.teamId,
                       }}
                     />
                   </div>

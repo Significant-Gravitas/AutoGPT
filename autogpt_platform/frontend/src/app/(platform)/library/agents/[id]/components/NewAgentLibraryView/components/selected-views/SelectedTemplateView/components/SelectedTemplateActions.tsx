@@ -12,6 +12,10 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";
@@ -46,16 +50,21 @@ export function SelectedTemplateActions({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
 
   const deleteMutation = useDeleteV2DeleteAPreset({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onSuccess: async () => {
         toast({
           title: "Template deleted",
         });
-        const queryKey = getGetV2ListPresetsQueryKey({
-          graph_id: agent.graph_id,
-        });
+        const queryKey = getTeamScopedQueryKey(
+          getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+          organizationId,
+          teamId,
+        );
 
         queryClient.invalidateQueries({
           queryKey,

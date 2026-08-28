@@ -31,10 +31,10 @@ import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 export function NewAgentLibraryView() {
   const {
-    agentId,
     agent,
     ready,
     activeTemplate,
@@ -103,6 +103,8 @@ export function NewAgentLibraryView() {
         }}
         preSelectedAgentId={agent.graph_id}
         preSelectedAgentVersion={agent.graph_version}
+        preSelectedOrganizationId={agent.organization_id ?? null}
+        preSelectedTeamId={agent.team_id ?? null}
         onStateChange={(state) => {
           if (!state.isOpen) {
             setModalOpen(false);
@@ -204,7 +206,14 @@ export function NewAgentLibraryView() {
               <Breadcrumbs
                 items={[
                   { name: "My Library", link: "/library" },
-                  { name: agent.name, link: `/library/agents/${agentId}` },
+                  {
+                    name: agent.name,
+                    link: getLibraryAgentHref(
+                      agent.id,
+                      agent.organization_id ?? null,
+                      agent.team_id ?? null,
+                    ),
+                  },
                 ]}
               />
               <AgentSettingsModal agent={agent} />

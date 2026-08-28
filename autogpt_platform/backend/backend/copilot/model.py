@@ -1493,6 +1493,7 @@ async def get_or_create_builder_session(
         graph_id=graph_id,
         organization_id=organization_id,
         team_id_restriction=team_id,
+        exact_scope=True,
     )
     if library_agent is None or not _library_agent_matches_scope(
         library_agent, organization_id, team_id
@@ -1522,6 +1523,7 @@ async def get_or_create_builder_session(
                 graph_id=graph_id,
                 organization_id=organization_id,
                 team_id_restriction=team_id,
+                exact_scope=True,
             )
             if library_agent is None or not _library_agent_matches_scope(
                 library_agent, organization_id, team_id

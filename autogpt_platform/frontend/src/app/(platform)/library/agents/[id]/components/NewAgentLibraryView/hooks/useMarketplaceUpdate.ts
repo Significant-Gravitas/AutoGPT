@@ -1,6 +1,7 @@
 import {
   useGetV2GetSpecificAgent,
   useGetV2ListMySubmissions,
+  getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import {
   usePatchV2UpdateLibraryAgent,
@@ -14,6 +15,10 @@ import { okData } from "@/app/api/helpers";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";
 import { useState } from "react";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 interface UseMarketplaceUpdateProps {
   agent: LibraryAgent | null | undefined;
@@ -24,6 +29,9 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const organizationId = agent?.organization_id ?? null;
+  const teamId = agent?.team_id ?? null;
+  const submissionParams = { page: 1, page_size: 50 };
 
   // Get marketplace data if agent has marketplace listing
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
@@ -42,15 +50,18 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
 
   // Get user's submissions - only fetch if user is the creator
   const { data: submissionsData, isLoading: isSubmissionsLoading } =
-    useGetV2ListMySubmissions(
-      { page: 1, page_size: 50 },
-      {
-        query: {
-          // Only fetch if user is the creator
-          enabled: !!(user?.id && agent?.can_access_graph),
-        },
+    useGetV2ListMySubmissions(submissionParams, {
+      query: {
+        // Only fetch if user is the creator
+        enabled: !!(user?.id && agent?.can_access_graph),
+        queryKey: getTeamScopedQueryKey(
+          getGetV2ListMySubmissionsQueryKey(submissionParams),
+          organizationId,
+          teamId,
+        ),
       },
-    );
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   const updateToLatestMutation = usePatchV2UpdateLibraryAgent({
     mutation: {
@@ -70,11 +81,16 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
         // Invalidate to get the updated agent data from the server
         if (agent?.id) {
           queryClient.invalidateQueries({
-            queryKey: getGetV2GetLibraryAgentQueryKey(agent.id),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2GetLibraryAgentQueryKey(agent.id),
+              organizationId,
+              teamId,
+            ),
           });
         }
       },
     },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   // Check if marketplace has a newer version than user's current version
@@ -95,7 +111,10 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     const submissionsResponse = okData(submissionsData) as any;
     const agentSubmissions =
       submissionsResponse?.submissions?.filter(
-        (submission: StoreSubmission) => submission.graph_id === agent.graph_id,
+        (submission: StoreSubmission) =>
+          submission.graph_id === agent.graph_id &&
+          (submission.organization_id ?? null) === organizationId &&
+          (submission.team_id ?? null) === teamId,
       ) || [];
 
     const highestSubmittedVersion =

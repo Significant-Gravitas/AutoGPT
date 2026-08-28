@@ -71,6 +71,8 @@ def _configure_member_removal_mocks(mocker, prisma):
         prisma.chatsession,
         prisma.agentgraphexecution,
         prisma.expert,
+        prisma.userworkspacefile,
+        prisma.userworkspacefolder,
     ):
         model.count = AsyncMock(return_value=0)
     prisma.user.find_unique = AsyncMock(
@@ -123,6 +125,8 @@ def _configure_team_removal_mocks(mocker, prisma):
         prisma.chatsession,
         prisma.agentgraphexecution,
         prisma.expert,
+        prisma.userworkspacefile,
+        prisma.userworkspacefolder,
     ):
         model.count = AsyncMock(return_value=0)
     prisma.teammember.update = AsyncMock()
@@ -2972,6 +2976,38 @@ class TestSelfRemovalPrevention:
         with pytest.raises(NotFoundError):
             await remove_org_member(ORG_ID, "ghost", requesting_user_id=USER_ID)
 
+    @pytest.mark.parametrize("resource", ["userworkspacefile", "userworkspacefolder"])
+    @pytest.mark.asyncio
+    async def test_remove_member_with_workspace_storage_is_blocked_and_restored(
+        self, resource
+    ):
+        from backend.api.features.orgs.db import remove_org_member
+
+        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        self.prisma.orgmember.count = AsyncMock(return_value=1)
+        self.prisma.organization.find_first = AsyncMock(return_value=_make_org())
+        getattr(self.prisma, resource).count = AsyncMock(return_value=1)
+
+        with pytest.raises(ValueError, match="own active resources"):
+            await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
+
+        getattr(self.prisma, resource).count.assert_awaited_once_with(
+            where={
+                "organizationId": ORG_ID,
+                "Workspace": {"is": {"userId": OTHER_USER_ID}},
+                "isDeleted": False,
+            }
+        )
+        self.prisma.orgmember.update_many.assert_awaited_once_with(
+            where={
+                "orgId": ORG_ID,
+                "userId": OTHER_USER_ID,
+                "status": "SUSPENDED",
+            },
+            data={"status": "ACTIVE"},
+        )
+
 
 class TestDefaultWorkspaceProtection:
     """Tests for guarding default workspace invariants."""
@@ -3069,6 +3105,40 @@ class TestLastAdminGuard:
         self.prisma.teammember.delete.assert_called_once()
         # Should NOT have checked admin count
         self.prisma.teammember.count.assert_not_called()
+
+    @pytest.mark.parametrize("resource", ["userworkspacefile", "userworkspacefolder"])
+    @pytest.mark.asyncio
+    async def test_remove_member_with_workspace_storage_is_blocked_and_restored(
+        self, resource
+    ):
+        from backend.api.features.orgs.team_db import remove_team_member
+
+        team = _make_workspace()
+        member = _make_ws_member(isAdmin=False, userId="regular-1")
+        self.prisma.team.find_unique = AsyncMock(return_value=team)
+        self.prisma.teammember.find_unique = AsyncMock(return_value=member)
+        self.prisma.organization.find_first = AsyncMock(return_value=_make_org())
+        getattr(self.prisma, resource).count = AsyncMock(return_value=1)
+
+        with pytest.raises(ValueError, match="own active resources"):
+            await remove_team_member(WS_ID, "regular-1")
+
+        getattr(self.prisma, resource).count.assert_awaited_once_with(
+            where={
+                "organizationId": ORG_ID,
+                "Workspace": {"is": {"userId": "regular-1"}},
+                "isDeleted": False,
+                "teamId": WS_ID,
+            }
+        )
+        self.prisma.teammember.update_many.assert_awaited_once_with(
+            where={
+                "teamId": WS_ID,
+                "userId": "regular-1",
+                "status": "SUSPENDED",
+            },
+            data={"status": "ACTIVE"},
+        )
 
 
 class TestInvitationIdempotency:

@@ -3,6 +3,8 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { resolveInProgressTools } from "./helpers";
+import type { CopilotTenantScope } from "./helpers";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 /**
  * User-visible marker appended to the last assistant message so the UI
@@ -15,6 +17,7 @@ const CANCELLED_MARKER = "[__COPILOT_ERROR_f7a1__] Operation cancelled";
 
 interface UseCopilotStopArgs {
   sessionId: string | null;
+  sessionTenantScope?: CopilotTenantScope;
   sdkStop: () => void;
   setMessages: UseChatHelpers<UIMessage>["setMessages"];
   /** Flipped to `true` so the stream's onError/onFinish callbacks don't
@@ -39,6 +42,7 @@ interface UseCopilotStopArgs {
  */
 export function useCopilotStop({
   sessionId,
+  sessionTenantScope,
   sdkStop,
   setMessages,
   isUserStoppingRef,
@@ -73,7 +77,14 @@ export function useCopilotStop({
 
     if (!sessionId) return;
     try {
-      const res = await postV2CancelSessionTask(sessionId);
+      const res = await postV2CancelSessionTask(
+        sessionId,
+        getTenantRequestInit(
+          sessionTenantScope?.organizationId,
+          sessionTenantScope?.teamId,
+          sessionTenantScope !== undefined,
+        ),
+      );
       if (
         res.status === 200 &&
         "reason" in res.data &&

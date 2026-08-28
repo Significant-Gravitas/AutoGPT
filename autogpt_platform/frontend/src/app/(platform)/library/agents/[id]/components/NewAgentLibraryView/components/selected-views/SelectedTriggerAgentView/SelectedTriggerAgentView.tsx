@@ -1,9 +1,19 @@
 "use client";
 
-import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  getGetV2ListTriggerAgentsQueryKey,
+  useGetV2ListTriggerAgents,
+} from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+  useGetV1ListExecutionSchedulesForAGraph,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -27,8 +37,18 @@ export function SelectedTriggerAgentView({
   onClearSelectedRun,
   banner,
 }: Props) {
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
   const { data, isLoading, error } = useGetV2ListTriggerAgents(agent.id, {
-    query: { select: okData },
+    request: getTenantRequestInit(organizationId, teamId),
+    query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListTriggerAgentsQueryKey(agent.id),
+        organizationId,
+        teamId,
+      ),
+      select: okData,
+    },
   });
 
   const triggerAgent = data?.find((t) => t.id === triggerAgentId);
@@ -38,7 +58,15 @@ export function SelectedTriggerAgentView({
     isLoading: isSchedulesLoading,
     error: schedulesError,
   } = useGetV1ListExecutionSchedulesForAGraph(triggerAgent?.graph_id || "", {
+    request: getTenantRequestInit(organizationId, teamId),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListExecutionSchedulesForAGraphQueryKey(
+          triggerAgent?.graph_id || "",
+        ),
+        organizationId,
+        teamId,
+      ),
       enabled: !!triggerAgent?.graph_id,
       select: okData,
     },

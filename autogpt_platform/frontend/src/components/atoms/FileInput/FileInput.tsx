@@ -19,12 +19,24 @@ function PreviewButton({
   value,
   title,
   contentType,
+  organizationId,
+  teamId,
 }: {
   value: string;
   title: string;
   contentType?: string;
+  organizationId?: string | null;
+  teamId?: string | null;
 }) {
-  const metadata = contentType ? { mimeType: contentType } : undefined;
+  const metadata: {
+    mimeType?: string;
+    organizationId?: string | null;
+    teamId?: string | null;
+  } = contentType ? { mimeType: contentType } : {};
+  if (organizationId !== undefined || teamId !== undefined) {
+    metadata.organizationId = organizationId ?? null;
+    metadata.teamId = teamId ?? null;
+  }
   const renderer = globalRegistry.getRenderer(value, metadata);
   if (!renderer) return null;
 
@@ -92,6 +104,8 @@ interface BaseProps {
   accept?: string | string[];
   variant?: FileInputVariant;
   showStorageNote?: boolean;
+  organizationId?: string | null;
+  teamId?: string | null;
 }
 
 interface UploadModeProps extends BaseProps {
@@ -120,6 +134,8 @@ export function FileInput(props: Props) {
     variant = "default",
     showStorageNote = true,
     mode = "upload",
+    organizationId,
+    teamId,
   } = props;
 
   const onUploadFile =
@@ -371,6 +387,8 @@ export function FileInput(props: Props) {
                       : "Preview"
                   }
                   contentType={fileInfo?.content_type}
+                  organizationId={organizationId}
+                  teamId={teamId}
                 />
               )}
               <Button
@@ -455,6 +473,8 @@ export function FileInput(props: Props) {
                         : "Preview"
                     }
                     contentType={fileInfo?.content_type}
+                    organizationId={organizationId}
+                    teamId={teamId}
                   />
                 )}
                 <Button

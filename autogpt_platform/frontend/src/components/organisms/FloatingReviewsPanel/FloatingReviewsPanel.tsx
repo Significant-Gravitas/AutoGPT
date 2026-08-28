@@ -4,23 +4,34 @@ import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
-import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1GetExecutionDetailsQueryKey,
+  useGetV1GetExecutionDetails,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { Cancel01Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
   graphId?: string;
+  organizationId: string | null;
+  teamId: string | null;
   className?: string;
 }
 
 export function FloatingReviewsPanel({
   executionId,
   graphId,
+  organizationId,
+  teamId,
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,6 +42,11 @@ export function FloatingReviewsPanel({
     {
       query: {
         enabled: !!(graphId && executionId),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetExecutionDetailsQueryKey(graphId || "", executionId || ""),
+          organizationId,
+          teamId,
+        ),
         select: okData,
         // Poll while execution is in progress to detect status changes
         refetchInterval: (q) => {
@@ -56,6 +72,7 @@ export function FloatingReviewsPanel({
         },
         refetchIntervalInBackground: true,
       },
+      request: getTenantRequestInit(organizationId, teamId),
     },
   );
 
@@ -71,6 +88,8 @@ export function FloatingReviewsPanel({
 
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",
+    organizationId,
+    teamId,
     {
       enabled: !!executionId,
       // Poll every 2 seconds when in REVIEW status to catch new reviews

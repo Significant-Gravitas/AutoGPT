@@ -7,9 +7,12 @@ import {
   SUBMISSION_MEDIA_MAX_SIZE_MB,
   uploadSubmissionMediaDirect,
 } from "@/lib/direct-upload";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface UseThumbnailImagesProps {
   agentId: string | null;
+  organizationId: string | null;
+  teamId: string | null;
   onImagesChange: (images: string[]) => void;
   initialImages?: string[];
   initialSelectedImage?: string | null;
@@ -17,6 +20,8 @@ interface UseThumbnailImagesProps {
 
 export function useThumbnailImages({
   agentId,
+  organizationId,
+  teamId,
   onImagesChange,
   initialImages = [],
   initialSelectedImage = null,
@@ -111,7 +116,10 @@ export function useThumbnailImages({
 
     setIsUploading(true);
     try {
-      const imageUrl = await uploadSubmissionMediaDirect(file);
+      const imageUrl = await uploadSubmissionMediaDirect(file, {
+        organizationId,
+        teamId,
+      });
 
       setImagesWithValidation([...images, imageUrl]);
       if (!selectedImage) {
@@ -139,7 +147,10 @@ export function useThumbnailImages({
         throw new Error("Agent ID is required");
       }
       const { image_url } = await resolveResponse(
-        postV2GenerateSubmissionImage({ graph_id: agentId }),
+        postV2GenerateSubmissionImage(
+          { graph_id: agentId },
+          getTenantRequestInit(organizationId, teamId),
+        ),
       );
       setImagesWithValidation([...images, image_url]);
       if (!selectedImage) {

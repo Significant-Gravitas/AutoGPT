@@ -9,6 +9,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 import { useInstallWorkflowPicker } from "./useInstallWorkflowPicker";
 
 interface Props {
@@ -129,6 +130,9 @@ export function InstallWorkflowPicker({
                         <AvatarImage
                           src={agent.agent_image}
                           alt={agent.agent_name}
+                          unoptimized={shouldBypassImageOptimization(
+                            agent.agent_image,
+                          )}
                         />
                       ) : null}
                       <AvatarFallback>{agent.agent_name}</AvatarFallback>

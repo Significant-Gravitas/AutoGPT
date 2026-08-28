@@ -56,10 +56,9 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 return webhook
 
         # A legacy row predating tenancy stamping carries NULL org/team and
-        # is invisible to the tenancy-filtered lookup above; re-registering
-        # would duplicate the provider-side webhook. Rehome the legacy row
-        # instead (mirroring the manual-webhook path). A row in a DIFFERENT
-        # concrete tenancy still gets its own webhook below.
+        # is invisible to the tenancy-filtered lookup above. Only an unattached
+        # row can be adopted: moving an attached row would silently change the
+        # tenant used when its existing graph or preset fires.
         legacy = await integrations.find_webhook_by_credentials_and_props_any_tenant(
             user_id=user_id,
             credentials_id=credentials.id,
@@ -78,9 +77,14 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         ):
             if organization_id is None and team_id is None:
                 return legacy
-            return await integrations.set_webhook_tenancy(
-                legacy.id, organization_id=organization_id, team_id=team_id
+            adopted = await integrations.adopt_dangling_legacy_webhook(
+                legacy.id,
+                user_id=user_id,
+                organization_id=organization_id,
+                team_id=team_id,
             )
+            if adopted is not None:
+                return adopted
 
         return await self._create_webhook(
             user_id=user_id,
@@ -313,19 +317,30 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         else:
             provider_webhook_id, config = "", {}
 
-        return await integrations.create_webhook(
-            integrations.Webhook(
-                id=id,
-                user_id=user_id,
-                provider=provider_name,
-                credentials_id=credentials.id if credentials else "",
-                webhook_type=webhook_type,
-                resource=resource,
-                events=events,
-                provider_webhook_id=provider_webhook_id,
-                config=config,
-                secret=secret,
-                organization_id=organization_id,
-                team_id=team_id,
-            )
+        webhook = integrations.Webhook(
+            id=id,
+            user_id=user_id,
+            provider=provider_name,
+            credentials_id=credentials.id if credentials else "",
+            webhook_type=webhook_type,
+            resource=resource,
+            events=events,
+            provider_webhook_id=provider_webhook_id,
+            config=config,
+            secret=secret,
+            organization_id=organization_id,
+            team_id=team_id,
         )
+        try:
+            return await integrations.create_webhook(webhook)
+        except Exception:
+            if register and credentials:
+                try:
+                    await self._deregister_webhook(webhook, credentials)
+                except Exception:
+                    logger.error(
+                        "Failed to compensate provider webhook registration for %s",
+                        id,
+                        exc_info=True,
+                    )
+            raise

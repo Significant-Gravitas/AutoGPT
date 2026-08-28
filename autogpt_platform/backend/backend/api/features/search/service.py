@@ -121,6 +121,8 @@ def _hybrid_row_to_item(row: hybrid_search.HybridSearchRow) -> SearchResultItem 
         metadata=metadata,
         score=float(score) if score is not None else None,
         updated_at=row.get("updated_at"),
+        organization_id=None,
+        team_id=None,
     )
 
 
@@ -221,6 +223,8 @@ async def _library_agents_bucket(
                 "is_favorite": agent.is_favorite,
             },
             updated_at=agent.updated_at,
+            organization_id=agent.organization_id,
+            team_id=agent.team_id,
         )
         for agent in response.agents[:limit]
     ]
@@ -317,6 +321,8 @@ async def _recent_agents(
                     "is_favorite": agent.is_favorite,
                 },
                 updated_at=agent.updated_at,
+                organization_id=agent.organization_id,
+                team_id=agent.team_id,
             )
         )
     return items
@@ -414,6 +420,8 @@ async def _files_bucket(
                     "size_bytes": file.size_bytes,
                 },
                 updated_at=file.updated_at,
+                organization_id=file.organization_id,
+                team_id=file.team_id,
             )
         )
     return items
@@ -477,6 +485,8 @@ async def _chats_bucket(
                     "source_platform": session.metadata.source_platform,
                 },
                 updated_at=session.updated_at,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
         )
     return items

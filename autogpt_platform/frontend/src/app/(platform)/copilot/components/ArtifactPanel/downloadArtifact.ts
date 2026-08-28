@@ -1,4 +1,5 @@
 import type { ArtifactRef } from "../../store";
+import { fetchArtifactResource } from "./artifactRequest";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 500;
@@ -9,10 +10,13 @@ function isTransientError(status: number): boolean {
 
 class DownloadError extends Error {}
 
-async function fetchWithRetry(url: string, retries: number): Promise<Response> {
+async function fetchWithRetry(
+  artifact: ArtifactRef,
+  retries: number,
+): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url);
+      const res = await fetchArtifactResource(artifact);
       if (res.ok) return res;
       if (!isTransientError(res.status) || attempt === retries) {
         throw new DownloadError(`Download failed: ${res.status}`);
@@ -48,7 +52,7 @@ export function downloadArtifact(artifact: ArtifactRef): Promise<void> {
     .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
     .replace(/^\.+/, "");
 
-  return fetchWithRetry(artifact.sourceUrl, MAX_RETRIES)
+  return fetchWithRetry(artifact, MAX_RETRIES)
     .then((res) => res.blob())
     .then((blob) => {
       const url = URL.createObjectURL(blob);

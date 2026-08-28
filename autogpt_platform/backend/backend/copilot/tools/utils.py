@@ -251,6 +251,7 @@ async def get_or_create_library_agent(
         user_id=user_id,
         organization_id=organization_id,
         team_id_restriction=team_id,
+        exact_scope=True,
     )
     if existing and (existing.organization_id, existing.team_id) == (
         organization_id,

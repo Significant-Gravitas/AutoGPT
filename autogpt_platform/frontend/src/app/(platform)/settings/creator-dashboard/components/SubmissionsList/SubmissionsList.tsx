@@ -4,7 +4,6 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -13,6 +12,7 @@ import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import {
   EASE_OUT,
   type FilterState,
+  type EditPayload,
   type SortDir,
   type SortKey,
 } from "../../helpers";
@@ -21,11 +21,6 @@ import { SubmissionItem } from "../SubmissionItem/SubmissionItem";
 import { ColumnHeader } from "./columns/ColumnHeader";
 import { SortColumnFilter } from "./columns/SortColumnFilter";
 import { StatusColumnFilter } from "./columns/StatusColumnFilter";
-
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string;
-  graph_id: string;
-}
 
 interface Props {
   submissions: StoreSubmission[];
@@ -41,7 +36,7 @@ interface Props {
   debouncedSearch: string;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
-  onDelete: (submissionId: string) => Promise<void>;
+  onDelete: (submission: StoreSubmission) => Promise<void>;
   creatorUsername?: string;
   index?: number;
 }

@@ -12,7 +12,12 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
+from backend.util.exceptions import (
+    InvalidInputError,
+    MissingConfigError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 
 _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
@@ -24,7 +29,29 @@ def allow_attachment_barrier(monkeypatch: pytest.MonkeyPatch):
     async def allow(_graph_id: str):
         yield
 
+    @contextlib.asynccontextmanager
+    async def allow_scope(*_args):
+        yield True
+
+    async def scoped_library_agent(
+        _user_id,
+        _graph_id,
+        _graph_version,
+        *,
+        organization_id=None,
+        team_id_restriction=None,
+        **_kwargs,
+    ):
+        return MagicMock(
+            organization_id=organization_id,
+            team_id=team_id_restriction,
+        )
+
     monkeypatch.setattr(f"{_PATH}.agent_graph_attachment_barrier", allow)
+    monkeypatch.setattr(f"{_PATH}.live_resource_access_barrier", allow_scope)
+    monkeypatch.setattr(
+        f"{_PATH}.db.get_library_agent_by_graph_id", scoped_library_agent
+    )
 
 
 def _graph():
@@ -33,6 +60,7 @@ def _graph():
     graph = MagicMock()
     graph.id = "graph-1"
     graph.version = 1
+    graph.user_id = "publisher-user"
     graph.webhook_input_node = node
     graph.organization_id = "shared-org"
     graph.team_id = "shared-team"
@@ -60,7 +88,12 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=Non
     )
 
 
-async def _setup(*, expert_id: str | None = None):
+async def _setup(
+    *,
+    expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+):
     return await setup_triggered_preset(
         user_id=_USER,
         graph_id="graph-1",
@@ -70,6 +103,8 @@ async def _setup(*, expert_id: str | None = None):
         trigger_config={"repo": "owner/repo"},
         agent_credentials={},
         expert_id=expert_id,
+        organization_id=organization_id,
+        team_id=team_id,
     )
 
 
@@ -83,6 +118,181 @@ async def test_creates_preset_on_success():
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_marketplace_graph_does_not_retenant_personal_trigger_to_publisher():
+    publisher_graph = _graph()
+    publisher_graph.organization_id = None
+    publisher_graph.team_id = None
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=publisher_graph, preset=preset
+    )
+    consumer_wrapper = MagicMock(organization_id=None, team_id=None)
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.db.get_library_agent_by_graph_id",
+            new=AsyncMock(return_value=consumer_wrapper),
+        ) as library_lookup,
+    ):
+        await _setup()
+
+    library_lookup.assert_awaited_once_with(
+        _USER,
+        "graph-1",
+        1,
+        organization_id=None,
+        team_id_restriction=None,
+        exact_scope=True,
+    )
+    assert webhook_mock.await_args.kwargs["user_id"] == _USER
+    assert webhook_mock.await_args.kwargs["organization_id"] is None
+    assert webhook_mock.await_args.kwargs["team_id"] is None
+    assert create_mock.await_args.kwargs["user_id"] == _USER
+    assert create_mock.await_args.kwargs["organization_id"] is None
+    assert create_mock.await_args.kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_caller_owned_personal_graph_needs_no_library_wrapper():
+    owned_graph = _graph()
+    owned_graph.user_id = _USER
+    owned_graph.organization_id = None
+    owned_graph.team_id = None
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=owned_graph, preset=MagicMock(id="preset-1")
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create,
+        patch(
+            f"{_PATH}.db.get_library_agent_by_graph_id", new=AsyncMock()
+        ) as library_lookup,
+    ):
+        await _setup()
+
+    library_lookup.assert_not_awaited()
+    assert webhook_mock.await_args.kwargs["user_id"] == _USER
+    assert webhook_mock.await_args.kwargs["organization_id"] is None
+    assert webhook_mock.await_args.kwargs["team_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_marketplace_graph_uses_exact_consumer_team_wrapper():
+    publisher_graph = _graph()
+    publisher_graph.organization_id = "consumer-org"
+    publisher_graph.team_id = "consumer-team"
+    consumer_wrapper = MagicMock(
+        organization_id="consumer-org", team_id="consumer-team"
+    )
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=publisher_graph, preset=MagicMock(id="preset-1")
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.db.get_library_agent_by_graph_id",
+            new=AsyncMock(return_value=consumer_wrapper),
+        ) as library_lookup,
+    ):
+        await _setup(organization_id="consumer-org", team_id="consumer-team")
+
+    library_lookup.assert_awaited_once_with(
+        _USER,
+        "graph-1",
+        1,
+        organization_id="consumer-org",
+        team_id_restriction="consumer-team",
+        exact_scope=True,
+    )
+    assert webhook_mock.await_args.kwargs == {
+        "user_id": _USER,
+        "trigger_block": publisher_graph.webhook_input_node.block,
+        "trigger_config": {"repo": "owner/repo"},
+        "organization_id": "consumer-org",
+        "team_id": "consumer-team",
+    }
+    assert create_mock.await_args.kwargs["user_id"] == _USER
+    assert create_mock.await_args.kwargs["organization_id"] == "consumer-org"
+    assert create_mock.await_args.kwargs["team_id"] == "consumer-team"
+
+
+@pytest.mark.asyncio
+async def test_setup_prunes_new_webhook_when_preset_create_fails():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook,
+        p_create as create_mock,
+        patch(f"{_PATH}._prune_dangling_webhook", new=AsyncMock()) as prune_mock,
+    ):
+        create_mock.side_effect = RuntimeError("write failed")
+        with pytest.raises(RuntimeError, match="write failed"):
+            await _setup()
+
+    prune_mock.assert_awaited_once_with(_USER, "wh-1")
+
+
+@pytest.mark.asyncio
+async def test_setup_rejects_wrong_scope_before_provider_registration():
+    publisher_graph = _graph()
+    publisher_graph.organization_id = None
+    publisher_graph.team_id = None
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=publisher_graph)
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.db.get_library_agent_by_graph_id",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Graph #graph-1"):
+            await _setup()
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_rejects_revoked_team_scope_before_graph_or_provider_access():
+    @contextlib.asynccontextmanager
+    async def deny_scope(*_args):
+        yield False
+
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        patch(f"{_PATH}.live_resource_access_barrier", deny_scope),
+        p_graph as graph_mock,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+    ):
+        with pytest.raises(NotAuthorizedError, match="scope is inactive"):
+            await _setup(organization_id="consumer-org", team_id="revoked-team")
+
+    graph_mock.assert_not_awaited()
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -108,6 +318,31 @@ async def test_expert_trigger_is_created_in_personal_scope():
     assert webhook_mock.await_args.kwargs["organization_id"] == "personal-org"
     assert webhook_mock.await_args.kwargs["team_id"] == "personal-team"
     assert create_mock.await_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_cannot_switch_explicit_caller_scope():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Expert #expert-1 not found"):
+            await _setup(
+                expert_id="expert-1",
+                organization_id="shared-org",
+                team_id="shared-team",
+            )
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -351,6 +586,62 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
     m["setup"].assert_awaited_once()
     m["set_webhook"].assert_awaited_once()
     m["prune"].assert_awaited_once_with(_USER, "wh-old")
+
+
+@pytest.mark.asyncio
+async def test_update_marketplace_trigger_preserves_preset_tenancy():
+    current = _preset(
+        webhook_id="wh-old",
+        organization_id="consumer-org",
+        team_id="consumer-team",
+    )
+    publisher_graph = _graph()
+    publisher_graph.organization_id = "publisher-org"
+    publisher_graph.team_id = "publisher-team"
+
+    with _update_patches(current=current, graph=publisher_graph) as m:
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+
+    m["get_graph"].assert_awaited_once_with(
+        "graph-1",
+        1,
+        user_id=_USER,
+        organization_id="consumer-org",
+        team_id="consumer-team",
+    )
+    assert m["setup"].await_args.kwargs["user_id"] == _USER
+    assert m["setup"].await_args.kwargs["organization_id"] == "consumer-org"
+    assert m["setup"].await_args.kwargs["team_id"] == "consumer-team"
+    assert m["update"].await_args.kwargs["organization_id"] == "consumer-org"
+    assert m["update"].await_args.kwargs["team_id"] == "consumer-team"
+    m["set_webhook"].assert_awaited_once_with(
+        _USER,
+        "preset-1",
+        "wh-new",
+        "consumer-org",
+        "consumer-team",
+        False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_prunes_new_webhook_when_preset_write_fails():
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        m["update"].side_effect = RuntimeError("write failed")
+        with pytest.raises(RuntimeError, match="write failed"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+
+    m["prune"].assert_awaited_once_with(_USER, "wh-new")
 
 
 @pytest.mark.asyncio

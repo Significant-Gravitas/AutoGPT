@@ -153,6 +153,8 @@ class WorkspaceFileItem(BaseModel):
     metadata: dict = Field(default_factory=dict)
     origin: Literal["uploaded", "generated"]
     created_at: str
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 class ListFilesResponse(BaseModel):
@@ -569,6 +571,8 @@ async def list_workspace_files(
                 metadata=f.metadata or {},
                 origin=_derive_origin(f.metadata),
                 created_at=f.created_at.isoformat(),
+                organization_id=f.organization_id,
+                team_id=f.team_id,
             )
             for f in page
         ],

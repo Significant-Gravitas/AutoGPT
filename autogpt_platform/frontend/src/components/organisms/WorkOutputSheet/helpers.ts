@@ -1,3 +1,5 @@
+import { getLibraryAgentHref } from "@/services/org-team/builder";
+
 export type OutputType = "table" | "doc" | "image" | "unknown";
 
 export const MAX_PREVIEW_ROWS = 100;
@@ -161,10 +163,15 @@ export function downloadCsv(filename: string, csv: string): void {
 export function buildRunLink(
   libraryAgentId: string | null | undefined,
   executionId: string,
+  organizationId: string | null = null,
+  teamId: string | null = null,
 ): string | null {
   if (!libraryAgentId) return null;
-  return (
-    `/library/agents/${encodeURIComponent(libraryAgentId)}` +
-    `?activeTab=runs&activeItem=${encodeURIComponent(executionId)}`
+  return getLibraryAgentHref(
+    libraryAgentId,
+    organizationId,
+    teamId,
+    executionId,
+    "runs",
   );
 }

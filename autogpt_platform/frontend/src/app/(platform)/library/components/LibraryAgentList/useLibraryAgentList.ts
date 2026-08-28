@@ -1,11 +1,15 @@
 "use client";
 
-import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useGetV2ListLibraryAgentsInfinite,
+} from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getV2ListLibraryFolders,
   useGetV2ListLibraryFolders,
   useGetV2GetFolder,
-  usePostV2BulkMoveAgents,
+  postV2BulkMoveAgents,
+  getGetV2GetFolderQueryKey,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
@@ -20,12 +24,21 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
-import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  useGetV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { getTenantEntityKey } from "@/services/org-team/identity";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -54,6 +67,14 @@ export function useLibraryAgentList({
   const [consecutiveEmptyPages, setConsecutiveEmptyPages] = useState(0);
   const prevFilteredLengthRef = useRef(0);
   const prevAgentsLengthRef = useRef(0);
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const teams = useOrgTeamStore((s) => s.teams);
+  const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
+  const [selectedFolderScope, setSelectedFolderScope] = useState<{
+    organizationId: string | null;
+    teamId: string | null;
+  } | null>(null);
 
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(
     null,
@@ -62,28 +83,44 @@ export function useLibraryAgentList({
     null,
   );
 
+  const agentParams = {
+    page: 1,
+    page_size: 20,
+    search_term: searchTerm || undefined,
+    sort_by: librarySort,
+    folder_id: selectedFolderId ?? undefined,
+    include_root_only: selectedFolderId === null ? true : undefined,
+    is_hidden: false,
+  };
+  const queryOrganizationId = selectedFolderScope
+    ? selectedFolderScope.organizationId
+    : activeOrgID;
+  const queryTeamId = selectedFolderScope
+    ? selectedFolderScope.teamId
+    : activeTeamID;
+
   const {
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading: allAgentsLoading,
-  } = useGetV2ListLibraryAgentsInfinite(
-    {
-      page: 1,
-      page_size: 20,
-      search_term: searchTerm || undefined,
-      sort_by: librarySort,
-      folder_id: selectedFolderId ?? undefined,
-      include_root_only: selectedFolderId === null ? true : undefined,
-      is_hidden: false,
+  } = useGetV2ListLibraryAgentsInfinite(agentParams, {
+    query: {
+      enabled: isTenantReady,
+      getNextPageParam: getPaginationNextPageNumber,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListLibraryAgentsQueryKey(agentParams),
+        queryOrganizationId,
+        queryTeamId,
+      ),
     },
-    {
-      query: {
-        getNextPageParam: getPaginationNextPageNumber,
-      },
-    },
-  );
+    request: getTenantRequestInit(
+      queryOrganizationId,
+      queryTeamId,
+      isTenantReady,
+    ),
+  });
 
   useEffect(() => {
     if (prevSortRef.current !== null && prevSortRef.current !== librarySort) {
@@ -99,7 +136,11 @@ export function useLibraryAgentList({
     : [];
   const allAgentsCount = getPaginatedTotalCount(agentsQueryData);
 
-  const favoriteAgentsData = useFavoriteAgents({ searchTerm });
+  const favoriteAgentsData = useFavoriteAgents({
+    searchTerm,
+    organizationId: activeOrgID,
+    teamId: activeTeamID,
+  });
 
   const {
     agentLoading,
@@ -119,92 +160,199 @@ export function useLibraryAgentList({
         fetchNextPage: fetchNextPage,
       };
 
-  const { data: rawFoldersData } = useGetV2ListLibraryFolders(
-    { parent_id: selectedFolderId ?? undefined },
-    {
-      query: { select: okData },
-    },
+  const folderParams = { parent_id: selectedFolderId ?? undefined };
+  const organizationTeamIds = useMemo(
+    () =>
+      teams
+        .filter((team) => team.orgId === activeOrgID)
+        .map((team) => team.id)
+        .sort(),
+    [activeOrgID, teams],
   );
+  const shouldAggregateOrganizationRootFolders =
+    selectedFolderId === null &&
+    selectedFolderScope === null &&
+    activeOrgID !== null &&
+    activeTeamID === null &&
+    isTenantReady;
+  const { data: exactFoldersData } = useGetV2ListLibraryFolders(folderParams, {
+    query: {
+      enabled: isTenantReady && !shouldAggregateOrganizationRootFolders,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListLibraryFoldersQueryKey(folderParams),
+        queryOrganizationId,
+        queryTeamId,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(
+      queryOrganizationId,
+      queryTeamId,
+      isTenantReady,
+    ),
+  });
+  const { data: organizationRootFoldersData } = useQuery({
+    queryKey: [
+      ...getGetV2ListLibraryFoldersQueryKey(folderParams),
+      {
+        aggregateOrganizationId: activeOrgID,
+        teamIds: organizationTeamIds,
+      },
+    ],
+    enabled: shouldAggregateOrganizationRootFolders,
+    queryFn: async () => {
+      const responses = await Promise.all(
+        [null, ...organizationTeamIds].map((teamId) =>
+          getV2ListLibraryFolders(
+            folderParams,
+            getTenantRequestInit(activeOrgID, teamId, true),
+          ),
+        ),
+      );
+      const foldersById = new Map<string, LibraryFolder>();
+
+      for (const response of responses) {
+        const folderList = okData(response);
+        for (const folder of folderList?.folders ?? []) {
+          foldersById.set(folder.id, folder);
+        }
+      }
+
+      const folders = Array.from(foldersById.values());
+      return {
+        folders,
+        pagination: {
+          total_items: folders.length,
+          total_pages: 1,
+          current_page: 1,
+          page_size: folders.length,
+        },
+      };
+    },
+  });
+  const rawFoldersData = shouldAggregateOrganizationRootFolders
+    ? organizationRootFoldersData
+    : exactFoldersData;
 
   const foldersData = searchTerm ? undefined : rawFoldersData;
 
-  const { mutate: moveAgentToFolder } = usePostV2BulkMoveAgents({
-    mutation: {
-      onMutate: async ({ data }) => {
-        await queryClient.cancelQueries({
+  const { mutate: moveAgentToFolder } = useMutation({
+    mutationFn: ({
+      data,
+      organizationId,
+      teamId,
+    }: {
+      data: { agent_ids: string[]; folder_id: string | null };
+      organizationId: string | null;
+      teamId: string | null;
+    }) =>
+      postV2BulkMoveAgents(data, getTenantRequestInit(organizationId, teamId)),
+    onMutate: async ({ data }) => {
+      await queryClient.cancelQueries({
+        queryKey: getGetV2ListLibraryFoldersQueryKey(),
+      });
+      await queryClient.cancelQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
+
+      const previousFolders =
+        queryClient.getQueriesData<getV2ListLibraryFoldersResponseSuccess>({
           queryKey: getGetV2ListLibraryFoldersQueryKey(),
         });
-        await queryClient.cancelQueries({
-          queryKey: getGetV2ListLibraryAgentsQueryKey(),
-        });
 
-        const previousFolders =
-          queryClient.getQueriesData<getV2ListLibraryFoldersResponseSuccess>({
-            queryKey: getGetV2ListLibraryFoldersQueryKey(),
-          });
+      if (data.folder_id) {
+        queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
+          { queryKey: getGetV2ListLibraryFoldersQueryKey() },
+          (old) => {
+            if (!old?.data?.folders) return old;
+            return {
+              ...old,
+              data: {
+                ...old.data,
+                folders: old.data.folders.map((f) =>
+                  f.id === data.folder_id
+                    ? {
+                        ...f,
+                        agent_count:
+                          (f.agent_count ?? 0) + data.agent_ids.length,
+                      }
+                    : f,
+                ),
+              },
+            };
+          },
+        );
+      }
 
-        if (data.folder_id) {
-          queryClient.setQueriesData<getV2ListLibraryFoldersResponseSuccess>(
-            { queryKey: getGetV2ListLibraryFoldersQueryKey() },
-            (old) => {
-              if (!old?.data?.folders) return old;
-              return {
-                ...old,
-                data: {
-                  ...old.data,
-                  folders: old.data.folders.map((f) =>
-                    f.id === data.folder_id
-                      ? {
-                          ...f,
-                          agent_count:
-                            (f.agent_count ?? 0) + data.agent_ids.length,
-                        }
-                      : f,
-                  ),
-                },
-              };
-            },
-          );
+      return { previousFolders };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousFolders) {
+        for (const [queryKey, data] of context.previousFolders) {
+          queryClient.setQueryData(queryKey, data);
         }
-
-        return { previousFolders };
-      },
-      onError: (_error, _variables, context) => {
-        if (context?.previousFolders) {
-          for (const [queryKey, data] of context.previousFolders) {
-            queryClient.setQueryData(queryKey, data);
-          }
-        }
-        toast({
-          title: "Error",
-          description: "Failed to move agent. Please try again.",
-          variant: "destructive",
-        });
-      },
-      onSettled: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListLibraryFoldersQueryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListLibraryAgentsQueryKey(),
-        });
-      },
+      }
+      toast({
+        title: "Error",
+        description: "Failed to move agent. Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListLibraryFoldersQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
     },
   });
 
   function handleAgentDrop(agentId: string, folderId: string) {
+    const agent = agents.find((candidate) => candidate.id === agentId);
+    const folder = rawFoldersData?.folders.find(
+      (candidate) => candidate.id === folderId,
+    );
+    if (!agent || !folder) return;
+    if (
+      (agent.organization_id ?? null) !== (folder.organization_id ?? null) ||
+      (agent.team_id ?? null) !== (folder.team_id ?? null)
+    ) {
+      toast({
+        title: "Choose a folder in the same team",
+        description:
+          "Agents cannot be moved across organization or team folders.",
+        variant: "destructive",
+      });
+      return;
+    }
     moveAgentToFolder({
       data: {
         agent_ids: [agentId],
         folder_id: folderId,
       },
+      organizationId: agent.organization_id ?? null,
+      teamId: agent.team_id ?? null,
     });
   }
 
   const { data: currentFolderData } = useGetV2GetFolder(
     selectedFolderId ?? "",
     {
-      query: { select: okData, enabled: !!selectedFolderId },
+      query: {
+        select: okData,
+        enabled: !!selectedFolderId && isTenantReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetFolderQueryKey(selectedFolderId ?? undefined),
+          queryOrganizationId,
+          queryTeamId,
+        ),
+      },
+      request: getTenantRequestInit(
+        queryOrganizationId,
+        queryTeamId,
+        isTenantReady,
+      ),
     },
   );
   const currentFolder = selectedFolderId ? currentFolderData : null;
@@ -212,7 +360,16 @@ export function useLibraryAgentList({
   const showFolders = !isFavoritesTab;
 
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: {
+      enabled: isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListAllExecutionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
   const { activeGraphIds, errorGraphIds, completedGraphIds } = useMemo(() => {
@@ -221,12 +378,17 @@ export function useLibraryAgentList({
     const completed = new Set<string>();
     const cutoff = Date.now() - 72 * 60 * 60 * 1000;
     for (const exec of executions ?? []) {
+      const executionKey = getTenantEntityKey(
+        exec.graph_id,
+        exec.organization_id,
+        exec.team_id,
+      );
       if (
         exec.status === AgentExecutionStatus.RUNNING ||
         exec.status === AgentExecutionStatus.QUEUED ||
         exec.status === AgentExecutionStatus.REVIEW
       ) {
-        active.add(exec.graph_id);
+        active.add(executionKey);
       }
       const endedTs = exec.ended_at
         ? exec.ended_at instanceof Date
@@ -238,10 +400,10 @@ export function useLibraryAgentList({
           exec.status === AgentExecutionStatus.TERMINATED) &&
         endedTs > cutoff
       ) {
-        errors.add(exec.graph_id);
+        errors.add(executionKey);
       }
       if (exec.status === AgentExecutionStatus.COMPLETED && endedTs > cutoff) {
-        completed.add(exec.graph_id);
+        completed.add(executionKey);
       }
     }
     return {
@@ -301,6 +463,18 @@ export function useLibraryAgentList({
     }
   }
 
+  function handleFolderSelect(folder: LibraryFolder | null) {
+    setSelectedFolderScope(
+      folder
+        ? {
+            organizationId: folder.organization_id ?? null,
+            teamId: folder.team_id ?? null,
+          }
+        : null,
+    );
+    onFolderSelect(folder?.id ?? null);
+  }
+
   return {
     isFavoritesTab,
     agentLoading,
@@ -320,6 +494,7 @@ export function useLibraryAgentList({
     deletingFolder,
     setDeletingFolder,
     handleAgentDrop,
+    handleFolderSelect,
     handleFolderDeleted,
   };
 }
@@ -327,6 +502,8 @@ export function useLibraryAgentList({
 function filterAgentsByStatus<
   T extends {
     graph_id: string;
+    organization_id?: string | null;
+    team_id?: string | null;
     has_external_trigger: boolean;
     is_scheduled?: boolean;
     recommended_schedule_cron?: string | null;
@@ -340,14 +517,18 @@ function filterAgentsByStatus<
 ): T[] {
   if (statusFilter === "all") return agents;
   return agents.filter((agent) => {
-    const isRunning = activeGraphIds.has(agent.graph_id);
-    const hasError = errorGraphIds.has(agent.graph_id);
+    const agentKey = getTenantEntityKey(
+      agent.graph_id,
+      agent.organization_id,
+      agent.team_id,
+    );
+    const isRunning = activeGraphIds.has(agentKey);
+    const hasError = errorGraphIds.has(agentKey);
     const isScheduled = isAgentScheduled(agent);
 
     if (statusFilter === "running") return isRunning;
     if (statusFilter === "attention") return hasError && !isRunning;
-    if (statusFilter === "completed")
-      return completedGraphIds.has(agent.graph_id);
+    if (statusFilter === "completed") return completedGraphIds.has(agentKey);
     if (statusFilter === "listening")
       return !isRunning && !hasError && agent.has_external_trigger;
     if (statusFilter === "scheduled")

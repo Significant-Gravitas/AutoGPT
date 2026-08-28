@@ -1,5 +1,35 @@
 /** DataTransfer MIME type used when dragging a file card onto a folder. */
 export const FILE_DRAG_MIME = "application/workspace-file-id";
+export const FILE_TENANT_MIME = "application/workspace-file-tenant+json";
+
+export interface DraggedFileTenant {
+  organizationId: string | null;
+  teamId: string | null;
+}
+
+export function serializeDraggedFileTenant(scope: DraggedFileTenant): string {
+  return JSON.stringify(scope);
+}
+
+export function parseDraggedFileTenant(
+  value: string,
+): DraggedFileTenant | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return null;
+    const organizationId = Reflect.get(parsed, "organizationId");
+    const teamId = Reflect.get(parsed, "teamId");
+    if (
+      (organizationId !== null && typeof organizationId !== "string") ||
+      (teamId !== null && typeof teamId !== "string")
+    ) {
+      return null;
+    }
+    return { organizationId, teamId };
+  } catch {
+    return null;
+  }
+}
 
 const FILE_GLYPH = `<svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"></path></svg>`;
 

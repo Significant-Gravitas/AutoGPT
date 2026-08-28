@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security, status
-from prisma.enums import AgentExecutionStatus, APIKeyPermission
+from prisma.enums import AgentExecutionStatus, APIKeyPermission, GrantCapability
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
@@ -25,6 +25,7 @@ from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
+from backend.data.grants import resolve_graph_grant
 from backend.data.tenancy import (
     agent_graph_attachment_barrier,
     live_resource_access_barrier,
@@ -242,6 +243,34 @@ async def execute_graph(
             )
             org_id, team_id = None, None
 
+    from backend.api.features.library import db as library_db
+
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        user_id=auth.user_id,
+        graph_id=graph_id,
+        graph_version=graph_version,
+        organization_id=org_id,
+        team_id_restriction=team_id,
+        exact_scope=True,
+    )
+    execution_team_id = library_agent.team_id if library_agent else None
+    if library_agent is None and team_id is not None:
+        grant = await resolve_graph_grant(
+            auth.user_id,
+            graph_id,
+            capability=GrantCapability.EXECUTE,
+            graph_version=graph_version,
+            organization_id=org_id,
+            team_id_restriction=team_id,
+        )
+        if grant is not None:
+            execution_team_id = grant.principalId
+    if library_agent is None and execution_team_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Graph #{graph_id} is not available in this API key scope",
+        )
+
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
@@ -249,7 +278,7 @@ async def execute_graph(
             inputs=node_input,
             graph_version=graph_version,
             organization_id=org_id,
-            team_id=team_id,
+            team_id=execution_team_id,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:

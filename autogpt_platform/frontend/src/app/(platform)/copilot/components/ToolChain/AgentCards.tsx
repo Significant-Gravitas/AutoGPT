@@ -11,15 +11,21 @@ import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
 import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
 import { asObject, inline, resultItemKey, str } from "./resultHelpers";
 import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
 
-function agentHref(agent: Record<string, unknown>): string | null {
+function agentHref(
+  agent: Record<string, unknown>,
+  organizationId: string | null,
+  teamId: string | null,
+): string | null {
   const id = str(agent, "id");
   if (!id) return null;
   if (str(agent, "source") === "library")
-    return `/library/agents/${encodeURIComponent(id)}`;
+    return getLibraryAgentHref(id, organizationId, teamId);
   const [creator, slug, ...rest] = id.split("/");
   if (!creator || !slug || rest.length > 0) return null;
   return `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`;
@@ -51,10 +57,11 @@ function CardLink({ href, label }: CardLinkProps) {
 }
 
 export function AgentListCard({ agents }: AgentListCardProps) {
+  const scope = useCopilotTenantScope();
   return (
     <div className={RESULT_GRID}>
       {agents.map((agent, i) => {
-        const href = agentHref(agent);
+        const href = agentHref(agent, scope.organizationId, scope.teamId);
         const runs = typeof agent.runs === "number" ? agent.runs : null;
         const rating = typeof agent.rating === "number" ? agent.rating : null;
         const subtitle = str(agent, "description");
@@ -110,12 +117,17 @@ export function AgentListCard({ agents }: AgentListCardProps) {
 }
 
 export function AgentSavedCard({ output }: OutputCardProps) {
+  const scope = useCopilotTenantScope();
   const name = str(output, "agent_name", "name", "graph_name") ?? "Agent";
   const version = output.graph_version;
   const libraryLink =
     str(output, "library_agent_link") ??
     (str(output, "library_agent_id")
-      ? `/library/agents/${str(output, "library_agent_id")}`
+      ? getLibraryAgentHref(
+          str(output, "library_agent_id") as string,
+          scope.organizationId,
+          scope.teamId,
+        )
       : null);
   const builderLink = str(output, "agent_page_link");
   return (

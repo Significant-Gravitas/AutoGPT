@@ -11,6 +11,7 @@ import {
   EyeIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface Props {
   chips: PulseChipData[];
@@ -81,7 +82,11 @@ function PulseChip({ chip, onAsk }: ChipProps) {
         className={`${styles.chipActions} flex items-center justify-center gap-1.5 rounded-b-medium px-3 py-1.5`}
       >
         <NextLink
-          href={`/library/agents/${chip.agentID}`}
+          href={getLibraryAgentHref(
+            chip.agentID,
+            chip.organizationId,
+            chip.teamId,
+          )}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         >
           <Icon icon={EyeIcon} size={14} />

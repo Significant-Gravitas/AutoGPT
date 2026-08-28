@@ -12,8 +12,11 @@ import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { ApiError } from "@/lib/autogpt-server-api/helpers"; // Check if this exists
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 export const useRunGraph = () => {
+  const tenantScope = useBuilderTenantScope();
   const { saveGraph, isSaving } = useSaveGraph({
     showToast: false,
   });
@@ -123,6 +126,11 @@ export const useRunGraph = () => {
           }
         },
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     });
 
   const { mutateAsync: stopGraph, isPending: isTerminatingGraph } =
@@ -137,6 +145,11 @@ export const useRunGraph = () => {
           });
         },
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     });
 
   const handleRunGraph = async ({

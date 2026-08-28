@@ -2,13 +2,18 @@
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useEffect, useState } from "react";
+import { fetchWorkspaceFileResource } from "../helpers";
 import {
   deriveBadgeLabel,
   FileIllustration,
   pickFileTypeKey,
 } from "../FileIllustration";
 
-export function useFileText(url: string, onError: () => void): string | null {
+export function useFileText(
+  file: WorkspaceFileItem,
+  url: string,
+  onError: () => void,
+): string | null {
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
@@ -16,7 +21,7 @@ export function useFileText(url: string, onError: () => void): string | null {
     setText(null);
     async function load() {
       try {
-        const res = await fetch(url);
+        const res = await fetchWorkspaceFileResource(file, url);
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const body = await res.text();
         if (!cancelled) setText(body);
@@ -28,9 +33,40 @@ export function useFileText(url: string, onError: () => void): string | null {
     return () => {
       cancelled = true;
     };
-  }, [url, onError]);
+  }, [file, url, onError]);
 
   return text;
+}
+
+export function useFileBlobUrl(
+  file: WorkspaceFileItem,
+  url: string,
+  onError: () => void,
+): string | null {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setBlobUrl(null);
+    async function load() {
+      try {
+        const res = await fetchWorkspaceFileResource(file, url);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        objectUrl = URL.createObjectURL(await res.blob());
+        if (!cancelled) setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) onError();
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [file, url, onError]);
+
+  return blobUrl;
 }
 
 export function Fallback({ file }: { file: WorkspaceFileItem }) {

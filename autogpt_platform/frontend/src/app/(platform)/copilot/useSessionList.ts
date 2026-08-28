@@ -1,6 +1,11 @@
 import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
 // `refetchInterval` on a `useInfiniteQuery` refetches every loaded page, and
@@ -16,6 +21,13 @@ export const SESSION_LIST_REFETCH_INTERVAL_MS = 10_000;
 // shape collisions and lets us hand a stable key to invalidation callsites.
 export const SESSION_LIST_QUERY_KEY = ["copilot", "session-list"] as const;
 
+export function getSessionListQueryKey(
+  organizationId: string | null | undefined,
+  teamId: string | null | undefined,
+) {
+  return getTeamScopedQueryKey(SESSION_LIST_QUERY_KEY, organizationId, teamId);
+}
+
 type SessionListPage = Awaited<ReturnType<typeof getV2ListSessions>>;
 export type SessionListInfiniteData = InfiniteData<SessionListPage>;
 
@@ -24,13 +36,22 @@ interface Args {
 }
 
 export function useSessionList({ enabled = true }: Args = {}) {
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
   const query = useInfiniteQuery({
-    queryKey: SESSION_LIST_QUERY_KEY,
+    queryKey: [
+      ...getSessionListQueryKey(activeOrgID, activeTeamID),
+      { isTenantReady },
+    ],
     queryFn: ({ pageParam }) =>
-      getV2ListSessions({
-        limit: SESSION_LIST_PAGE_SIZE,
-        offset: pageParam,
-      }),
+      getV2ListSessions(
+        {
+          limit: SESSION_LIST_PAGE_SIZE,
+          offset: pageParam,
+        },
+        getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
+      ),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;
@@ -38,7 +59,7 @@ export function useSessionList({ enabled = true }: Args = {}) {
       return loaded < lastPage.data.total ? loaded : undefined;
     },
     refetchInterval: SESSION_LIST_REFETCH_INTERVAL_MS,
-    enabled,
+    enabled: enabled && isTenantReady,
   });
 
   return {

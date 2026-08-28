@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 import { Clock01Icon, ImageNotFound01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props {
   agentName: string;
@@ -35,6 +36,7 @@ export function SubmissionSummaryCard({
             alt=""
             fill
             sizes="86px"
+            unoptimized={shouldBypassImageOptimization(thumbnailSrc)}
             className="object-cover"
           />
         ) : (

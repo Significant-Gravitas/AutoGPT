@@ -10,6 +10,7 @@ from typing import Any, Literal, Mapping, Optional, cast
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.library import db as library_db
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
@@ -56,6 +57,7 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
+    GraphNotInLibraryError,
     GraphValidationError,
     NotFoundError,
 )
@@ -579,17 +581,17 @@ async def _validate_node_input_credentials(
                     and field_name in owner_references
                     and reference_only
                 ):
-                    credential_errors[node.id][
-                        field_name
-                    ] = CRED_ERR_OWNER_REFERENCE_ONLY
+                    credential_errors[node.id][field_name] = (
+                        CRED_ERR_OWNER_REFERENCE_ONLY
+                    )
                     continue
 
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_INVALID_PREFIX} {e}"
+                )
                 continue
 
             try:
@@ -608,15 +610,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                )
                 continue
 
             if not credentials:
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                )
                 continue
 
             if (
@@ -738,32 +740,32 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        )
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        )
                         continue
                     expected_provider = info.get("config", {}).get("provider")
                     if expected_provider and not provider_matches(
                         creds.provider, expected_provider
                     ):
-                        credential_errors[node.id][
-                            field_name
-                        ] = CRED_ERR_INVALID_TYPE_MISMATCH
+                        credential_errors[node.id][field_name] = (
+                            CRED_ERR_INVALID_TYPE_MISMATCH
+                        )
                         continue
                     expected_type = info.get("config", {}).get("type")
                     if expected_type and creds.type != expected_type:
-                        credential_errors[node.id][
-                            field_name
-                        ] = CRED_ERR_INVALID_TYPE_MISMATCH
+                        credential_errors[node.id][field_name] = (
+                            CRED_ERR_INVALID_TYPE_MISMATCH
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -1222,8 +1224,13 @@ async def stop_graph_execution(
         wait_timeout: Maximum time to wait for execution to stop (seconds)
         cascade: If True, recursively stop all child executions
     """
-    queue_client = await get_async_execution_queue()
     db = execution_db if prisma.is_connected() else get_database_manager_async_client()
+    graph_exec = await db.get_graph_execution_meta(
+        execution_id=graph_exec_id, user_id=user_id
+    )
+    if not graph_exec:
+        raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+    queue_client = await get_async_execution_queue()
 
     # First, find and stop all child executions if cascading
     if cascade:
@@ -1438,12 +1445,13 @@ async def add_graph_execution(
 
     if prisma.is_connected():
         edb = execution_db
+        ldb = library_db
         udb = user_db
         gdb = graph_db
         odb = onboarding_db
         wdb = workspace_db
     else:
-        edb = udb = gdb = odb = wdb = get_database_manager_async_client()
+        edb = ldb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
     # ``resolve_execution_credentials_owner`` lives in backend.data.grants (not
     # backend.data.graph), so call it directly in-process; the DB-manager client
@@ -1567,6 +1575,42 @@ async def add_graph_execution(
             )
             await _enforce_expert_run_budget(user_id, expert_id)
 
+        if not organization_id and team_id is None:
+            if parent_exec_id is not None:
+                parent = await edb.get_graph_execution(
+                    user_id=user_id,
+                    execution_id=parent_exec_id,
+                    include_node_executions=False,
+                )
+                if parent is not None and parent.organization_id:
+                    organization_id, team_id = (
+                        parent.organization_id,
+                        parent.team_id,
+                    )
+            elif preset_id is not None:
+                preset = await ldb.get_preset(user_id, preset_id)
+                if (
+                    preset is not None
+                    and preset.graph_id == graph_id
+                    and (graph_version is None or preset.graph_version == graph_version)
+                    and preset.organization_id is not None
+                ):
+                    organization_id, team_id = (
+                        preset.organization_id,
+                        preset.team_id,
+                    )
+            if not organization_id:
+                resolved_scope = await ldb.resolve_unique_library_agent_scope(
+                    user_id,
+                    graph_id,
+                    graph_version,
+                )
+                if resolved_scope is None:
+                    raise GraphNotInLibraryError(
+                        f"Graph #{graph_id} has no unique execution tenant"
+                    )
+                organization_id, team_id = resolved_scope
+
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
@@ -1604,39 +1648,6 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id_restriction=team_id,
         )
-
-        # Tenant a NEW execution at creation: several callers arrive with a
-        # falsy organization_id — legacy schedules (empty organizationId),
-        # sub-graphs inheriting an untenanted parent's ExecutionContext (see
-        # AgentExecutorBlock), or any caller that omits tenancy. Resolve the
-        # user's default org/team so create_graph_execution gets a non-null
-        # value and the ExecutionContext built below inherits it.
-        #
-        # CREATE path only — resume/requeue backfills org/team from the
-        # persisted row (the graph_exec_id branch above and the
-        # execution_context backfill below), so re-resolving here would risk
-        # re-tenanting an existing row under a different org.
-        #
-        # Only resolve when NEITHER field was supplied — never overwrite an
-        # explicit team_id. resolve_default_tenancy is best-effort: an
-        # unresolvable org or a raised lookup yields (None, None) and the row
-        # is created untenanted rather than crashing the run.
-        if not organization_id and not team_id:
-            from backend.api.features.orgs.db import resolve_default_tenancy
-
-            # add_graph_execution runs in both the API server (direct prisma)
-            # and the scheduler/executor (no prisma — DB access via the RPC
-            # client). Dispatch the resolver the same way every other DB dep in
-            # this function does, or it silently no-ops in the scheduler
-            # process — exactly where scheduled executions are created.
-            resolve = (
-                resolve_default_tenancy
-                if prisma.is_connected()
-                else get_database_manager_async_client().resolve_default_tenancy
-            )
-            default_org_id, default_team_id = await resolve(user_id)
-            if default_org_id:
-                organization_id, team_id = default_org_id, default_team_id
 
         if parent_exec_id is not None:
             parent = await edb.get_graph_execution(
@@ -1677,7 +1688,13 @@ async def add_graph_execution(
     # Generate execution context if it's not provided
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_exec.graph_version,
+            organization_id=graph_exec.organization_id,
+            team_id=graph_exec.team_id,
+        )
         workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(

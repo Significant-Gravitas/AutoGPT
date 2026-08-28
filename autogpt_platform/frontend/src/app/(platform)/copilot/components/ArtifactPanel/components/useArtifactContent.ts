@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { fetchArtifactResource } from "../artifactRequest";
 
 // Cap on cached text artifacts. Long sessions with many large artifacts
 // would otherwise hold every opened one in memory.
@@ -90,10 +91,10 @@ async function parseArtifactFetchError(response: Response): Promise<string> {
   return prefix;
 }
 
-async function fetchArtifactResponse(url: string): Promise<Response> {
+async function fetchArtifactResponse(artifact: ArtifactRef): Promise<Response> {
   for (let attempt = 0; attempt <= CONTENT_FETCH_MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url);
+      const response = await fetchArtifactResource(artifact);
       if (response.ok) return response;
 
       if (
@@ -131,6 +132,7 @@ export function useArtifactContent(
 ) {
   const [content, setContent] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Bumped by `retry()` to force the fetch effect to re-run.
@@ -173,9 +175,13 @@ export function useArtifactContent(
   }, [artifact.id, isLoading]);
 
   useEffect(() => {
-    if (classification.type === "image" || classification.type === "video") {
+    const isMedia =
+      classification.type === "image" || classification.type === "video";
+    const isTenantScoped = "organizationId" in artifact || "teamId" in artifact;
+    if (isMedia && !isTenantScoped) {
       setContent(null);
       setPdfUrl(null);
+      setMediaUrl(null);
       setError(null);
       setIsLoading(false);
       return;
@@ -185,11 +191,40 @@ export function useArtifactContent(
     setIsLoading(true);
     setError(null);
 
+    if (isMedia) {
+      let objectUrl: string | null = null;
+      setContent(null);
+      setPdfUrl(null);
+      setMediaUrl(null);
+      fetchArtifactResponse(artifact)
+        .then((res) => res.blob())
+        .then((blob) => {
+          objectUrl = URL.createObjectURL(blob);
+          if (cancelled) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+            return;
+          }
+          setMediaUrl(objectUrl);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(err.message);
+            setIsLoading(false);
+          }
+        });
+      return () => {
+        cancelled = true;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+    }
+
     if (classification.type === "pdf") {
       let objectUrl: string | null = null;
       setContent(null);
       setPdfUrl(null);
-      fetchArtifactResponse(artifact.sourceUrl)
+      fetchArtifactResponse(artifact)
         .then((res) => res.blob())
         .then((blob) => {
           objectUrl = URL.createObjectURL(blob);
@@ -227,7 +262,7 @@ export function useArtifactContent(
         cancelled = true;
       };
     }
-    fetchArtifactResponse(artifact.sourceUrl)
+    fetchArtifactResponse(artifact)
       .then((res) => res.text())
       .then((text) => {
         if (!cancelled) {
@@ -253,5 +288,5 @@ export function useArtifactContent(
     };
   }, [artifact.id, artifact.sourceUrl, classification.type, retryNonce]);
 
-  return { content, pdfUrl, isLoading, error, scrollRef, retry };
+  return { content, pdfUrl, mediaUrl, isLoading, error, scrollRef, retry };
 }

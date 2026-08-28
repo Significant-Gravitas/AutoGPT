@@ -61,7 +61,9 @@ describe("RecentChatItem — display", () => {
   it("links to the session and shows its title", () => {
     renderItem(makeProps());
     const link = screen.getByRole("link", { name: /my chat/i });
-    expect(link.getAttribute("href")).toBe("/copilot?sessionId=s1");
+    expect(link.getAttribute("href")).toBe(
+      "/copilot?sessionId=s1&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("falls back to 'Untitled chat' when the title is empty", () => {
@@ -151,7 +153,7 @@ describe("RecentChatItem — actions menu", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /delete chat/i }),
     );
-    expect(onDelete).toHaveBeenCalledWith("s1", "My chat");
+    expect(onDelete).toHaveBeenCalledWith(baseSession);
   });
 
   it("hides the Share action when sharing is disabled", async () => {
@@ -170,7 +172,7 @@ describe("RecentChatItem — actions menu", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: /share chat/i }),
     );
-    expect(onShare).toHaveBeenCalledWith("s1");
+    expect(onShare).toHaveBeenCalledWith(baseSession);
   });
 
   it("shows an exporting label while an export is in flight", async () => {

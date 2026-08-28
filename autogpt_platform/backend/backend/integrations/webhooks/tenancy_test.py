@@ -155,7 +155,7 @@ async def test_auto_webhook_rehomes_legacy_null_tenancy_row(monkeypatch) -> None
     rehomed = legacy.model_copy(
         update={"organization_id": "org-1", "team_id": "team-1"}
     )
-    set_tenancy = AsyncMock(return_value=rehomed)
+    adopt_legacy = AsyncMock(return_value=rehomed)
     create_webhook = AsyncMock()
 
     with (
@@ -169,7 +169,7 @@ async def test_auto_webhook_rehomes_legacy_null_tenancy_row(monkeypatch) -> None
             "find_webhook_by_credentials_and_props_any_tenant",
             AsyncMock(return_value=legacy),
         ),
-        patch.object(integrations, "set_webhook_tenancy", set_tenancy),
+        patch.object(integrations, "adopt_dangling_legacy_webhook", adopt_legacy),
         patch.object(manager, "_create_webhook", create_webhook),
     ):
         result = await manager.get_suitable_auto_webhook(
@@ -183,10 +183,133 @@ async def test_auto_webhook_rehomes_legacy_null_tenancy_row(monkeypatch) -> None
         )
 
     assert result == rehomed
-    set_tenancy.assert_awaited_once_with(
-        legacy.id, organization_id="org-1", team_id="team-1"
+    adopt_legacy.assert_awaited_once_with(
+        legacy.id,
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
     )
     create_webhook.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_webhook_does_not_rehome_attached_legacy_row(monkeypatch) -> None:
+    monkeypatch.setattr(
+        webhooks_base.app_config, "platform_base_url", "https://example.com"
+    )
+    manager = GithubWebhooksManager()
+    legacy = _webhook(
+        provider=ProviderName.GITHUB,
+        webhook_type=manager.WebhookType.REPO,
+        resource="owner/repo",
+        organization_id=None,
+        team_id=None,
+    )
+    replacement = legacy.model_copy(
+        update={
+            "id": "webhook-2",
+            "organization_id": "org-1",
+            "team_id": "team-1",
+        }
+    )
+    adopt_legacy = AsyncMock(return_value=None)
+    create_webhook = AsyncMock(return_value=replacement)
+
+    with (
+        patch.object(
+            integrations,
+            "find_webhook_by_credentials_and_props",
+            AsyncMock(return_value=None),
+        ),
+        patch.object(
+            integrations,
+            "find_webhook_by_credentials_and_props_any_tenant",
+            AsyncMock(return_value=legacy),
+        ),
+        patch.object(integrations, "adopt_dangling_legacy_webhook", adopt_legacy),
+        patch.object(manager, "_create_webhook", create_webhook),
+    ):
+        result = await manager.get_suitable_auto_webhook(
+            user_id="user-1",
+            credentials=_credentials(ProviderName.GITHUB),
+            webhook_type=manager.WebhookType.REPO,
+            resource="owner/repo",
+            events=["push"],
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result == replacement
+    adopt_legacy.assert_awaited_once()
+    create_webhook.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_legacy_webhook_adoption_requires_no_attached_parent() -> None:
+    client = SimpleNamespace(
+        update_many=AsyncMock(return_value=0),
+        find_unique=AsyncMock(),
+    )
+
+    with patch.object(integrations.IntegrationWebhook, "prisma", return_value=client):
+        result = await integrations.adopt_dangling_legacy_webhook(
+            "webhook-1",
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+        )
+
+    assert result is None
+    client.update_many.assert_awaited_once_with(
+        where={
+            "id": "webhook-1",
+            "userId": "user-1",
+            "organizationId": None,
+            "teamId": None,
+            "AgentNodes": {"none": {}},
+            "AgentPresets": {"none": {}},
+        },
+        data={"organizationId": "org-1", "teamId": "team-1"},
+    )
+    client.find_unique.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_provider_registration_is_compensated_when_persistence_fails(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        webhooks_base.app_config, "platform_base_url", "https://example.com"
+    )
+    manager = GithubWebhooksManager()
+    credentials = _credentials(ProviderName.GITHUB)
+    register = AsyncMock(return_value=("provider-webhook-1", {"key": "value"}))
+    deregister = AsyncMock()
+    persist = AsyncMock(side_effect=RuntimeError("database unavailable"))
+
+    with (
+        patch.object(manager, "_register_webhook", register),
+        patch.object(manager, "_deregister_webhook", deregister),
+        patch.object(integrations, "create_webhook", persist),
+    ):
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await manager._create_webhook(
+                user_id="user-1",
+                webhook_type=manager.WebhookType.REPO,
+                events=["push"],
+                resource="owner/repo",
+                credentials=credentials,
+                organization_id="org-1",
+                team_id="team-a",
+            )
+
+    register.assert_awaited_once()
+    deregister.assert_awaited_once()
+    webhook, deregister_credentials = deregister.await_args.args
+    assert deregister_credentials is credentials
+    assert webhook.provider_webhook_id == "provider-webhook-1"
+    assert webhook.organization_id == "org-1"
+    assert webhook.team_id == "team-a"
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,8 @@ class SearchResultItem(pydantic.BaseModel):
     # just newest-first. Populated for hybrid-search responses.
     score: float | None = None
     updated_at: datetime | None = None
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 class GlobalSearchResponse(pydantic.BaseModel):

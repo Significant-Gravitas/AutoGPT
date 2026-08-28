@@ -145,6 +145,8 @@ async def get_library_agent_by_graph_id(
         version,
         organization_id=ctx.org_id,
         team_id_restriction=ctx.team_id,
+        include_granted=True,
+        exact_scope=True,
     )
     if not library_agent:
         raise HTTPException(

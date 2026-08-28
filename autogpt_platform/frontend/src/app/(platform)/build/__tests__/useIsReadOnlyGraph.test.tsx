@@ -18,6 +18,7 @@ vi.mock("nuqs", () => ({
 
 let mockGraph: { id: string; user_id: string } | undefined;
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  getGetV1GetSpecificGraphQueryKey: vi.fn(() => ["specific-graph"]),
   useGetV1GetSpecificGraph: vi.fn(() => ({ data: mockGraph })),
 }));
 

@@ -58,7 +58,7 @@ export default function ArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
-    setSelectedFolderId,
+    selectFolder,
     hasMore,
     isLoadingMore,
     loadMore,
@@ -140,7 +140,7 @@ export default function ArtifactsPage() {
         >
           <FolderBreadcrumb
             folderName={selectedFolder?.name ?? "Folder"}
-            onBack={() => setSelectedFolderId(null)}
+            onBack={() => selectFolder(null)}
           />
         </motion.div>
       ) : (
@@ -151,7 +151,7 @@ export default function ArtifactsPage() {
             animate="show"
             transition={{ delay: reduceMotion ? 0 : 0.3 }}
           >
-            <WorkspaceFolders onSelectFolder={setSelectedFolderId} />
+            <WorkspaceFolders onSelectFolder={selectFolder} />
           </motion.div>
         )
       )}

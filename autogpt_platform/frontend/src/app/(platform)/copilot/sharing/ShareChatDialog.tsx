@@ -13,12 +13,25 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   sessionId: string;
+  organizationId?: string | null;
+  teamId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function ShareChatDialog({ sessionId, open, onOpenChange }: Props) {
-  const state = useShareChatDialog({ sessionId, open });
+export function ShareChatDialog({
+  sessionId,
+  organizationId = null,
+  teamId = null,
+  open,
+  onOpenChange,
+}: Props) {
+  const state = useShareChatDialog({
+    sessionId,
+    organizationId,
+    teamId,
+    open,
+  });
 
   return (
     <Dialog

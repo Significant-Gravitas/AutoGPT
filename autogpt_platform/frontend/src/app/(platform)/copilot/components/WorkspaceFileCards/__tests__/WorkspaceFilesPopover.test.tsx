@@ -11,7 +11,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import type { UIMessage } from "ai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../../../copilotStreamStore";
 import { useCopilotUIStore } from "../../../store";
 import { WorkspaceFilesPopover } from "../components/WorkspaceFilesPopover";
@@ -92,7 +92,14 @@ function activityMessages(): UIMessage[] {
   ];
 }
 
+beforeEach(() => {
+  useCopilotUIStore.setState({
+    artifactTenantScope: { organizationId: null, teamId: null },
+  });
+});
+
 afterEach(() => {
+  useCopilotUIStore.setState({ artifactTenantScope: null });
   useCopilotStreamStore.setState({ messageSnapshots: {} });
 });
 

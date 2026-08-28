@@ -78,6 +78,17 @@ def resource_barriers(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(middleware_mod, "_live_authorization_principal", allow)
 
 
+@pytest.fixture(autouse=True)
+def exact_external_graph_scope(monkeypatch: pytest.MonkeyPatch):
+    async def exact_library_agent(**kwargs):
+        return MagicMock(team_id=kwargs["team_id_restriction"])
+
+    monkeypatch.setattr(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        exact_library_agent,
+    )
+
+
 def _stub_block(
     *,
     block_id: str = "00000000-0000-0000-0000-000000000001",
@@ -361,6 +372,91 @@ def test_execute_graph_honors_key_team_restriction(
     assert response.status_code == 200
     assert captured["organization_id"] == "org-from-key"
     assert captured["team_id"] == "team-from-key"
+
+
+def test_execute_graph_org_home_key_rejects_team_only_graph(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    async def fake_require_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-from-key",
+        )
+
+    app.dependency_overrides[require_auth] = fake_require_auth
+    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    exact_lookup = AsyncMock(return_value=None)
+    resolve_grant = AsyncMock()
+    add_execution = AsyncMock()
+    monkeypatch.setattr(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        exact_lookup,
+    )
+    monkeypatch.setattr(routes_mod, "resolve_graph_grant", resolve_grant)
+    monkeypatch.setattr(routes_mod, "add_graph_execution", add_execution)
+
+    response = client.post(
+        "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
+        json={"node_input": {}},
+    )
+
+    assert response.status_code == 404
+    exact_lookup.assert_awaited_once_with(
+        user_id=test_user_id,
+        graph_id="00000000-0000-0000-0000-000000000001",
+        graph_version=1,
+        organization_id="org-from-key",
+        team_id_restriction=None,
+        exact_scope=True,
+    )
+    resolve_grant.assert_not_awaited()
+    add_execution.assert_not_awaited()
+
+
+def test_execute_graph_team_key_accepts_exact_team_grant(
+    monkeypatch: pytest.MonkeyPatch, test_user_id: str
+):
+    async def fake_require_auth() -> APIAuthorizationInfo:
+        return APIAuthorizationInfo(
+            user_id=test_user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            created_at=datetime.now(timezone.utc),
+            organization_id="org-from-key",
+            team_id_restriction="team-from-key",
+        )
+
+    app.dependency_overrides[require_auth] = fake_require_auth
+    monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        AsyncMock(return_value=None),
+    )
+    grant = MagicMock(principalId="team-from-key")
+    resolve_grant = AsyncMock(return_value=grant)
+    add_execution = AsyncMock(return_value=MagicMock(id="exec-1"))
+    monkeypatch.setattr(routes_mod, "resolve_graph_grant", resolve_grant)
+    monkeypatch.setattr(routes_mod, "add_graph_execution", add_execution)
+
+    response = client.post(
+        "/graphs/00000000-0000-0000-0000-000000000001/execute/1",
+        json={"node_input": {}},
+    )
+
+    assert response.status_code == 200
+    resolve_grant.assert_awaited_once_with(
+        test_user_id,
+        "00000000-0000-0000-0000-000000000001",
+        capability=routes_mod.GrantCapability.EXECUTE,
+        graph_version=1,
+        organization_id="org-from-key",
+        team_id_restriction="team-from-key",
+    )
+    assert add_execution.await_args.kwargs["organization_id"] == "org-from-key"
+    assert add_execution.await_args.kwargs["team_id"] == "team-from-key"
 
 
 def test_run_agent_tool_honors_key_team_restriction(

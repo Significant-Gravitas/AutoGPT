@@ -2,11 +2,23 @@ import { useDeleteWorkspaceFile } from "@/app/api/__generated__/endpoints/worksp
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import { parseWorkspaceFileID, buildWorkspaceURI } from "@/lib/workspace-uri";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
-export function useWorkspaceUpload() {
+interface WorkspaceUploadScope {
+  organizationId: string | null;
+  teamId: string | null;
+}
+
+export function useWorkspaceUpload(scope?: WorkspaceUploadScope) {
   const { toast } = useToast();
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const organizationId = scope ? scope.organizationId : activeOrgID;
+  const teamId = scope ? scope.teamId : activeTeamID;
 
   const { mutate: deleteMutation } = useDeleteWorkspaceFile({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onError: () => {
         toast({
@@ -19,7 +31,10 @@ export function useWorkspaceUpload() {
   });
 
   async function handleUploadFile(file: File) {
-    const d = await uploadFileDirect(file);
+    const d = await uploadFileDirect(file, undefined, {
+      organizationId,
+      teamId,
+    });
     return {
       file_name: d.name,
       size: d.size_bytes,

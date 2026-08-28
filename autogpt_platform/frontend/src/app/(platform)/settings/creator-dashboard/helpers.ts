@@ -13,6 +13,8 @@ import type { IconSvgElement } from "@hugeicons/react";
 export interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
   graph_id: string;
+  organization_id: string | null;
+  team_id: string | null;
 }
 
 export function buildEditPayload(submission: StoreSubmission): EditPayload {
@@ -26,6 +28,8 @@ export function buildEditPayload(submission: StoreSubmission): EditPayload {
     changes_summary: submission.changes_summary || "Update Submission",
     store_listing_version_id: submission.listing_version_id,
     graph_id: submission.graph_id,
+    organization_id: submission.organization_id ?? null,
+    team_id: submission.team_id ?? null,
   };
 }
 

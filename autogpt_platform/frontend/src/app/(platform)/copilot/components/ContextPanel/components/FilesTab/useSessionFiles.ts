@@ -1,9 +1,17 @@
 "use client";
 
-import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import {
+  getListWorkspaceFilesQueryKey,
+  useListWorkspaceFiles,
+} from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
+import { useCopilotUIStore } from "../../../../store";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
 import { isUploadedFile } from "./helpers";
 
@@ -13,6 +21,7 @@ export interface SessionFile {
 }
 
 export function useSessionFiles(sessionId: string | null) {
+  const tenantScope = useCopilotUIStore((s) => s.artifactTenantScope);
   const messages = useCopilotStreamStore((s) =>
     sessionId ? s.messageSnapshots[sessionId] : undefined,
   );
@@ -21,9 +30,21 @@ export function useSessionFiles(sessionId: string | null) {
     { session_id: sessionId ?? undefined },
     {
       query: {
-        enabled: !!sessionId,
+        enabled: !!sessionId && tenantScope !== null,
+        queryKey: getTeamScopedQueryKey(
+          getListWorkspaceFilesQueryKey({
+            session_id: sessionId ?? undefined,
+          }),
+          tenantScope?.organizationId,
+          tenantScope?.teamId,
+        ),
         select: (res) => res.data as ListFilesResponse,
       },
+      request: getTenantRequestInit(
+        tenantScope?.organizationId,
+        tenantScope?.teamId,
+        tenantScope !== null,
+      ),
     },
   );
 
@@ -47,9 +68,9 @@ export function useSessionFiles(sessionId: string | null) {
   return {
     uploaded,
     generated,
-    isLoading: query.isLoading && !!sessionId,
+    isLoading: query.isLoading && !!sessionId && tenantScope !== null,
     isError: query.isError,
     error: query.error,
-    isEmpty: !!sessionId && files.length === 0,
+    isEmpty: !!sessionId && tenantScope !== null && files.length === 0,
   };
 }

@@ -7,6 +7,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
@@ -34,9 +35,12 @@ export function SelectedScheduleView({
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
+    agent.organization_id ?? null,
+    agent.team_id ?? null,
   );
 
   const userTimezone = useUserTimezone();
+  const { user } = useAuth();
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -92,6 +96,7 @@ export function SelectedScheduleView({
                     agent={agent}
                     scheduleId={schedule.id}
                     schedule={schedule}
+                    canDelete={schedule.user_id === user?.id}
                     onDeleted={() => onScheduleDeleted?.(schedule.id)}
                     onSelectRun={onSelectRun}
                   />
@@ -173,6 +178,7 @@ export function SelectedScheduleView({
             agent={agent}
             scheduleId={schedule.id}
             schedule={schedule}
+            canDelete={schedule.user_id === user?.id}
             onDeleted={() => onScheduleDeleted?.(schedule.id)}
             onSelectRun={onSelectRun}
           />

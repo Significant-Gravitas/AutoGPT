@@ -4,12 +4,19 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect, useRef } from "react";
+import { getTenantEntityKey } from "@/services/org-team/identity";
 
 type ExecutionEventHandler = (execution: GraphExecution) => void;
 
 interface UseExecutionEventsOptions {
   graphId?: GraphID | string | null;
-  graphIds?: (GraphID | string)[];
+  organizationId?: string | null;
+  teamId?: string | null;
+  graphScopes?: Array<{
+    graphId: GraphID | string;
+    organizationId: string | null;
+    teamId: string | null;
+  }>;
   enabled?: boolean;
   onExecutionUpdate?: ExecutionEventHandler;
 }
@@ -26,7 +33,9 @@ interface UseExecutionEventsOptions {
  */
 export function useExecutionEvents({
   graphId,
-  graphIds,
+  organizationId,
+  teamId,
+  graphScopes,
   enabled = true,
   onExecutionUpdate,
 }: UseExecutionEventsOptions) {
@@ -40,39 +49,67 @@ export function useExecutionEvents({
   useEffect(() => {
     if (!enabled) return;
 
-    const idsToSubscribe = graphIds || (graphId ? [graphId] : []);
-    if (idsToSubscribe.length === 0) return;
+    const scopesToSubscribe =
+      graphScopes ||
+      (graphId
+        ? [
+            {
+              graphId,
+              organizationId: organizationId ?? null,
+              teamId: teamId ?? null,
+            },
+          ]
+        : []);
+    if (scopesToSubscribe.length === 0) return;
 
-    // Normalize IDs to strings for consistent comparison
-    const normalizedIds = idsToSubscribe.map((id) => String(id));
-    const subscribedIds = new Set<string>();
+    const normalizedScopes = scopesToSubscribe.map((scope) => ({
+      graphId: String(scope.graphId),
+      organizationId: scope.organizationId,
+      teamId: scope.teamId,
+      key: getTenantEntityKey(
+        String(scope.graphId),
+        scope.organizationId,
+        scope.teamId,
+      ),
+    }));
+    const subscribedScopes = new Set<string>();
 
     const handleExecutionEvent = (execution: GraphExecution) => {
-      // Filter by graphIds if provided, using normalized string comparison
-      if (normalizedIds.length > 0) {
-        const executionGraphId = String(execution.graph_id);
-        if (!normalizedIds.includes(executionGraphId)) return;
+      if (normalizedScopes.length > 0) {
+        const executionKey = getTenantEntityKey(
+          String(execution.graph_id),
+          execution.organization_id,
+          execution.team_id,
+        );
+        if (!normalizedScopes.some((scope) => scope.key === executionKey)) {
+          return;
+        }
       }
 
       onExecutionUpdateRef.current?.(execution);
     };
 
     const connectHandler = api.onWebSocketConnect(() => {
-      normalizedIds.forEach((id) => {
-        // Track subscriptions to avoid duplicate subscriptions
-        if (subscribedIds.has(id)) return;
-        subscribedIds.add(id);
+      normalizedScopes.forEach((scope) => {
+        if (subscribedScopes.has(scope.key)) return;
+        subscribedScopes.add(scope.key);
 
-        api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
-          console.error(
-            `Failed to subscribe to execution updates for graph ${id}:`,
-            error,
-          );
-          Sentry.captureException(error, {
-            tags: { graphId: id },
+        api
+          .subscribeToGraphExecutions(
+            scope.graphId as GraphID,
+            scope.organizationId,
+            scope.teamId,
+          )
+          .catch((error) => {
+            console.error(
+              `Failed to subscribe to execution updates for graph ${scope.graphId}:`,
+              error,
+            );
+            Sentry.captureException(error, {
+              tags: { graphId: scope.graphId },
+            });
+            subscribedScopes.delete(scope.key);
           });
-          subscribedIds.delete(id);
-        });
       });
     });
 
@@ -88,7 +125,7 @@ export function useExecutionEvents({
       messageHandler();
       // Note: Backend automatically cleans up subscriptions on websocket disconnect
       // If IDs change while connected, old subscriptions remain but are filtered client-side
-      subscribedIds.clear();
+      subscribedScopes.clear();
     };
-  }, [api, graphId, graphIds, enabled]);
+  }, [api, graphId, organizationId, teamId, graphScopes, enabled]);
 }

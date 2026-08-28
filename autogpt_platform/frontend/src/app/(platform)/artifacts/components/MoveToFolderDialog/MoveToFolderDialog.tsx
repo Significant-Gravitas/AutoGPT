@@ -11,6 +11,8 @@ interface Props {
   fileId: string;
   fileName: string;
   currentFolderId?: string | null;
+  organizationId: string | null;
+  teamId: string | null;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
 }
@@ -19,16 +21,23 @@ export function MoveToFolderDialog({
   fileId,
   fileName,
   currentFolderId,
+  organizationId,
+  teamId,
   isOpen,
   setIsOpen,
 }: Props) {
-  const { folders, moveFileToFolder } = useArtifactsFolders();
+  const sourceScope = { organizationId, teamId };
+  const { folders, moveFileToFolder } = useArtifactsFolders(sourceScope);
   const destinationFolders = folders.filter((f) => f.id !== currentFolderId);
 
   function handleMove(folderId: string | null) {
+    const folder =
+      folderId === null
+        ? null
+        : (folders.find((candidate) => candidate.id === folderId) ?? null);
     // Close only on success; the hook toasts on error and we keep the dialog
     // open so the user can retry without re-opening it.
-    moveFileToFolder({ fileId, folderId })
+    moveFileToFolder({ fileId, folder, sourceScope })
       .then(() => setIsOpen(false))
       .catch(() => {});
   }

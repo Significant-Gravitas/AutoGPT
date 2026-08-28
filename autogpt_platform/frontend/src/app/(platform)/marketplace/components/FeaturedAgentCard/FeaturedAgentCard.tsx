@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props {
   agent: StoreAgent;
@@ -71,6 +72,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               src={agent.agent_image}
               alt={`${agent.agent_name} preview image`}
               fill
+              unoptimized={shouldBypassImageOptimization(agent.agent_image)}
               className="object-cover"
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}

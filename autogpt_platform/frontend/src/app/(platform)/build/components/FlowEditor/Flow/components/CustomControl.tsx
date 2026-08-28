@@ -18,6 +18,8 @@ import {
   Presentation01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 export const CustomControls = memo(
   ({
@@ -34,6 +36,7 @@ export const CustomControls = memo(
     const [isTutorialLoading, setIsTutorialLoading] = useState(false);
     const searchParams = useSearchParams();
     const router = useRouter();
+    const tenantScope = useBuilderTenantScope();
 
     useEffect(() => {
       setTutorialLoadingCallback(setIsTutorialLoading);
@@ -45,7 +48,13 @@ export const CustomControls = memo(
 
       const flowId = searchParams.get("flowID");
       if (flowId) {
-        router.push("/build?view=new");
+        router.push(
+          getBuilderHref({
+            view: "new",
+            organizationId: tenantScope.organizationId,
+            teamId: tenantScope.teamId,
+          }),
+        );
         return;
       }
 

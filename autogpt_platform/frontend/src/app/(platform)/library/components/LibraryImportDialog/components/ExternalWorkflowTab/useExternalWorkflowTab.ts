@@ -2,7 +2,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { fetchWorkflowFromUrl } from "./fetchWorkflowFromUrl";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { getCopilotStartHref } from "@/services/org-team/builder";
 
 function decodeBase64Json(dataUrl: string): string {
   const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
@@ -16,13 +19,18 @@ function decodeBase64Json(dataUrl: string): string {
 
 async function uploadJsonAsFile(
   jsonString: string,
+  organizationId: string | null,
+  teamId: string | null,
 ): Promise<{ fileId: string; fileName: string; mimeType: string }> {
   const file = new File(
     [new Blob([jsonString], { type: "application/json" })],
-    `workflow-${crypto.randomUUID()}.json`,
+    `workflow-${uuidv4({})}.json`,
     { type: "application/json" },
   );
-  const uploaded = await uploadFileDirect(file);
+  const uploaded = await uploadFileDirect(file, undefined, {
+    organizationId,
+    teamId,
+  });
   return {
     fileId: uploaded.file_id,
     fileName: uploaded.name,
@@ -33,18 +41,28 @@ async function uploadJsonAsFile(
 function storeAndRedirect(
   fileInfo: { fileId: string; fileName: string; mimeType: string },
   router: ReturnType<typeof useRouter>,
+  organizationId: string | null,
+  teamId: string | null,
 ) {
   sessionStorage.setItem(
     "importWorkflowPrompt",
     "Import this workflow and recreate it as an AutoGPT agent",
   );
   sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
-  router.push("/copilot?source=import&autosubmit=true");
+  const href = new URL(
+    getCopilotStartHref(organizationId, teamId),
+    window.location.origin,
+  );
+  href.searchParams.set("source", "import");
+  href.searchParams.set("autosubmit", "true");
+  router.push(`${href.pathname}${href.search}`);
 }
 
 export function useExternalWorkflowTab() {
   const { toast } = useToast();
   const router = useRouter();
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const [fileValue, setFileValue] = useState("");
   const [urlValue, setUrlValue] = useState("");
   const [submittingMode, setSubmittingMode] = useState<"url" | "file" | null>(
@@ -57,7 +75,12 @@ export function useExternalWorkflowTab() {
     try {
       const jsonString = await resolveJson(mode);
       if (!jsonString) return;
-      storeAndRedirect(await uploadJsonAsFile(jsonString), router);
+      storeAndRedirect(
+        await uploadJsonAsFile(jsonString, activeOrgID, activeTeamID),
+        router,
+        activeOrgID,
+        activeTeamID,
+      );
     } catch (err) {
       toast({
         title: "Upload failed",

@@ -218,6 +218,8 @@ class DelegateToExpertTool(BaseTool):
                 elapsed=elapsed,
                 workspace_files=workspace_files,
                 actor=target.name,
+                organization_id=target.organization_id,
+                team_id=target.team_id,
             ),
             DelegatedExpertInfo(
                 id=target.id,

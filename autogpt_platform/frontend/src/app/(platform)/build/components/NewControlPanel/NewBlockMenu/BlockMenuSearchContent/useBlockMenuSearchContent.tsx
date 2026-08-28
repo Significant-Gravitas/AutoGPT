@@ -16,6 +16,7 @@ import {
   usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import {
+  getGetV2BuilderSearchQueryKey,
   getV2GetSpecificAgent,
   useGetV2BuilderSearchInfinite,
 } from "@/app/api/__generated__/endpoints/store/store";
@@ -24,6 +25,11 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { CategoryCounts } from "../BlockMenuFilters/types";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 export const useBlockMenuSearchContent = () => {
   const {
@@ -40,13 +46,23 @@ export const useBlockMenuSearchContent = () => {
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
     useAddAgentToBuilder();
   const queryClient = getQueryClient();
+  const tenantScope = useBuilderTenantScope();
 
   const resetSearchSession = useCallback(() => {
     setSearchId(undefined);
     queryClient.invalidateQueries({
-      queryKey: getGetV2GetBuilderSuggestionsQueryKey(),
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetBuilderSuggestionsQueryKey(),
+        tenantScope.organizationId,
+        tenantScope.teamId,
+      ),
     });
-  }, [queryClient, setSearchId]);
+  }, [
+    queryClient,
+    setSearchId,
+    tenantScope.organizationId,
+    tenantScope.teamId,
+  ]);
 
   const [addingLibraryAgentId, setAddingLibraryAgentId] = useState<
     string | null
@@ -55,25 +71,41 @@ export const useBlockMenuSearchContent = () => {
     string | null
   >(null);
 
+  const searchParams = {
+    page: 1,
+    page_size: 8,
+    search_query: searchQuery,
+    search_id: searchId,
+    filter: filters.length > 0 ? filters.join(",") : undefined,
+    by_creator: creators.length > 0 ? creators : undefined,
+  };
+
   const {
     data: searchQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading: searchLoading,
-  } = useGetV2BuilderSearchInfinite(
-    {
-      page: 1,
-      page_size: 8,
-      search_query: searchQuery,
-      search_id: searchId,
-      filter: filters.length > 0 ? filters.join(",") : undefined,
-      by_creator: creators.length > 0 ? creators : undefined,
+  } = useGetV2BuilderSearchInfinite(searchParams, {
+    request: getTenantRequestInit(
+      tenantScope.organizationId,
+      tenantScope.teamId,
+      tenantScope.isReady,
+    ),
+    query: {
+      enabled: tenantScope.isReady,
+      getNextPageParam: getPaginationNextPageNumber,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2BuilderSearchQueryKey(searchParams),
+        tenantScope.organizationId,
+        tenantScope.teamId,
+      ),
     },
-    {
-      query: { getNextPageParam: getPaginationNextPageNumber },
-    },
-  );
+  });
+
+  useEffect(() => {
+    setSearchId(undefined);
+  }, [setSearchId, tenantScope.organizationId, tenantScope.teamId]);
 
   const { mutateAsync: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
     mutation: {
@@ -97,6 +129,11 @@ export const useBlockMenuSearchContent = () => {
         });
       },
     },
+    request: getTenantRequestInit(
+      tenantScope.organizationId,
+      tenantScope.teamId,
+      tenantScope.isReady,
+    ),
   });
 
   useEffect(() => {
@@ -176,6 +213,10 @@ export const useBlockMenuSearchContent = () => {
 
       const { data: libraryAgentDetails } = await getV2GetLibraryAgent(
         libraryAgent.id,
+        getTenantRequestInit(
+          libraryAgent.organization_id ?? tenantScope.organizationId,
+          libraryAgent.team_id ?? tenantScope.teamId,
+        ),
       );
 
       addAgentToBuilder(libraryAgentDetails as LibraryAgent);

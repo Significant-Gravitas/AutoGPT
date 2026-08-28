@@ -118,7 +118,7 @@ export function APIKeyList() {
       {deleteTarget && (
         <DeleteAPIKeyDialog
           open
-          keyIds={deleteTarget}
+          keys={deleteTarget}
           onOpenChange={closeDeleteDialog}
           onDeleted={handleDeleted}
         />

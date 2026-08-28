@@ -17,6 +17,8 @@ export function DeleteScheduleButton({ agent, scheduleId, onDeleted }: Props) {
     agent.graph_id,
     scheduleId,
     agent.graph_version,
+    agent.organization_id ?? null,
+    agent.team_id ?? null,
   );
 
   return (

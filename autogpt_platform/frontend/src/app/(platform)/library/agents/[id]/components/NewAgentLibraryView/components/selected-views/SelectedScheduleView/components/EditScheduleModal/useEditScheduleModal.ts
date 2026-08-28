@@ -2,6 +2,8 @@
 
 import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { customMutator } from "@/app/api/mutators/custom-mutator";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +12,12 @@ import {
   parseCronToForm,
   validateSchedule,
 } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
+
+interface ScheduleUpdateResponse {
+  data: unknown;
+  status: number;
+  headers: Headers;
+}
 
 export function useEditScheduleModal(
   graphId: string,
@@ -71,24 +79,18 @@ export function useEditScheduleModal(
       if (Object.keys(errorsNow).length > 0) throw new Error("Invalid form");
 
       const cron = humanizeToCron();
-      const res = await fetch(`/api/schedules/${schedule.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cron }),
-      });
-      if (!res.ok) {
-        let message = "Failed to update schedule";
-        try {
-          const data = await res.json();
-          message = data?.message || data?.detail || message;
-        } catch {
-          try {
-            message = await res.text();
-          } catch {}
-        }
-        throw new Error(message);
-      }
-      return res.json();
+      const res = await customMutator<ScheduleUpdateResponse>(
+        `/api/schedules/${schedule.id}`,
+        {
+          ...getTenantRequestInit(
+            schedule.organization_id ?? null,
+            schedule.team_id ?? null,
+          ),
+          method: "PATCH",
+          body: JSON.stringify({ name, cron }),
+        },
+      );
+      return res.data;
     },
     onSuccess: async () => {
       invalidateAllScheduleQueries(queryClient, graphId);

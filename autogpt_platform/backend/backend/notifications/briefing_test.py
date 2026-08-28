@@ -148,6 +148,10 @@ async def test_highlights_are_capped_and_carry_a_gist_and_a_link():
         ScoredRun(
             execution_id=f"x{i}",
             graph_id="g-A",
+            graph_version=1,
+            library_agent_id="lib-A",
+            organization_id=None,
+            team_id=None,
             agent="A",
             interestingness=1.0,
             activity_status=f"Did thing {i}.",
@@ -195,6 +199,10 @@ async def test_a_run_with_nothing_to_say_still_gets_an_honest_gist():
         ScoredRun(
             execution_id="x1",
             graph_id="g-A",
+            graph_version=1,
+            library_agent_id="lib-A",
+            organization_id=None,
+            team_id=None,
             agent="A",
             interestingness=1.0,
             activity_status=None,

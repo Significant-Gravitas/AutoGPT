@@ -10,12 +10,15 @@ import {
   PublishAgentInfoInitialData,
   publishAgentSchemaFactory,
 } from "./helpers";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 export interface Props {
   onBack: () => void;
   onSuccess: (submissionData: any) => void;
   selectedAgentId: string | null;
   selectedAgentVersion: number | null;
+  selectedAgentOrganizationId?: string | null;
+  selectedAgentTeamId?: string | null;
   initialData?: PublishAgentInfoInitialData;
   isMarketplaceUpdate?: boolean;
 }
@@ -25,6 +28,8 @@ export function useAgentInfoStep({
   onSuccess,
   selectedAgentId,
   selectedAgentVersion,
+  selectedAgentOrganizationId = null,
+  selectedAgentTeamId = null,
   initialData,
   isMarketplaceUpdate = false,
 }: Props) {
@@ -122,21 +127,28 @@ export function useAgentInfoStep({
 
     try {
       const response = okData(
-        await postV2CreateStoreSubmission({
-          slug: (data.slug || "").replace(/\s+/g, "-"),
-          graph_id: selectedAgentId,
-          graph_version: selectedAgentVersion,
-          name: data.title || "",
-          sub_heading: data.subheader || "",
-          description: data.description,
-          instructions: data.instructions || undefined,
-          categories: filteredCategories,
-          image_urls: images,
-          video_url: data.youtubeLink || undefined,
-          agent_output_demo_url: data.agentOutputDemo || undefined,
-          recommended_schedule_cron: data.recommendedScheduleCron || undefined,
-          changes_summary: data.changesSummary || undefined,
-        }),
+        await postV2CreateStoreSubmission(
+          {
+            slug: (data.slug || "").replace(/\s+/g, "-"),
+            graph_id: selectedAgentId,
+            graph_version: selectedAgentVersion,
+            name: data.title || "",
+            sub_heading: data.subheader || "",
+            description: data.description,
+            instructions: data.instructions || undefined,
+            categories: filteredCategories,
+            image_urls: images,
+            video_url: data.youtubeLink || undefined,
+            agent_output_demo_url: data.agentOutputDemo || undefined,
+            recommended_schedule_cron:
+              data.recommendedScheduleCron || undefined,
+            changes_summary: data.changesSummary || undefined,
+          },
+          getTenantRequestInit(
+            selectedAgentOrganizationId,
+            selectedAgentTeamId,
+          ),
+        ),
       );
 
       onSuccess(response);

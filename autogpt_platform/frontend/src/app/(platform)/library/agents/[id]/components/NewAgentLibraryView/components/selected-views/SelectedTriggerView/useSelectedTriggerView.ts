@@ -7,7 +7,12 @@ import {
   usePatchV2UpdateAnExistingPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
@@ -16,15 +21,24 @@ import { useEffect, useState } from "react";
 
 type Args = {
   triggerId: string;
-  graphId: string;
+  agent: LibraryAgent;
 };
 
-export function useSelectedTriggerView({ triggerId, graphId }: Args) {
+export function useSelectedTriggerView({ triggerId, agent }: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
+  const graphId = agent.graph_id;
 
   const query = useGetV2GetASpecificPreset(triggerId, {
+    request: getTenantRequestInit(organizationId, teamId),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetASpecificPresetQueryKey(triggerId),
+        organizationId,
+        teamId,
+      ),
       enabled: !!triggerId,
       select: okData,
       retry: retryUnlessClientError,
@@ -48,6 +62,7 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
   }, [query.data]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {
@@ -55,10 +70,18 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
             title: "Trigger updated",
           });
           queryClient.invalidateQueries({
-            queryKey: getGetV2GetASpecificPresetQueryKey(triggerId),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2GetASpecificPresetQueryKey(triggerId),
+              organizationId,
+              teamId,
+            ),
           });
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({ graph_id: graphId }),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2ListPresetsQueryKey({ graph_id: graphId }),
+              organizationId,
+              teamId,
+            ),
           });
         }
       },

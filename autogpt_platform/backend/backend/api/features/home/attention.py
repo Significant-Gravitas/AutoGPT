@@ -7,6 +7,7 @@ from backend.api.features.experts.models import Expert
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
+from backend.util.tenancy_urls import copilot_path
 
 from .helpers import setup_count, to_home_expert
 from .models import HomeAction, HomeAttentionItem, HomeExpert
@@ -142,7 +143,11 @@ def _question_attention(
         created_at=as_utc(question.asked_at),
         primary_action=HomeAction(
             label="Answer",
-            href=f"/copilot?sessionId={quote(session.session_id)}",
+            href=copilot_path(
+                session.session_id,
+                session.organization_id,
+                session.team_id,
+            ),
         ),
     )
 
@@ -199,7 +204,7 @@ def _clip(text: str) -> str:
     compact = " ".join(text.split())
     if len(compact) <= _PREVIEW_MAX:
         return compact
-    return f"{compact[:_PREVIEW_MAX - 3]}…"
+    return f"{compact[: _PREVIEW_MAX - 3]}…"
 
 
 def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
@@ -210,7 +215,19 @@ def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
 
 def _review_link(review: PendingHumanReviewModel) -> str:
     if review.session_id:
-        return f"/copilot?sessionId={quote(review.session_id)}"
+        return copilot_path(
+            review.session_id,
+            review.organization_id,
+            review.team_id,
+        )
     if review.library_agent_id:
-        return run_link(review.library_agent_id, review.graph_exec_id) or "/library"
+        return (
+            run_link(
+                review.library_agent_id,
+                review.graph_exec_id,
+                review.organization_id,
+                review.team_id,
+            )
+            or "/library"
+        )
     return "/library"

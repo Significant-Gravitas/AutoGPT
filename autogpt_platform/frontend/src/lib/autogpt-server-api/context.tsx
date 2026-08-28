@@ -1,7 +1,7 @@
 "use client";
 
 import { environment } from "@/services/environment";
-import BackendAPI from "./client";
+import BackendAPI, { BackendAPITenantScope } from "./client";
 import React, { createContext, useMemo } from "react";
 
 // Add window.api type declaration for global access
@@ -31,12 +31,16 @@ export function BackendAPIProvider({
   );
 }
 
-export function useBackendAPI(): BackendAPI {
+export function useBackendAPI(scope?: BackendAPITenantScope): BackendAPI {
   const context = React.useContext(BackendAPIProviderContext);
+  const scopedAPI = useMemo(
+    () => (context && scope ? context.withTenantScope(scope) : context),
+    [context, scope?.organizationId, scope?.teamId],
+  );
   if (!context) {
     throw new Error(
       "useBackendAPI must be used within a BackendAPIProviderContext",
     );
   }
-  return context;
+  return scopedAPI ?? context;
 }

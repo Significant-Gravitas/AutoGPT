@@ -796,7 +796,11 @@ async def test_process_review_action_auto_approve_creates_auto_approval_records(
 
     # Verify get_graph_settings was called with correct parameters
     mock_get_settings.assert_called_once_with(
-        user_id=test_user_id, graph_id="test_graph_789"
+        user_id=test_user_id,
+        graph_id="test_graph_789",
+        graph_version=1,
+        organization_id=None,
+        team_id=None,
     )
 
     # Verify add_graph_execution was called with proper ExecutionContext

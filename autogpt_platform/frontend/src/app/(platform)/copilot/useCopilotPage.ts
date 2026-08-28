@@ -38,6 +38,7 @@ import {
 } from "@/services/onboarding/brain-dump-handoff";
 import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
 import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
   const lastUserIndex = messages.findLastIndex(
@@ -120,6 +121,10 @@ export function useCopilotPage() {
   ]);
 
   const { copilotChatMode, copilotLlmModel, isDryRun } = useCopilotUIStore();
+  const setArtifactTenantScope = useCopilotUIStore(
+    (state) => state.setArtifactTenantScope,
+  );
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
   const {
     teamId: createTeamId,
@@ -132,6 +137,9 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     sessionExpertId,
+    sessionOrganizationId,
+    sessionTeamId,
+    sessionTenantScope,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
@@ -142,6 +150,7 @@ export function useCopilotPage() {
     hasMoreMessages,
     oldestSequence,
     isLoadingSession,
+    isChatTransportPending,
     isSessionError,
     createSession,
     isCreatingSession,
@@ -172,6 +181,20 @@ export function useCopilotPage() {
   const isExpertSendLocked =
     isResolvingExpertIdentity || Boolean(expertIdentity?.isArchived);
 
+  useEffect(() => {
+    setArtifactTenantScope(
+      sessionId
+        ? (sessionTenantScope ?? null)
+        : { organizationId: activeOrgID, teamId: createTeamId },
+    );
+  }, [
+    activeOrgID,
+    createTeamId,
+    sessionId,
+    sessionTenantScope,
+    setArtifactTenantScope,
+  ]);
+
   const {
     messages: currentMessages,
     setMessages,
@@ -194,12 +217,14 @@ export function useCopilotPage() {
     refetchSession,
     copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
+    sessionTenantScope,
   });
   const kickoffAttemptToken = getLatestKickoffAttemptToken(currentMessages);
 
   const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
+      sessionTenantScope,
       initialOldestSequence: oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
@@ -279,6 +304,9 @@ export function useCopilotPage() {
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
+    isSessionScopeReady: sessionTenantScope !== undefined,
+    sessionOrganizationId: sessionOrganizationId ?? activeOrgID,
+    sessionTeamId: sessionId ? (sessionTeamId ?? createTeamId) : createTeamId,
     sendMessage,
     createSession,
     isUserStoppingRef,
@@ -329,7 +357,7 @@ export function useCopilotPage() {
       }
 
       try {
-        await queueFollowUpMessage(sessionId, trimmed);
+        await queueFollowUpMessage(sessionId, trimmed, sessionTenantScope);
         queueMessage(trimmed);
       } catch (err) {
         if (
@@ -361,7 +389,8 @@ export function useCopilotPage() {
   useWorkflowImportAutoSubmit({
     onSend,
     setPendingFileParts,
-    isSendLocked: isExpertSendLocked,
+    isSendLocked:
+      isExpertSendLocked || isChatTransportPending || !isTeamContextReady,
   });
 
   const { isKickoffStarting } = useExpertKickoff({
@@ -395,6 +424,8 @@ export function useCopilotPage() {
 
   return {
     sessionId,
+    sessionOrganizationId: sessionId ? sessionOrganizationId : activeOrgID,
+    sessionTeamId: sessionId ? sessionTeamId : createTeamId,
     messages: displayMessages,
     status,
     error,

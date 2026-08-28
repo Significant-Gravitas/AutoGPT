@@ -13,6 +13,7 @@ const { detailsResult } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  getGetV1GetExecutionDetailsQueryKey: vi.fn(() => ["execution-details"]),
   useGetV1GetExecutionDetails: () => detailsResult.current,
 }));
 

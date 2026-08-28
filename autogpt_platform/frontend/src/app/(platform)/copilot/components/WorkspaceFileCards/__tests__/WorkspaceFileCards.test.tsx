@@ -80,6 +80,7 @@ function listResponse(): ListFilesResponse {
 
 function openFilesCard() {
   useCopilotUIStore.setState({
+    artifactTenantScope: { organizationId: null, teamId: null },
     artifactPanel: {
       isOpen: true,
       activeArtifact: null,
@@ -150,6 +151,7 @@ beforeEach(() => {
 
 afterEach(() => {
   useCopilotUIStore.setState({
+    artifactTenantScope: null,
     artifactPanel: {
       isOpen: false,
       activeArtifact: null,

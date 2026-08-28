@@ -1,7 +1,9 @@
 import logging
+import mimetypes
 import os
 import uuid
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit
 
 import aiofiles
 import fastapi
@@ -36,10 +38,100 @@ def get_local_media_path(storage_path: str) -> Path:
     return Path(path)
 
 
+def _safe_path_segment(value: str) -> str:
+    normalized = value.replace("\\", "/")
+    safe_value = os.path.basename(normalized)
+    if not safe_value or safe_value in {".", ".."} or safe_value != normalized:
+        raise ValueError("Invalid media path segment")
+    return safe_value
+
+
+def _platform_path_prefix(platform_base_url: str) -> str:
+    if not platform_base_url:
+        return ""
+    raw_path = urlsplit(platform_base_url).path.replace("\\", "/")
+    parts: list[str] = []
+    for raw_part in raw_path.split("/"):
+        part = unquote(raw_part)
+        if not part or part == ".":
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(quote(part, safe=":@-._~!$&'()*+,;="))
+    return f"/{'/'.join(parts)}" if parts else ""
+
+
+def _url_path_segment(value: str) -> str:
+    return quote(_safe_path_segment(value), safe="")
+
+
+def _local_store_media_storage_path(
+    organization_id: str,
+    team_id: str | None,
+    media_type: str,
+    filename: str,
+) -> str:
+    safe_org_id = _safe_path_segment(organization_id)
+    safe_media_type = _safe_path_segment(media_type)
+    safe_filename = _safe_path_segment(filename)
+    if safe_media_type not in {"images", "videos"}:
+        raise ValueError("Invalid media type")
+    if team_id:
+        safe_team_id = _safe_path_segment(team_id)
+        owner_path = f"orgs/{safe_org_id}/teams/{safe_team_id}"
+    else:
+        owner_path = f"orgs/{safe_org_id}/home"
+    return f"store/{owner_path}/{safe_media_type}/{safe_filename}"
+
+
+def get_local_store_media_path(
+    organization_id: str,
+    team_id: str | None,
+    media_type: str,
+    filename: str,
+) -> Path:
+    return get_local_media_path(
+        _local_store_media_storage_path(organization_id, team_id, media_type, filename)
+    )
+
+
+def get_local_store_media_url(
+    organization_id: str,
+    team_id: str | None,
+    media_type: str,
+    filename: str,
+) -> str:
+    public_path_prefix = _platform_path_prefix(Settings().config.platform_base_url)
+    api_path = f"{public_path_prefix}/api"
+    safe_org_id = _url_path_segment(organization_id)
+    safe_media_type = _url_path_segment(media_type)
+    safe_filename = _url_path_segment(filename)
+    if team_id:
+        safe_team_id = _url_path_segment(team_id)
+        return (
+            f"{api_path}/store/media/orgs/{safe_org_id}/teams/{safe_team_id}/"
+            f"{safe_media_type}/{safe_filename}"
+        )
+    return (
+        f"{api_path}/store/media/orgs/{safe_org_id}/{safe_media_type}/{safe_filename}"
+    )
+
+
+def get_local_store_media_type(filename: str) -> str | None:
+    content_type = mimetypes.guess_type(filename)[0]
+    if content_type in ALLOWED_IMAGE_TYPES | ALLOWED_VIDEO_TYPES:
+        return content_type
+    return None
+
+
 async def check_media_exists(
     user_id: str,
     filename: str,
     organization_id: str | None = None,
+    team_id: str | None = None,
+    local_store_media: bool = False,
 ) -> str | None:
     """
     Check if a media file exists in storage for the given user.
@@ -54,6 +146,19 @@ async def check_media_exists(
     """
     settings = Settings()
     if not settings.config.media_gcs_bucket_name:
+        if local_store_media and organization_id:
+            for media_type in ("images", "videos"):
+                try:
+                    path = get_local_store_media_path(
+                        organization_id, team_id, media_type, filename
+                    )
+                except ValueError:
+                    return None
+                if path.is_file():
+                    return get_local_store_media_url(
+                        organization_id, team_id, media_type, filename
+                    )
+            return None
         raise MissingConfigError("GCS media bucket is not configured")
 
     async with async_storage.Storage() as async_client:
@@ -90,6 +195,8 @@ async def upload_media(
     file: fastapi.UploadFile,
     use_file_name: bool = False,
     organization_id: str | None = None,
+    team_id: str | None = None,
+    local_store_media: bool = False,
 ) -> str:
     """Validate, virus-scan, and upload a media file to GCS.
 
@@ -206,13 +313,9 @@ async def upload_media(
             unique_filename = f"{uuid.uuid4()}{file_ext}"
 
         owner_id = organization_id or user_id
-        normalized_owner_id = owner_id.replace("\\", "/")
-        safe_owner_id = os.path.basename(normalized_owner_id)
-        if (
-            not safe_owner_id
-            or safe_owner_id in {".", ".."}
-            or safe_owner_id != normalized_owner_id
-        ):
+        try:
+            safe_owner_id = _safe_path_segment(owner_id)
+        except ValueError:
             raise store_exceptions.StorageUploadError("Invalid media owner path")
 
         media_type = "images" if content_type in ALLOWED_IMAGE_TYPES else "videos"
@@ -230,15 +333,25 @@ async def upload_media(
                 raise store_exceptions.StorageConfigError(
                     "Missing storage bucket configuration"
                 )
-            local_root = get_local_media_root()
-            local_path_value = os.path.realpath(os.path.join(local_root, storage_path))
-            if not local_path_value.startswith(os.path.join(local_root, "")):
-                raise store_exceptions.StorageUploadError("Invalid media storage path")
-            local_path = Path(local_path_value)
+            try:
+                if local_store_media:
+                    local_path = get_local_store_media_path(
+                        organization_id, team_id, media_type, unique_filename
+                    )
+                else:
+                    local_path = get_local_media_path(storage_path)
+            except ValueError as error:
+                raise store_exceptions.StorageUploadError(
+                    "Invalid media storage path"
+                ) from error
             local_path.parent.mkdir(parents=True, exist_ok=True)
             async with aiofiles.open(local_path, "wb") as local_file:
                 await local_file.write(file_bytes)
-            logger.info("Successfully uploaded file to local storage: %s", storage_path)
+            logger.info("Successfully uploaded file to local storage: %s", local_path)
+            if local_store_media:
+                return get_local_store_media_url(
+                    organization_id, team_id, media_type, unique_filename
+                )
             return f"/api/orgs/{organization_id}/avatar/{unique_filename}"
 
         try:

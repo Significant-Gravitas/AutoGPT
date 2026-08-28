@@ -22,6 +22,7 @@ let mockCurrentGraph: unknown;
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  getGetV1GetSpecificGraphQueryKey: vi.fn(() => ["specific-graph"]),
   useGetV1GetSpecificGraph: () => ({ data: mockCurrentGraph }),
   usePostV1CreateNewGraph: () => ({
     mutateAsync: mockCreate,

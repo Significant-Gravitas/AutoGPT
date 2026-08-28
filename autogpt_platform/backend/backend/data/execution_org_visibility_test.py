@@ -1,5 +1,6 @@
 """Org/team visibility where-clause tests for execution reads."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import prisma.models
@@ -154,3 +155,91 @@ async def test_create_execution_rejects_non_private_expert_before_write(mocker):
         }
     )
     execution_client.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_execution_rejects_cross_scope_preset_before_write(mocker):
+    preset_client = AsyncMock()
+    preset_client.find_first.return_value = None
+    execution_client = AsyncMock()
+    mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    mocker.patch.object(
+        prisma.models.AgentGraphExecution,
+        "prisma",
+        return_value=execution_client,
+    )
+
+    with pytest.raises(ValueError, match="Preset #preset-team-b is unavailable"):
+        await _create_graph_execution_locked(
+            graph_id="graph-1",
+            graph_version=3,
+            starting_nodes_input=[],
+            inputs={},
+            user_id="user-1",
+            preset_id="preset-team-b",
+            organization_id="org-1",
+            team_id="team-a",
+        )
+
+    preset_client.find_first.assert_awaited_once_with(
+        where={
+            "id": "preset-team-b",
+            "userId": "user-1",
+            "agentGraphId": "graph-1",
+            "agentGraphVersion": 3,
+            "organizationId": "org-1",
+            "teamId": "team-a",
+            "isDeleted": False,
+        }
+    )
+    execution_client.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_execution_updates_last_run_only_in_exact_scope(mocker):
+    created_at = datetime.now(timezone.utc)
+    persisted = mocker.MagicMock(createdAt=created_at)
+    execution_client = AsyncMock()
+    execution_client.create.return_value = persisted
+    library_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentGraphExecution,
+        "prisma",
+        return_value=execution_client,
+    )
+    mocker.patch.object(
+        prisma.models.LibraryAgent,
+        "prisma",
+        return_value=library_client,
+    )
+    converted = mocker.MagicMock()
+    mocker.patch(
+        "backend.data.execution.GraphExecutionWithNodes.from_db",
+        return_value=converted,
+    )
+
+    result = await _create_graph_execution_locked(
+        graph_id="graph-1",
+        graph_version=3,
+        starting_nodes_input=[],
+        inputs={},
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-b",
+    )
+
+    assert result is converted
+    library_client.update_many.assert_awaited_once_with(
+        where={
+            "agentGraphId": "graph-1",
+            "agentGraphVersion": 3,
+            "userId": "user-1",
+            "organizationId": "org-1",
+            "teamId": "team-b",
+            "OR": [
+                {"lastRunAt": None},
+                {"lastRunAt": {"lt": created_at}},
+            ],
+        },
+        data={"lastRunAt": created_at},
+    )

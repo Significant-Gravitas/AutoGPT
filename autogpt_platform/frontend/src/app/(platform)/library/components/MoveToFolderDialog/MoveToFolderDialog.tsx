@@ -15,11 +15,17 @@ import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   agentId: string;
   agentName: string;
   currentFolderId?: string | null;
+  organizationId: string | null;
+  teamId: string | null;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
 }
@@ -28,6 +34,8 @@ export function MoveToFolderDialog({
   agentId,
   agentName,
   currentFolderId,
+  organizationId,
+  teamId,
   isOpen,
   setIsOpen,
 }: Props) {
@@ -36,7 +44,15 @@ export function MoveToFolderDialog({
   const [search, setSearch] = useState("");
 
   const { data: foldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
+    query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListLibraryFoldersQueryKey(),
+        organizationId,
+        teamId,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   const { mutate: moveAgent, isPending } = usePostV2BulkMoveAgents({
@@ -63,6 +79,7 @@ export function MoveToFolderDialog({
         });
       },
     },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   const hierarchicalFolders = useMemo(() => {

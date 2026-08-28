@@ -13,6 +13,8 @@ function makeItem(
     priority,
     message: "Something happened",
     status: "idle",
+    organizationId: null,
+    teamId: null,
     ...overrides,
   };
 }

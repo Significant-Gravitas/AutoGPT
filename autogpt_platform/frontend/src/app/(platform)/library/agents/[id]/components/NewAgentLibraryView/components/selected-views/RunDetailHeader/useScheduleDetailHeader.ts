@@ -1,14 +1,18 @@
 "use client";
 
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 export function useScheduleDetailHeader(
   agentGraphId: string,
   scheduleId?: string,
   agentGraphVersion?: number | string,
+  organizationId?: string | null,
+  teamId?: string | null,
 ) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -26,6 +30,7 @@ export function useScheduleDetailHeader(
           variant: "destructive",
         }),
     },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   function deleteSchedule() {
@@ -33,7 +38,12 @@ export function useScheduleDetailHeader(
     deleteMutation.mutate({ scheduleId });
   }
 
-  const openInBuilderHref = `/build?flowID=${agentGraphId}&flowVersion=${agentGraphVersion}`;
+  const openInBuilderHref = getBuilderHref({
+    graphId: agentGraphId,
+    graphVersion: agentGraphVersion,
+    organizationId: organizationId ?? null,
+    teamId: teamId ?? null,
+  });
 
   return {
     deleteSchedule,

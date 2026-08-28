@@ -69,7 +69,10 @@ def test_outcome_splits_the_summary_and_carries_stats() -> None:
         9,
     )
     assert item.occurred_at == NOW
-    assert item.link == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
+    assert item.link == (
+        "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__"
+        "&activeTab=runs&activeItem=run-1"
+    )
     assert (item.expert_name, item.expert_role) == ("Ana", "Researcher")
 
 
@@ -146,7 +149,8 @@ def test_split_summary_splits_on_the_first_sentence() -> None:
 def test_run_link_needs_a_library_agent() -> None:
     assert run_link(None, "execution") is None
     assert run_link("library agent", "exec-1") == (
-        "/library/agents/library%20agent?activeTab=runs&activeItem=exec-1"
+        "/library/agents/library%20agent?organizationId=__personal__"
+        "&teamId=__org_home__&activeTab=runs&activeItem=exec-1"
     )
 
 
@@ -154,7 +158,8 @@ def test_run_link_keeps_each_id_a_single_url_component() -> None:
     """`quote` keeps `/` by default; an id carrying one would otherwise move
     the boundary between the path and the route it addresses."""
     assert run_link("lib/1", "exec/1") == (
-        "/library/agents/lib%2F1?activeTab=runs&activeItem=exec%2F1"
+        "/library/agents/lib%2F1?organizationId=__personal__"
+        "&teamId=__org_home__&activeTab=runs&activeItem=exec%2F1"
     )
 
 

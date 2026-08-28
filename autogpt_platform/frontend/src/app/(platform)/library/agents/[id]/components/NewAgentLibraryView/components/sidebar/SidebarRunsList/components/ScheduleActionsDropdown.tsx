@@ -19,6 +19,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -28,6 +32,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   agent: LibraryAgent;
   schedule: GraphExecutionJobInfo;
+  canDelete: boolean;
   onDeleted?: () => void;
   onRunCreated?: (runID: string) => void;
 }
@@ -35,18 +40,26 @@ interface Props {
 export function ScheduleActionsDropdown({
   agent,
   schedule,
+  canDelete,
   onDeleted,
   onRunCreated,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const organizationId =
+    schedule.organization_id ?? agent.organization_id ?? null;
+  const teamId = schedule.team_id ?? agent.team_id ?? null;
 
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
-    useDeleteV1DeleteExecutionSchedule();
+    useDeleteV1DeleteExecutionSchedule({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   const { mutateAsync: executeAgent, isPending: isRunning } =
-    usePostV1ExecuteGraphAgent();
+    usePostV1ExecuteGraphAgent({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   async function handleDelete() {
     try {
@@ -89,7 +102,11 @@ export function ScheduleActionsDropdown({
       const newRunID = okData(res)?.id;
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+          organizationId,
+          teamId,
+        ),
       });
 
       if (newRunID) {
@@ -127,52 +144,58 @@ export function ScheduleActionsDropdown({
           >
             {isRunning ? "Running..." : "Run now"}
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDeleteDialog(true);
-            }}
-            className="flex items-center gap-2"
-          >
-            Delete schedule
-          </DropdownMenuItem>
+          {canDelete ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteDialog(true);
+                }}
+                className="flex items-center gap-2"
+              >
+                Delete schedule
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog
-        controlled={{
-          isOpen: showDeleteDialog,
-          set: setShowDeleteDialog,
-        }}
-        styling={{ maxWidth: "32rem" }}
-        title="Delete schedule"
-      >
-        <Dialog.Content>
-          <div>
-            <Text variant="large">
-              Are you sure you want to delete this schedule? This action cannot
-              be undone.
-            </Text>
-            <Dialog.Footer>
-              <Button
-                variant="secondary"
-                disabled={isDeleting}
-                onClick={() => setShowDeleteDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleDelete}
-                loading={isDeleting}
-              >
-                Delete Schedule
-              </Button>
-            </Dialog.Footer>
-          </div>
-        </Dialog.Content>
-      </Dialog>
+      {canDelete ? (
+        <Dialog
+          controlled={{
+            isOpen: showDeleteDialog,
+            set: setShowDeleteDialog,
+          }}
+          styling={{ maxWidth: "32rem" }}
+          title="Delete schedule"
+        >
+          <Dialog.Content>
+            <div>
+              <Text variant="large">
+                Are you sure you want to delete this schedule? This action
+                cannot be undone.
+              </Text>
+              <Dialog.Footer>
+                <Button
+                  variant="secondary"
+                  disabled={isDeleting}
+                  onClick={() => setShowDeleteDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDelete}
+                  loading={isDeleting}
+                >
+                  Delete Schedule
+                </Button>
+              </Dialog.Footer>
+            </div>
+          </Dialog.Content>
+        </Dialog>
+      ) : null}
     </>
   );
 }

@@ -12,6 +12,8 @@ import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useReactFlow } from "@xyflow/react";
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 export const useRunInputDialog = ({
   setIsOpen,
@@ -22,6 +24,7 @@ export const useRunInputDialog = ({
   graphID?: string;
   graphVersion?: number | null;
 }) => {
+  const tenantScope = useBuilderTenantScope();
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
@@ -121,6 +124,11 @@ export const useRunInputDialog = ({
           setIsGraphRunning(false);
         },
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     });
 
   // Convert credentials schema to credential fields array for CredentialsGroupedView

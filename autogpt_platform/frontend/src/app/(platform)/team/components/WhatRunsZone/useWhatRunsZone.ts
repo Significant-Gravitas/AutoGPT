@@ -1,8 +1,12 @@
 import {
   getListExpertsQueryKey,
+  installExpertWorkflow,
   useInstallExpertWorkflow,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useGetV2ListLibraryAgentsInfinite,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -18,6 +22,11 @@ import {
   pruneAdoptedTargetKeys,
   WhatRunsFilter,
 } from "./helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 const AGENTS_PAGE_SIZE = 100;
 
@@ -37,6 +46,9 @@ interface Args {
 }
 
 export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
+  const organizationId = useOrgTeamStore((state) => state.activeOrgID);
+  const teamId = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<WhatRunsFilter>("all");
   const [pendingLibraryAgentIDs, setPendingLibraryAgentIDs] = useState<
@@ -46,17 +58,37 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     new Set(),
   );
 
-  const agentsQuery = useGetV2ListLibraryAgentsInfinite(
-    { page: 1, page_size: AGENTS_PAGE_SIZE, is_hidden: false },
-    {
-      query: {
-        enabled,
-        getNextPageParam: getPaginationNextPageNumber,
+  const agentParams = {
+    page: 1,
+    page_size: AGENTS_PAGE_SIZE,
+    is_hidden: false,
+  };
+  const agentsQuery = useGetV2ListLibraryAgentsInfinite(agentParams, {
+    query: {
+      enabled: enabled && isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListLibraryAgentsQueryKey(agentParams),
+        organizationId,
+        teamId,
+      ),
+      getNextPageParam: getPaginationNextPageNumber,
+    },
+    request: getTenantRequestInit(organizationId, teamId, isTenantReady),
+  });
+
+  const { mutateAsync: installWorkflow } = useInstallExpertWorkflow({
+    mutation: {
+      mutationFn: ({ expertId, data }) => {
+        const expert = experts.find((candidate) => candidate.id === expertId);
+        if (!expert) throw new Error(`Expert ${expertId} is not available`);
+        return installExpertWorkflow(
+          expertId,
+          data,
+          getTenantRequestInit(expert.organization_id, expert.team_id),
+        );
       },
     },
-  );
-
-  const { mutateAsync: installWorkflow } = useInstallExpertWorkflow();
+  });
 
   const libraryAgents = agentsQuery.data
     ? unpaginate(agentsQuery.data, "agents")
@@ -87,7 +119,11 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         return next;
       });
       await queryClient.invalidateQueries({
-        queryKey: getListExpertsQueryKey(),
+        queryKey: getTeamScopedQueryKey(
+          getListExpertsQueryKey(),
+          expert.organization_id,
+          expert.team_id,
+        ),
       });
       toast({
         title: `Added to ${expert.name}'s workflows`,

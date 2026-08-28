@@ -306,7 +306,9 @@ describe("TeamPage", () => {
     const chatLinks = screen.getAllByRole("link", { name: "Chat" });
     const hrefs = chatLinks.map((link) => link.getAttribute("href"));
     expect(hrefs).toContain("/copilot");
-    expect(hrefs).toContain(`/copilot?expertId=${hiredMaria.id}`);
+    expect(hrefs).toContain(
+      `/copilot?expertId=${hiredMaria.id}&organizationId=__personal__&teamId=__org_home__`,
+    );
 
     expect(
       screen.getByRole("button", { name: "Install workflow" }),
@@ -1522,7 +1524,9 @@ describe("TeamPage", () => {
     expect(within(group).getByText("Needs setup")).toBeDefined();
     expect(
       within(group).getByRole("link", { name: "Set up" }).getAttribute("href"),
-    ).toBe("/library/agents/lib-1");
+    ).toBe(
+      "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   test("does not mark the card as needing setup when a stale id has a live job", async () => {

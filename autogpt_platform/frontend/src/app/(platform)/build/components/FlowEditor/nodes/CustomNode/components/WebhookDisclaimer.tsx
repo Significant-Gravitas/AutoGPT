@@ -1,12 +1,22 @@
-import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2GetLibraryAgentByGraphIdQueryKey,
+  useGetV2GetLibraryAgentByGraphId,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { isValidUUID } from "@/lib/utils";
 import Link from "next/link";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
+  const tenantScope = useBuilderTenantScope();
   const [{ flowID }] = useQueryStates({
     flowID: parseAsString,
   });
@@ -20,8 +30,18 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
         select: (x) => {
           return x.data as LibraryAgent;
         },
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetLibraryAgentByGraphIdQueryKey(flowID ?? "", {}),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 
@@ -37,7 +57,12 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
               <Link
                 href={
                   libraryAgent
-                    ? `/library/agents/${libraryAgent.id}`
+                    ? getLibraryAgentHref(
+                        libraryAgent.id,
+                        libraryAgent.organization_id ??
+                          tenantScope.organizationId,
+                        libraryAgent.team_id ?? tenantScope.teamId,
+                      )
                     : "/library"
                 }
                 className="underline"

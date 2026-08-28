@@ -71,6 +71,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  getGetV1GetSpecificGraphQueryKey: vi.fn(() => ["specific-graph"]),
   useGetV1GetSpecificGraph: () => ({ data: { id: "graph-1" } }),
 }));
 

@@ -80,6 +80,7 @@ function formatTimeRange(
 
 export function IcsPreview({ file, onError }: PreviewProps) {
   const text = useFileText(
+    file,
     getFilePreviewUrl(file.id, { bytes: STRUCTURED_PREVIEW_BYTES }),
     onError,
   );
@@ -117,6 +118,7 @@ function EventCard({ event }: { event: IcsData }) {
 
 export function VcardPreview({ file, onError }: PreviewProps) {
   const text = useFileText(
+    file,
     getFilePreviewUrl(file.id, { bytes: STRUCTURED_PREVIEW_BYTES }),
     onError,
   );

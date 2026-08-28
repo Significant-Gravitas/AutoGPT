@@ -12,6 +12,8 @@ describe("WorkCard helpers", () => {
       status: "completed",
       output_type: "table",
       output_key: "result",
+      organization_id: "org-1",
+      team_id: "team-1",
     });
     expect(meta).toEqual({
       executionId: "exec-1",
@@ -21,6 +23,8 @@ describe("WorkCard helpers", () => {
       status: "completed",
       outputType: "table",
       outputKey: "result",
+      organizationId: "org-1",
+      teamId: "team-1",
     });
   });
 

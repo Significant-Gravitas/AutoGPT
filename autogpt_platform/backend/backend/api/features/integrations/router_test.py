@@ -831,6 +831,35 @@ class TestWebhookPingOwnership:
 
         assert resp.status_code == 404
 
+    def test_revoked_webhook_scope_returns_403_without_pinging(self, test_user_id):
+        webhook = _make_webhook(user_id=test_user_id)
+
+        @asynccontextmanager
+        async def deny_scope(*_args, **_kwargs):
+            yield False
+
+        with (
+            patch(
+                "backend.api.features.integrations.router.get_webhook",
+                AsyncMock(return_value=webhook),
+            ),
+            patch(
+                "backend.api.features.integrations.router.live_resource_permission_barrier",
+                deny_scope,
+            ),
+            patch(
+                "backend.api.features.integrations.router.get_webhook_manager"
+            ) as mock_get_mgr,
+            patch(
+                "backend.api.features.integrations.router.creds_manager"
+            ) as mock_creds,
+        ):
+            resp = client.post("/webhooks/wh-123/ping")
+
+        assert resp.status_code == 403
+        mock_get_mgr.assert_not_called()
+        mock_creds.acquire_lease.assert_not_called()
+
     def test_owned_webhook_pings(self, test_user_id):
         webhook = _make_webhook(user_id=test_user_id)
         webhook_manager = MagicMock()

@@ -3,12 +3,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1GetSpecificGraphQueryKey,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useSaveGraph } from "../../../hooks/useSaveGraph";
 import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
-import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
+import {
+  CreateSurface,
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useBuilderTenantScope } from "../../../hooks/useBuilderTenantScope";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -18,6 +26,7 @@ const formSchema = z.object({
 type SaveableGraphFormValues = z.infer<typeof formSchema>;
 
 export const useNewSaveControl = () => {
+  const tenantScope = useBuilderTenantScope();
   const { setSaveControlOpen } = useControlPanelStore();
 
   const onSuccess = (graph: GraphModel) => {
@@ -51,8 +60,21 @@ export const useNewSaveControl = () => {
     {
       query: {
         select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetSpecificGraphQueryKey(
+            flowID ?? "",
+            flowVersion !== null ? { version: flowVersion } : {},
+          ),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 

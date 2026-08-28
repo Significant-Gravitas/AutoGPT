@@ -4,6 +4,7 @@ import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/__legacy__/ui/icons";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { Status } from "@/components/__legacy__/Status";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 export interface AgentTableCardProps {
   storeAgentSubmission: StoreSubmission;
@@ -28,15 +29,17 @@ export const AgentTableCard = ({
     run_count,
     review_avg_rating: rating,
   } = storeAgentSubmission;
+  const imageSrc = image_urls?.[0] ?? "/nada.png";
 
   return (
     <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
       <div className="flex gap-4">
         <div className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
           <Image
-            src={image_urls?.[0] ?? "/nada.png"}
+            src={imageSrc}
             alt={agentName}
             fill
+            unoptimized={shouldBypassImageOptimization(imageSrc)}
             style={{ objectFit: "cover" }}
           />
         </div>

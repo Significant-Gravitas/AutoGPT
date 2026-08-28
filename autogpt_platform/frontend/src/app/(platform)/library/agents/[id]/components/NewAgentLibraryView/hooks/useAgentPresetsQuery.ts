@@ -1,7 +1,14 @@
 import { useEffect, useMemo } from "react";
 
-import { useGetV2ListPresetsInfinite } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV2ListPresetsQueryKey,
+  useGetV2ListPresetsInfinite,
+} from "@/app/api/__generated__/endpoints/presets/presets";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { retryUnlessClientError } from "../helpers";
 
 // Per-request page size. The hook eagerly pages through every preset for the
@@ -26,17 +33,29 @@ const MAX_PRESET_PAGES = 20;
  * later-page failure only degrades gracefully; `isError` flags a hard failure
  * (the first page failed, so there's no data at all).
  */
-export function useAgentPresetsQuery(graphId: string | undefined) {
-  const query = useGetV2ListPresetsInfinite(
-    { graph_id: graphId ?? "", page: 1, page_size: PRESETS_PAGE_SIZE },
-    {
-      query: {
-        enabled: !!graphId,
-        getNextPageParam: getPaginationNextPageNumber,
-        retry: retryUnlessClientError,
-      },
+export function useAgentPresetsQuery(
+  graphId: string | undefined,
+  organizationId: string | null,
+  teamId: string | null,
+) {
+  const params = {
+    graph_id: graphId ?? "",
+    page: 1,
+    page_size: PRESETS_PAGE_SIZE,
+  };
+  const query = useGetV2ListPresetsInfinite(params, {
+    request: getTenantRequestInit(organizationId, teamId),
+    query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListPresetsQueryKey(params),
+        organizationId,
+        teamId,
+      ),
+      enabled: !!graphId,
+      getNextPageParam: getPaginationNextPageNumber,
+      retry: retryUnlessClientError,
     },
-  );
+  });
 
   const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } =
     query;

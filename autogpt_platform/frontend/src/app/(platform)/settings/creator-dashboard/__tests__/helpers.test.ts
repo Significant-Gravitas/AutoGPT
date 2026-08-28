@@ -375,6 +375,8 @@ describe("creator-dashboard helpers", () => {
         changes_summary: "Fixed a bug",
         store_listing_version_id: "lv-42",
         graph_id: "graph-42",
+        organization_id: null,
+        team_id: null,
       });
     });
 

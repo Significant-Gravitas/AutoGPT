@@ -50,7 +50,7 @@ export function SelectedTriggerView({
     isSaving,
   } = useSelectedTriggerView({
     triggerId,
-    graphId: agent.graph_id,
+    agent,
   });
 
   const agentInputFields = getAgentInputFields(agent);
@@ -150,6 +150,8 @@ export function SelectedTriggerView({
                       value={inputs[key] ?? inputSubSchema.default}
                       placeholder={inputSubSchema.description}
                       onChange={(value) => setInputValue(key, value)}
+                      organizationId={agent.organization_id ?? null}
+                      teamId={agent.team_id ?? null}
                     />
                   ))}
                 </div>

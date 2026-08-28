@@ -1,13 +1,22 @@
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1GetSpecificGraphQueryKey,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useBuilderTenantScope } from "./useBuilderTenantScope";
 
 // Read-only detection is a UX affordance only — the backend is the security
 // boundary and already rejects mutations (save, etc.) from non-owners. This
 // hook just hides controls that would otherwise fail silently.
 export function useIsReadOnlyGraph() {
   const { user, isUserLoading } = useAuth();
+  const tenantScope = useBuilderTenantScope();
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
@@ -23,8 +32,21 @@ export function useIsReadOnlyGraph() {
     {
       query: {
         select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetSpecificGraphQueryKey(
+            flowID ?? "",
+            flowVersion !== null ? { version: flowVersion } : {},
+          ),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 

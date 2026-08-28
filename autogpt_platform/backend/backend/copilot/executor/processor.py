@@ -27,7 +27,11 @@ from backend.copilot.response_model import StreamBaseResponse, StreamError, Stre
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
-from backend.data.db_accessors import credit_db, live_resource_lease
+from backend.data.db_accessors import (
+    context_without_live_leases,
+    credit_db,
+    live_resource_lease,
+)
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
@@ -77,6 +81,7 @@ async def _guard_stream_with_live_resource_lease(
     organization_id: str | None,
     team_id: str | None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
+    provider_context = context_without_live_leases()
     try:
         while True:
             async with live_resource_lease(
@@ -89,7 +94,10 @@ async def _guard_stream_with_live_resource_lease(
                     raise RuntimeError("workspace_access_revoked")
                 try:
                     if hasattr(allowed, "run"):
-                        event = await allowed.run(anext(stream))
+                        event = await allowed.run(
+                            anext(stream),
+                            context=provider_context,
+                        )
                     else:
                         event = await anext(stream)
                 except StopAsyncIteration:

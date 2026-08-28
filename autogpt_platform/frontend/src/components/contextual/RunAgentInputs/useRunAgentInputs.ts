@@ -1,8 +1,14 @@
 import BackendAPI from "@/lib/autogpt-server-api";
 import { useState } from "react";
 
-export function useRunAgentInputs() {
-  const api = new BackendAPI();
+interface RunAgentInputScope {
+  organizationId: string | null;
+  teamId: string | null;
+}
+
+export function useRunAgentInputs(scope?: RunAgentInputScope) {
+  const baseApi = new BackendAPI();
+  const api = scope ? baseApi.withTenantScope(scope) : baseApi;
   const [uploadProgress, setUploadProgress] = useState(0);
 
   async function handleUploadFile(file: File) {

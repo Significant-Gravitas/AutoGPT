@@ -179,7 +179,11 @@ async def _migrate_key_to_secure_hash(
 
 
 async def revoke_api_key(
-    key_id: str, user_id: str, organization_id: str | None = None
+    key_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> APIKeyInfo:
     api_key = await PrismaAPIKey.prisma().find_unique(where={"id": key_id})
 
@@ -189,7 +193,13 @@ async def revoke_api_key(
     if api_key.userId != user_id:
         raise NotAuthorizedError("You do not have permission to revoke this API key.")
 
-    if organization_id and api_key.organizationId != organization_id:
+    if organization_id is not None and api_key.organizationId != organization_id:
+        raise NotAuthorizedError("You do not have permission to revoke this API key.")
+
+    if exact_scope and (
+        api_key.organizationId,
+        api_key.teamIdRestriction,
+    ) != (organization_id, team_id_restriction):
         raise NotAuthorizedError("You do not have permission to revoke this API key.")
 
     updated_api_key = await PrismaAPIKey.prisma().update(
@@ -209,11 +219,22 @@ async def list_user_api_keys(
     user_id: str,
     limit: int = MAX_USER_API_KEYS_FETCH,
     organization_id: str | None = None,
+    team_id_restriction: str | None = None,
+    team_ids: list[str] | None = None,
+    exact_scope: bool = False,
 ) -> list[APIKeyInfo]:
     """List the user's keys in the active organization."""
     where: dict[str, object] = {"userId": user_id}
     if organization_id is not None:
         where["organizationId"] = organization_id
+    if exact_scope:
+        where["organizationId"] = organization_id
+        where["teamIdRestriction"] = team_id_restriction
+    elif organization_id is not None and team_ids is not None:
+        where["OR"] = [
+            {"teamIdRestriction": None},
+            {"teamIdRestriction": {"in": team_ids}},
+        ]
 
     api_keys = await PrismaAPIKey.prisma().find_many(
         where=where,
@@ -225,7 +246,11 @@ async def list_user_api_keys(
 
 
 async def suspend_api_key(
-    key_id: str, user_id: str, organization_id: str | None = None
+    key_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> APIKeyInfo:
     selector: APIKeyWhereUniqueInput = {"id": key_id}
     api_key = await PrismaAPIKey.prisma().find_unique(where=selector)
@@ -236,7 +261,13 @@ async def suspend_api_key(
     if api_key.userId != user_id:
         raise NotAuthorizedError("You do not have permission to suspend this API key.")
 
-    if organization_id and api_key.organizationId != organization_id:
+    if organization_id is not None and api_key.organizationId != organization_id:
+        raise NotAuthorizedError("You do not have permission to suspend this API key.")
+
+    if exact_scope and (
+        api_key.organizationId,
+        api_key.teamIdRestriction,
+    ) != (organization_id, team_id_restriction):
         raise NotAuthorizedError("You do not have permission to suspend this API key.")
 
     updated_api_key = await PrismaAPIKey.prisma().update(
@@ -253,11 +284,18 @@ def has_permission(api_key: APIKeyInfo, required_permission: APIKeyPermission) -
 
 
 async def get_api_key_by_id(
-    key_id: str, user_id: str, organization_id: str | None = None
+    key_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> APIKeyInfo | None:
     where: dict[str, object] = {"id": key_id, "userId": user_id}
     if organization_id is not None:
         where["organizationId"] = organization_id
+    if exact_scope:
+        where["organizationId"] = organization_id
+        where["teamIdRestriction"] = team_id_restriction
 
     api_key = await PrismaAPIKey.prisma().find_first(where=where)
 
@@ -272,6 +310,8 @@ async def update_api_key_permissions(
     user_id: str,
     permissions: list[APIKeyPermission],
     organization_id: str | None = None,
+    team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> APIKeyInfo:
     """
     Update the permissions of an API key.
@@ -284,7 +324,13 @@ async def update_api_key_permissions(
     if api_key.userId != user_id:
         raise NotAuthorizedError("You do not have permission to update this API key.")
 
-    if organization_id and api_key.organizationId != organization_id:
+    if organization_id is not None and api_key.organizationId != organization_id:
+        raise NotAuthorizedError("You do not have permission to update this API key.")
+
+    if exact_scope and (
+        api_key.organizationId,
+        api_key.teamIdRestriction,
+    ) != (organization_id, team_id_restriction):
         raise NotAuthorizedError("You do not have permission to update this API key.")
 
     updated_api_key = await PrismaAPIKey.prisma().update(

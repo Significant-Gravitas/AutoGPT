@@ -27,6 +27,7 @@ from fastapi import (
     status,
 )
 from prisma.models import AgentGraph as PrismaAgentGraph
+from prisma.models import LibraryAgent as PrismaLibraryAgent
 from prisma.models import AgentNode as PrismaAgentNode
 from prisma.models import AgentPreset as PrismaAgentPreset
 from pydantic import BaseModel, Field, model_validator
@@ -1178,9 +1179,10 @@ async def delete_credentials(
                 cred_id,
                 include_relations=True,
             )
-            current_scopes, current_graph_ids = (
-                await _credential_webhook_scope_snapshot(user_id, current_webhooks)
-            )
+            (
+                current_scopes,
+                current_graph_ids,
+            ) = await _credential_webhook_scope_snapshot(user_id, current_webhooks)
             if not current_scopes.issubset(
                 initial_scopes
             ) or not current_graph_ids.issubset(initial_graph_ids):
@@ -1345,42 +1347,57 @@ async def webhook_ping(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
         )
-    webhook_manager = get_webhook_manager(webhook.provider)
+    async with live_resource_permission_barrier(
+        user_id,
+        webhook.organization_id,
+        webhook.team_id,
+        OrgAction.EXECUTE_RESOURCES,
+        TeamAction.EXECUTE_AGENTS,
+    ) as allowed:
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Resource scope is inactive",
+            )
+        webhook_manager = get_webhook_manager(webhook.provider)
 
-    try:
-        if webhook.credentials_id:
-            try:
-                lease = await creds_manager.acquire_lease(
-                    user_id,
-                    webhook.credentials_id,
-                )
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Webhook credentials not found",
-                )
-            try:
-                provider_value = getattr(webhook.provider, "value", webhook.provider)
-                if lease.credentials.provider != provider_value:
+        try:
+            if webhook.credentials_id:
+                try:
+                    lease = await creds_manager.acquire_lease(
+                        user_id,
+                        webhook.credentials_id,
+                    )
+                except ValueError:
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="Webhook credentials not found",
                     )
-                await run_with_credential_lease_guard(
-                    webhook_manager.trigger_ping(webhook, lease.credentials),
-                    [lease],
-                )
-            finally:
-                await lease.release()
-        else:
-            await webhook_manager.trigger_ping(webhook, None)
-    except NotImplementedError:
-        return False
+                try:
+                    provider_value = getattr(
+                        webhook.provider, "value", webhook.provider
+                    )
+                    if lease.credentials.provider != provider_value:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Webhook credentials not found",
+                        )
+                    await run_with_credential_lease_guard(
+                        webhook_manager.trigger_ping(webhook, lease.credentials),
+                        [lease],
+                    )
+                finally:
+                    await lease.release()
+            else:
+                await webhook_manager.trigger_ping(webhook, None)
+        except NotImplementedError:
+            return False
 
-    if not await wait_for_webhook_event(webhook_id, event_type="ping", timeout=10):
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Webhook ping timed out"
-        )
+        if not await wait_for_webhook_event(webhook_id, event_type="ping", timeout=10):
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="Webhook ping timed out",
+            )
 
     return True
 
@@ -1399,16 +1416,36 @@ async def _execute_webhook_node_trigger(
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
-        # Resource-follows-parent: the webhook is tagged with its graph's
-        # org/team at creation (and backfilled by the org migration), so
-        # triggered runs attribute there — not the owner's personal org.
-        # Untagged legacy webhooks fall back to the owner's default team.
-        if webhook.organization_id:
-            org_id, ws_id = webhook.organization_id, webhook.team_id
-        else:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, ws_id = await get_user_default_team(webhook.user_id)
+        graph_row = await PrismaAgentGraph.prisma().find_unique(
+            where={
+                "graphVersionId": {
+                    "id": node.graph_id,
+                    "version": node.graph_version,
+                }
+            }
+        )
+        if (
+            graph_row is None
+            or graph_row.userId != webhook.user_id
+            or graph_row.organizationId is None
+        ):
+            logger.warning(
+                "Skipping legacy webhook %s because its node tenant is not "
+                "uniquely attributable",
+                webhook_id,
+            )
+            return
+        org_id, ws_id = graph_row.organizationId, graph_row.teamId
+        if webhook.organization_id is not None and (
+            webhook.organization_id,
+            webhook.team_id,
+        ) != (org_id, ws_id):
+            logger.warning(
+                "Skipping webhook %s because its tenant no longer matches "
+                "the attached graph",
+                webhook_id,
+            )
+            return
         if not await has_live_resource_access(
             webhook.user_id,
             org_id,
@@ -1519,14 +1556,34 @@ async def _execute_webhook_preset_trigger(
         # Non-expert resources continue to follow their stored parent scope.
         if expert_tenancy is not None:
             org_id, ws_id = expert_tenancy
-        elif preset.organization_id:
+        elif preset.organization_id is not None:
             org_id, ws_id = preset.organization_id, preset.team_id
-        elif webhook.organization_id:
+        elif webhook.organization_id is not None:
             org_id, ws_id = webhook.organization_id, webhook.team_id
         else:
-            from backend.api.features.orgs.db import get_user_default_team
-
-            org_id, ws_id = await get_user_default_team(webhook.user_id)
+            candidates = await PrismaLibraryAgent.prisma().find_many(
+                where={
+                    "userId": webhook.user_id,
+                    "agentGraphId": preset.graph_id,
+                    "agentGraphVersion": preset.graph_version,
+                    "isDeleted": False,
+                    "isArchived": False,
+                },
+                take=3,
+            )
+            scopes = {
+                (candidate.organizationId, candidate.teamId)
+                for candidate in candidates
+                if candidate.organizationId is not None
+            }
+            if len(scopes) != 1:
+                logger.warning(
+                    "Skipping legacy webhook preset %s because its consumer "
+                    "tenant is not uniquely attributable",
+                    preset.id,
+                )
+                return
+            org_id, ws_id = scopes.pop()
         if not await has_live_resource_access(
             webhook.user_id,
             org_id,

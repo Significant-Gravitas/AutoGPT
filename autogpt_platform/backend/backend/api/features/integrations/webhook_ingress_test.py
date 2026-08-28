@@ -66,6 +66,19 @@ def allow_live_preset_trigger(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def allow_live_node_trigger(mocker):
+    @asynccontextmanager
+    async def live_node(_node, _webhook):
+        yield True
+
+    return mocker.patch.object(
+        ingress_router,
+        "_live_node_webhook_trigger",
+        new=live_node,
+    )
+
+
 def _make_webhook(
     provider: ProviderName,
     *,
@@ -626,6 +639,19 @@ async def test_node_trigger_stops_after_resource_role_downgrade(
         organization_id="org-1",
         team_id="team-1",
     )
+    mocker.patch.object(
+        ingress_router.PrismaAgentGraph,
+        "prisma",
+        return_value=MagicMock(
+            find_unique=AsyncMock(
+                return_value=MagicMock(
+                    userId=USER_ID,
+                    organizationId="org-1",
+                    teamId="team-1",
+                )
+            )
+        ),
+    )
 
     await ingress_router._execute_webhook_node_trigger(
         node,
@@ -642,6 +668,40 @@ async def test_node_trigger_stops_after_resource_role_downgrade(
         "execute",
     )
     add_exec.assert_not_awaited()
+
+
+async def test_legacy_node_webhook_uses_attached_graph_tenant(mocker):
+    add_exec = mocker.patch.object(
+        ingress_router,
+        "add_graph_execution",
+        new_callable=AsyncMock,
+    )
+    graph_lookup = AsyncMock(
+        return_value=MagicMock(
+            userId=USER_ID,
+            organizationId="consumer-org",
+            teamId="consumer-team",
+        )
+    )
+    mocker.patch.object(
+        ingress_router.PrismaAgentGraph,
+        "prisma",
+        return_value=MagicMock(find_unique=graph_lookup),
+    )
+    node = MagicMock(id="node-1", graph_id="graph-1", graph_version=1)
+    node.is_triggered_by_event_type.return_value = True
+
+    await ingress_router._execute_webhook_node_trigger(
+        node,
+        _make_webhook(ProviderName.GITHUB),
+        WEBHOOK_ID,
+        "pull_request",
+        {},
+    )
+
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["organization_id"] == "consumer-org"
+    assert add_exec.await_args.kwargs["team_id"] == "consumer-team"
 
 
 async def test_preset_trigger_stops_after_resource_role_downgrade(
@@ -692,6 +752,102 @@ async def test_preset_trigger_stops_after_resource_role_downgrade(
         "team-1",
         "execute",
     )
+    add_exec.assert_not_awaited()
+
+
+async def test_legacy_marketplace_preset_uses_unique_consumer_wrapper_tenant(mocker):
+    mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    add_exec = mocker.patch.object(
+        ingress_router,
+        "add_graph_execution",
+        new_callable=AsyncMock,
+    )
+    wrapper_lookup = AsyncMock(
+        return_value=[MagicMock(organizationId="consumer-org", teamId="consumer-team")]
+    )
+    mocker.patch.object(
+        ingress_router.PrismaLibraryAgent,
+        "prisma",
+        return_value=MagicMock(find_many=wrapper_lookup),
+    )
+    preset = MagicMock(
+        id="preset-legacy",
+        user_id=USER_ID,
+        is_active=True,
+        expert_id=None,
+        organization_id=None,
+        team_id=None,
+        graph_id="marketplace-graph",
+        graph_version=1,
+        inputs={},
+        credentials={},
+    )
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset,
+        _make_webhook(ProviderName.GITHUB),
+        WEBHOOK_ID,
+        "pull_request",
+        {},
+    )
+
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["organization_id"] == "consumer-org"
+    assert add_exec.await_args.kwargs["team_id"] == "consumer-team"
+
+
+async def test_legacy_marketplace_preset_fails_closed_when_wrappers_are_ambiguous(
+    mocker,
+):
+    mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    add_exec = mocker.patch.object(
+        ingress_router,
+        "add_graph_execution",
+        new_callable=AsyncMock,
+    )
+    mocker.patch.object(
+        ingress_router.PrismaLibraryAgent,
+        "prisma",
+        return_value=MagicMock(
+            find_many=AsyncMock(
+                return_value=[
+                    MagicMock(organizationId="consumer-org", teamId="team-a"),
+                    MagicMock(organizationId="consumer-org", teamId="team-b"),
+                ]
+            )
+        ),
+    )
+    preset = MagicMock(
+        id="preset-legacy",
+        user_id=USER_ID,
+        is_active=True,
+        expert_id=None,
+        organization_id=None,
+        team_id=None,
+        graph_id="marketplace-graph",
+        graph_version=1,
+        inputs={},
+        credentials={},
+    )
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset,
+        _make_webhook(ProviderName.GITHUB),
+        WEBHOOK_ID,
+        "pull_request",
+        {},
+    )
+
     add_exec.assert_not_awaited()
 
 

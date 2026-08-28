@@ -1,10 +1,12 @@
 import asyncio
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import prisma.errors as prisma_errors
 import pytest
 from prisma import Json
 
+from backend.api.features.library import db as library_db
 from backend.api.features.orgs.db import create_org
 from backend.api.features.transfers.db import _count_incoming_graph_references
 from backend.blocks.agent import AgentExecutorBlock
@@ -21,7 +23,108 @@ from backend.data.tenancy import (
     live_resource_access_barrier,
     release_live_resource_lease,
 )
+from backend.usecases.sample import create_test_graph
 from backend.util.exceptions import GraphNotAccessibleError
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(server):
+    owner_id = f"grant-fork-owner-{uuid4()}"
+    member_id = f"grant-fork-member-{uuid4()}"
+    await prisma.user.create(data={"id": owner_id, "email": f"{owner_id}@example.com"})
+    await prisma.user.create(
+        data={"id": member_id, "email": f"{member_id}@example.com"}
+    )
+    org = await create_org("Grant fork integration", f"grant-fork-{uuid4()}", owner_id)
+    source_team = await prisma.team.find_first(
+        where={"orgId": org.id, "isDefault": True}
+    )
+    assert source_team is not None
+    target_team = await prisma.team.create(
+        data={
+            "name": f"Grant target {uuid4()}",
+            "orgId": org.id,
+            "createdByUserId": owner_id,
+        }
+    )
+    await prisma.orgmember.create(
+        data={"orgId": org.id, "userId": member_id, "status": "ACTIVE"}
+    )
+    await prisma.teammember.create(
+        data={"teamId": target_team.id, "userId": member_id, "status": "ACTIVE"}
+    )
+
+    source = create_test_graph()
+    source.id = str(uuid4())
+    source.name = "Cross-team shared agent"
+    source_graph = await create_graph(
+        source,
+        owner_id,
+        organization_id=org.id,
+        team_id=source_team.id,
+    )
+
+    def close_background_task(coroutine, **_kwargs):
+        coroutine.close()
+
+    with (
+        patch.object(
+            library_db, "_fetch_schedule_info", new=AsyncMock(return_value={})
+        ),
+        patch.object(
+            library_db, "spawn_background_task", side_effect=close_background_task
+        ),
+        patch.object(library_db, "schedule_library_agent_embedding"),
+    ):
+        source_library = (
+            await library_db.create_library_agent(
+                source_graph,
+                owner_id,
+                organization_id=org.id,
+                team_id=source_team.id,
+            )
+        )[0]
+        await prisma.agentgraphgrant.create(
+            data={
+                "agentGraphId": source_graph.id,
+                "agentGraphVersion": source_graph.version,
+                "principalType": "TEAM",
+                "principalId": target_team.id,
+                "capability": "EXECUTE",
+                "credentialMode": "CONSUMER",
+                "organizationId": org.id,
+                "createdByUserId": owner_id,
+            }
+        )
+
+        resolved = await library_db.get_library_agent_by_graph_id(
+            member_id,
+            source_graph.id,
+            source_graph.version,
+            organization_id=org.id,
+            team_id_restriction=target_team.id,
+            include_granted=True,
+        )
+        assert resolved is not None
+        assert resolved.id == source_library.id
+
+        forked = await library_db.fork_library_agent(
+            source_library.id,
+            member_id,
+            organization_id=org.id,
+            team_id=target_team.id,
+        )
+
+    forked_graph = await prisma.agentgraph.find_first(
+        where={"id": forked.graph_id, "version": forked.graph_version}
+    )
+    assert forked_graph is not None
+    assert forked_graph.userId == member_id
+    assert forked_graph.organizationId == org.id
+    assert forked_graph.teamId == target_team.id
+    assert forked.organization_id == org.id
+    assert forked.team_id == target_team.id
 
 
 @pytest.mark.integration

@@ -53,7 +53,7 @@ export function SelectedTemplateView({
     isStarting,
   } = useSelectedTemplateView({
     templateId,
-    graphId: agent.graph_id,
+    agent,
     onRunCreated,
   });
 
@@ -145,6 +145,8 @@ export function SelectedTemplateView({
                       value={inputs[key] ?? inputSubSchema.default}
                       placeholder={inputSubSchema.description}
                       onChange={(value) => setInputValue(key, value)}
+                      organizationId={agent.organization_id ?? null}
+                      teamId={agent.team_id ?? null}
                     />
                   ))}
                 </div>

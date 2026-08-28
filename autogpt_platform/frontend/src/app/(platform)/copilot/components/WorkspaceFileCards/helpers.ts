@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 import { asObject, str } from "../ToolChain/resultHelpers";
 
 export interface SessionRun {
@@ -33,7 +34,10 @@ const RUN_TOOLS = new Set(["tool-run_agent", "tool-schedule_agent"]);
  * tool outputs — there is no session-scoped REST list for either, the chat
  * transcript is the source of truth.
  */
-export function getSessionActivity(messages: UIMessage[]): {
+export function getSessionActivity(
+  messages: UIMessage[],
+  scope?: { organizationId: string | null; teamId: string | null },
+): {
   runs: SessionRun[];
   schedules: SessionSchedule[];
 } {
@@ -116,7 +120,13 @@ export function getSessionActivity(messages: UIMessage[]): {
               href:
                 str(output, "library_agent_link") ??
                 (graphId
-                  ? `/library/agents/${graphId}?activeTab=runs&activeItem=${executionId}`
+                  ? getLibraryAgentHref(
+                      graphId,
+                      scope?.organizationId ?? null,
+                      scope?.teamId ?? null,
+                      executionId,
+                      "runs",
+                    )
                   : null),
             });
           }

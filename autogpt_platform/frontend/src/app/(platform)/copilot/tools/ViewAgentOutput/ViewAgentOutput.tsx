@@ -33,6 +33,8 @@ import {
   ToolIcon,
   type ViewAgentOutputToolOutput,
 } from "./helpers";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 export interface ViewAgentOutputToolPart {
   type: string;
@@ -46,7 +48,10 @@ interface Props {
   part: ViewAgentOutputToolPart;
 }
 
-export function resolveForRenderer(value: unknown): {
+export function resolveForRenderer(
+  value: unknown,
+  scope?: { organizationId: string | null; teamId: string | null },
+): {
   value: unknown;
   metadata?: OutputMetadata;
 } {
@@ -64,12 +69,17 @@ export function resolveForRenderer(value: unknown): {
   if (parsed.mimeType) {
     metadata.mimeType = parsed.mimeType;
   }
+  if (scope) {
+    metadata.organizationId = scope.organizationId;
+    metadata.teamId = scope.teamId;
+  }
 
   return { value, metadata };
 }
 
 function RenderOutputValue({ value }: { value: unknown }) {
-  const resolved = resolveForRenderer(value);
+  const scope = useCopilotTenantScope();
+  const resolved = resolveForRenderer(value, scope);
   const renderer = globalRegistry.getRenderer(
     resolved.value,
     resolved.metadata,
@@ -110,6 +120,7 @@ function getAccordionMeta(output: ViewAgentOutputToolOutput): {
 }
 
 export function ViewAgentOutputTool({ part }: Props) {
+  const scope = useCopilotTenantScope();
   const text = getAnimationText(part);
   const isStreaming =
     part.state === "input-streaming" || part.state === "input-available";
@@ -141,8 +152,14 @@ export function ViewAgentOutputTool({ part }: Props) {
               <ContentCardHeader
                 className="gap-3"
                 action={
-                  output.library_agent_link ? (
-                    <ContentLink href={output.library_agent_link}>
+                  output.library_agent_id ? (
+                    <ContentLink
+                      href={getLibraryAgentHref(
+                        output.library_agent_id,
+                        scope.organizationId,
+                        scope.teamId,
+                      )}
+                    >
                       Open
                     </ContentLink>
                   ) : null

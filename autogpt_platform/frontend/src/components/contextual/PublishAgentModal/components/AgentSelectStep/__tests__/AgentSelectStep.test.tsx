@@ -151,6 +151,8 @@ describe("AgentSelectStep", () => {
       "graph-1",
       1,
       expect.objectContaining({ name: "Agent 1" }),
+      null,
+      null,
     );
   });
 

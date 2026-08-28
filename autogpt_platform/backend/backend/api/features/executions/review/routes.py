@@ -119,7 +119,9 @@ async def list_pending_reviews(
     team_ids = (
         [ctx.team_id]
         if ctx.team_id is not None
-        else await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+        else await get_user_team_ids(user_id, ctx.org_id)
+        if ctx.org_id
+        else []
     )
     scopes: list[tuple[str | None, str | None]] = [(ctx.org_id, None)]
     scopes.extend((ctx.org_id, team_id) for team_id in sorted(set(team_ids)))
@@ -459,7 +461,11 @@ async def process_review_action(
         try:
             user = await get_user_by_id(user_id)
             settings = await get_graph_settings(
-                user_id=user_id, graph_id=first_review.graph_id
+                user_id=user_id,
+                graph_id=first_review.graph_id,
+                graph_version=first_review.graph_version,
+                organization_id=first_review.organization_id,
+                team_id=first_review.team_id,
             )
 
             user_timezone = (

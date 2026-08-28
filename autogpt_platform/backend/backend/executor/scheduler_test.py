@@ -16,6 +16,7 @@ from backend.executor.scheduler import (
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotAuthorizedError
 from backend.util.test import SpinTestServer
 
 
@@ -71,6 +72,31 @@ def _stub_scheduler() -> Scheduler:
     return s
 
 
+def test_delete_schedule_rejects_non_owner_without_removing_job() -> None:
+    scheduler = _stub_scheduler()
+    job = MagicMock()
+    job.id = "schedule-1"
+    job.name = "Owner schedule"
+    job.next_run_time = datetime.now(tz=timezone.utc)
+    job.trigger = MagicMock(timezone=timezone.utc)
+    job.kwargs = {
+        "kind": "graph",
+        "schedule_id": "schedule-1",
+        "user_id": "owner-user",
+        "graph_id": "graph-1",
+        "graph_version": 1,
+        "cron": "0 0 * * *",
+        "input_data": {},
+        "input_credentials": {},
+    }
+    scheduler.scheduler.get_job.return_value = job
+
+    with pytest.raises(NotAuthorizedError, match="does not match"):
+        scheduler.delete_graph_execution_schedule("schedule-1", "other-user")
+
+    job.remove.assert_not_called()
+
+
 class TestAddCopilotTurnScheduleExpertAttribution:
     """A follow-up scheduled from an expert chat must persist that expert id in
     the job args, so the fresh session minted at fire time is scoped to her and
@@ -122,6 +148,34 @@ class TestAddCopilotTurnScheduleExpertAttribution:
 
     def test_plain_session_persists_no_expert(self) -> None:
         assert self._persisted_args().expert_id is None
+
+
+def test_graph_schedule_rejects_expert_scope_mismatch() -> None:
+    scheduler = _stub_scheduler()
+    experts_store = MagicMock()
+    experts_store.resolve_private_expert_tenancy = MagicMock(
+        return_value=("personal-org", "personal-team")
+    )
+
+    with (
+        patch("backend.executor.scheduler.experts_db", return_value=experts_store),
+        patch("backend.executor.scheduler.run_async", new=lambda value: value),
+    ):
+        with pytest.raises(ValueError, match="requested workspace"):
+            scheduler.add_graph_execution_schedule(
+                user_id="user-1",
+                graph_id="graph-1",
+                graph_version=1,
+                cron="0 * * * *",
+                input_data={},
+                input_credentials={},
+                user_timezone="UTC",
+                organization_id="shared-org",
+                team_id="shared-team",
+                expert_id="expert-1",
+            )
+
+    scheduler.scheduler.add_job.assert_not_called()
 
 
 class TestAddCommunityRebuildSchedule:

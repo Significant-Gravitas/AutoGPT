@@ -10,6 +10,7 @@ import { z } from "zod";
 import { uploadAgentFormSchema } from "./LibraryUploadAgentDialog";
 import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
 import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 export function useLibraryUploadAgentDialog(options?: {
   onSuccess?: () => void;
@@ -32,8 +33,13 @@ export function useLibraryUploadAgentDialog(options?: {
             description: "Agent uploaded successfully",
             variant: "default",
           });
-          const qID = "flowID";
-          window.location.href = `/build?${qID}=${(data as GraphModel).id}`;
+          const graph = data as GraphModel;
+          window.location.href = getBuilderHref({
+            graphId: graph.id,
+            graphVersion: graph.version,
+            organizationId: graph.organization_id ?? null,
+            teamId: graph.team_id ?? null,
+          });
         },
         onError: () => {
           toast({

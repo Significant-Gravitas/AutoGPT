@@ -242,7 +242,9 @@ def test_review_link_prefers_the_copilot_session() -> None:
         credits_balance=None,
     )
 
-    assert items[0].primary_action.href == "/copilot?sessionId=session%201"
+    assert items[0].primary_action.href == (
+        "/copilot?organizationId=__personal__&teamId=__org_home__&sessionId=session+1"
+    )
 
 
 def test_review_link_falls_back_to_the_library_run_then_the_library() -> None:
@@ -260,7 +262,8 @@ def test_review_link_falls_back_to_the_library_run_then_the_library() -> None:
 
     hrefs = {item.id: item.primary_action.href for item in items}
     assert hrefs["approval-with-agent"] == (
-        "/library/agents/library-agent?activeTab=runs&activeItem=graph-execution"
+        "/library/agents/library-agent?organizationId=__personal__"
+        "&teamId=__org_home__&activeTab=runs&activeItem=graph-execution"
     )
     assert hrefs["approval-bare"] == "/library"
 
@@ -321,7 +324,9 @@ def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
     assert items[0].id == "question-sess-1"
     assert items[0].title == "Autopilot has a question"
     assert items[0].description == "Monday or Friday?"
-    assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
+    assert items[0].primary_action.href == (
+        "/copilot?organizationId=__personal__&teamId=__org_home__&sessionId=sess-1"
+    )
 
 
 def test_answered_question_leaves_nothing_behind() -> None:

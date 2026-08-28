@@ -11,6 +11,7 @@ import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphS
 import { useSchedulesPanel } from "./useSchedulesPanel";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 interface Props {
   onGuidedPrompt: (prompt: string) => void;
@@ -19,6 +20,11 @@ interface Props {
 
 export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
   const { schedules, isLoading, error, partialError } = useSchedulesPanel();
+  const { user } = useAuth();
+  const visibleSchedules = schedules.filter(
+    (schedule) =>
+      schedule.kind === "graph" || schedule.item.user_id === user?.id,
+  );
 
   return (
     <section className="space-y-6">
@@ -73,7 +79,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         >
           <LoadingSpinner />
         </div>
-      ) : schedules.length === 0 ? (
+      ) : visibleSchedules.length === 0 ? (
         <EmptyFollowups />
       ) : (
         <ul
@@ -81,12 +87,18 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           data-testid="followups-list"
           aria-label="Scheduled items"
         >
-          {schedules.map((schedule) => (
+          {visibleSchedules.map((schedule) => (
             <li key={`${schedule.kind}:${schedule.item.id}`}>
               {schedule.kind === "copilot_turn" ? (
-                <FollowupListItem followup={schedule.item} />
+                <FollowupListItem
+                  followup={schedule.item}
+                  canDelete={schedule.item.user_id === user?.id}
+                />
               ) : (
-                <GraphScheduleListItem schedule={schedule.item} />
+                <GraphScheduleListItem
+                  schedule={schedule.item}
+                  canDelete={schedule.item.user_id === user?.id}
+                />
               )}
             </li>
           ))}

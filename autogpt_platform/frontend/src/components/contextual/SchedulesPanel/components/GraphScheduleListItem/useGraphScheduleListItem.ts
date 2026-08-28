@@ -6,6 +6,8 @@ import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-sc
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 interface Args {
   schedule: GraphExecutionJobInfo;
@@ -18,7 +20,9 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   const [isViewOpen, setIsViewOpen] = useState(false);
 
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
-    useDeleteV1DeleteExecutionSchedule();
+    useDeleteV1DeleteExecutionSchedule({
+      request: getTenantRequestInit(schedule.organization_id, schedule.team_id),
+    });
 
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
@@ -35,7 +39,12 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     : "Runs once";
 
   const agentLabel = schedule.agent_name || schedule.name || "Scheduled agent";
-  const agentHref = `/build?flowID=${schedule.graph_id}&flowVersion=${schedule.graph_version}`;
+  const agentHref = getBuilderHref({
+    graphId: schedule.graph_id,
+    graphVersion: schedule.graph_version,
+    organizationId: schedule.organization_id ?? null,
+    teamId: schedule.team_id ?? null,
+  });
 
   function openDelete() {
     setIsDeleteOpen(true);

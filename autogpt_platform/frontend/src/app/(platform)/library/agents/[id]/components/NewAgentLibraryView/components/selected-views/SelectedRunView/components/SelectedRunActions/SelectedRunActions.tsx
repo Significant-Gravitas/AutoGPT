@@ -108,6 +108,8 @@ export function SelectedRunActions({
         executionId={run.id}
         isShared={run.is_shared}
         shareToken={run.share_token}
+        organizationId={run.organization_id ?? agent.organization_id ?? null}
+        teamId={run.team_id ?? agent.team_id ?? null}
       />
       {canRunManually && (
         <>

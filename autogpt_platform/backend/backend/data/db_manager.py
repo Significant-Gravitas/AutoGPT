@@ -18,6 +18,7 @@ from backend.api.features.library.db import (
     get_library_agent_by_graph_id,
     get_library_agent_id_by_graph_id,
     get_library_agent_refs_by_graph_ids,
+    resolve_unique_library_agent_scope,
     get_preset,
     get_root_agent_summaries,
     list_folders,
@@ -419,6 +420,7 @@ class DatabaseManager(AppService):
     add_store_agent_to_library = _(add_store_agent_to_library)
     get_library_agent_id_by_graph_id = _(get_library_agent_id_by_graph_id)
     get_library_agent_refs_by_graph_ids = _(get_library_agent_refs_by_graph_ids)
+    resolve_unique_library_agent_scope = _(resolve_unique_library_agent_scope)
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
@@ -635,6 +637,7 @@ class DatabaseManager(AppService):
     get_chat_session_metadata = _(chat_db.get_chat_session_metadata)
     get_chat_messages_paginated = _(chat_db.get_chat_messages_paginated)
     create_chat_session = _(chat_db.create_chat_session)
+    claim_chat_session = _(chat_db.claim_chat_session)
     schedule_turn_if_live = _(schedule_turn_if_live)
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
@@ -796,6 +799,7 @@ class DatabaseManagerClient(AppServiceClient):
     mark_briefing_delivered = _(d.mark_briefing_delivered)
     update_briefing_content = _(d.update_briefing_content)
     get_library_agent_refs_by_graph_ids = _(d.get_library_agent_refs_by_graph_ids)
+    resolve_unique_library_agent_scope = _(d.resolve_unique_library_agent_scope)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -921,6 +925,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Library ============ #
     list_library_agents = d.list_library_agents
     get_library_agent_refs_by_graph_ids = d.get_library_agent_refs_by_graph_ids
+    resolve_unique_library_agent_scope = d.resolve_unique_library_agent_scope
     add_store_agent_to_library = d.add_store_agent_to_library
     create_graph_in_library = d.create_graph_in_library
     create_library_agent = d.create_library_agent
@@ -1089,6 +1094,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_chat_session_metadata = d.get_chat_session_metadata
     get_chat_messages_paginated = d.get_chat_messages_paginated
     create_chat_session = d.create_chat_session
+    claim_chat_session = d.claim_chat_session
     schedule_turn_if_live = d.schedule_turn_if_live
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message

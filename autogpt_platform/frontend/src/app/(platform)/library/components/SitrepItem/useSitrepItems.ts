@@ -1,11 +1,20 @@
 "use client";
 
-import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  useGetV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useMemo } from "react";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { getTenantEntityKey } from "@/services/org-team/identity";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import {
   isActive,
@@ -22,15 +31,39 @@ export function useSitrepItems(
   maxItems: number,
   scheduledWithinMs?: number,
 ): SitrepItemData[] {
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: {
+      enabled: isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListAllExecutionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
   return useMemo(() => {
     if (agents.length === 0) return [];
 
-    const graphIdToAgent = new Map(agents.map((a) => [a.graph_id, a]));
-    const agentExecutions = groupByAgent(executions ?? [], graphIdToAgent);
+    const tenantGraphToAgent = new Map(
+      agents.map((agent) => [
+        getTenantEntityKey(
+          agent.graph_id,
+          agent.organization_id,
+          agent.team_id,
+        ),
+        agent,
+      ]),
+    );
+    const agentExecutions = groupExecutionsByAgent(
+      executions ?? [],
+      tenantGraphToAgent,
+    );
     const items: SitrepItemData[] = [];
     const coveredAgentIds = new Set<string>();
 
@@ -63,14 +96,16 @@ export function useSitrepItems(
   }, [agents, executions, maxItems, scheduledWithinMs]);
 }
 
-function groupByAgent(
+export function groupExecutionsByAgent(
   executions: GraphExecutionMeta[],
-  graphIdToAgent: Map<string, LibraryAgent>,
+  tenantGraphToAgent: Map<string, LibraryAgent>,
 ): Map<LibraryAgent, GraphExecutionMeta[]> {
   const map = new Map<LibraryAgent, GraphExecutionMeta[]>();
 
   for (const exec of executions) {
-    const agent = graphIdToAgent.get(exec.graph_id);
+    const agent = tenantGraphToAgent.get(
+      getTenantEntityKey(exec.graph_id, exec.organization_id, exec.team_id),
+    );
     if (!agent) continue;
     const list = map.get(agent);
     if (list) {
@@ -94,6 +129,8 @@ function buildSitrepFromExecutions(
       agentID: agent.id,
       agentName: agent.name,
       executionID: active.id,
+      organizationId: active.organization_id ?? agent.organization_id ?? null,
+      teamId: active.team_id ?? agent.team_id ?? null,
       priority: "running",
       message:
         active.stats?.activity_status ??
@@ -118,6 +155,9 @@ function buildSitrepFromExecutions(
       agentID: agent.id,
       agentName: agent.name,
       executionID: lastFailed.id,
+      organizationId:
+        lastFailed.organization_id ?? agent.organization_id ?? null,
+      teamId: lastFailed.team_id ?? agent.team_id ?? null,
       priority: "error",
       message: typeof errorMsg === "string" ? errorMsg : "Execution failed",
       status: "error",
@@ -135,6 +175,9 @@ function buildSitrepFromExecutions(
       agentID: agent.id,
       agentName: agent.name,
       executionID: lastCompleted.id,
+      organizationId:
+        lastCompleted.organization_id ?? agent.organization_id ?? null,
+      teamId: lastCompleted.team_id ?? agent.team_id ?? null,
       priority: "success",
       message: typeof summary === "string" ? summary : "Completed successfully",
       status: "idle",
@@ -153,6 +196,8 @@ function buildSitrepFromConfig(
       id: `${agent.id}-listening`,
       agentID: agent.id,
       agentName: agent.name,
+      organizationId: agent.organization_id ?? null,
+      teamId: agent.team_id ?? null,
       priority: "listening",
       message: "Waiting for trigger event",
       status: "listening",
@@ -167,6 +212,8 @@ function buildSitrepFromConfig(
       id: `${agent.id}-scheduled`,
       agentID: agent.id,
       agentName: agent.name,
+      organizationId: agent.organization_id ?? null,
+      teamId: agent.team_id ?? null,
       priority: "scheduled",
       message: formatNextRun(agent.next_scheduled_run),
       status: "scheduled",

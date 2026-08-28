@@ -8,6 +8,7 @@ import Link from "next/link";
 import { getLastRunLabel, workflowNeedsSetup } from "../../../helpers";
 import { STATUS_BADGE_CLASS } from "../constants";
 import { ExpertWorkflowGroupData } from "../helpers";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 type Props = {
   group: ExpertWorkflowGroupData;
@@ -70,7 +71,11 @@ export function ExpertWorkflowGroup({ group }: Props) {
           {workflows.map(({ workflow, schedules }) => {
             const needsSetup = workflowNeedsSetup(workflow, schedules);
             const setupHref = workflow.library_agent_id
-              ? `/library/agents/${workflow.library_agent_id}`
+              ? getLibraryAgentHref(
+                  workflow.library_agent_id,
+                  expert.organization_id ?? null,
+                  expert.team_id ?? null,
+                )
               : "/marketplace";
             return (
               <div

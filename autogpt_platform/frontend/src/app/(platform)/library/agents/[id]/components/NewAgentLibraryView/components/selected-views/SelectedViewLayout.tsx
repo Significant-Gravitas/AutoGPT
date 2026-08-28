@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../helpers";
 import { AgentSettingsModal } from "../modals/AgentSettingsModal/AgentSettingsModal";
 import { SectionWrap } from "../other/SectionWrap";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface Props {
   agent: LibraryAgent;
@@ -24,7 +25,11 @@ export function SelectedViewLayout(props: Props) {
               { name: "My Library", link: "/library" },
               {
                 name: props.agent.name,
-                link: `/library/agents/${props.agent.id}`,
+                link: getLibraryAgentHref(
+                  props.agent.id,
+                  props.agent.organization_id ?? null,
+                  props.agent.team_id ?? null,
+                ),
               },
               ...(props.additionalBreadcrumb
                 ? [props.additionalBreadcrumb]

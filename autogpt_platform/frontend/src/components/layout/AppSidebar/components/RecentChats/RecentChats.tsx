@@ -35,8 +35,8 @@ export function RecentChats() {
     cancelRename,
     exportingIds,
     exportChat,
-    sharingSessionId,
-    setSharingSessionId,
+    sharingSession,
+    setSharingSession,
     sessionToDelete,
     isDeleting,
     requestDelete,
@@ -76,8 +76,15 @@ export function RecentChats() {
         onPin={togglePin}
         onRename={startRename}
         onExport={exportChat}
-        onShare={setSharingSessionId}
-        onDelete={requestDelete}
+        onShare={setSharingSession}
+        onDelete={(target) =>
+          requestDelete({
+            id: target.id,
+            title: target.title,
+            organizationId: target.organization_id ?? null,
+            teamId: target.team_id ?? null,
+          })
+        }
       />
     );
   }
@@ -152,12 +159,14 @@ export function RecentChats() {
         onCancel={cancelDelete}
       />
 
-      {sharingSessionId && (
+      {sharingSession && (
         <ShareChatDialog
-          sessionId={sharingSessionId}
+          sessionId={sharingSession.id}
+          organizationId={sharingSession.organization_id ?? null}
+          teamId={sharingSession.team_id ?? null}
           open={true}
           onOpenChange={(next) => {
-            if (!next) setSharingSessionId(null);
+            if (!next) setSharingSession(null);
           }}
         />
       )}

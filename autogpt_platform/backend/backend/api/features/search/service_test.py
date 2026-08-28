@@ -56,6 +56,8 @@ def _fake_library_agent(agent_id: str, name: str = "A"):
         is_favorite=False,
         created_at=datetime.datetime(2024, 1, 1),
         updated_at=datetime.datetime(2024, 1, 1),
+        organization_id="org-1",
+        team_id="team-1",
     )
     return library_model.LibraryAgentResponse(
         agents=[agent],
@@ -78,6 +80,8 @@ def _fake_workspace_file(file_id: str = "f1"):
         storage_path="ws-1/documents/report.pdf",
         mime_type="application/pdf",
         size_bytes=123,
+        organization_id="org-1",
+        team_id="team-1",
     )
 
 
@@ -91,16 +95,23 @@ def _fake_chat_session(session_id: str = "s1", title: str | None = "Title"):
         usage=[],
         started_at=datetime.datetime(2024, 1, 1),
         updated_at=datetime.datetime(2024, 1, 5),
+        organization_id="org-1",
+        team_id="team-1",
     )
 
 
 @pytest.fixture(autouse=True)
-def _clear_recent_cache():
-    """The empty-query branch is decorated with ``@cached`` — clear the
-    cache between tests so stale entries don't leak."""
-    service._cached_recent_buckets.cache_clear()
-    yield
-    service._cached_recent_buckets.cache_clear()
+def _isolate_recent_cache(monkeypatch):
+    uncached = service._cached_recent_buckets.__wrapped__
+    entries = {}
+
+    async def cached_recent_buckets(user_id, organization_id, team_id, limit):
+        key = (user_id, organization_id, team_id, limit)
+        if key not in entries:
+            entries[key] = await uncached(user_id, organization_id, team_id, limit)
+        return entries[key]
+
+    monkeypatch.setattr(service, "_cached_recent_buckets", cached_recent_buckets)
 
 
 def _mock_recent_sources(
@@ -192,10 +203,26 @@ async def test_global_search_buckets_results_by_content_type(mocker):
 
     assert [a.id for a in result.agents] == ["a-1", "store-1"]
     assert [a.type for a in result.agents] == ["library_agent", "store_agent"]
+    assert (result.agents[0].organization_id, result.agents[0].team_id) == (
+        "org-1",
+        "team-1",
+    )
+    assert (result.agents[1].organization_id, result.agents[1].team_id) == (
+        None,
+        None,
+    )
     assert [f.id for f in result.files] == ["file-1"]
     assert result.files[0].type == "workspace_file"
+    assert (result.files[0].organization_id, result.files[0].team_id) == (
+        "org-1",
+        "team-1",
+    )
     assert [c.id for c in result.chats] == ["chat-1"]
     assert result.chats[0].type == "chat_session"
+    assert (result.chats[0].organization_id, result.chats[0].team_id) == (
+        "org-1",
+        "team-1",
+    )
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,8 @@ from .db import query_raw_with_schema
 
 class UserAgentCostRollup(BaseModel):
     graph_id: str
+    organization_id: str | None = None
+    team_id: str | None = None
     cost_cents: int
     run_count: int
 
@@ -24,6 +26,8 @@ class UserExpertCostRollup(BaseModel):
 class UserTopRun(BaseModel):
     execution_id: str
     graph_id: str
+    organization_id: str | None = None
+    team_id: str | None = None
     cost_cents: int
     started_at: datetime
     status: AgentExecutionStatus
@@ -177,11 +181,13 @@ async def _fetch_by_agent(
     rows = await query_raw_with_schema(
         "SELECT"
         '  "agentGraphId" AS graph_id,'
+        '  "organizationId" AS organization_id,'
+        '  "teamId" AS team_id,'
         "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS cost_cents,"
         "  COUNT(*)::bigint AS run_count"
         ' FROM {schema_prefix}"AgentGraphExecution"'
         f" WHERE {_BASE_WHERE}"
-        '  GROUP BY "agentGraphId"'
+        '  GROUP BY "agentGraphId", "organizationId", "teamId"'
         "  ORDER BY cost_cents DESC"
         f"  LIMIT {_MAX_BY_AGENT_ROWS}",
         *params,
@@ -189,6 +195,8 @@ async def _fetch_by_agent(
     return [
         UserAgentCostRollup(
             graph_id=r["graph_id"],
+            organization_id=r.get("organization_id"),
+            team_id=r.get("team_id"),
             cost_cents=int(r.get("cost_cents") or 0),
             run_count=int(r.get("run_count") or 0),
         )
@@ -241,6 +249,8 @@ async def _fetch_top_runs(params: CostQueryParams, limit: int) -> list[UserTopRu
         "SELECT"
         "  id AS execution_id,"
         '  "agentGraphId" AS graph_id,'
+        '  "organizationId" AS organization_id,'
+        '  "teamId" AS team_id,'
         "  COALESCE((stats->>'cost')::numeric, 0)::bigint AS cost_cents,"
         '  COALESCE("startedAt", "createdAt") AS started_at,'
         '  "executionStatus" AS status,'
@@ -258,6 +268,8 @@ async def _fetch_top_runs(params: CostQueryParams, limit: int) -> list[UserTopRu
         UserTopRun(
             execution_id=r["execution_id"],
             graph_id=r["graph_id"],
+            organization_id=r.get("organization_id"),
+            team_id=r.get("team_id"),
             cost_cents=int(r.get("cost_cents") or 0),
             started_at=r["started_at"],
             status=AgentExecutionStatus(r["status"]),

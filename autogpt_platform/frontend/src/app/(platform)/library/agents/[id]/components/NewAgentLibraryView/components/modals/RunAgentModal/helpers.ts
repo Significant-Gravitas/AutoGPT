@@ -1,5 +1,13 @@
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { isEmpty } from "@/lib/utils";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+
+export function getLibraryAgentScopeRequest(
+  organizationId?: string | null,
+  teamId?: string | null,
+) {
+  return getTenantRequestInit(organizationId, teamId);
+}
 
 export function validateInputs(
   inputSchema: any,

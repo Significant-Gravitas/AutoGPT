@@ -21,6 +21,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { CreateTemplateModal } from "../../../selected-views/SelectedRunView/components/CreateTemplateModal/CreateTemplateModal";
@@ -39,11 +43,17 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] =
     useState(false);
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
 
   const { mutateAsync: deleteRun, isPending: isDeletingRun } =
-    useDeleteV1DeleteGraphExecution();
+    useDeleteV1DeleteGraphExecution({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
-  const { mutateAsync: createPreset } = usePostV2CreateANewPreset();
+  const { mutateAsync: createPreset } = usePostV2CreateANewPreset({
+    request: getTenantRequestInit(organizationId, teamId),
+  });
 
   async function handleDeleteRun() {
     try {
@@ -52,7 +62,11 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
       toast({ title: "Task deleted" });
 
       await queryClient.refetchQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+          organizationId,
+          teamId,
+        ),
       });
 
       setShowDeleteDialog(false);
@@ -85,9 +99,11 @@ export function TaskActionsDropdown({ agent, run, onDeleted }: Props) {
         });
 
         queryClient.invalidateQueries({
-          queryKey: getGetV2ListPresetsQueryKey({
-            graph_id: agent.graph_id,
-          }),
+          queryKey: getTeamScopedQueryKey(
+            getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+            organizationId,
+            teamId,
+          ),
         });
 
         setIsCreateTemplateModalOpen(false);

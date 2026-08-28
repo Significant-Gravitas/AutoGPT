@@ -3,18 +3,21 @@
 import { useState } from "react";
 
 import {
+  getGetV2ListWorkspaceMembersQueryKey,
   useDeleteV2DeleteWorkspace,
   useGetV2ListWorkspaces,
   usePostV2SelfJoinOpenWorkspace,
 } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import type { TeamResponse } from "@/app/api/__generated__/models/teamResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Args {
   orgId: string;
 }
 
 export function useTeamsSection({ orgId }: Args) {
+  const queryClient = useQueryClient();
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
   // Rows whose member list is expanded. Independent of the manage panel:
   // per-row, multiple can be open at once, all collapsed by default.
@@ -64,7 +67,12 @@ export function useTeamsSection({ orgId }: Args) {
   async function handleJoin(team: TeamResponse) {
     await joinTeam({ orgId, wsId: team.id });
     toast({ title: `Joined ${team.name}`, variant: "success" });
-    teamsQuery.refetch();
+    await Promise.all([
+      teamsQuery.refetch(),
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListWorkspaceMembersQueryKey(orgId, team.id),
+      }),
+    ]);
   }
 
   async function handleDeleteConfirmed() {

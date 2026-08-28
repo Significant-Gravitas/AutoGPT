@@ -19,7 +19,7 @@ from backend.copilot.briefing.outcome import (
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
-from .helpers import UNKNOWN_AGENT, AgentRef, to_home_expert
+from .helpers import AgentScopeMap, agent_ref_for_execution, to_home_expert
 from .models import HomeBriefing, HomeBriefingOutcome, HomeExpert
 
 _MAX_OUTCOMES = 4
@@ -31,7 +31,7 @@ def compose_briefing(
     now: datetime,
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, AgentRef],
+    agent_by_graph: AgentScopeMap,
     persisted: BriefingContent | None = None,
 ) -> HomeBriefing:
     if persisted is None:
@@ -141,7 +141,7 @@ def _live_outcomes(
     since: datetime,
     now: datetime,
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, AgentRef],
+    agent_by_graph: AgentScopeMap,
 ) -> list[HomeBriefingOutcome]:
     terminal = [
         execution
@@ -165,9 +165,9 @@ def _live_outcomes(
 def _run_item(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, AgentRef],
+    agent_by_graph: AgentScopeMap,
 ) -> BriefingRunItem:
-    agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
+    agent = agent_ref_for_execution(agent_by_graph, execution)
     return compose_run_outcome(
         execution,
         agent_name=agent.name,

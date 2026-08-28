@@ -10,6 +10,7 @@ import {
   normalizeToArray,
   type OutputItem,
 } from "../../helpers";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 export type GroupedExecution = {
   execId: string;
@@ -23,6 +24,7 @@ export const useNodeDataViewer = (
   executionResults?: NodeExecutionResult[],
   dataType?: NodeDataType,
 ) => {
+  const tenantScope = useBuilderTenantScope();
   const { toast } = useToast();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export const useNodeDataViewer = (
   const outputItems =
     !dataArray || dataArray.length === 0
       ? []
-      : createOutputItems(dataArray).map((item, index) => ({
+      : createOutputItems(dataArray, tenantScope).map((item, index) => ({
           ...item,
           label: index === 0 ? beautifyString(pinName) : "",
         }));
@@ -54,7 +56,7 @@ export const useNodeDataViewer = (
             dataArray = normalizeToArray(rawData);
           }
 
-          const outputItems = createOutputItems(dataArray);
+          const outputItems = createOutputItems(dataArray, tenantScope);
           return {
             execId: result.node_exec_id,
             outputItems,

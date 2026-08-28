@@ -678,6 +678,7 @@ async def _get_library_agent_by_id(
             agent_id,
             organization_id=organization_id,
             team_id_restriction=team_id,
+            exact_scope=True,
         )
         if agent and _is_exact_library_scope(agent, organization_id, team_id):
             return _library_agent_to_info(agent)

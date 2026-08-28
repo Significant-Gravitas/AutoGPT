@@ -36,6 +36,7 @@ import {
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
+import { getCopilotExpertHref } from "@/services/org-team/builder";
 
 const TEAM_CARD_BANNER_SRC = "/images/team-card-banner.jpg";
 
@@ -193,7 +194,11 @@ export function ExpertTeamCard({
         <div className="mt-auto flex flex-wrap gap-2">
           <Button
             as="NextLink"
-            href={`/copilot?expertId=${expert.id}`}
+            href={getCopilotExpertHref(
+              expert.id,
+              expert.organization_id ?? null,
+              expert.team_id ?? null,
+            )}
             variant="secondary"
             size="small"
           >

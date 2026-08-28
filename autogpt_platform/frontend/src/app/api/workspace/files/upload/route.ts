@@ -1,6 +1,7 @@
 import { environment } from "@/services/environment";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { NextRequest, NextResponse } from "next/server";
+import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "@/services/org-team/headers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,14 @@ export async function POST(request: NextRequest) {
     const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
+    }
+    const organizationId = request.headers.get(ORG_HEADER_NAME);
+    const teamId = request.headers.get(TEAM_HEADER_NAME);
+    if (organizationId) {
+      headers[ORG_HEADER_NAME] = organizationId;
+    }
+    if (teamId !== null) {
+      headers[TEAM_HEADER_NAME] = teamId;
     }
 
     const response = await fetch(uploadUrl.toString(), {

@@ -9,6 +9,10 @@ import {
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { fetchArtifactResource } from "@/app/(platform)/copilot/components/ArtifactPanel/artifactRequest";
+import type { ArtifactRef } from "@/app/(platform)/copilot/store";
+import { getBuilderHref, getCopilotHref } from "@/services/org-team/builder";
 
 export type FileOrigin =
   | { kind: "session"; sessionId: string; href: string }
@@ -16,17 +20,24 @@ export type FileOrigin =
 
 const SESSION_PATH_RE = /^\/sessions\/([^/]+)\//;
 
-export function deriveFileOrigin(filePath: string | undefined): FileOrigin {
+export function deriveFileOrigin(
+  filePath: string | undefined,
+  organizationId: string | null = null,
+  teamId: string | null = null,
+): FileOrigin {
   const match = (filePath ?? "").match(SESSION_PATH_RE);
   if (match) {
     const sessionId = match[1];
     return {
       kind: "session",
       sessionId,
-      href: `/copilot?sessionId=${encodeURIComponent(sessionId)}`,
+      href: getCopilotHref(sessionId, organizationId, teamId),
     };
   }
-  return { kind: "builder", href: "/build" };
+  return {
+    kind: "builder",
+    href: getBuilderHref({ organizationId, teamId }),
+  };
 }
 
 export function getFileDownloadUrl(fileId: string): string {
@@ -39,8 +50,25 @@ export function getFileDownloadUrl(fileId: string): string {
 export async function downloadFileBlob(
   fileId: string,
   fileName: string,
+  organizationId?: string | null,
+  teamId?: string | null,
 ): Promise<void> {
-  const res = await fetch(getFileDownloadUrl(fileId));
+  const sourceUrl = getFileDownloadUrl(fileId);
+  const baseArtifact: ArtifactRef = {
+    id: fileId,
+    title: fileName,
+    mimeType: null,
+    sourceUrl,
+    origin: "agent",
+  };
+  const res =
+    organizationId === undefined && teamId === undefined
+      ? await fetch(sourceUrl)
+      : await fetchArtifactResource({
+          ...baseArtifact,
+          organizationId: organizationId ?? null,
+          teamId: teamId ?? null,
+        });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -52,6 +80,22 @@ export async function downloadFileBlob(
   a.remove();
   // Defer revocation so browsers (Firefox/Edge) have time to start the download.
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function fetchWorkspaceFileResource(
+  file: WorkspaceFileItem,
+  sourceUrl: string,
+): Promise<Response> {
+  return fetchArtifactResource({
+    id: file.id,
+    title: file.name,
+    mimeType: file.mime_type ?? null,
+    sourceUrl,
+    origin: file.origin === "uploaded" ? "user-upload" : "agent",
+    sizeBytes: file.size_bytes,
+    organizationId: file.organization_id ?? null,
+    teamId: file.team_id ?? null,
+  });
 }
 
 export function getFilePreviewUrl(

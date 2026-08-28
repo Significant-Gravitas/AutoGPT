@@ -19,6 +19,8 @@ def _execution(
     activity_status: str | None = None,
     error: str | None = None,
     expert_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecutionMeta:
     return GraphExecutionMeta(
         id=exec_id,
@@ -33,6 +35,8 @@ def _execution(
         started_at=ended_at - timedelta(minutes=1),
         ended_at=ended_at,
         expert_id=expert_id,
+        organization_id=organization_id,
+        team_id=team_id,
         stats=GraphExecutionMeta.Stats(activity_status=activity_status, error=error),
     )
 
@@ -114,6 +118,46 @@ def test_active_task_falls_back_when_the_graph_is_unknown() -> None:
 
     assert tasks[0].title == "Agent task"
     assert tasks[0].link is None
+
+
+def test_active_tasks_resolve_same_graph_by_exact_tenant() -> None:
+    executions = [
+        _execution(
+            exec_id="run-a",
+            status=ExecutionStatus.RUNNING,
+            ended_at=NOW,
+            organization_id="org-1",
+            team_id="team-a",
+        ),
+        _execution(
+            exec_id="run-b",
+            status=ExecutionStatus.RUNNING,
+            ended_at=NOW,
+            organization_id="org-1",
+            team_id="team-b",
+        ),
+    ]
+    scoped_agents = {
+        ("graph", "org-1", "team-a"): AgentRef(
+            name="Team A agent", library_agent_id="library-a"
+        ),
+        ("graph", "org-1", "team-b"): AgentRef(
+            name="Team B agent", library_agent_id="library-b"
+        ),
+    }
+
+    tasks = compose_active_tasks(executions, {}, scoped_agents)
+
+    assert [(task.title, task.link) for task in tasks] == [
+        (
+            "Team A agent",
+            "/library/agents/library-a?activeTab=runs&activeItem=run-a",
+        ),
+        (
+            "Team B agent",
+            "/library/agents/library-b?activeTab=runs&activeItem=run-b",
+        ),
+    ]
 
 
 def _graph_job(job_id: str, next_run: str) -> GraphExecutionJobInfo:

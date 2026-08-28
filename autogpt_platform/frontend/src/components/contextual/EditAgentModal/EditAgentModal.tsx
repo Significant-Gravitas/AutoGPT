@@ -12,6 +12,8 @@ export interface EditAgentModalProps {
     | (StoreSubmissionEditRequest & {
         store_listing_version_id: string | undefined;
         graph_id: string;
+        organization_id: string | null;
+        team_id: string | null;
       })
     | null;
   onSuccess: (submission: StoreSubmission) => void;

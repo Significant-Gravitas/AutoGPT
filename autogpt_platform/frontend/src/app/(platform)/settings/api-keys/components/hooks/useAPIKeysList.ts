@@ -5,12 +5,25 @@ import {
   useGetV1ListUserApiKeys,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys";
 import { APIKeyStatus } from "@/app/api/__generated__/models/aPIKeyStatus";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 export const API_KEYS_QUERY_KEY = getGetV1ListUserApiKeysQueryKey();
 
 export function useAPIKeysList() {
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const query = useGetV1ListUserApiKeys({
+    request: getTenantRequestInit(activeOrgID, activeTeamID),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        API_KEYS_QUERY_KEY,
+        activeOrgID,
+        activeTeamID,
+      ),
       select: (response) =>
         response.status === 200
           ? response.data.filter((key) => key.status === APIKeyStatus.ACTIVE)

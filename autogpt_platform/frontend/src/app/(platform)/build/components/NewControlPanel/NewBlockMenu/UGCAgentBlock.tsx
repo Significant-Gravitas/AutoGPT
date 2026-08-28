@@ -7,6 +7,7 @@ import { highlightText } from "./helpers";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
@@ -47,6 +48,7 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             alt="integration-icon"
             fill
             sizes="5.625rem"
+            unoptimized={shouldBypassImageOptimization(image_url)}
             className="w-full object-contain group-disabled:opacity-50"
           />
         </div>

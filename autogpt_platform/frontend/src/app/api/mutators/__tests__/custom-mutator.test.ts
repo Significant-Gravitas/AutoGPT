@@ -315,6 +315,27 @@ describe("customMutator — team scoping headers", () => {
     expect(sentHeaders()[TEAM_HEADER_NAME]).toBe("chosen-team");
   });
 
+  it("pins an explicit persisted org and team over navigation context", async () => {
+    await customMutator("/test", {
+      method: "POST",
+      headers: {
+        [ORG_HEADER_NAME]: "persisted-org",
+        [TEAM_HEADER_NAME]: "persisted-team",
+      },
+    });
+    expect(sentHeaders()[ORG_HEADER_NAME]).toBe("persisted-org");
+    expect(sentHeaders()[TEAM_HEADER_NAME]).toBe("persisted-team");
+  });
+
+  it("drops active org and team for personal-scope sentinels", async () => {
+    await customMutator("/test", {
+      method: "POST",
+      headers: { [ORG_HEADER_NAME]: "", [TEAM_HEADER_NAME]: "" },
+    });
+    expect(ORG_HEADER_NAME in sentHeaders()).toBe(false);
+    expect(TEAM_HEADER_NAME in sentHeaders()).toBe(false);
+  });
+
   it("drops the active-team header for the org-home sentinel (empty X-Team-Id)", async () => {
     await customMutator("/test", {
       method: "POST",

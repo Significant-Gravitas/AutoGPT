@@ -150,6 +150,8 @@ async def handle_subscribe(
         channel_key = await connection_manager.subscribe_graph_execs(
             user_id=user_id,
             graph_id=sub_req.graph_id,
+            organization_id=sub_req.organization_id,
+            team_id=sub_req.team_id,
             websocket=websocket,
         )
 

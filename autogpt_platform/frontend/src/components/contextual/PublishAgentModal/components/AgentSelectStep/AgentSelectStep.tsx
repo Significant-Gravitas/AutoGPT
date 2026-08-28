@@ -33,6 +33,8 @@ interface Props {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
+    organizationId: string | null,
+    teamId: string | null,
   ) => void;
   onOpenBuilder: () => void;
 }

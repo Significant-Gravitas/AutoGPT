@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useAPIKeysList } from "../hooks/useAPIKeysList";
 import { useAPIKeySelection } from "./useAPIKeySelection";
+import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 
 export function useAPIKeyListView() {
   const list = useAPIKeysList();
@@ -11,10 +12,11 @@ export function useAPIKeyListView() {
   // every parent render (the effect only cares when the set of ids changes).
   const allIds = useMemo(() => list.keys.map((key) => key.id), [list.keys]);
   const selection = useAPIKeySelection(allIds);
-  const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<APIKeyInfo[] | null>(null);
 
   function requestDelete(ids: string[]) {
-    setDeleteTarget(ids);
+    const idSet = new Set(ids);
+    setDeleteTarget(list.keys.filter((key) => idSet.has(key.id)));
   }
 
   function closeDeleteDialog(open: boolean) {

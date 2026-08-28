@@ -635,7 +635,7 @@ async def list_org_members(org_id: str) -> list[OrgMemberResponse]:
 async def lock_org_membership(client: Prisma, org_id: str, user_id: str) -> None:
     await lock_live_org_membership_scope(client, org_id, user_id)
     await execute_raw_with_schema(
-        'UPDATE {schema_prefix}"User" SET "updatedAt" = "updatedAt" ' 'WHERE "id" = $1',
+        'UPDATE {schema_prefix}"User" SET "updatedAt" = "updatedAt" WHERE "id" = $1',
         user_id,
         client=client,
     )
@@ -816,6 +816,17 @@ def _resource_where(org_id: str, user_id: str, team_id: str | None) -> dict:
     return where
 
 
+def _workspace_resource_where(org_id: str, user_id: str, team_id: str | None) -> dict:
+    where = {
+        "organizationId": org_id,
+        "Workspace": {"is": {"userId": user_id}},
+        "isDeleted": False,
+    }
+    if team_id is not None:
+        where["teamId"] = team_id
+    return where
+
+
 async def assert_no_owned_resources(
     client: Prisma, org_id: str, user_id: str, team_id: str | None = None
 ) -> None:
@@ -834,6 +845,7 @@ async def assert_no_owned_resources(
     }
     if team_id is not None:
         expert_where["teamId"] = team_id
+    workspace_where = _workspace_resource_where(org_id, user_id, team_id)
     counts = [
         await client.agentgraph.count(where=where),
         await client.libraryagent.count(where={**where, "isDeleted": False}),
@@ -851,6 +863,8 @@ async def assert_no_owned_resources(
             }
         ),
         await client.expert.count(where=expert_where),
+        await client.userworkspacefile.count(where=workspace_where),
+        await client.userworkspacefolder.count(where=workspace_where),
     ]
     if any(counts):
         scope = "workspace" if team_id is not None else "organization"

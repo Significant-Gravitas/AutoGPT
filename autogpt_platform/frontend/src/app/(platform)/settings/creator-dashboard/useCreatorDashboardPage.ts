@@ -4,7 +4,7 @@ import { keepPreviousData } from "@tanstack/react-query";
 
 import {
   getGetV2ListMySubmissionsQueryKey,
-  useDeleteV2DeleteStoreSubmission,
+  deleteV2DeleteStoreSubmission,
   useGetV2GetUserProfile,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
@@ -15,6 +15,11 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 import {
   buildEditPayload,
@@ -35,6 +40,9 @@ interface EditState {
 export function useCreatorDashboardPage() {
   const queryClient = getQueryClient();
   const { user } = useAuth();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,
@@ -80,32 +88,37 @@ export function useCreatorDashboardPage() {
   });
   const creatorUsername = profile?.username;
 
+  const submissionParams = {
+    page: queryPage,
+    page_size: PAGE_SIZE,
+    search_query: debouncedSearch || undefined,
+    statuses:
+      filterState.statuses.length > 0
+        ? filterState.statuses.join(",")
+        : undefined,
+    sort_key: filterState.sortKey ?? undefined,
+    sort_dir: filterState.sortKey ? filterState.sortDir : undefined,
+  };
+
   const {
     data: response,
     isSuccess,
     isFetching,
     error,
     refetch,
-  } = useGetV2ListMySubmissions(
-    {
-      page: queryPage,
-      page_size: PAGE_SIZE,
-      search_query: debouncedSearch || undefined,
-      statuses:
-        filterState.statuses.length > 0
-          ? filterState.statuses.join(",")
-          : undefined,
-      sort_key: filterState.sortKey ?? undefined,
-      sort_dir: filterState.sortKey ? filterState.sortDir : undefined,
+  } = useGetV2ListMySubmissions(submissionParams, {
+    query: {
+      select: (x) => x.data as StoreSubmissionsResponse,
+      enabled: !!user && isTenantReady && !isDebouncingSearch,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListMySubmissionsQueryKey(submissionParams),
+        activeOrgID,
+        activeTeamID,
+      ),
+      placeholderData: keepPreviousData,
     },
-    {
-      query: {
-        select: (x) => x.data as StoreSubmissionsResponse,
-        enabled: !!user && !isDebouncingSearch,
-        placeholderData: keepPreviousData,
-      },
-    },
-  );
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
+  });
 
   const [isSortingTransition, setIsSortingTransition] = useState(false);
   const sortingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -129,16 +142,6 @@ export function useCreatorDashboardPage() {
   function onPageChange(nextPage: number) {
     setPage(nextPage);
   }
-
-  const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
 
   const submissions = response?.submissions ?? [];
 
@@ -206,8 +209,14 @@ export function useCreatorDashboardPage() {
     }
   }
 
-  async function onDeleteSubmission(submissionId: string) {
-    await deleteSubmission({ submissionId });
+  async function onDeleteSubmission(submission: StoreSubmission) {
+    await deleteV2DeleteStoreSubmission(
+      submission.listing_version_id,
+      getTenantRequestInit(submission.organization_id, submission.team_id),
+    );
+    await queryClient.invalidateQueries({
+      queryKey: getGetV2ListMySubmissionsQueryKey(),
+    });
   }
 
   return {

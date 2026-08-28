@@ -1,11 +1,13 @@
 import {
   getV2GetSession,
+  patchV2UpdateSessionPinned,
+  patchV2UpdateSessionTitle,
   usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { fetchAndExportChat } from "@/app/(platform)/copilot/helpers/exportChatAsMarkdown";
 import {
-  SESSION_LIST_QUERY_KEY,
+  getSessionListQueryKey,
   useSessionList,
 } from "@/app/(platform)/copilot/useSessionList";
 import { useSessionDeletion } from "@/app/(platform)/copilot/useSessionDeletion";
@@ -13,6 +15,18 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+
+export interface RecentChatSession {
+  id: string;
+  title?: string | null;
+  source_platform?: string | null;
+  is_processing?: boolean | null;
+  is_pinned?: boolean | null;
+  updated_at: string;
+  organization_id?: string | null;
+  team_id?: string | null;
+}
 
 export function useRecentChats() {
   const queryClient = useQueryClient();
@@ -27,7 +41,24 @@ export function useRecentChats() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [exportingIds, setExportingIds] = useState<Set<string>>(new Set());
-  const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
+  const [sharingSession, setSharingSession] =
+    useState<RecentChatSession | null>(null);
+
+  function getSession(id: string) {
+    const session = sessions.find((candidate) => candidate.id === id);
+    if (!session) throw new Error(`Chat session ${id} is no longer available`);
+    return session;
+  }
+
+  function invalidateSessionList(id: string) {
+    const session = getSession(id);
+    return queryClient.invalidateQueries({
+      queryKey: getSessionListQueryKey(
+        session.organization_id,
+        session.team_id,
+      ),
+    });
+  }
 
   const {
     sessionToDelete,
@@ -39,8 +70,16 @@ export function useRecentChats() {
 
   const { mutate: setSessionPinned } = usePatchV2UpdateSessionPinned({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+      mutationFn: ({ sessionId, data }) => {
+        const session = getSession(sessionId);
+        return patchV2UpdateSessionPinned(
+          sessionId,
+          data,
+          getTenantRequestInit(session.organization_id, session.team_id),
+        );
+      },
+      onSuccess: (_response, variables) => {
+        invalidateSessionList(variables.sessionId);
       },
       onError: (error) => {
         toast({
@@ -55,8 +94,16 @@ export function useRecentChats() {
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+      mutationFn: ({ sessionId, data }) => {
+        const session = getSession(sessionId);
+        return patchV2UpdateSessionTitle(
+          sessionId,
+          data,
+          getTenantRequestInit(session.organization_id, session.team_id),
+        );
+      },
+      onSuccess: (_response, variables) => {
+        invalidateSessionList(variables.sessionId);
         setEditingSessionId(null);
       },
       onError: (error) => {
@@ -93,7 +140,13 @@ export function useRecentChats() {
     if (exportingIds.has(id)) return;
     setExportingIds((prev) => new Set(prev).add(id));
     try {
-      await fetchAndExportChat(id, title, getV2GetSession);
+      const session = getSession(id);
+      await fetchAndExportChat(
+        id,
+        title,
+        getV2GetSession,
+        getTenantRequestInit(session.organization_id, session.team_id),
+      );
       toast({ title: "Chat exported" });
     } catch (error) {
       toast({
@@ -129,8 +182,8 @@ export function useRecentChats() {
     cancelRename: () => setEditingSessionId(null),
     exportingIds,
     exportChat,
-    sharingSessionId,
-    setSharingSessionId,
+    sharingSession,
+    setSharingSession,
     sessionToDelete,
     isDeleting,
     requestDelete,

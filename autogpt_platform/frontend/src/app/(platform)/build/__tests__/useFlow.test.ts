@@ -36,6 +36,9 @@ let mockGraphLoading = false;
 let mockBlocksLoading = false;
 
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  getGetV1GetExecutionDetailsQueryKey: vi.fn(() => ["execution-details"]),
+  getGetV1ListUserGraphsQueryKey: vi.fn(() => ["user-graphs"]),
+  getGetV1GetSpecificGraphQueryKey: vi.fn(() => ["specific-graph"]),
   useGetV1GetSpecificGraph: vi.fn(() => ({
     data: undefined,
     isLoading: mockGraphLoading,

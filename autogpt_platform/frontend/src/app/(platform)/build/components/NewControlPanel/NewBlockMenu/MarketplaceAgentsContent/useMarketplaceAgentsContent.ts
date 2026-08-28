@@ -15,11 +15,14 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 export const useMarketplaceAgentsContent = () => {
   const { toast } = useToast();
   const [addingAgent, setAddingAgent] = useState<string | null>(null);
   const { addAgentToBuilder } = useAddAgentToBuilder();
+  const tenantScope = useBuilderTenantScope();
 
   const {
     data: storeAgentsQueryData,
@@ -68,6 +71,11 @@ export const useMarketplaceAgentsContent = () => {
         });
       },
     },
+    request: getTenantRequestInit(
+      tenantScope.organizationId,
+      tenantScope.teamId,
+      tenantScope.isReady,
+    ),
   });
 
   const handleAddStoreAgent = async ({
@@ -101,6 +109,10 @@ export const useMarketplaceAgentsContent = () => {
 
       const { data: libraryAgentDetails } = await getV2GetLibraryAgent(
         libraryAgent.id,
+        getTenantRequestInit(
+          libraryAgent.organization_id ?? tenantScope.organizationId,
+          libraryAgent.team_id ?? tenantScope.teamId,
+        ),
       );
 
       addAgentToBuilder(libraryAgentDetails as LibraryAgent);

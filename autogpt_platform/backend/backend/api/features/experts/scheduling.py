@@ -403,6 +403,8 @@ async def _post_budget_message(
             expert_id=expert.id,
             content=content,
             message_id=message_id,
+            organization_id=expert.organizationId,
+            team_id=expert.teamId,
         )
     except Exception as e:
         logger.warning(

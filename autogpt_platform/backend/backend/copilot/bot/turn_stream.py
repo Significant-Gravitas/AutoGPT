@@ -11,7 +11,6 @@ import asyncio
 import logging
 import time
 from typing import Any
-from urllib.parse import quote
 from uuid import uuid4
 
 from backend.copilot.model import get_chat_session
@@ -24,6 +23,7 @@ from backend.data.tenancy import live_resource_access_barrier
 from backend.platform_linking.models import TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
+from backend.util.tenancy_urls import copilot_path
 
 from . import sessions
 from .adapters.base import (
@@ -203,7 +203,12 @@ class TurnStreamer:
                     sent_any_content = True
                 buffer = ""
             sent_any_content = True
-            session_url = copilot_session_url(session_id)
+            linked_session = await get_chat_session(session_id, active_owner_user_id)
+            session_url = copilot_session_url(
+                session_id,
+                linked_session.organization_id if linked_session else None,
+                linked_session.team_id if linked_session else None,
+            )
             message = _setup_required_message(setup_output)
             if session_url is None:
                 # No base URL configured — fall back to plain text since
@@ -488,7 +493,12 @@ class TurnStreamer:
     ) -> None:
         """Link the user to the chat when the file can't be attached here —
         covers missing, unavailable, errored and too-large cases alike."""
-        session_url = copilot_session_url(session_id)
+        linked_session = await get_chat_session(session_id)
+        session_url = copilot_session_url(
+            session_id,
+            linked_session.organization_id if linked_session else None,
+            linked_session.team_id if linked_session else None,
+        )
         if session_url is None:
             logger.warning(
                 "No base URL configured; can't render fallback link for %s",
@@ -618,13 +628,17 @@ async def _keep_typing(adapter: PlatformAdapter, target_id: str) -> None:
         logger.debug("Typing loop error", exc_info=True)
 
 
-def copilot_session_url(session_id: str) -> str | None:
+def copilot_session_url(
+    session_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str | None:
     """Absolute URL to the live copilot session, or None if no base URL set."""
     config = Settings().config
     base_url = (config.frontend_base_url or config.platform_base_url).rstrip("/")
     if not base_url:
         return None
-    return f"{base_url}/copilot?sessionId={quote(session_id, safe='')}"
+    return f"{base_url}{copilot_path(session_id, organization_id, team_id)}"
 
 
 def _setup_dropped_message() -> str:

@@ -15,9 +15,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   followup: CopilotTurnJobInfo;
+  canDelete?: boolean;
 }
 
-export function FollowupListItem({ followup }: Props) {
+export function FollowupListItem({ followup, canDelete = true }: Props) {
   const {
     sessionHref,
     nextRunLabel,
@@ -106,16 +107,18 @@ export function FollowupListItem({ followup }: Props) {
           <Icon icon={EyeIcon} className="mr-1 h-4 w-4" />
           View
         </Button>
-        <Button
-          variant="secondary"
-          size="small"
-          onClick={openDelete}
-          data-testid="followup-delete-button"
-          aria-label="Delete follow-up"
-        >
-          <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
-          Delete
-        </Button>
+        {canDelete && (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={openDelete}
+            data-testid="followup-delete-button"
+            aria-label="Delete follow-up"
+          >
+            <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
+            Delete
+          </Button>
+        )}
       </div>
 
       <Dialog

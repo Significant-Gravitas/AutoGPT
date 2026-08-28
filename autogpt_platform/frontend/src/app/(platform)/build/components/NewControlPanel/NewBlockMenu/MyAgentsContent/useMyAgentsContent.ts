@@ -1,15 +1,29 @@
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
-import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useGetV2ListLibraryAgentsInfinite,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 export const useMyAgentsContent = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isGettingAgentDetails, setIsGettingAgentDetails] = useState(false);
   const { addLibraryAgentToBuilder } = useAddAgentToBuilder();
   const { toast } = useToast();
+  const tenantScope = useBuilderTenantScope();
+  const params = {
+    page: 1,
+    page_size: 10,
+    is_hidden: false,
+  };
 
   const {
     data: agentsQueryData,
@@ -20,16 +34,22 @@ export const useMyAgentsContent = () => {
     isLoading: agentLoading,
     refetch,
     error,
-  } = useGetV2ListLibraryAgentsInfinite(
-    {
-      page: 1,
-      page_size: 10,
-      is_hidden: false,
+  } = useGetV2ListLibraryAgentsInfinite(params, {
+    query: {
+      enabled: tenantScope.isReady,
+      getNextPageParam: getPaginationNextPageNumber,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListLibraryAgentsQueryKey(params),
+        tenantScope.organizationId,
+        tenantScope.teamId,
+      ),
     },
-    {
-      query: { getNextPageParam: getPaginationNextPageNumber },
-    },
-  );
+    request: getTenantRequestInit(
+      tenantScope.organizationId,
+      tenantScope.teamId,
+      tenantScope.isReady,
+    ),
+  });
 
   const allAgents = agentsQueryData
     ? unpaginate(agentsQueryData, "agents")

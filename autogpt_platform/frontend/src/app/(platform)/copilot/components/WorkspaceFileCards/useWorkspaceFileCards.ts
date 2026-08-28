@@ -6,6 +6,10 @@ import {
   getListWorkspaceFilesQueryKey,
   useDeleteWorkspaceFile,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
@@ -21,6 +25,7 @@ import {
 export function useWorkspaceFileCards(sessionId: string | null) {
   const queryClient = useQueryClient();
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const tenantScope = useCopilotUIStore((s) => s.artifactTenantScope);
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
@@ -33,15 +38,31 @@ export function useWorkspaceFileCards(sessionId: string | null) {
     useDeleteWorkspaceFile({
       mutation: {
         onSuccess: () => {
-          // Prefix key: refreshes every files list (card, tabs, artifacts).
           queryClient.invalidateQueries({
-            queryKey: getListWorkspaceFilesQueryKey(),
+            predicate: ({ queryKey }) => {
+              const listRoot = getListWorkspaceFilesQueryKey()[0];
+              const scopedSuffix = getTeamScopedQueryKey(
+                [],
+                tenantScope?.organizationId,
+                tenantScope?.teamId,
+              )[0];
+              return (
+                queryKey[0] === listRoot &&
+                JSON.stringify(queryKey[queryKey.length - 1]) ===
+                  JSON.stringify(scopedSuffix)
+              );
+            },
           });
           toast({ title: "File deleted", variant: "success" });
         },
         onError: () =>
           toast({ title: "Failed to delete file", variant: "destructive" }),
       },
+      request: getTenantRequestInit(
+        tenantScope?.organizationId,
+        tenantScope?.teamId,
+        tenantScope !== null,
+      ),
     });
 
   const files = [...generated, ...uploaded];
@@ -72,7 +93,12 @@ export function useWorkspaceFileCards(sessionId: string | null) {
     setIsZipping(true);
     try {
       await downloadFilesAsZip(
-        files.map((f) => ({ id: f.item.id, name: f.item.name })),
+        files.map((f) => ({
+          id: f.item.id,
+          name: f.item.name,
+          organizationId: f.item.organization_id ?? null,
+          teamId: f.item.team_id ?? null,
+        })),
       );
     } catch {
       toast({ title: "Download all failed", variant: "destructive" });

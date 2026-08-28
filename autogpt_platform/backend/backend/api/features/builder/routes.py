@@ -49,12 +49,22 @@ def sanitize_query(query: str | None) -> str | None:
 )
 async def get_suggestions(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
+    ctx: Annotated[
+        RequestContext,
+        requires_live_resource_permission(
+            OrgAction.VIEW_RESOURCES, TeamAction.VIEW_AGENTS
+        ),
+    ],
 ) -> builder_model.SuggestionsResponse:
     """
     Get all suggestions for the Blocks Menu.
     """
     return builder_model.SuggestionsResponse(
-        recent_searches=await builder_db.get_recent_searches(user_id),
+        recent_searches=await builder_db.get_recent_searches(
+            user_id,
+            organization_id=ctx.org_id,
+            team_id_restriction=ctx.team_id,
+        ),
         providers=[
             ProviderName.TWITTER,
             ProviderName.GITHUB,
@@ -220,6 +230,7 @@ async def search(
             search_id=search_id,
         ),
         organization_id=ctx.org_id,
+        team_id_restriction=ctx.team_id,
     )
 
     return builder_model.SearchResponse(

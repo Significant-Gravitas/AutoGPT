@@ -34,6 +34,8 @@ class WSSubscribeGraphExecutionRequest(pydantic.BaseModel):
 
 class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
+    organization_id: str | None
+    team_id: str | None
 
 
 GraphCreationSource = Literal["builder", "upload"]

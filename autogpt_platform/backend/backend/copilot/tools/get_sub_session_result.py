@@ -189,7 +189,11 @@ class GetSubSessionResultTool(BaseTool):
                     status="cancelled",
                     sub_session_id=inner_session_id,
                     sub_autopilot_session_id=inner_session_id,
-                    sub_autopilot_session_link=_sub_session_link(inner_session_id),
+                    sub_autopilot_session_link=_sub_session_link(
+                        inner_session_id,
+                        sub.organization_id,
+                        sub.team_id,
+                    ),
                     elapsed_seconds=0.0,
                 ),
                 delegate,
@@ -228,7 +232,11 @@ class GetSubSessionResultTool(BaseTool):
             # with the progress snapshot attached. response_from_outcome
             # doesn't carry progress, so we build the response here.
             progress = await _build_progress_snapshot(inner_session_id)
-            link = _sub_session_link(inner_session_id)
+            link = _sub_session_link(
+                inner_session_id,
+                sub.organization_id,
+                sub.team_id,
+            )
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=(
@@ -264,6 +272,8 @@ class GetSubSessionResultTool(BaseTool):
                 parent_session_id=session.session_id,
                 elapsed=elapsed,
                 workspace_files=workspace_files,
+                organization_id=sub.organization_id,
+                team_id=sub.team_id,
             ),
             delegate,
         )

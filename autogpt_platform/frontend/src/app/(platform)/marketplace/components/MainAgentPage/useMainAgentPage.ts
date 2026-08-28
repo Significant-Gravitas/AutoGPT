@@ -3,11 +3,19 @@ import {
   useGetV2ListStoreAgents,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
-import { useGetV2GetAgentByStoreId } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2GetAgentByStoreIdQueryKey,
+  useGetV2GetAgentByStoreId,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 export const useMainAgentPage = ({
   params,
@@ -16,6 +24,9 @@ export const useMainAgentPage = ({
 }) => {
   const creator_lower = params.creator.toLowerCase();
   const { user } = useAuth();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isOrgTeamLoaded = useOrgTeamStore((state) => state.isLoaded);
   const {
     data: agent,
     isLoading: isAgentLoading,
@@ -54,11 +65,19 @@ export const useMainAgentPage = ({
     isLoading: isLibraryAgentLoading,
     isError: isLibraryAgentError,
   } = useGetV2GetAgentByStoreId(okData(agent)?.active_version_id ?? "", {
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isOrgTeamLoaded),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetAgentByStoreIdQueryKey(
+          okData(agent)?.active_version_id ?? "",
+        ),
+        activeOrgID,
+        activeTeamID,
+      ),
       select: (x) => {
         return x.data as LibraryAgent;
       },
-      enabled: !!user && !!okData(agent)?.active_version_id,
+      enabled: !!user && !!okData(agent)?.active_version_id && isOrgTeamLoaded,
     },
   });
 

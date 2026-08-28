@@ -10,6 +10,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 const getMyAgentsMock = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/store/store", () => ({
+  getGetV2GetMyAgentsQueryKey: vi.fn(() => ["my-agents"]),
   useGetV2GetMyAgents: (
     params: unknown,
     options: { query?: { select?: (res: unknown) => unknown } } = {},
@@ -137,6 +138,8 @@ describe("useAgentSelectStep", () => {
         name: "Agent 1",
         description: "Description 1",
       }),
+      null,
+      null,
     );
   });
 

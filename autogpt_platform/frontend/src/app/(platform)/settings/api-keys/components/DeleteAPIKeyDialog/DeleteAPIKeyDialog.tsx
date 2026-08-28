@@ -5,25 +5,26 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 import { useRevokeAPIKey } from "../hooks/useRevokeAPIKey";
+import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 
 interface Props {
   open: boolean;
-  keyIds: string[];
+  keys: APIKeyInfo[];
   onOpenChange: (open: boolean) => void;
   onDeleted?: () => void;
 }
 
 export function DeleteAPIKeyDialog({
   open,
-  keyIds,
+  keys,
   onOpenChange,
   onDeleted,
 }: Props) {
   const { revoke, isPending } = useRevokeAPIKey();
-  const isBatch = keyIds.length > 1;
+  const isBatch = keys.length > 1;
 
   async function handleConfirm() {
-    const succeeded = await revoke(keyIds);
+    const succeeded = await revoke(keys);
     if (!succeeded) return;
     onDeleted?.();
     onOpenChange(false);
@@ -31,7 +32,7 @@ export function DeleteAPIKeyDialog({
 
   return (
     <Dialog
-      title={isBatch ? `Revoke ${keyIds.length} API keys?` : "Revoke API key?"}
+      title={isBatch ? `Revoke ${keys.length} API keys?` : "Revoke API key?"}
       styling={{ maxWidth: "28rem" }}
       controlled={{
         isOpen: open,

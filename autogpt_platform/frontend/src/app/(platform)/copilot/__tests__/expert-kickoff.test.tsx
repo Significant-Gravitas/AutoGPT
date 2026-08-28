@@ -10,7 +10,7 @@ import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { parseAsString, useQueryState } from "nuqs";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
-import { useState } from "react";
+import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import {
@@ -50,6 +50,44 @@ const KICKOFF_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const EXISTING_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000002";
 const ORPHAN_SESSION_ID = "4f8b0f7e-9f30-4a3b-a6a1-000000000003";
 
+type SendMessageArgs = Parameters<typeof useSendMessage>[0];
+type OnSend = ReturnType<typeof useSendMessage>["onSend"];
+
+interface SendMessageHostProps {
+  sessionId: string | null;
+  isSessionScopeReady: boolean;
+  sendMessage: SendMessageArgs["sendMessage"];
+  createSession: SendMessageArgs["createSession"];
+  isUserStoppingRef: SendMessageArgs["isUserStoppingRef"];
+  onSendRef: MutableRefObject<OnSend | null>;
+}
+
+function SendMessageHost({
+  sessionId,
+  isSessionScopeReady,
+  sendMessage,
+  createSession,
+  isUserStoppingRef,
+  onSendRef,
+}: SendMessageHostProps) {
+  const { onSend } = useSendMessage({
+    sessionId,
+    isSessionScopeReady,
+    sendMessage,
+    createSession,
+    isUserStoppingRef,
+  });
+
+  useEffect(() => {
+    onSendRef.current = onSend;
+    return () => {
+      if (onSendRef.current === onSend) onSendRef.current = null;
+    };
+  }, [onSend, onSendRef]);
+
+  return null;
+}
+
 function latestKickoffAttemptToken(messages: UIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const attemptToken = getKickoffAttemptToken(messages[index]);
@@ -76,11 +114,13 @@ function KickoffHarness() {
     sessionId,
     setSessionId,
     sessionExpertId,
+    sessionTenantScope,
     hydratedMessages,
     createSession,
     refetchSession,
   } = useChatSession({ expertId });
-  const isUserStoppingRef = { current: false };
+  const isUserStoppingRef = useRef(false);
+  const onSendRef = useRef<OnSend | null>(null);
 
   async function sendMessage(input: {
     text?: string;
@@ -98,13 +138,6 @@ function KickoffHarness() {
     ]);
   }
 
-  const { onSend } = useSendMessage({
-    sessionId,
-    sendMessage: sendMessage as never,
-    createSession,
-    isUserStoppingRef,
-  });
-
   const { isKickoffStarting } = useExpertKickoff({
     userId: USER_ID,
     expertId,
@@ -120,6 +153,8 @@ function KickoffHarness() {
     onAdoptSession: setSessionId,
     async onKickoff(id, attemptToken) {
       const message = buildKickoffMessage(id, attemptToken);
+      const onSend = onSendRef.current;
+      if (!onSend) throw new Error("Send host is not mounted");
       await onSend(message.text, undefined, undefined, message.metadata);
     },
     onSettled() {
@@ -129,6 +164,15 @@ function KickoffHarness() {
 
   return (
     <div>
+      <SendMessageHost
+        key={sessionId ?? "new"}
+        sessionId={sessionId}
+        isSessionScopeReady={sessionTenantScope !== undefined}
+        sendMessage={sendMessage as never}
+        createSession={createSession}
+        isUserStoppingRef={isUserStoppingRef}
+        onSendRef={onSendRef}
+      />
       <div data-testid="session-id">{sessionId ?? "none"}</div>
       <div data-testid="kickoff-param">{kickoff ?? "none"}</div>
       <div data-testid="settled-count">{settledCount}</div>

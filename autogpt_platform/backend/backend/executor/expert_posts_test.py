@@ -34,6 +34,8 @@ def _entry(
             expert_id=expert_id,
             dry_run=dry_run,
             parent_execution_id=parent_execution_id,
+            organization_id="org-1",
+            team_id="team-1",
         ),
     )
 
@@ -159,6 +161,9 @@ def test_post_uses_deterministic_message_id_for_retries():
             GraphExecutionStats(),
         )
         first_call = db_client.append_expert_run_message.call_args.kwargs
+        db_client.get_library_agent_id_by_graph_id.assert_called_with(
+            "user-1", "graph-1", "org-1", "team-1"
+        )
         assert "Morning Brief" in first_call["content"]
         first_id = first_call["message_id"]
         handle_expert_run_post(

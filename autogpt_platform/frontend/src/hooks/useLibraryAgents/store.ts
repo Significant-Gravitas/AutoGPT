@@ -1,4 +1,5 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { getTenantEntityKey } from "@/services/org-team/identity";
 
 export type AgentInfo = LibraryAgent;
 
@@ -9,7 +10,7 @@ export function buildAgentInfoMap(agents: AgentInfo[]) {
   >();
   agents.forEach((a) => {
     if (a.graph_id && a.id) {
-      map.set(a.graph_id, {
+      map.set(getTenantEntityKey(a.graph_id, a.organization_id, a.team_id), {
         name:
           a.name || (a.graph_id ? `Agent ${a.graph_id.slice(0, 8)}` : "Agent"),
         description: a.description || "",

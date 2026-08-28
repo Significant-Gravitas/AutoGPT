@@ -64,7 +64,7 @@ describe("useScheduleDetailHeader", () => {
       { wrapper },
     );
     expect(result.current.openInBuilderHref).toBe(
-      "/build?flowID=graph-xyz&flowVersion=3",
+      "/build?flowID=graph-xyz&flowVersion=3&organizationId=__personal__&teamId=__org_home__",
     );
   });
 

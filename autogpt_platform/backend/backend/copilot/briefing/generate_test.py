@@ -95,6 +95,8 @@ def make_review(
     r.expert_id = expert_id
     r.expert_name = expert_name
     r.expert_avatar_url = expert_avatar_url
+    r.organization_id = None
+    r.team_id = None
     return r
 
 
@@ -129,11 +131,17 @@ def test_expert_runs_and_decisions():
         "Lead Finder",
         "Found 3 leads",
     )
-    assert item.link == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
+    assert item.link == (
+        "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__"
+        "&activeTab=runs&activeItem=run-1"
+    )
     decision = content.decision_items[0]
     assert decision.title == "Approve outreach email"
     assert decision.expert_name == "Ana"  # attributed via the run's expert_id
-    assert decision.link == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
+    assert decision.link == (
+        "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__"
+        "&activeTab=runs&activeItem=run-1"
+    )
 
 
 def test_zero_experts_falls_back_to_plain_activity():
@@ -158,7 +166,9 @@ def test_copilot_review_links_to_session():
         generated_at=NOW,
         tz_name="UTC",
     )
-    assert content.decision_items[0].link == "/copilot?sessionId=abc123"
+    assert content.decision_items[0].link == (
+        "/copilot?organizationId=__personal__&teamId=__org_home__&sessionId=abc123"
+    )
 
 
 def test_decision_prefers_enriched_expert_attribution():
@@ -255,7 +265,10 @@ def test_markdown_has_three_sections_and_links():
     )
     md = render_briefing_markdown(content)
     assert "What ran" in md and "What was found" in md and "Needs your decision" in md
-    assert "(/library/agents/lib-1?activeTab=runs&activeItem=run-1)" in md
+    assert (
+        "(/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__"
+        "&activeTab=runs&activeItem=run-1)" in md
+    )
 
 
 @pytest.mark.asyncio
@@ -582,7 +595,10 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     content_dict = client.create_briefing.await_args.args[2]
     run_item = content_dict["run_items"][0]
     assert run_item["library_agent_id"] == "lib-1"
-    assert run_item["link"] == "/library/agents/lib-1?activeTab=runs&activeItem=run-1"
+    assert run_item["link"] == (
+        "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__"
+        "&activeTab=runs&activeItem=run-1"
+    )
     assert run_item["agent_name"] == "Lead Finder Workflow"
 
 
@@ -632,8 +648,8 @@ def test_markdown_escapes_untrusted_text_in_link_labels():
     assert "[Trusted](https://evil.example)" not in markdown
     assert "Approve \\[Trusted\\]\\(https://evil.example\\) now" in markdown
     assert (
-        "[Lead \\[Finder\\]](/library/agents/lib-1?activeTab=runs&activeItem=run-1)"
-        in markdown
+        "[Lead \\[Finder\\]](/library/agents/lib-1?organizationId=__personal__"
+        "&teamId=__org_home__&activeTab=runs&activeItem=run-1)" in markdown
     )
 
 

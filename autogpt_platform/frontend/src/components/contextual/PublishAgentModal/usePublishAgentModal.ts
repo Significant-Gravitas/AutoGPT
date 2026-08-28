@@ -7,6 +7,7 @@ import {
   useGetV2GetMyAgents,
   useGetV2GetUserProfile,
   useGetV2ListMySubmissions,
+  getGetV2GetMyAgentsQueryKey,
   getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
@@ -14,6 +15,11 @@ import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpubl
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -36,6 +42,8 @@ export interface Props {
   onRequestEdit?: (submission: StoreSubmission) => void;
   preSelectedAgentId?: string;
   preSelectedAgentVersion?: number;
+  preSelectedOrganizationId?: string | null;
+  preSelectedTeamId?: string | null;
   showTrigger?: boolean;
 }
 
@@ -44,6 +52,8 @@ export function usePublishAgentModal({
   onStateChange,
   preSelectedAgentId,
   preSelectedAgentVersion,
+  preSelectedOrganizationId,
+  preSelectedTeamId,
 }: Props) {
   const [currentState, setCurrentState] = useState<PublishState>(
     targetState || defaultTargetState,
@@ -70,20 +80,54 @@ export function usePublishAgentModal({
     number | null
   >(preSelectedAgentVersion || null);
 
+  const [selectedAgentOrganizationId, setSelectedAgentOrganizationId] =
+    useState<string | null>(preSelectedOrganizationId ?? null);
+  const [selectedAgentTeamId, setSelectedAgentTeamId] = useState<string | null>(
+    preSelectedTeamId ?? null,
+  );
+
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isLoggedIn } = useAuth();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
+  const queryOrganizationId =
+    preSelectedAgentId && preSelectedOrganizationId !== undefined
+      ? preSelectedOrganizationId
+      : activeOrgID;
+  const queryTeamId =
+    preSelectedAgentId && preSelectedTeamId !== undefined
+      ? preSelectedTeamId
+      : activeTeamID;
+  const queryRequest = getTenantRequestInit(
+    queryOrganizationId,
+    queryTeamId,
+    isTenantReady,
+  );
 
   // Fetch agent data for pre-populating form when agent is pre-selected
   const { data: myAgents } = useGetV2GetMyAgents(undefined, {
     query: {
-      enabled: isLoggedIn,
+      enabled: isLoggedIn && isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetMyAgentsQueryKey(),
+        queryOrganizationId,
+        queryTeamId,
+      ),
     },
+    request: queryRequest,
   });
   const { data: mySubmissions } = useGetV2ListMySubmissions(undefined, {
     query: {
-      enabled: isLoggedIn,
+      enabled: isLoggedIn && isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListMySubmissionsQueryKey(),
+        queryOrganizationId,
+        queryTeamId,
+      ),
     },
+    request: queryRequest,
   });
   const { data: profile } = useGetV2GetUserProfile({
     query: {
@@ -108,12 +152,20 @@ export function usePublishAgentModal({
       setSelectedAgent(null);
       setSelectedAgentId(preSelectedAgentId || null);
       setSelectedAgentVersion(preSelectedAgentVersion || null);
+      setSelectedAgentOrganizationId(queryOrganizationId);
+      setSelectedAgentTeamId(queryTeamId);
       setInitialData(emptyModalState);
       setHasOpened(true);
     } else if (!targetState.isOpen && hasOpened) {
       setHasOpened(false);
     }
-  }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
+  }, [
+    targetState,
+    preSelectedAgentId,
+    preSelectedAgentVersion,
+    queryOrganizationId,
+    queryTeamId,
+  ]);
 
   // Pre-populate form data when modal opens with info step and pre-selected agent
   useEffect(() => {
@@ -131,7 +183,10 @@ export function usePublishAgentModal({
 
     // Find the agent data
     const agent = agentsData.agents?.find(
-      (a: MyUnpublishedAgent) => a.graph_id === preSelectedAgentId,
+      (a: MyUnpublishedAgent) =>
+        a.graph_id === preSelectedAgentId &&
+        (a.organization_id ?? null) === queryOrganizationId &&
+        (a.team_id ?? null) === queryTeamId,
     );
     if (!agent) return;
 
@@ -139,7 +194,10 @@ export function usePublishAgentModal({
     const publishedSubmissionData = submissionsData.submissions
       ?.filter(
         (s: StoreSubmission) =>
-          s.status === "APPROVED" && s.graph_id === preSelectedAgentId,
+          s.status === "APPROVED" &&
+          s.graph_id === preSelectedAgentId &&
+          (s.organization_id ?? null) === queryOrganizationId &&
+          (s.team_id ?? null) === queryTeamId,
       )
       .sort(
         (a: StoreSubmission, b: StoreSubmission) =>
@@ -190,6 +248,8 @@ export function usePublishAgentModal({
     preSelectedAgentVersion,
     myAgents,
     mySubmissions,
+    queryOrganizationId,
+    queryTeamId,
   ]);
 
   function handleClose() {
@@ -197,11 +257,17 @@ export function usePublishAgentModal({
     setSelectedAgent(null);
     setSelectedAgentId(null);
     setSelectedAgentVersion(null);
+    setSelectedAgentOrganizationId(null);
+    setSelectedAgentTeamId(null);
     setInitialData(emptyModalState);
 
     // Invalidate submissions query to refresh the data after modal closes
     queryClient.invalidateQueries({
-      queryKey: getGetV2ListMySubmissionsQueryKey(),
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListMySubmissionsQueryKey(),
+        queryOrganizationId,
+        queryTeamId,
+      ),
     });
 
     // Update parent with clean closed state
@@ -226,6 +292,8 @@ export function usePublishAgentModal({
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
+    organizationId: string | null,
+    teamId: string | null,
     publishedSubmissionData?: StoreSubmission | null,
   ) {
     // Pre-populate with published data if this is an update, otherwise use agent data
@@ -267,9 +335,11 @@ export function usePublishAgentModal({
 
     setSelectedAgentId(agentId);
     setSelectedAgentVersion(agentVersion);
+    setSelectedAgentOrganizationId(organizationId);
+    setSelectedAgentTeamId(teamId);
   }
 
-  function handleSuccessFromInfo(submissionData: any) {
+  function handleSuccessFromInfo(submissionData: StoreSubmission) {
     updateState({
       ...currentState,
       submissionData: submissionData,
@@ -324,6 +394,8 @@ export function usePublishAgentModal({
     initialData,
     selectedAgentId,
     selectedAgentVersion,
+    selectedAgentOrganizationId,
+    selectedAgentTeamId,
     creatorUsername,
   };
 }

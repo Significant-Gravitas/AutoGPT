@@ -16,6 +16,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
@@ -31,9 +35,13 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
 
   const { mutateAsync: deletePreset, isPending: isDeleting } =
-    useDeleteV2DeleteAPreset();
+    useDeleteV2DeleteAPreset({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   async function handleDelete() {
     try {
@@ -44,9 +52,11 @@ export function TemplateActionsDropdown({ agent, template, onDeleted }: Props) {
       });
 
       queryClient.invalidateQueries({
-        queryKey: getGetV2ListPresetsQueryKey({
-          graph_id: agent.graph_id,
-        }),
+        queryKey: getTeamScopedQueryKey(
+          getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+          organizationId,
+          teamId,
+        ),
       });
 
       setShowDeleteDialog(false);

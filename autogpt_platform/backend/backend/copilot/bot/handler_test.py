@@ -525,6 +525,10 @@ class TestBatching:
             patch(
                 "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
             ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=AsyncMock(return_value=_chat_session("Chat")),
+            ),
         ):
             await handler._stream_batch(
                 [("Bently", "u1", "hi")], _ctx(), adapter, "target-1"
@@ -534,7 +538,8 @@ class TestBatching:
         assert adapter.send_link.await_args.kwargs["link_label"] == "Open AutoGPT"
         assert (
             adapter.send_link.await_args.kwargs["link_url"]
-            == "https://app.example.com/copilot?sessionId=session-1"
+            == "https://app.example.com/copilot?organizationId=org-1"
+            "&teamId=team-1&sessionId=session-1"
         )
         assert "Connect GitHub" in adapter.send_link.await_args.args[1]
         # Trailing yield after on_setup_required still flushes at end-of-stream.
@@ -572,6 +577,10 @@ class TestBatching:
             ),
             patch(
                 "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=AsyncMock(return_value=_chat_session("Chat")),
             ),
         ):
             await handler._stream_batch(
@@ -953,8 +962,15 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch(
-            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.Settings",
+                return_value=fake_settings,
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=AsyncMock(return_value=_chat_session("Chat")),
+            ),
         ):
             await handler._streamer._send_text_and_artifacts(
                 adapter,
@@ -974,7 +990,10 @@ class TestDeliverArtifact:
         # send_link(target_id, text, link_label=..., link_url=...) — text is
         # positional arg[1], the URL is a kwarg.
         assert "big.zip" in adapter.send_link.await_args.args[1]
-        assert "sess-42" in adapter.send_link.await_args.kwargs["link_url"]
+        assert adapter.send_link.await_args.kwargs["link_url"] == (
+            "https://app.example.com/copilot?organizationId=org-1"
+            "&teamId=team-1&sessionId=sess-42"
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_failure_falls_back_to_link_button(self):
@@ -990,8 +1009,15 @@ class TestDeliverArtifact:
         fake_settings.config.frontend_base_url = "https://app.example.com"
         fake_settings.config.platform_base_url = ""
 
-        with patch(
-            "backend.copilot.bot.turn_stream.Settings", return_value=fake_settings
+        with (
+            patch(
+                "backend.copilot.bot.turn_stream.Settings",
+                return_value=fake_settings,
+            ),
+            patch(
+                "backend.copilot.bot.turn_stream.get_chat_session",
+                new=AsyncMock(return_value=_chat_session("Chat")),
+            ),
         ):
             await handler._streamer._send_text_and_artifacts(
                 adapter, "target-1", "[x.png](workspace://x)", _ctx(), "sess-1"
