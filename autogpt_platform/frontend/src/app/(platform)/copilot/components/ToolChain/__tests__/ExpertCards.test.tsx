@@ -68,7 +68,7 @@ describe("expert change cards", () => {
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.queryByText("Needs your OK")).toBeNull();
     // The applied state must be readable, not colour-and-glyph only.
-    expect(screen.getByText("Raised")).toBeDefined();
+    expect(screen.getByText("Hired")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /Edit/ }).getAttribute("href"),
     ).toBe("/team/exp-otto");
@@ -114,7 +114,7 @@ describe("expert change cards", () => {
     expect(screen.queryByText(/Couldn't set up/)).toBeNull();
   });
 
-  it("renders every applied roster member as Hired or Raised", () => {
+  it("renders every applied roster member as Hired", () => {
     render(
       <ToolResult
         row={row("confirm_expert_change", {
@@ -142,8 +142,7 @@ describe("expert change cards", () => {
 
     expect(screen.getByText("Otto")).toBeDefined();
     expect(screen.getByText("Scout")).toBeDefined();
-    expect(screen.getByText("Hired")).toBeDefined();
-    expect(screen.getByText("Raised")).toBeDefined();
+    expect(screen.getAllByText("Hired")).toHaveLength(2);
   });
 
   it("never exposes internal failure instructions or ids", () => {

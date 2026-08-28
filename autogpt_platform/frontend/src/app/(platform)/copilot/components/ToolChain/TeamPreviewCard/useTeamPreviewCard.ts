@@ -5,11 +5,20 @@ import { CopilotChatActionsContext } from "../../CopilotChatActionsProvider/useC
 import type { TeamProposal } from "../helpers";
 import { buildConfirmMessage } from "./helpers";
 
-export function useTeamPreviewCard(proposals: TeamProposal[]) {
+export function useTeamPreviewCard(
+  proposals: TeamProposal[],
+  appliedConfirmationIDs: ReadonlySet<string>,
+) {
   const actions = useContext(CopilotChatActionsContext);
   const [removedIds, setRemovedIds] = useState<readonly string[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
-  const kept = proposals.filter(
+  const confirmed = proposals.filter((proposal) =>
+    appliedConfirmationIDs.has(proposal.confirmationId),
+  );
+  const pending = proposals.filter(
+    (proposal) => !appliedConfirmationIDs.has(proposal.confirmationId),
+  );
+  const kept = pending.filter(
     (proposal) => !removedIds.includes(proposal.confirmationId),
   );
 
@@ -33,7 +42,8 @@ export function useTeamPreviewCard(proposals: TeamProposal[]) {
   }
 
   return {
-    canConfirm: actions !== null,
+    canConfirm: actions !== null && pending.length > 0,
+    confirmed,
     kept,
     openId,
     removedIds,

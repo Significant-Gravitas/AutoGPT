@@ -138,6 +138,25 @@ class TestFlaggedExpertOperatingPolicies:
         assert "do not spin in a polling turn" in result
         assert "wakes its manager once" in result
 
+    def test_manager_uses_deterministic_verification_truth(self):
+        result = " ".join(prompting.get_delegation_supplement().split())
+
+        assert "A required node failure means the workflow test failed" in result
+        assert "Never describe a failed test as verified" in result
+        assert "missing required artifact means incomplete" in result
+
+    def test_manager_prefers_workspace_delivery_without_unneeded_credentials(self):
+        result = " ".join(prompting.get_delegation_supplement().split())
+
+        assert "A workspace deliverable does not require an external SaaS" in result
+        assert "Do not ask for a credential" in result
+
+    def test_direct_expert_routes_work_without_making_founder_coordinate(self):
+        result = " ".join(prompting.get_delegation_supplement("expert-1").split())
+
+        assert "route it with `delegate_to_expert`" in result
+        assert "Never tell the founder to forward" in result
+
 
 class TestGraphitiMemoryScope:
     def test_supplement_describes_assistant_scoped_memory(self):

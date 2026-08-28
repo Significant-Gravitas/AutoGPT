@@ -7,7 +7,7 @@ import {
   PencilIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useContext, useId, useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { CARD } from "./ResultCards";
 import { asItems, asObject, str } from "./resultHelpers";
 import { useCardResize } from "./useCardResize";
+import { ExpertConfirmationContext } from "./ExpertConfirmationContext";
 
 export const EXPERT_CHANGE_TOOLS = new Set([
   "hire_expert",
@@ -30,7 +31,7 @@ interface Props {
 
 const APPLIED_LABELS: Record<string, string> = {
   hire: "Hired",
-  raise: "Raised",
+  raise: "Hired",
   update: "Updated",
 };
 
@@ -112,9 +113,14 @@ function ExpertBatchNotice({ result }: { result: Record<string, unknown> }) {
  *  offers the two things the user does next: adjust them or talk to them. */
 function ExpertSingleCard({ output, applied: forcedApplied }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const appliedConfirmationIDs = useContext(ExpertConfirmationContext);
   const detailsID = useId();
   const { contentRef, height } = useCardResize(expanded);
-  const applied = forcedApplied ?? output.applied === true;
+  const confirmationID = str(output, "confirmation_id");
+  const applied =
+    forcedApplied ??
+    (output.applied === true ||
+      (!!confirmationID && appliedConfirmationIDs.has(confirmationID)));
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;
 
@@ -125,7 +131,8 @@ function ExpertSingleCard({ output, applied: forcedApplied }: Props) {
   const boundaries = str(expert, "boundaries");
   const budget =
     typeof expert.weekly_budget === "number" ? expert.weekly_budget : null;
-  const appliedLabel = APPLIED_LABELS[str(output, "kind") ?? ""] ?? "Done";
+  const appliedKind = str(output, "kind") ?? str(expert, "kind") ?? "";
+  const appliedLabel = APPLIED_LABELS[appliedKind] ?? "Done";
   const failed = applied ? failedWorkflows(output) : [];
   const clampable = !!about || !!boundaries;
   const clamp = expanded ? undefined : "line-clamp-2";

@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@/tests/integrations/test-utils";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ToolChain } from "../ToolChain";
+import { ExpertConfirmationContext } from "../ExpertConfirmationContext";
 
 interface Charter {
   id: string;
@@ -40,11 +41,21 @@ const TEAM: Charter[] = [
   { id: "c-3", name: "Bea", role: "Ops" },
 ];
 
-function renderTeam(onSend: (message: string) => void, team = TEAM) {
+function renderTeam(
+  onSend: (message: string) => void,
+  team = TEAM,
+  appliedConfirmationIDs: ReadonlySet<string> = new Set(),
+) {
   return render(
-    <CopilotChatActionsProvider onSend={onSend}>
-      <ToolChain parts={team.map(raisePart)} isStreaming={false} founderMode />
-    </CopilotChatActionsProvider>,
+    <ExpertConfirmationContext.Provider value={appliedConfirmationIDs}>
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain
+          parts={team.map(raisePart)}
+          isStreaming={false}
+          founderMode
+        />
+      </CopilotChatActionsProvider>
+    </ExpertConfirmationContext.Provider>,
   );
 }
 
@@ -111,5 +122,32 @@ describe("TeamPreviewCard", () => {
 
     expect(screen.getByText("Needs your OK")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Hire selected" })).toBeNull();
+  });
+
+  it("reconciles an approved roster instead of asking again", () => {
+    renderTeam(vi.fn(), TEAM, new Set(TEAM.map((expert) => expert.id)));
+
+    expect(screen.getByText("Team ready")).toBeDefined();
+    expect(screen.getAllByText("Hired")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "Hire selected" })).toBeNull();
+  });
+
+  it("confirms only experts that have not already been hired", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    renderTeam(onSend, TEAM, new Set(["c-1"]));
+
+    await user.click(screen.getByRole("button", { name: "Hire selected" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "I approve Scout and Bea. Add them to my team in one step.",
+    );
+  });
+
+  it("reconciles a single expert preview", () => {
+    renderTeam(vi.fn(), [TEAM[0]], new Set(["c-1"]));
+
+    expect(screen.getByText("Hired")).toBeDefined();
+    expect(screen.queryByText("Needs your OK")).toBeNull();
   });
 });

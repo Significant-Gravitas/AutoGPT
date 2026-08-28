@@ -1,6 +1,8 @@
 "use client";
 
+import { useContext } from "react";
 import { Button } from "@/components/atoms/Button/Button";
+import { ExpertConfirmationContext } from "../ExpertConfirmationContext";
 import type { TeamProposal } from "../helpers";
 import { ProposedExpertRow } from "./components/ProposedExpertRow";
 import { useTeamPreviewCard } from "./useTeamPreviewCard";
@@ -10,15 +12,18 @@ interface Props {
 }
 
 export function TeamPreviewCard({ proposals }: Props) {
+  const appliedConfirmationIDs = useContext(ExpertConfirmationContext);
   const {
     canConfirm,
+    confirmed,
     kept,
     openId,
     removedIds,
     hireSelected,
     toggleOpen,
     toggleRemoved,
-  } = useTeamPreviewCard(proposals);
+  } = useTeamPreviewCard(proposals, appliedConfirmationIDs);
+  const allConfirmed = confirmed.length === proposals.length;
 
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-zinc-200/70">
@@ -27,9 +32,13 @@ export function TeamPreviewCard({ proposals }: Props) {
           {proposals.length} experts for your team
         </p>
         <p className="shrink-0 text-xs text-zinc-400">
-          {kept.length === proposals.length
-            ? "Nothing created yet"
-            : `${kept.length} of ${proposals.length} selected`}
+          {allConfirmed
+            ? "Team ready"
+            : confirmed.length > 0
+              ? `${confirmed.length} Hired · ${kept.length} selected`
+              : kept.length === proposals.length
+                ? "Nothing created yet"
+                : `${kept.length} of ${proposals.length} selected`}
         </p>
       </div>
       <div className="mt-1.5 flex flex-col divide-y divide-zinc-100">
@@ -37,6 +46,7 @@ export function TeamPreviewCard({ proposals }: Props) {
           <ProposedExpertRow
             key={proposal.confirmationId}
             proposal={proposal}
+            confirmed={appliedConfirmationIDs.has(proposal.confirmationId)}
             removed={removedIds.includes(proposal.confirmationId)}
             open={openId === proposal.confirmationId}
             onToggleRemoved={() => toggleRemoved(proposal.confirmationId)}

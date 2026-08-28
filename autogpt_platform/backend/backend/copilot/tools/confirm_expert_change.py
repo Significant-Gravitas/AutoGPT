@@ -144,7 +144,10 @@ async def _confirm_one(
     )
     if isinstance(proposal, ErrorResponse):
         return proposal
-    return await apply_proposal(user_id, session.session_id, proposal)
+    applied = await apply_proposal(user_id, session.session_id, proposal)
+    if isinstance(applied, ExpertChangeAppliedResponse):
+        return applied.model_copy(update={"confirmation_id": confirmation_id})
+    return applied
 
 
 async def _confirm_batch(

@@ -50,6 +50,10 @@ import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  ExpertConfirmationContext,
+  getAppliedExpertConfirmationIDs,
+} from "../ToolChain/ExpertConfirmationContext";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -312,6 +316,13 @@ export function ChatMessagesContainer({
   // Bubble restyle ships with the brain-dump experience.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isFounderMode = useGetFlag(Flag.HIRE_EXPERTS);
+  const appliedExpertConfirmationIDs = useMemo(
+    () =>
+      isFounderMode
+        ? getAppliedExpertConfirmationIDs(messages)
+        : new Set<string>(),
+    [isFounderMode, messages],
+  );
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -460,7 +471,7 @@ export function ChatMessagesContainer({
   });
 
   return (
-    <>
+    <ExpertConfirmationContext.Provider value={appliedExpertConfirmationIDs}>
       <ThreadHeader
         expertIdentity={expertIdentity}
         readOnly={readOnly}
@@ -796,6 +807,6 @@ export function ChatMessagesContainer({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-    </>
+    </ExpertConfirmationContext.Provider>
   );
 }

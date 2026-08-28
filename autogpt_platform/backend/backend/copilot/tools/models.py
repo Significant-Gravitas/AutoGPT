@@ -661,6 +661,7 @@ class ExpertChangeAppliedResponse(ToolResponseBase):
     applied: bool = True
     kind: ExpertChangeKind
     expert: ExpertSummary
+    confirmation_id: str | None = None
     failed_workflows: list[str] = Field(default_factory=list)
 
 

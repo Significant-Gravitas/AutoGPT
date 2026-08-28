@@ -575,6 +575,7 @@ class TestConfirm:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.applied is True
         assert resp.kind == "hire"
+        assert resp.confirmation_id == preview.confirmation_id
         db.hire_expert.assert_awaited_once_with(_USER, "tpl-scout", "Recon")
 
     @pytest.mark.asyncio(loop_scope="session")

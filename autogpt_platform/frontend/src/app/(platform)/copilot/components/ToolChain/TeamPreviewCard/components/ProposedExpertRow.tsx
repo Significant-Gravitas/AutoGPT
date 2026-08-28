@@ -4,6 +4,7 @@ import {
   ArrowDown01Icon,
   ArrowTurnBackwardIcon,
   Cancel01Icon,
+  CheckmarkCircle02Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -14,6 +15,7 @@ import { proposalName } from "../helpers";
 
 interface Props {
   proposal: TeamProposal;
+  confirmed: boolean;
   removed: boolean;
   open: boolean;
   onToggleRemoved: () => void;
@@ -22,6 +24,7 @@ interface Props {
 
 export function ProposedExpertRow({
   proposal,
+  confirmed,
   removed,
   open,
   onToggleRemoved,
@@ -76,17 +79,24 @@ export function ProposedExpertRow({
             />
           )}
         </button>
-        <button
-          type="button"
-          onClick={onToggleRemoved}
-          aria-label={removed ? `Put ${name} back` : `Remove ${name}`}
-          className="flex size-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-        >
-          <Icon
-            icon={removed ? ArrowTurnBackwardIcon : Cancel01Icon}
-            size={14}
-          />
-        </button>
+        {confirmed ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <Icon icon={CheckmarkCircle02Icon} size={11} />
+            Hired
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleRemoved}
+            aria-label={removed ? `Put ${name} back` : `Remove ${name}`}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <Icon
+              icon={removed ? ArrowTurnBackwardIcon : Cancel01Icon}
+              size={14}
+            />
+          </button>
+        )}
       </div>
       {hasCharter && (
         <div className={ACCORDION_PANEL + " " + accordionState(open)}>
