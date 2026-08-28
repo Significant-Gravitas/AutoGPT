@@ -27,6 +27,7 @@ from backend.copilot.context import (
     _encode_cwd_for_cli,
     get_execution_context,
     is_sdk_tool_path,
+    reset_consult_budget,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -146,6 +147,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    reset_consult_budget()
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})

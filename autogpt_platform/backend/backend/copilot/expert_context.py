@@ -296,7 +296,10 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
         "workflows rather than yours, hand it over with "
         "`delegate_to_expert(expert_id=..., prompt=...)` — they cannot "
         "see this thread, so put the context they need in the prompt. "
-        "Never impersonate a teammate or guess at their domain yourself."
+        "Never impersonate a teammate or guess at their domain yourself. "
+        "Before anything that commits this company (money, dates, "
+        "guarantees, policy) leaves the conversation, have one of them "
+        "check it with `consult_teammate`."
     )
 
 
