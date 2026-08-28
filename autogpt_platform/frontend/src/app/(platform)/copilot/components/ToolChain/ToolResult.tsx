@@ -13,6 +13,7 @@ import {
   SubSessionCard,
 } from "./AgentCards";
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
+import { ConsultVerdictCard } from "./ConsultCard";
 import { ExecutionCard } from "./ExecutionCard";
 import { ExpertChangeCard, ExpertChangeCardSkeleton } from "./ExpertCards";
 import { FileDiff } from "./FileDiff";
@@ -277,6 +278,8 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         <SubSessionPendingCard input={row.input} minimal={delegated} />
       ) : null;
     }
+    case "consult_teammate":
+      return output ? <ConsultVerdictCard output={output} /> : null;
     case "hire_expert":
     case "raise_expert":
     case "update_expert":

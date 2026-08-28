@@ -161,7 +161,7 @@ class ConsultTeammateTool(BaseTool):
         if refusal is not None:
             return self._error(refusal, session)
 
-        verdict = await self._audit(
+        verdict = await _audit_via_provider(
             user_id, session, reviewer, work, authority, question
         )
         return _verdict_response(reviewer, verdict, session)
@@ -196,55 +196,49 @@ class ConsultTeammateTool(BaseTool):
             return self._error(_SELF_REFUSAL, session)
         return reviewer
 
-    async def _audit(
-        self,
-        user_id: str,
-        session: ChatSession,
-        reviewer: Expert,
-        work: str,
-        authority: str,
-        question: str,
-    ) -> VerdictPayload:
-        """One completion against the fixed audit frame. Never raises.
 
-        A dry-run session simulates side effects rather than paying for them,
-        so it must not buy a real verdict — and must not report a verdict it
-        did not get.
-        """
-        if session.dry_run:
-            return _not_checked(
-                f"This is a dry-run session, so {reviewer.name} was not asked. "
-                "Nothing has been checked."
-            )
-        try:
-            completion = await structured_completion(
-                # The cheap aux model, not the turn's own. The audit is an
-                # extraction task ("what does this promise that the authority
-                # list does not cover"), and the expensive model here is the
-                # one that wrote the draft — its judgement is the thing under
-                # test, so paying more to re-ask it buys nothing.
-                model=normalize_model_for_transport(config.title_model, config),
-                messages=[
-                    {"role": "system", "content": audit_frame(reviewer)},
-                    {
-                        "role": "user",
-                        "content": audit_material(work, authority, question),
-                    },
-                ],
-                response_model=VerdictPayload,
-                max_output_tokens=MAX_OUTPUT_TOKENS,
-                timeout_seconds=TIMEOUT_SECONDS,
-            )
-        except DreamLLMError as e:
-            # A response that arrived but didn't parse was still billed.
-            await _record_cost(user_id, session, e.usage)
-            logger.warning(f"Consult of {reviewer.id} did not parse: {e}")
-            return _not_checked(f"{reviewer.name} could not be reached for a verdict.")
-        except Exception as e:
-            logger.warning(f"Consult of {reviewer.id} failed: {e}")
-            return _not_checked(f"{reviewer.name} could not be reached for a verdict.")
-        await _record_cost(user_id, session, completion.usage)
-        return completion.value
+async def _audit_via_provider(
+    user_id: str,
+    session: ChatSession,
+    reviewer: Expert,
+    work: str,
+    authority: str,
+    question: str,
+) -> VerdictPayload:
+    """One completion against the fixed audit frame. Never raises.
+
+    A dry-run session simulates side effects rather than paying for them, so it
+    must not buy a verdict — nor report one it did not get.
+    """
+    if session.dry_run:
+        return _not_checked(
+            f"This is a dry-run session, so {reviewer.name} was not asked."
+        )
+    try:
+        completion = await structured_completion(
+            # The cheap aux model, not the turn's own. The audit is extraction
+            # ("what does this promise that the authority list does not cover"),
+            # and the expensive model here is the one that wrote the draft — its
+            # judgement is what is under test, so re-asking it buys nothing.
+            model=normalize_model_for_transport(config.title_model, config),
+            messages=[
+                {"role": "system", "content": audit_frame(reviewer)},
+                {"role": "user", "content": audit_material(work, authority, question)},
+            ],
+            response_model=VerdictPayload,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            timeout_seconds=TIMEOUT_SECONDS,
+        )
+    except DreamLLMError as e:
+        # A response that arrived but didn't parse was still billed.
+        await _record_cost(user_id, session, e.usage)
+        logger.warning(f"Consult of {reviewer.id} did not parse: {e}")
+        return _not_checked(f"{reviewer.name} could not be reached for a verdict.")
+    except Exception as e:
+        logger.warning(f"Consult of {reviewer.id} failed: {e}")
+        return _not_checked(f"{reviewer.name} could not be reached for a verdict.")
+    await _record_cost(user_id, session, completion.usage)
+    return completion.value
 
 
 _SELF_REFUSAL = (

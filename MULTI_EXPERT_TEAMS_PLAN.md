@@ -67,13 +67,9 @@ Read before designing. All paths relative to `autogpt_platform/backend/`.
 (`@@unique([ownerUserId, sourceTemplateId])`).
 
 The **Soul** is four columns: `identity`, `voicePreferences`, `boundaries`,
-plus `name`/`role`. `backend/api/features/experts/models.py` adds two
-`PROTECTED_SOUL_RULES` that a user cannot remove:
-
-```python
-AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
-```
+plus `name`/`role`, and two protected rules a user cannot remove — one on
+disclosing that the expert is AI when it acts externally, one on approval for
+external actions. Both are rendered into the expert's system prompt.
 
 Other per-expert state: `weeklyBudget` + `schedulesPausedAt` (a breach pauses
 that expert's schedules and triggers, never chat; `ExpertPauseEvent` is the
@@ -284,6 +280,30 @@ Two honest corrections the roast forced:
   transcript, which is ingestible into the *caller's* namespace. One-way, small,
   and disclosed rather than denied.
 
+**Verified while writing this, because a teammate reported the boundary might
+not hold.** Every Graphiti read and write derives its namespace from the
+*session's own* `expert_id` — warm context in both engines, `memory_store`,
+`memory_search`, and both ingest paths. There is no call site where one expert's
+session touches another expert's namespace, so the identity boundary is real.
+
+Two clarifications follow, and one of them matters:
+
+- A `run_sub_session` child does share its parent's namespace, but only because
+  it is created with the *same* `expert_id` and is documented as a context
+  isolator rather than a hand-off. Memory follows the expert, not the session.
+  That is the design working, not a leak.
+- **Delegation is the genuine cross-expert flow, and it is wider than this
+  tool.** `delegate_to_expert` opens a session in the *target's* scope and that
+  turn is ingested, so the calling expert's prompt — which may carry whatever
+  the caller recalled from its own memory — becomes part of the *target's*
+  memory. One-way and caller-authored, much like forwarding an email; but it
+  means "expert memories never mix" is too strong as a claim about the platform
+  as it stands.
+
+Which makes the consult **stricter than the mechanism it sits beside**: it opens
+no session and ingests nothing, so it is one of the few cross-expert paths that
+leaves no residue in either namespace.
+
 `insufficient` is a first-class verdict: unreadable input, a provider failure, a
 timeout, or a dry-run session all land there, never on `pass`. A check that did
 not happen must never read as one that did.
@@ -324,19 +344,15 @@ it should not is exactly the model that may not call the tool — so v1 catches
 the careless case and misses the confident one, and the confident one is the
 one that costs money. This is the crux, not a footnote.
 
-The hard version needs an interception point, and one is being built: T9
-(`AutoGPT3`, `pwuts/autopilot-auto-mode`) puts a 3-tier gate — READ /
-ALWAYS_ASK / JUDGED, failing closed to "ask" — inside `BaseTool.execute()` and
-reuses the `PendingHumanReview` rails. `consult_teammate` is `READ` in that
-taxonomy: no effects outside the conversation, so it never needs approval
-itself. A recorded `block` is a natural input to that gate's decision on the
-*outbound* action. **The two must not become overlapping gates**: T9 owns
-enforcement, this owns the domain judgement it lacks.
-
-Note for whoever builds it: `EXTERNAL_ACTION_APPROVAL_RULE` is not that seam.
-The roast checked, and it is defined in
-`api/features/experts/models.py` and rendered into `<protected_rules>` by
-`copilot/expert_context.py`. Nothing reads it.
+The hard version needs an interception point that this design does not itself
+provide, and one is being built: T9 (`AutoGPT3`, `pwuts/autopilot-auto-mode`)
+puts a 3-tier gate — READ / ALWAYS_ASK / JUDGED, failing closed to "ask" —
+inside `BaseTool.execute()` and reuses the `PendingHumanReview` rails.
+`consult_teammate` is `READ` in that taxonomy: no effects outside the
+conversation, so it never needs approval itself. A recorded `block` is a
+natural input to that gate's decision on the *outbound* action. **The two must
+not become overlapping gates**: T9 should own enforcement, this owns the domain
+judgement a general classifier does not have.
 
 ### 2.7 What is NOT being built
 
@@ -477,13 +493,14 @@ and §4 shows a two-sentence authority list is enough.
 
 ### 3.6 "The pod-reviewer column does not earn its migration"
 
-**LANDS. Deleted.** See §2.1. The roast verified that
-`EXTERNAL_ACTION_APPROVAL_RULE` — the "existing seam" the column was buying an
-option on — is defined and rendered but read nowhere, and that both channels for
-telling a model who its reviewer is are structurally unable to carry it
-(`<team_context>` is first-message-only; the supplement must stay a constant for
-prompt caching). Removing it took a migration, a route, four DB functions and a
-schema change out of the change.
+**LANDS. Deleted.** See §2.1. The first draft justified the column by pointing
+at a v2 enforcement seam it could later plug into; that seam has to be built
+(§2.6 names where), so the column was buying an option that does not exist yet.
+The roast also showed that both channels for telling a model who its reviewer is
+are structurally unable to carry it — `<team_context>` is first-message-only,
+and the supplement must stay a byte-identical constant for prompt caching.
+Removing the column took a migration, a route, four DB functions and a schema
+change out of the change.
 
 ### 3.7 The rest
 
