@@ -46,20 +46,18 @@ SPAWN_TOOLS: frozenset[str] = frozenset(
     {"run_sub_session", "delegate_to_expert", "handoff_to_expert"}
 )
 
-# Withheld from children unless the spawner grants them explicitly. Each one
-# either outlives the tree, leaves the platform, binds a credential, or cannot
-# be undone — none of which a spawned turn should get by default.
+# Denied to EVERY spawned child by default: irreversible deletes, and actions
+# that bind the user's account (connect an integration, register a trigger,
+# staff the team). None is part of a delegated expert's normal job, so
+# withholding them does not break a working delegation — it removes reach a
+# spawned turn should never have silently. The staffing tools are already
+# denied to expert sessions by their tool group; listing them keeps the
+# guarantee even for a plain-AutoPilot child.
 DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
     {
-        "schedule_followup",
+        "connect_integration",
         "setup_agent_webhook_trigger",
         "update_preset",
-        "store_skill",
-        "memory_store",
-        "add_understanding",
-        "post_to_chat_platform",
-        "connect_integration",
-        "run_mcp_tool",
         "delete_folder",
         "delete_preset",
         "delete_schedule",
@@ -70,6 +68,32 @@ DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
         "update_expert",
         "confirm_expert_change",
     }
+)
+
+# Additionally denied to an isolate — a child that shares its spawner's memory
+# namespace and identity (``run_sub_session``). It is scratch space: posting
+# outward, scheduling, calling an MCP server, or persisting a skill under the
+# parent's identity is not its role, and a memory write it makes is read back
+# by the parent next turn as the parent's own. A *delegated* expert runs under
+# its own identity, namespace and budget and keeps all of these — its job is
+# to do real work.
+ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
+    {
+        "post_to_chat_platform",
+        "schedule_followup",
+        "run_mcp_tool",
+        "store_skill",
+        "memory_store",
+        "add_understanding",
+    }
+)
+
+_GRANTABLE = sorted(DESCENT_DENIED_TOOLS | ISOLATE_DENIED_TOOLS)
+GRANT_TOOLS_DESCRIPTION = (
+    "Tools to grant a spawned turn beyond its default. You can only grant what "
+    "you hold yourself. Leave empty unless the task needs one of: "
+    + ", ".join(_GRANTABLE)
+    + "."
 )
 
 _LEDGER_KEY_PREFIX = "copilot:tree:"
@@ -105,8 +129,12 @@ class TurnEnvelope(BaseModel):
 class SpawnRequest(BaseModel):
     """What a spawner asks for its child. Every field is clamped, never raised."""
 
+    # Exact set (a quarantine preset), or None for the default: everything
+    # the spawner holds minus DESCENT_DENIED_TOOLS plus ``grant``.
     tools: list[str] | None = None
+    grant: list[str] = Field(default_factory=list)
     may_spawn: bool = False
+    shares_memory: bool = False
     max_seconds: int | None = Field(default=None, ge=1)
     born_tainted: bool = False
 
@@ -144,10 +172,13 @@ def derive_child_envelope(
     ceiling = spawner.tools if spawner.tools is not None else ALL_TOOL_NAMES
     if spawner_permissions is not None:
         ceiling = ceiling & spawner_permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    denied = DESCENT_DENIED_TOOLS
+    if request.shares_memory:
+        denied = denied | ISOLATE_DENIED_TOOLS
     requested = (
         frozenset(request.tools)
         if request.tools is not None
-        else ALL_TOOL_NAMES - DESCENT_DENIED_TOOLS
+        else (ALL_TOOL_NAMES - denied) | frozenset(request.grant)
     )
     tools = ceiling & requested
     if not request.may_spawn:

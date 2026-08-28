@@ -38,7 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     SessionResult,
     run_copilot_turn_via_queue,
 )
-from backend.copilot.tree import SpawnRequest
+from backend.copilot.tree import GRANT_TOOLS_DESCRIPTION, SpawnRequest
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
@@ -121,6 +121,12 @@ class HandoffToExpertTool(BaseTool):
                     "description": "Optional background; what you already tried.",
                     "default": "",
                 },
+                "grant_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": GRANT_TOOLS_DESCRIPTION,
+                    "default": [],
+                },
             },
             "required": ["expert_id", "prompt"],
         }
@@ -133,6 +139,7 @@ class HandoffToExpertTool(BaseTool):
         expert_id: str = "",
         prompt: str = "",
         context: str = "",
+        grant_tools: list[str] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         if user_id is None:
@@ -156,7 +163,9 @@ class HandoffToExpertTool(BaseTool):
         chain = await chain_refusal(user_id, session, target)
         if chain is not None:
             return self._error(chain, session)
-        return await self._transfer(user_id, session, target, prompt, context)
+        return await self._transfer(
+            user_id, session, target, prompt, context, grant_tools or []
+        )
 
     async def _transfer(
         self,
@@ -165,6 +174,7 @@ class HandoffToExpertTool(BaseTool):
         target: Expert,
         prompt: str,
         context: str,
+        grant_tools: list[str],
     ) -> ToolResponseBase:
         """Open the receiving thread, queue the task, and hand ownership over."""
         inner = await create_chat_session(
@@ -179,7 +189,7 @@ class HandoffToExpertTool(BaseTool):
             origin=child_session_origin(session.metadata),
         )
         outcome, result = await self._queue_task(
-            user_id, session, inner.session_id, prompt, context
+            user_id, session, inner.session_id, prompt, context, grant_tools
         )
         if outcome not in _OWNERSHIP_TAKEN:
             # Nothing moved (that is what the outcome means), so the thread we
@@ -221,6 +231,7 @@ class HandoffToExpertTool(BaseTool):
         inner_session_id: str,
         prompt: str,
         context: str,
+        grant_tools: list[str],
     ) -> tuple[SessionOutcome, SessionResult]:
         """Push the framed task onto the target's session. Never waits."""
         caller = await self._caller_name(user_id, session.expert_id)
@@ -234,7 +245,7 @@ class HandoffToExpertTool(BaseTool):
                 f"handoff:{session.session_id}" if session.session_id else "handoff"
             ),
             tool_name="handoff_to_expert",
-            spawn=SpawnRequest(may_spawn=True),
+            spawn=SpawnRequest(may_spawn=True, grant=grant_tools),
             allow_queue=False,
         )
 

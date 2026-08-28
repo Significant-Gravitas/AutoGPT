@@ -38,7 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.copilot.tree import SpawnRequest
+from backend.copilot.tree import GRANT_TOOLS_DESCRIPTION, SpawnRequest
 
 from .base import BaseTool
 from .models import (
@@ -110,6 +110,12 @@ class RunSubSessionTool(BaseTool):
                     ),
                     "default": 60,
                 },
+                "grant_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": GRANT_TOOLS_DESCRIPTION,
+                    "default": [],
+                },
             },
             "required": ["prompt"],
         }
@@ -123,6 +129,7 @@ class RunSubSessionTool(BaseTool):
         system_context: str = "",
         sub_autopilot_session_id: str = "",
         wait_for_result: int = 60,
+        grant_tools: list[str] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         if not prompt.strip():
@@ -241,9 +248,11 @@ class RunSubSessionTool(BaseTool):
             permissions=get_current_permissions(),
             tool_call_id=(f"sub:{session.session_id}" if session.session_id else "sub"),
             tool_name="run_sub_session",
-            # An isolate is a leaf: it works in a clean context, it does not
-            # grow the tree.
-            spawn=SpawnRequest(may_spawn=False),
+            # An isolate shares its spawner's memory namespace, so it must not
+            # write to it; depth bounds how far it may spawn onward.
+            spawn=SpawnRequest(
+                may_spawn=True, shares_memory=True, grant=grant_tools or []
+            ),
             allow_queue=False,
         )
         elapsed = time.monotonic() - started_at

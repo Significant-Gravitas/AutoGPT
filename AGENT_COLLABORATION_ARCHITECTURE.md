@@ -279,7 +279,9 @@ SpawnRequest:
   acceptance: str               # what "done" looks like, in a form the child can check itself against
   may_spawn: bool = False       # default: the child is a leaf (and gets no roster — §3.4)
   max_seconds: int              # deadline request — clamped, never raised
-  tools: list[str] | None       # narrowing request — intersected, never widened
+  tools: list[str] | None       # exact set (a quarantine preset) — intersected, never widened
+  grant: list[str]              # descent-denied tools to hand down — intersected with what the spawner holds
+  shares_memory: bool           # the child writes the spawner's namespace (an isolate) — memory writes withheld
 ```
 
 `content` exists because §2.6's schema test found it missing: a tool-less
@@ -519,7 +521,7 @@ already carries the taint bit of the tree it is in.
 | escalation target | structural | parent; the human only at a root; handoff re-roots | ✔ | exists (Home predicate `copilot/db.py:951`) + report status |
 | creator capability | structural | `delegated_by_session_id` = spawner | only the creator may resume / poll / cancel | **change**: `run_sub_session` starts writing it; resume paths require it |
 | identity (soul, name, voice) | identity-bound | the *target expert's*, from its row | caller cannot inject into the system prompt | exists: suffix built from the expert row; `safe_caller_name`; `fence_voice_preferences` |
-| memory namespace | identity-bound | the target expert's — **shared along identity, not isolated by the tree** | children do not get the write side by default | exists: `derive_memory_group_id(session.expert_id)`; **new**: `memory_store` / `add_understanding` / `store_skill` descent-denied (finding 1) |
+| memory namespace | identity-bound | the target expert's — **shared along identity, not isolated by the tree** | a child sharing its spawner's namespace does not get the write side | exists: `derive_memory_group_id(session.expert_id)`; **new**: `memory_store` / `add_understanding` withheld from isolates; `store_skill` descent-denied (finding 1) |
 | workspace | user-bound | reads are user-wide (data by reference) | children write only inside their own session folder | **new**: write confinement at depth > 0 (finding 2) |
 | workflows, integrations | identity-bound | the target expert's | — | exists |
 | expert weekly budget | identity-bound, orthogonal cap | the target expert's own counter; a breach pauses that expert for every tree | — | exists: `enforce_expert_run_budget` on graph runs; deliberately non-local (§11.1 finding 13, rejected) |
@@ -697,8 +699,20 @@ the child's taint bit upward (taint flows down by inheritance and up by
 report; what the quarantine confines is the *action surface*, not the
 taint); (b) this only exists if the tools ceiling actually narrows, which
 the roast showed is vacuous when the root has `permissions=None` — hence
-§3.6's descent-denied default. *Verdict: keep. One agent cannot read
-something without being the agent that read it.*
+§3.6's descent-denied default. **(c) — the sharp one, from T16:** "no action
+surface" is a property of the *explicit read-only preset*
+(`tools = {read_workspace_file}`, edge type #2), **not** of a default child.
+A default delegate keeps `run_agent`, and `run_block`/`run_agent` reach ~78
+outward blocks plus arbitrary HTTP via `SendWebRequestBlock`, none carrying
+`is_sensitive_action`, in the one tier the auto-mode gate declines to judge
+(T16, findings ledger). So the quarantine guarantee holds **only** when the
+caller pins the tool set to the read-only preset; the descent-denied default
+does not by itself make a child safe to point at untrusted input, because it
+leaves `run_agent` in. The design must therefore say: quarantine is an
+*explicit* edge type you select, never a property a child gets for free.
+*Verdict: keep, scoped to the preset. One agent cannot read something without
+being the agent that read it — but the reader must be pinned read-only, not
+merely descent-denied.*
 
 **3. Depth as abstraction — real iff the report is typed.** A parent that
 receives `{status, summary, artefacts, spent, asked}` cannot tell whether
@@ -782,12 +796,21 @@ child.tools = (parent.tools or ALL) ∩ (request.tools or (ALL − DESCENT_DENIE
 ```
 
 A parent *may* grant a denied tool explicitly — a root that wants a child to
-post to Slack says so in the request — and the grant is still intersected
-with what the parent holds, so it never widens. What changes is the default:
-**a child, unless told otherwise, cannot create persistent, outward or
-irreversible effects.** Memory writes are deliberately not in the set — a
-delegated expert storing what it learned is its normal behaviour, and T9's
-taint rule governs the tainted case.
+post to Slack says so in the request (`grant_tools` on all three spawn
+tools) — and the grant is still intersected with what the parent holds, so
+it never widens. What changes is the default: **a child, unless told
+otherwise, cannot create persistent, outward or irreversible effects.**
+
+Memory writes are governed by a second, narrower rule keyed on the
+*namespace*, not on descent: a child that shares its spawner's namespace
+(an isolate — same `expert_id`, or both AutoPilot) loses `memory_store` /
+`add_understanding`, because what it stores the spawner reads back next
+turn as its own memory (§11.1 finding 1). A delegated expert writes to its
+own namespace and keeps them — storing what it learned is its normal
+behaviour, and T9's taint rule governs the tainted case. The first version
+of this section put memory writes in the descent-denied set outright; the
+compatibility review (§12) showed that would silently stop every delegated
+expert from learning, which the laundering argument never required.
 
 ---
 
@@ -844,12 +867,16 @@ the pod's members should consult before committing", exactly as T10 had it.
 **T9's gate** reads `envelope.tainted` as a taint source alongside its
 transcript scan, and — this is the part that matters at scale — its
 "delegation is ALWAYS_ASK" rule can be relaxed to "delegation is ALWAYS_ASK
-*when the child would be granted anything the gate would ask about*". A
-leaf child with the descent-denied set removed, no effectful tools, a
-2-minute deadline and a tree already under a ceiling does not need a human
-to approve it; the envelope is the approval. That is
-the ergonomic win the two designs get by composing: T9's gate stops asking
-about spawns the envelope has already bounded.
+*when the child would be granted anything the gate would ask about*". A leaf
+child pinned to the read-only quarantine preset (edge type #2), with a
+2-minute deadline and a tree already under a ceiling, does not need a human
+to approve it; the envelope is the approval. **But note the T16 limit above:
+a merely descent-denied child still holds `run_agent`, which reaches
+outward blocks and arbitrary HTTP the gate does not judge — so the "envelope
+is the approval" shortcut applies to the read-only preset, not to a default
+child.** That is the ergonomic win the two designs get by composing, scoped
+honestly: T9's gate stops asking about the spawns the envelope has actually
+made safe, and keeps asking about the rest.
 
 Neither integration is built here. Both are one-boolean / one-field seams.
 
@@ -918,6 +945,15 @@ Neither integration is built here. Both are one-boolean / one-field seams.
    write into a namespace its parent reads next turn. The grant is the
    parent's decision and it is visible in the envelope; it is not a
    laundering path the platform opened by itself.
+6. **A descent-denied child is not an outward-safe child.** The default
+   narrowing removes the named outward tools, but it leaves `run_agent`,
+   and `run_block`/`run_agent` reach ~78 outward blocks plus arbitrary HTTP
+   via `SendWebRequestBlock`, none flagged `is_sensitive_action` (T16). So
+   the only child that is genuinely safe to point at untrusted input is one
+   pinned to an explicit read-only tool set (edge type #2), never one that
+   merely inherited the descent-denied default. The design states this as a
+   rule (§3.5) rather than letting a reader assume the default is a
+   sandbox.
 3. **A brief's `authority` line is an assertion by the parent, not a proof.**
    A tainted parent can write a false authority line. The taint bit is what
    tells the child (and T9's gate) not to trust it — which is why taint and
@@ -990,10 +1026,15 @@ specifics worth knowing before reading the diff:
   than Lua; the over-admit-by-one under a race is the bound's stated slack.
 - Fan-out is counted **per tree** (`tree_max_nodes`, default 8), not per
   node per turn, because only the former is representable atomically.
-- `run_sub_session` children are **leaves** (`may_spawn=False`);
-  `delegate_to_expert` / `handoff_to_expert` children may spawn. This is a
-  behaviour change for nested isolates, which today can recurse without
-  bound.
+- All three spawn kinds may spawn onward within `MAX_DEPTH = 3`. The first
+  cut made isolates leaves; the compatibility review (§12) showed that
+  would refuse a sub-AutoPilot that needs a teammate, which is a working
+  flow today. Isolates now count toward depth (they did not) and lose
+  memory writes (they share the namespace); leaf-ness is the quarantine
+  preset (`tools=[…]`), not the default.
+- `grant_tools` on all three spawn tools is how a spawner hands down a
+  descent-denied tool it holds — the ToolChain card shows the grant at the
+  one place a human can see it.
 - `run_sub_session` now writes `delegated_by_session_id`, which also means
   an isolate's `pending_question` no longer surfaces on Home (the Home
   predicate excludes delegated sub-threads) — consistent with the tree
@@ -1018,13 +1059,13 @@ T9/T10 integrations.
 
 ## 10. Sensitive findings — where they are described
 
-Two of §1.3's grounding facts are logged in `~/code/agpt/.claude/log/findings.jsonl`
-as security-sensitive (permissions equal on descent with no narrowing path;
-depth bound not counting same-identity sub-sessions). They are described in
-this file only as facts and design consequences — §1.3 (two bullets), §3.2
-(the `tools` and `depth` rows), §4 (invariants 1 and 3). No worked sequence
-appears anywhere in this repository. Disclosure routing is Reinier's call;
-this branch is not pushed.
+Two of §1.3's grounding facts are logged in `~/code/agpt/.claude/log/findings.jsonl`.
+§12.1 traces both and downgrades them the way T9's were: Fact A is a missing
+control T9's gate needs, not an exploitable widening; Fact B is a churn
+guardrail gap capped by the rate limits, not a new bad outcome. They are
+described in this file only as facts and design consequences — §1.3 (two
+bullets), §3.2 (the `tools` and `depth` rows), §4 (invariants 1 and 3), §12.1.
+No worked sequence appears anywhere in this repository.
 
 ## 11. The roasts
 
@@ -1183,3 +1224,67 @@ a required field.
   it grantable at width, and that is what the ledger is. Building a second
   fan-out tool on top of a working one is the orchestration-framework trap
   T10 correctly refused.
+
+---
+
+## 12. Reachability and compatibility — checked before pushing
+
+### 12.1 Are the two grounding facts exploitable on `dev` today?
+
+The orchestrator asked the question T9's retraction taught: a finding is a
+hypothesis until someone traces reachability. Traced against `dev`:
+
+**Fact A — delegation passes permissions equal to the parent's, with no
+narrowing path.** For an untrusted input to *gain* something through a
+delegation, the child would have to hold a capability the parent lacked.
+It does not: `permissions` is copied verbatim, tool *groups* are derived
+from `expert_id` and the child's group set is never a superset of a
+capability the parent held in substance (a plain session's `update_expert`
+covers an expert child's `update_expert_soul`; `handoff_to_expert` is a
+variant of `delegate_to_expert`), and the staffing guard is *stricter* for
+children (automation origin). On `dev` an interactive parent is already
+ungated on every outward tool (`post_to_chat_platform`, `schedule_followup`,
+`bash_exec` … — `requires_auth` is the only check), so there is no gate for
+a fresh session to launder past; that gate is T9's, on a branch. What a
+delegation adds is the *target identity's* memory namespace and voice —
+the same user's data, a confidentiality boundary between that user's own
+experts, not a privilege boundary. The `_parent` PrivateAttr loss on the
+queue is moot in practice: `AutoPilotBlock`'s inherited-permission
+contextvar only survives in-process, and nested graph runs execute in
+separate node executions. **Verdict: not exploitable. A missing control
+that T9's gate needs to exist, and a design gap — not a vulnerability.**
+
+**Fact B — `run_sub_session` does not count toward the depth bound.** The
+bad outcome the bound exists for is a chain sustaining itself on credits.
+Resetting depth buys a longer cross-expert chain, but a same-identity
+isolate can already recurse *without any bound* today, so an agent that
+wanted to spend did not need the reset — and both are stopped by the
+per-user in-flight cap (15) and daily/weekly cost caps, which apply
+regardless of depth. The loop check (`seen` set) still holds for
+cross-expert hops. **Verdict: no new bad outcome reachable. A churn
+guardrail gap — not a vulnerability.**
+
+Both findings therefore downgrade the same way T9's did, and the push is
+clear on that basis. Their ledger entries should be annotated accordingly.
+
+### 12.2 What this slice changes for flows that work today
+
+Stated first, before any capability claim, because each one is a decision
+rather than a bug:
+
+The default is split into two tiers so the break surface is as small as the
+security goal allows:
+
+| shipped flow | before | after | judgement |
+|---|---|---|---|
+| A delegated / handed-off expert **posts to a chat platform, schedules a follow-up, calls an MCP tool, stores a skill, or stores memory** | inherited from the parent | **still works** — a delegate runs under its own identity, namespace and budget, so these are its job and stay in the default | No change. The scheduled-standup post (the `chat_platform` headline use case) and MCP-integration delegations are unaffected. |
+| A delegated / handed-off expert **connects an integration, sets up a webhook trigger, edits a preset, or deletes a folder/preset/schedule/skill/file** | inherited | **refused unless the spawner passes `grant_tools`**; the refusal names the tool and tells the child to report the need | Intended. These bind the account or are irreversible and are not a normal delegate job. Rare, visible, recoverable — never silent data loss. |
+| A `run_sub_session` **isolate** posts outward, schedules, calls MCP, stores a skill, or **writes memory** | inherited | **refused unless granted** | Intended, and the change most likely to be noticed. An isolate shares the parent's identity and memory namespace, so a write is the parent's write (finding 1) and a post is under the parent's name. This is the shared-namespace leak the design exists to close. |
+| A chain that used `run_sub_session` isolates to go **past three hops** | unbounded via isolates | **stops at depth 3** (isolates now count) | Intended. Isolates keep `may_spawn=True`, so a single isolate under a shallow chain is unaffected; only chains implicitly deeper than three via isolates are cut. The bound was always meant to be total. |
+
+The escape hatch for every refusal is one field — `grant_tools` on
+`delegate_to_expert` / `handoff_to_expert` / `run_sub_session`, intersected
+with what the caller holds so it can never widen. Reinier decides whether the
+isolate memory-write default is too aggressive for `dev`; flipping it is
+removing two entries from `ISOLATE_DENIED_TOOLS`.
+

@@ -19,6 +19,7 @@ from backend.data.redis_client import AsyncRedisClient
 from . import tree
 from .tree import (
     DESCENT_DENIED_TOOLS,
+    ISOLATE_DENIED_TOOLS,
     MAX_DEPTH,
     SPAWN_TOOLS,
     SpawnRequest,
@@ -90,16 +91,46 @@ def test_root_is_unrestricted_and_depth_zero() -> None:
     assert root.as_permissions() is None
 
 
-def test_child_default_drops_descent_denied_and_spawn_tools() -> None:
+def test_delegate_default_drops_only_account_tools_keeps_its_job() -> None:
+    # A delegate runs under its own identity: it keeps the tools it works with.
     child = _child(root_envelope("t"))
     assert child.depth == 1
     assert child.tools is not None
     assert child.tools.isdisjoint(DESCENT_DENIED_TOOLS)
     assert child.tools.isdisjoint(SPAWN_TOOLS)
     assert "read_workspace_file" in child.tools
+    assert ISOLATE_DENIED_TOOLS <= child.tools  # post/schedule/memory_store kept
     assert child.as_permissions() == CopilotPermissions(
         tools=sorted(child.tools), tools_exclude=False
     )
+
+
+def test_isolate_also_drops_outward_and_memory_write_tools() -> None:
+    isolate = _child(root_envelope("t"), shares_memory=True, may_spawn=True)
+    assert isolate.tools is not None
+    assert isolate.tools.isdisjoint(ISOLATE_DENIED_TOOLS)
+    assert isolate.tools.isdisjoint(DESCENT_DENIED_TOOLS)
+    assert "memory_search" in isolate.tools  # reading is fine; writing is not
+
+
+def test_grant_adds_a_denied_tool_the_spawner_holds() -> None:
+    isolate = _child(
+        root_envelope("t"), shares_memory=True, grant=["post_to_chat_platform"]
+    )
+    assert isolate.tools is not None
+    assert "post_to_chat_platform" in isolate.tools
+    assert "connect_integration" not in isolate.tools
+    # The grant is intersected like everything else: a spawner without the
+    # tool cannot hand it down.
+    narrow_parent = _child(
+        root_envelope("t"),
+        tools=["read_workspace_file", "run_sub_session"],
+        may_spawn=True,
+    )
+    grandchild = derive_child_envelope(
+        narrow_parent, SpawnRequest(grant=["post_to_chat_platform"])
+    )
+    assert grandchild.tools == frozenset({"read_workspace_file"})
 
 
 def test_may_spawn_keeps_spawn_tools_but_nothing_denied() -> None:

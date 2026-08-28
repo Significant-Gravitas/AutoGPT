@@ -126,9 +126,11 @@ async def main() -> None:
     )
     assert isinstance(default_child, TurnEnvelope) and default_child.tools is not None
     assert default_child.tools.isdisjoint(DESCENT_DENIED_TOOLS)
+    # connect_integration is descent-denied, so default_child does not hold it
+    # and cannot pass it on even when a grandchild asks by name.
     narrower = derive_child_envelope(
         default_child,
-        SpawnRequest(tools=["read_workspace_file", "post_to_chat_platform"]),
+        SpawnRequest(tools=["read_workspace_file", "connect_integration"]),
     )
     assert narrower.tools == frozenset({"read_workspace_file"})
     print("a child asking for a tool its spawner lacks does not get it")
