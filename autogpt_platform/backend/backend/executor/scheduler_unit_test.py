@@ -1454,7 +1454,10 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.create_engine", return_value=MagicMock()),
-        patch(f"{_SCHEDULER_PATH}.SQLAlchemyJobStore", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.ResilientSQLAlchemyJobStore",
+            return_value=MagicMock(get_parked_job_ids=MagicMock(return_value=[])),
+        ),
         patch(f"{_SCHEDULER_PATH}.MemoryJobStore", return_value=MagicMock()),
         patch(
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
