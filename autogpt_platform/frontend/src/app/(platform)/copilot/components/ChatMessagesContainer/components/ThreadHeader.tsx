@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ExpertIdentity } from "../../../useExpertMap";
 import { ExpertAvatar } from "./ExpertAvatar/ExpertAvatar";
+import { ExpertIntegrations } from "./ExpertIntegrations/ExpertIntegrations";
 import { ExpertSchedulesButton } from "./ExpertSchedulesButton/ExpertSchedulesButton";
 
 // Autopilot's product-facing title when a session carries no expert identity.
@@ -52,6 +53,12 @@ export function ThreadHeader({
             {expertIdentity?.role ?? DEFAULT_EXPERT_ROLE}
           </span>
         </div>
+        {expertIdentity && !expertIdentity.isArchived && (
+          <ExpertIntegrations
+            expertId={expertIdentity.id}
+            expertName={expertIdentity.name}
+          />
+        )}
         {expertIdentity && !readOnly && !expertIdentity.isArchived && (
           <ExpertSchedulesButton
             expertId={expertIdentity.id}

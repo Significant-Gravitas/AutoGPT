@@ -1,0 +1,118 @@
+"use client";
+
+import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
+import { Delete02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
+
+interface Props {
+  expertId: string;
+  expertName: string;
+}
+
+export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
+  const {
+    granted,
+    grantable,
+    isAdding,
+    openAdd,
+    closeAdd,
+    addIntegration,
+    removeIntegration,
+    isRevoking,
+  } = useExpertIntegrationsSection(expertId);
+
+  return (
+    <section data-testid="expert-integrations-section">
+      <div className="mb-2.5 flex items-center justify-between">
+        <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+          Integrations
+        </div>
+        <Popover
+          open={isAdding}
+          onOpenChange={(open) => (open ? openAdd() : closeAdd())}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="small"
+              leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+            >
+              Add integration
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 p-2">
+            {grantable.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-zinc-500">
+                Nothing left to add. Connect a new integration in Settings
+                first.
+              </p>
+            ) : (
+              <ul className="max-h-72 overflow-y-auto">
+                {grantable.map((credential) => (
+                  <li key={credential.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-zinc-50"
+                      onClick={() => addIntegration(credential.id)}
+                    >
+                      <IntegrationLogo provider={credential.provider} />
+                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-700">
+                        {credential.title ??
+                          formatProviderName(credential.provider)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {granted.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          {expertName} cannot reach any of your integrations yet. Add one to let
+          them work on your behalf.
+        </p>
+      ) : (
+        <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-200/80 bg-white">
+          {granted.map((integration) => (
+            <div
+              key={integration.credential_id}
+              className="flex items-center gap-3 px-4 py-3"
+              data-testid="expert-integration-row"
+            >
+              <IntegrationLogo provider={integration.provider} size={18} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[15px] font-medium text-zinc-800">
+                  {integration.title}
+                </div>
+                <div className="text-[13px] text-zinc-500">
+                  {formatProviderName(integration.provider)}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="small"
+                disabled={isRevoking}
+                aria-label={`Remove ${integration.title}`}
+                leftIcon={<Icon icon={Delete02Icon} size={16} />}
+                onClick={() => removeIntegration(integration.credential_id)}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
