@@ -9,6 +9,7 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import {
   OAUTH_ERROR_POPUP_BLOCKED,
   openOAuthPopup,

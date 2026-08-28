@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-
 import { useGetV1CodexAccount } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { Button } from "@/components/atoms/Button/Button";
