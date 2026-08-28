@@ -18,7 +18,11 @@ ExpertRunStatus = Literal[
 ]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
-EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
+# Phrased as what the expert does, not what the platform guarantees: only
+# some outward calls are actually gated for approval (see is_sensitive_action).
+EXTERNAL_ACTION_APPROVAL_RULE = (
+    "The expert asks for approval before acting outside the platform."
+)
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 EXPERT_NAME_MAX_LENGTH = 100

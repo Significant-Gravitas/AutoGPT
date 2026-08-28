@@ -183,7 +183,7 @@ function ProtectedRules({ rules }: { rules: string[] }) {
         ))}
       </div>
       <Text variant="small" className="mt-3 text-zinc-400">
-        These safeguards are always active and cannot be edited.
+        These rules are part of every expert's soul and cannot be edited.
       </Text>
     </section>
   );
