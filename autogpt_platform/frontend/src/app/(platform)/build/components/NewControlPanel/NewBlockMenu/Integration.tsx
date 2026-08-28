@@ -1,11 +1,8 @@
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import { isRecommendedProvider } from "@/components/contextual/IntegrationsPanel/helpers";
-import { cn } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
-import { getIntegrationDisplayName } from "./helpers";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -49,18 +46,11 @@ export const Integration: IntegrationComponent = ({
 
       <div className="w-full">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            {title && (
-              <p className="line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400">
-                {getIntegrationDisplayName(title)}
-              </p>
-            )}
-            {isRecommendedProvider(title) && (
-              <Badge variant="success" size="small">
-                Recommended
-              </Badge>
-            )}
-          </div>
+          {title && (
+            <p className="line-clamp-1 flex-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400">
+              {beautifyString(title)}
+            </p>
+          )}
           <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
             {number_of_blocks}
           </span>

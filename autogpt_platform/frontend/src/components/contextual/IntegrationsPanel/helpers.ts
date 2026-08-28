@@ -32,12 +32,6 @@ export function typeBadgeLabel(type: CredentialType): string {
   return TYPE_LABELS[type] ?? type;
 }
 
-export const RECOMMENDED_PROVIDERS: ReadonlySet<string> = new Set(["aiml_api"]);
-
-export function isRecommendedProvider(slug: unknown): boolean {
-  return typeof slug === "string" && RECOMMENDED_PROVIDERS.has(slug);
-}
-
 const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   aiml_api: "aimlapi.com",
   github: "GitHub",

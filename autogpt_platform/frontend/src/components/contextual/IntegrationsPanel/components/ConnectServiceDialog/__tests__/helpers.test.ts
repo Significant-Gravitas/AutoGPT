@@ -41,27 +41,6 @@ describe("toConnectableProviders", () => {
     expect(result.map((p) => p.id)).toEqual(["github", "openai"]);
   });
 
-  test("pins recommended providers first and flags them", () => {
-    const result = toConnectableProviders([
-      makeMeta({ name: "openai", supported_auth_types: ["api_key"] }),
-      makeMeta({
-        name: "aiml_api",
-        description: "Access 1,000+ AI models with a single API key",
-        supported_auth_types: ["api_key"],
-      }),
-      makeMeta({ name: "github" }),
-    ]);
-    expect(result.map((p) => p.id)).toEqual(["aiml_api", "github", "openai"]);
-    expect(result[0]).toEqual({
-      id: "aiml_api",
-      name: "aimlapi.com",
-      description: "Access 1,000+ AI models with a single API key",
-      supportedAuthTypes: ["api_key"],
-      recommended: true,
-    });
-    expect(result[1]).not.toHaveProperty("recommended");
-  });
-
   test("filters unknown auth types out and tolerates missing supported_auth_types", () => {
     const result = toConnectableProviders([
       makeMeta({

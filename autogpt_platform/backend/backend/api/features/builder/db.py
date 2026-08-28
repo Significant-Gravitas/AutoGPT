@@ -588,11 +588,6 @@ def _build_marketplace_items(
     return results
 
 
-# Providers pinned to the top of the builder's integration list (the frontend
-# marks them "Recommended"). Tuple order is the display order.
-FEATURED_PROVIDERS: tuple[ProviderName, ...] = (ProviderName.AIML_API,)
-
-
 def get_providers(
     query: str = "",
     page: int = 1,
@@ -606,18 +601,7 @@ def get_providers(
 
     all_providers = _get_all_providers()
 
-    # Featured providers first; sorted() is stable, so everything else keeps
-    # its existing (block-discovery) order.
-    ordered_providers = sorted(
-        all_providers.values(),
-        key=lambda p: (
-            FEATURED_PROVIDERS.index(p.name)
-            if p.name in FEATURED_PROVIDERS
-            else len(FEATURED_PROVIDERS)
-        ),
-    )
-
-    for provider in ordered_providers:
+    for provider in all_providers.values():
         if (
             query not in provider.name.value.lower()
             and query not in provider.description.lower()

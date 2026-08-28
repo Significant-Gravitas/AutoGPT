@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useState } from "react";
 import type { ConnectableProvider } from "../helpers";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -42,15 +41,8 @@ export function ProviderRow({ provider, onSelect }: Props) {
         />
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
-            {provider.name}
-          </span>
-          {provider.recommended && (
-            <Badge variant="success" size="small">
-              Recommended
-            </Badge>
-          )}
+        <span className="truncate text-[14px] font-medium leading-[22px] text-zinc-800">
+          {provider.name}
         </span>
         <span className="truncate text-[12px] leading-[20px] text-zinc-500">
           {provider.description ?? provider.id}

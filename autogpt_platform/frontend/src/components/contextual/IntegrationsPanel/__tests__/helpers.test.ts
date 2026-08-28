@@ -7,7 +7,6 @@ import {
   formatMaskedValue,
   formatProviderName,
   groupCredentialsByProvider,
-  isRecommendedProvider,
   type CredentialView,
   type ProviderGroupView,
 } from "../helpers";
@@ -62,20 +61,6 @@ describe("formatProviderName", () => {
     expect(formatProviderName(null)).toBe("");
     expect(formatProviderName(42)).toBe("");
     expect(formatProviderName("")).toBe("");
-  });
-});
-
-describe("isRecommendedProvider", () => {
-  test("flags only the curated recommended providers", () => {
-    expect(isRecommendedProvider("aiml_api")).toBe(true);
-    expect(isRecommendedProvider("github")).toBe(false);
-    expect(isRecommendedProvider("openai")).toBe(false);
-  });
-
-  test("returns false for non-string input", () => {
-    expect(isRecommendedProvider(undefined)).toBe(false);
-    expect(isRecommendedProvider(null)).toBe(false);
-    expect(isRecommendedProvider(42)).toBe(false);
   });
 });
 

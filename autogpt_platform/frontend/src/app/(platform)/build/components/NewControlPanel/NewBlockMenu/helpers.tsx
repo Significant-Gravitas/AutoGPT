@@ -4,17 +4,6 @@ import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { BlockCategory } from "../../helper";
 import { RJSFSchema } from "@rjsf/utils";
 import { SpecialBlockID } from "@/lib/autogpt-server-api";
-import { beautifyString } from "@/lib/utils";
-import {
-  formatProviderName,
-  isRecommendedProvider,
-} from "@/components/contextual/IntegrationsPanel/helpers";
-
-export function getIntegrationDisplayName(name: string): string {
-  return isRecommendedProvider(name)
-    ? formatProviderName(name)
-    : beautifyString(name);
-}
 
 export const highlightText = (
   text: string | undefined,
