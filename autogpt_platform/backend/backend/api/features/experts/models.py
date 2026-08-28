@@ -21,7 +21,7 @@ AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally.
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
-_EXPERT_NAME_MAX_LENGTH = 100
+EXPERT_NAME_MAX_LENGTH = 100
 EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
@@ -234,7 +234,7 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSoulUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=_EXPERT_NAME_MAX_LENGTH)
+    name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     identity: str = Field(min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH)
     voice_preferences: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)
     boundaries: str = Field(max_length=_EXPERT_SOUL_TEXT_MAX_LENGTH)

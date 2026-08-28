@@ -28,6 +28,7 @@ interface Props {
 
 const TAB_PRIORITY: AuthMethod[] = [
   AuthType.oauth2,
+  AuthType.device_code,
   AuthType.api_key,
   AuthType.user_password,
   AuthType.host_scoped,

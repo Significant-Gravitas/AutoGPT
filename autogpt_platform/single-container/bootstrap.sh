@@ -269,4 +269,6 @@ publish_readiness() {
   mv -f "${temporary}" "${AUTOGPT_READY_FILE}"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

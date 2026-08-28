@@ -43,12 +43,11 @@ from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
-    NotificationJobArgs,
-    process_existing_batches,
-    process_weekly_summary,
+    flush_matured_alerts,
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
+    send_due_briefings,
 )
 from backend.util.clients import (
     get_database_manager_async_client,
@@ -357,6 +356,11 @@ async def _execute_copilot_turn(**kwargs):
                 organization_id=args.organization_id,
                 team_id=args.team_id,
                 expert_id=args.expert_id,
+                # The message this fires is model-authored — the scheduling
+                # turn wrote it, not the user. Without this the fresh session
+                # defaults to "interactive" and schedule_followup becomes a
+                # way to reach the staffing tools with nobody watching.
+                origin="automation",
             )
             if args.expert_id and new_session.expert_id is None:
                 # The scope check above passed, so the expert was archived or
@@ -375,6 +379,12 @@ async def _execute_copilot_turn(**kwargs):
                 return
             target_session_id = new_session.session_id
             target_session = new_session
+            # Nothing can be forged in a chat that has never existed before:
+            # its ``origin="automation"`` refuses the staffing tools outright,
+            # so no proposal can be parked here to approve. Persist the opener
+            # as the user turn so the fresh session still gets a title and the
+            # first-turn user context.
+            persist_as_user_turn = True
             logger.info(
                 f"Copilot turn schedule {args.schedule_id} creating fresh "
                 f"session {target_session_id[:12]} (sentinel session_id=None)"
@@ -409,6 +419,13 @@ async def _execute_copilot_turn(**kwargs):
                     return
             target_session_id = args.session_id
             target_session = session
+            # The target may be the user's own interactive Autopilot chat,
+            # where ``origin`` says nothing about who wrote *this* turn. A
+            # role="user" row here would raise the confirm watermark
+            # ``expert_proposal`` gates on, letting a scheduled follow-up
+            # approve the expert change the scheduling turn previewed. The
+            # message is model-authored either way, so persist it as one.
+            persist_as_user_turn = False
 
         assert target_session_id is not None
         # `schedule_turn` (not raw `enqueue_copilot_turn`) is the right entry
@@ -421,6 +438,7 @@ async def _execute_copilot_turn(**kwargs):
             user_id=args.user_id,
             turn_id=str(uuid.uuid4()),
             message=args.message,
+            is_user_message=persist_as_user_turn,
             tool_call_id="scheduled_followup",
             tool_name="schedule_followup",
             organization_id=args.organization_id,
@@ -1615,23 +1633,6 @@ def _job_to_info(
     return None
 
 
-class NotificationJobInfo(NotificationJobArgs):
-    id: str
-    name: str
-    next_run_time: str
-
-    @staticmethod
-    def from_db(
-        job_args: NotificationJobArgs, job_obj: JobObj
-    ) -> "NotificationJobInfo":
-        return NotificationJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
-            **job_args.model_dump(),
-        )
-
-
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
 
@@ -1724,25 +1725,34 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
-            # Notification PROCESS WEEKLY SUMMARY
-            # Runs every Monday at 9 AM UTC
+            # ALERTS — empty the ten-minute debounce window. Runs every
+            # minute so a condition raised at :01 goes out at :11, not at the
+            # next quarter hour.
             self.scheduler.add_job(
-                process_weekly_summary,
-                CronTrigger.from_crontab("0 9 * * 1"),
-                id="process_weekly_summary",
-                kwargs={},
+                flush_matured_alerts,
+                id="flush_matured_alerts",
+                trigger="interval",
                 replace_existing=True,
-                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+                seconds=60,
+                # Belt and braces. This only stops APScheduler double-firing
+                # the RPC; the RPC returns as soon as the pass is spawned, so
+                # the real guards are the in-process one in NotificationManager
+                # and the per-user claim the work itself takes.
+                max_instances=1,
+                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
             )
 
-            # Notification PROCESS EXISTING BATCHES
-            # self.scheduler.add_job(
-            #     process_existing_batches,
-            #     id="process_existing_batches",
-            #     CronTrigger.from_crontab("0 12 * * 5"),
-            #     replace_existing=True,
-            #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-            # )
+            # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
+            # is a different UTC hour for each of them.
+            self.scheduler.add_job(
+                send_due_briefings,
+                CronTrigger.from_crontab("30 * * * *"),
+                id="send_due_briefings",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
 
             # Notification LATE EXECUTIONS ALERT
             self.scheduler.add_job(
@@ -2283,12 +2293,12 @@ class Scheduler(AppService):
         return results
 
     @expose
-    def execute_process_existing_batches(self, kwargs: dict):
-        process_existing_batches(**kwargs)
+    def execute_flush_matured_alerts(self):
+        flush_matured_alerts()
 
     @expose
-    def execute_process_weekly_summary(self):
-        process_weekly_summary()
+    def execute_send_due_briefings(self):
+        send_due_briefings()
 
     @expose
     def execute_report_late_executions(self):

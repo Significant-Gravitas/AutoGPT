@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
-from backend.util.json import SafeJson, sanitize_string
+from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
     ChatMessage,
@@ -379,9 +379,26 @@ def _chat_session_create_input(
         **({"organizationId": organization_id} if organization_id else {}),
         **({"teamId": team_id} if team_id else {}),
         **({"expertId": expert_id} if expert_id else {}),
-        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
+        metadata=SafeJson(_persisted_metadata(metadata).model_dump()),
     )
     return data
+
+
+def _persisted_metadata(metadata: ChatSessionMetadata | None) -> ChatSessionMetadata:
+    """Stamp a concrete origin on every row written here.
+
+    ``origin=None`` means "persisted before the field existed", and readers
+    treat it as legacy — so a row created now must never claim it, or a real
+    pre-deploy session stops being distinguishable from a fresh one. An unset
+    origin resolves to ``automation``: the only caller that reaches here
+    without metadata is the expert kickoff thread, which a run opens. A thread
+    the user is meant to type into must pass ``origin="interactive"`` itself
+    rather than inherit this default — see ``append_plain_session_message``.
+    """
+    resolved = metadata or ChatSessionMetadata()
+    if resolved.origin is None:
+        return resolved.model_copy(update={"origin": "automation"})
+    return resolved
 
 
 async def update_chat_session(
@@ -830,6 +847,118 @@ async def user_has_any_session(user_id: str) -> bool:
         user_id,
     )
     return bool(rows)
+
+
+# Bounds the Home "Needs You" question source. Questions are one-per-session
+# and resolve as soon as the user replies, so a long tail is stale by
+# definition — showing the newest few is the whole product surface.
+PENDING_QUESTION_LIMIT = 10
+
+
+async def set_session_pending_question(
+    session_id: str, user_id: str, text: str, asked_at: datetime
+) -> None:
+    """Record the question this session is waiting on the user to answer.
+
+    Writes the one key rather than the whole ``metadata`` blob: session
+    metadata is otherwise immutable after creation, and a concurrent turn
+    must not be able to clobber unrelated flags by round-tripping a stale
+    copy of it. Scoped to *user_id* so a caller can never mark another
+    user's session.
+    """
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object('pending_question', $3::jsonb) "
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        dumps({"text": text, "asked_at": asked_at.isoformat()}),
+    )
+
+
+async def clear_session_pending_question(session_id: str, user_id: str) -> None:
+    """Drop the pending question — the user answered, so it needs nobody."""
+    await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "\"metadata\" - 'pending_question' "
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+    )
+
+
+#  Columns selected below = every field ``ChatSessionInfo.from_db`` reads
+#  ("id", "userId", "title", "credentials", "createdAt", "updatedAt",
+#  "successfulAgentRuns", "successfulAgentSchedules", "metadata",
+#  "totalPromptTokens", "totalCompletionTokens", "chatStatus",
+#  "organizationId", "teamId", "isPinned", "expertId") plus "visibility",
+#  "isShared", "autoShareExecutions" — those three are unused by ``from_db``
+#  but have no default on the generated ``PrismaChatSession`` model, so
+#  ``query_raw_with_schema(..., model=PrismaChatSession)`` raises a pydantic
+#  validation error if they're left out of the row. "shareToken" and
+#  "sharedAt" are the only columns safely dropped (both default to None).
+_PENDING_QUESTION_SESSION_COLUMNS = (
+    '"id", "userId", "title", "credentials", "createdAt", "updatedAt", '
+    '"successfulAgentRuns", "successfulAgentSchedules", "metadata", '
+    '"totalPromptTokens", "totalCompletionTokens", "chatStatus", '
+    '"organizationId", "teamId", "isPinned", "expertId", "visibility", '
+    '"isShared", "autoShareExecutions"'
+)
+
+
+async def get_sessions_with_pending_question(
+    user_id: str,
+    limit: int = PENDING_QUESTION_LIMIT,
+) -> list[ChatSessionInfo]:
+    """Sessions of *user_id* still waiting on an answer, newest question first.
+
+    Excludes *delegated* sub-threads (``delegated_by_session_id``): the caller
+    that delegated is still waiting on that answer and owns reporting back, so
+    the sub's question is an implementation detail of someone else's task —
+    surfacing it on Home asks the user to unblock a thread whose result they
+    will never see directly.
+
+    *Handed-off* threads (``handed_off_from_expert_id``) are deliberately NOT
+    excluded. A handoff transfers ownership outright: nobody is waiting behind
+    it, and the receiving expert is told to ask the user directly when
+    something only they can provide is missing. That question is the only path
+    back to the user, so hiding it is how a handed-off request dies in silence.
+    """
+    sessions = await db.query_raw_with_schema(
+        f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
+        'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
+        + _EXCLUDE_DREAM_SESSIONS_SQL
+        # jsonb_typeof, not IS NOT NULL: a session created after this field
+        # existed persists an explicit ``"pending_question": null``, which is a
+        # JSON null — present as far as ``->`` is concerned.
+        + " AND jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' "
+        # ``->>`` (text extraction), not ``->``: every session persists this
+        # key with an explicit JSON null by default, and ``->`` returns that
+        # as a "present" jsonb value rather than SQL NULL — an ``IS NULL``
+        # check on ``->`` would silently exclude every normal session (same
+        # class of bug as the dream-session filter above). ``->>`` collapses
+        # "key absent" and "explicit JSON null" to the same SQL NULL, so only
+        # a real delegating session id excludes the row.
+        #
+        # The second arm is load-bearing, not defensive: a handoff records the
+        # delegation fields too (``handoff_to_expert._transfer`` sets
+        # ``delegated_by_session_id`` for attribution and because
+        # ``get_sub_session_result._in_caller_scope`` reads it to refuse the
+        # poll), so "delegated" alone matches every handed-off thread as well.
+        # Without this arm the receiving expert's question — the only path
+        # back to the user — never reaches Home. See the docstring.
+        "AND (\"metadata\" ->> 'delegated_by_session_id' IS NULL "
+        "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL) "
+        # Lexicographic text sort — only correct because every writer emits
+        # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
+        # fields, so ISO-8601 string order matches chronological order).
+        "ORDER BY \"metadata\" -> 'pending_question' ->> 'asked_at' DESC " "LIMIT $2",
+        user_id,
+        limit,
+        model=PrismaChatSession,
+    )
+    return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
 def _escape_like(value: str) -> str:
@@ -1284,8 +1413,15 @@ async def append_plain_session_message(
     if sessions:
         session_id = sessions[0].id
     else:
+        # An automation writes the first message, but the thread itself is the
+        # user's primary chat — the one the product opens them into. Stamping
+        # it ``automation`` (the unset-metadata default) would leave a user
+        # whose briefing arrived before their first chat unable to staff their
+        # team from the very thread they were handed.
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            metadata=ChatSessionMetadata(origin="interactive"),
         )
         session_id = created.session_id
 

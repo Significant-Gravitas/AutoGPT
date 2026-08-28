@@ -950,6 +950,7 @@ def _resolve_discriminated_credentials(
         return {}
 
     resolved: dict[str, CredentialsFieldInfo] = {}
+    required_fields = set(block.input_schema.get_required_fields())
 
     for field_name, field_info in credentials_fields_info.items():
         effective_field_info = field_info
@@ -960,6 +961,12 @@ def _resolve_discriminated_credentials(
                 field = block.input_schema.model_fields.get(field_info.discriminator)
                 if field and field.default is not PydanticUndefined:
                     discriminator_value = field.default
+
+            if (
+                field_name not in required_fields
+                and not field_info.requires_credentials(discriminator_value)
+            ):
+                continue
 
             if discriminator_value is not None:
                 if field_info.discriminator_mapping:

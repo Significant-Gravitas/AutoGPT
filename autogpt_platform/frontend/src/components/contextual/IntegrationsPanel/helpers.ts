@@ -25,6 +25,7 @@ const TYPE_LABELS: Record<CredentialType, string> = {
   oauth2: "OAuth",
   user_password: "User/Password",
   host_scoped: "Host-scoped",
+  device_code: "Device auth",
 };
 
 export function typeBadgeLabel(type: CredentialType): string {

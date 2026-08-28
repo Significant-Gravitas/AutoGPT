@@ -45,7 +45,7 @@ Docker containerizes applications, while Docker Compose orchestrates multi-conta
 If you need assistance installing docker:
 https://docs.docker.com/desktop/
 
-Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose: 
+Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose:
 https://docs.docker.com/compose/install/
 
 You can check if you have Docker installed by running the following command:
@@ -72,6 +72,12 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 
 This method is ideal if you're setting up for development or testing and want to skip manual configuration.
 
+## Experimental single-container image
+
+For a small self-hosted installation that does not need a source checkout, see
+[Run AutoGPT in one Docker container](single-container.md). The image bundles
+the platform and its stateful services for one host; it is not the development
+setup or a high-availability deployment.
 
 ## Manual Setup
 
@@ -154,8 +160,8 @@ make help
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 **Notes:**
- 
-By default the application for different services run on the following ports: 
+
+By default the application for different services run on the following ports:
 
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
@@ -476,7 +482,7 @@ make format
 To run the tests:
 
 ```sh
-poetry run pytest -s 
+poetry run pytest -s
 ```
 
 ## Adding a New Agent Block

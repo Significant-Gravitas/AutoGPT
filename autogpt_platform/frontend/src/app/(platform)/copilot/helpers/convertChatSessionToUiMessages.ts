@@ -298,10 +298,19 @@ export function convertChatSessionMessagesToUiMessages(
      *  hits ``/api/public/shared/chats/<token>/files/<id>/download``
      *  so anonymous readers can render attachments. */
     fileUrlBuilder?: (fileId: string) => string;
+    /** ``active_stream.started_at`` of the turn the backend is still
+     *  running. Rows persisted at/after it belong to that turn, so they are
+     *  kept out of the preceding turn's bubble and the first of them is
+     *  reported as ``activeTurnStartId``. A backend-started turn (engine
+     *  switch continuation) has no user row to separate it, so this is the
+     *  only boundary the resume path can trim against. */
+    activeTurnStartedAt?: string | null;
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   stats: TurnStatsMap;
+  /** Id of the first hydrated message belonging to the still-running turn. */
+  activeTurnStartId: string | null;
 } {
   const fileUrlBuilder = options?.fileUrlBuilder ?? defaultWorkspaceFileUrl;
   const messages = coerceSessionChatMessages(rawMessages);
@@ -331,6 +340,16 @@ export function convertChatSessionMessagesToUiMessages(
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
   const stats: TurnStatsMap = new Map();
   const consumedToolCallIds = collectConsumedToolCallIds(messages);
+  const activeTurnStartMs = options?.activeTurnStartedAt
+    ? Date.parse(options.activeTurnStartedAt)
+    : NaN;
+  let activeTurnStartIndex: number | null = null;
+
+  function startsActiveTurn(msg: SessionChatMessage): boolean {
+    if (activeTurnStartIndex !== null) return false;
+    if (Number.isNaN(activeTurnStartMs) || !msg.created_at) return false;
+    return Date.parse(msg.created_at) >= activeTurnStartMs;
+  }
 
   function patchStats(id: string, patch: Partial<TurnStats>) {
     const existing = stats.get(id) ?? {};
@@ -470,10 +489,15 @@ export function convertChatSessionMessagesToUiMessages(
     // WorkCard. Keep it as its own bubble — never fold it into a neighbouring
     // assistant turn (either direction), or the card loses its identity.
     const runMetadata = getRunMetadata(msg.metadata);
+    // The still-running turn opens its own bubble even when it follows an
+    // assistant row: merging it into the completed answer above would make
+    // the resume path (which replays that turn alone) drop both.
+    const opensActiveTurn = uiRole === "assistant" && startsActiveTurn(msg);
 
     const prevUI = uiMessages[uiMessages.length - 1];
     if (
       uiRole === "assistant" &&
+      !opensActiveTurn &&
       prevUI &&
       prevUI.role === "assistant" &&
       !getRunMetadata(prevUI.metadata) &&
@@ -521,6 +545,7 @@ export function convertChatSessionMessagesToUiMessages(
       parts,
       ...(msg.metadata ? { metadata: msg.metadata } : {}),
     });
+    if (opensActiveTurn) activeTurnStartIndex = uiMessages.length - 1;
 
     const patch: Partial<TurnStats> = {};
     if (msg.created_at) patch.createdAt = msg.created_at;
@@ -538,5 +563,12 @@ export function convertChatSessionMessagesToUiMessages(
     if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });
 
-  return { messages: uiMessages, stats };
+  return {
+    messages: uiMessages,
+    stats,
+    activeTurnStartId:
+      activeTurnStartIndex === null
+        ? null
+        : (uiMessages[activeTurnStartIndex]?.id ?? null),
+  };
 }

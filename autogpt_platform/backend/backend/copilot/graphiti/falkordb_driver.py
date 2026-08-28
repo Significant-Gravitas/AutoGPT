@@ -43,19 +43,24 @@ class AutoGPTFalkorDriver(FalkorDriver):
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.
 
-    2. ``build_indices`` parameter (defaults True for upstream-compatible
-       behaviour) opts out of the fire-and-forget
-       ``build_indices_and_constraints`` background task that
-       graphiti-core's ``FalkorDriver.__init__`` always spawns.
-       That task is fine for long-lived drivers (chat ingest path) but
-       generates "Connection closed by server" / "Buffer is closed" log
-       spam when the driver is created per short-lived request — most
-       notably the admin memory visualizer's per-request driver opens,
-       where the indexing task's sequential CREATE INDEX statements
-       race the route's own queries and the closing of the connection
-       when the route returns. Pass ``build_indices=False`` for
-       read-only paths against an existing user's graph; the indices
-       are already there from the long-lived chat-write client.
+    2. ``build_indices`` parameter (defaults **False**) opts out of the
+       fire-and-forget ``build_indices_and_constraints`` background task
+       that graphiti-core's ``FalkorDriver.__init__`` always spawns.
+
+       ``CREATE INDEX`` is a *write*, and in FalkorDB a write
+       **materializes the graph**. So letting that task run on every
+       driver construction mints a fully-indexed, permanently-resident
+       graph for any user we merely *look at* — a search that returns
+       nothing, a warm-context read, a community-rebuild sweep, even the
+       debugging cookbook in this package's AGENTS.md. In prod that
+       produced 13,732 graphs of which ~99.7% held zero nodes, and their
+       index scaffolding (~750KB accounted each) is what pinned FalkorDB
+       at ``maxmemory`` and made it reject every write for 13 days.
+
+       The default is therefore False: constructing a driver must never
+       be able to create a graph. Paths that genuinely write call
+       ``ensure_indices()`` explicitly, which is safe because the graph
+       is about to exist anyway.
 
     3. ``execute_query`` retries FalkorDB's transient "Max pending queries
        exceeded" backpressure with bounded jittered backoff, so a load
@@ -63,7 +68,7 @@ class AutoGPTFalkorDriver(FalkorDriver):
        dropped one plus a Sentry alert. (SENTRY-1384.)
     """
 
-    def __init__(self, *args, build_indices: bool = True, **kwargs):
+    def __init__(self, *args, build_indices: bool = False, **kwargs):
         # Stash the flag BEFORE super().__init__ runs because
         # FalkorDriver.__init__ fires
         # ``loop.create_task(self.build_indices_and_constraints())``
@@ -73,11 +78,20 @@ class AutoGPTFalkorDriver(FalkorDriver):
         super().__init__(*args, **kwargs)
 
     async def build_indices_and_constraints(self) -> None:  # type: ignore[override]
-        if not getattr(self, "_build_indices_at_init", True):
-            # Caller asserted indices already exist (or will be built by
-            # someone else) — skip the multi-CREATE-INDEX race that
-            # produces the log spam.
+        if not self._build_indices_at_init:
+            # Default path. Suppresses graphiti-core's init-time task so a
+            # bare driver construction cannot materialize an empty graph.
             return
+        await super().build_indices_and_constraints()
+
+    async def ensure_indices(self) -> None:
+        """Build indices regardless of the ``build_indices`` init flag.
+
+        For write paths only. Bypasses the ``__init__`` suppression above
+        because the caller is about to write — the graph will exist either
+        way, so the indices cost nothing extra and searches over it need
+        them. Callers should invoke this once per graph, not per write.
+        """
         await super().build_indices_and_constraints()
 
     async def execute_query(

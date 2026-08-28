@@ -5,13 +5,13 @@ import hmac
 import logging
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
-from prisma.enums import NotificationType, SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import UniqueViolationError
 from prisma.models import AuthUser
 from prisma.models import User as PrismaUser
@@ -20,6 +20,7 @@ from prisma.types import (
     ProfileCreateInput,
     UserCreateInput,
     UserUpdateInput,
+    UserWhereInput,
 )
 from pydantic import BaseModel, ConfigDict
 
@@ -110,7 +111,13 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
     except Exception as e:
-        raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
+        # Identify by subject only. `user_data` is the decoded JWT (email,
+        # name, role); this error is logged with exc_info on the auth
+        # self-heal path, so interpolating it writes user PII into Sentry
+        # event bodies.
+        raise DatabaseError(
+            f"Failed to get or create user {user_data.get('sub')}: {e}"
+        ) from e
 
 
 # Word lists mirror the legacy generate_username() SQL function so that app-
@@ -511,41 +518,14 @@ async def get_active_users_ids() -> list[str]:
 
 
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:
+    """The volume knob: a Briefing frequency plus two switches. Billing and
+    account messages are service mail and are not gated by any of it."""
     try:
-        user = await PrismaUser.prisma().find_unique_or_raise(
-            where={"id": user_id},
-        )
-
-        # enable notifications by default if user has no notification preference (shouldn't ever happen though)
-        preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: user.notifyOnAgentRun or False,
-            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or False,
-            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or False,
-            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
-            or False,
-            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
-            or False,
-            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or False,
-            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or False,
-            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or False,
-            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or False,
-            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or False,
-        }
-        daily_limit = user.maxEmailsPerDay or 3
-        notification_preference = NotificationPreference(
-            user_id=user.id,
-            email=user.email,
-            preferences=preferences,
-            daily_limit=daily_limit,
-            # TODO with other changes later, for now we just will email them
-            emails_sent_today=0,
-            last_reset_date=datetime.now(),
-        )
-        return NotificationPreference.model_validate(notification_preference)
-
+        user = await PrismaUser.prisma().find_unique_or_raise(where={"id": user_id})
+        return _preference_from_user(user)
     except Exception as e:
         raise DatabaseError(
-            f"Failed to upsert user notification preference for user {user_id}: {e}"
+            f"Failed to get user notification preference for user {user_id}: {e}"
         ) from e
 
 
@@ -553,91 +533,45 @@ async def update_user_notification_preference(
     user_id: str, data: NotificationPreferenceDTO
 ) -> NotificationPreference:
     try:
-        update_data: UserUpdateInput = {}
+        update_data: UserUpdateInput = {
+            "briefingFrequency": data.briefing_frequency,
+            "alertsEnabled": data.alerts_enabled,
+            "notifyOnStoreVerdict": data.store_verdicts_enabled,
+        }
         if data.email:
             update_data["email"] = data.email
-        if NotificationType.AGENT_RUN in data.preferences:
-            update_data["notifyOnAgentRun"] = data.preferences[
-                NotificationType.AGENT_RUN
-            ]
-        if NotificationType.ZERO_BALANCE in data.preferences:
-            update_data["notifyOnZeroBalance"] = data.preferences[
-                NotificationType.ZERO_BALANCE
-            ]
-        if NotificationType.LOW_BALANCE in data.preferences:
-            update_data["notifyOnLowBalance"] = data.preferences[
-                NotificationType.LOW_BALANCE
-            ]
-        if NotificationType.BLOCK_EXECUTION_FAILED in data.preferences:
-            update_data["notifyOnBlockExecutionFailed"] = data.preferences[
-                NotificationType.BLOCK_EXECUTION_FAILED
-            ]
-        if NotificationType.CONTINUOUS_AGENT_ERROR in data.preferences:
-            update_data["notifyOnContinuousAgentError"] = data.preferences[
-                NotificationType.CONTINUOUS_AGENT_ERROR
-            ]
-        if NotificationType.DAILY_SUMMARY in data.preferences:
-            update_data["notifyOnDailySummary"] = data.preferences[
-                NotificationType.DAILY_SUMMARY
-            ]
-        if NotificationType.WEEKLY_SUMMARY in data.preferences:
-            update_data["notifyOnWeeklySummary"] = data.preferences[
-                NotificationType.WEEKLY_SUMMARY
-            ]
-        if NotificationType.MONTHLY_SUMMARY in data.preferences:
-            update_data["notifyOnMonthlySummary"] = data.preferences[
-                NotificationType.MONTHLY_SUMMARY
-            ]
-        if NotificationType.AGENT_APPROVED in data.preferences:
-            update_data["notifyOnAgentApproved"] = data.preferences[
-                NotificationType.AGENT_APPROVED
-            ]
-        if NotificationType.AGENT_REJECTED in data.preferences:
-            update_data["notifyOnAgentRejected"] = data.preferences[
-                NotificationType.AGENT_REJECTED
-            ]
-        if data.daily_limit:
+        # `is not None`, not truthiness: 0 is the documented "send nothing"
+        # value that one-click unsubscribe writes, and a falsy check silently
+        # kept the previous limit instead.
+        if data.daily_limit is not None:
             update_data["maxEmailsPerDay"] = data.daily_limit
 
-        user = await PrismaUser.prisma().update(
-            where={"id": user_id},
-            data=update_data,
-        )
+        user = await PrismaUser.prisma().update(where={"id": user_id}, data=update_data)
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
 
-        # Invalidate cache for this user since notification preferences are part of user data
+        # Invalidate cache for this user since notification preferences are
+        # part of user data
         get_user_by_id.cache_delete(user_id)
-
-        preferences: dict[NotificationType, bool] = {
-            NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
-            NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
-            NotificationType.LOW_BALANCE: user.notifyOnLowBalance or True,
-            NotificationType.BLOCK_EXECUTION_FAILED: user.notifyOnBlockExecutionFailed
-            or True,
-            NotificationType.CONTINUOUS_AGENT_ERROR: user.notifyOnContinuousAgentError
-            or True,
-            NotificationType.DAILY_SUMMARY: user.notifyOnDailySummary or True,
-            NotificationType.WEEKLY_SUMMARY: user.notifyOnWeeklySummary or True,
-            NotificationType.MONTHLY_SUMMARY: user.notifyOnMonthlySummary or True,
-            NotificationType.AGENT_APPROVED: user.notifyOnAgentApproved or True,
-            NotificationType.AGENT_REJECTED: user.notifyOnAgentRejected or True,
-        }
-        notification_preference = NotificationPreference(
-            user_id=user.id,
-            email=user.email,
-            preferences=preferences,
-            daily_limit=user.maxEmailsPerDay or 3,
-            # TODO with other changes later, for now we just will email them
-            emails_sent_today=0,
-            last_reset_date=datetime.now(),
-        )
-        return NotificationPreference.model_validate(notification_preference)
-
+        return _preference_from_user(user)
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
         ) from e
+
+
+def _preference_from_user(user: PrismaUser) -> NotificationPreference:
+    return NotificationPreference(
+        user_id=user.id,
+        email=user.email,
+        briefing_frequency=BriefingFrequency(user.briefingFrequency),
+        alerts_enabled=user.alertsEnabled,
+        store_verdicts_enabled=user.notifyOnStoreVerdict,
+        # Not `or 3`: the column is non-nullable, so the only value that
+        # coalesce would catch is 0 — which is precisely what a one-click
+        # unsubscribe sets, and means "send nothing".
+        daily_limit=user.maxEmailsPerDay,
+    )
 
 
 async def set_user_email_verification(user_id: str, verified: bool) -> None:
@@ -656,24 +590,18 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
 
 
 async def disable_all_user_notifications(user_id: str) -> None:
-    """Disable all notification preferences for a user.
+    """Turn the volume knob all the way down.
 
-    Used when user's email bounces/is inactive to prevent any future notifications.
+    Used when a user's email bounces or is marked inactive, so we stop trying
+    to reach an address that cannot receive mail.
     """
     try:
         await PrismaUser.prisma().update(
             where={"id": user_id},
             data={
-                "notifyOnAgentRun": False,
-                "notifyOnZeroBalance": False,
-                "notifyOnLowBalance": False,
-                "notifyOnBlockExecutionFailed": False,
-                "notifyOnContinuousAgentError": False,
-                "notifyOnDailySummary": False,
-                "notifyOnWeeklySummary": False,
-                "notifyOnMonthlySummary": False,
-                "notifyOnAgentApproved": False,
-                "notifyOnAgentRejected": False,
+                "briefingFrequency": BriefingFrequency.OFF,
+                "alertsEnabled": False,
+                "notifyOnStoreVerdict": False,
             },
         )
         # Invalidate cache for this user
@@ -733,21 +661,17 @@ async def unsubscribe_user_by_token(token: str) -> None:
             raise ValueError("Invalid token signature")
 
         user = await get_user_by_id(user_id)
+        # One-click unsubscribe turns everything off, including store
+        # verdicts — this is the trapdoor, and the volume knob in the Briefing
+        # footer is what most people should be using instead.
         await update_user_notification_preference(
             user.id,
             NotificationPreferenceDTO(
                 email=user.email,
+                briefing_frequency=BriefingFrequency.OFF,
+                alerts_enabled=False,
+                store_verdicts_enabled=False,
                 daily_limit=0,
-                preferences={
-                    NotificationType.AGENT_RUN: False,
-                    NotificationType.ZERO_BALANCE: False,
-                    NotificationType.LOW_BALANCE: False,
-                    NotificationType.BLOCK_EXECUTION_FAILED: False,
-                    NotificationType.CONTINUOUS_AGENT_ERROR: False,
-                    NotificationType.DAILY_SUMMARY: False,
-                    NotificationType.WEEKLY_SUMMARY: False,
-                    NotificationType.MONTHLY_SUMMARY: False,
-                },
             ),
         )
     except Exception as e:
@@ -869,3 +793,222 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e
+
+
+class BriefingCandidate(BaseModel):
+    """The fields the briefing pass needs to decide whether a user is due.
+
+    A narrow model rather than the full `User`, because this crosses the
+    DatabaseManager RPC boundary once per page of candidates.
+    """
+
+    id: str
+    email: str
+    timezone: str
+    briefing_frequency: BriefingFrequency
+    last_briefing_at: datetime | None
+    alerts_enabled: bool
+
+
+async def get_briefing_candidates(
+    timezones: list[str], after_id: str | None, limit: int
+) -> list[BriefingCandidate]:
+    """One page of users for whom it is currently the local briefing hour.
+
+    Keyset-paged on `id` so the caller can walk the whole set: a single capped
+    read would strand every user past the cap behind the same first page,
+    because the ordering never changes and the filter does not exclude users
+    already briefed.
+    """
+    try:
+        where: UserWhereInput = {
+            "briefingFrequency": {"not": BriefingFrequency.OFF},
+            "timezone": {"in": timezones},
+        }
+        if after_id:
+            where["id"] = {"gt": after_id}
+        rows = await prisma.user.find_many(where=where, take=limit, order={"id": "asc"})
+        return [
+            BriefingCandidate(
+                id=row.id,
+                email=row.email,
+                timezone=row.timezone,
+                briefing_frequency=BriefingFrequency(row.briefingFrequency),
+                last_briefing_at=row.lastBriefingAt,
+                alerts_enabled=row.alertsEnabled,
+            )
+            for row in rows
+        ]
+    except Exception as e:
+        raise DatabaseError(f"Failed to list briefing candidates: {e}") from e
+
+
+async def get_briefing_candidate(user_id: str) -> BriefingCandidate | None:
+    """One user's briefing settings, for work picked up off the queue.
+
+    The pass publishes only a user id, so the consumer re-reads rather than
+    trusting settings captured a tick earlier — a user who switched the
+    briefing off in between must not receive one.
+    """
+    try:
+        row = await prisma.user.find_unique(where={"id": user_id})
+        if row is None:
+            return None
+        return BriefingCandidate(
+            id=row.id,
+            email=row.email,
+            timezone=row.timezone,
+            briefing_frequency=BriefingFrequency(row.briefingFrequency),
+            last_briefing_at=row.lastBriefingAt,
+            alerts_enabled=row.alertsEnabled,
+        )
+    except Exception as e:
+        raise DatabaseError(f"Failed to load briefing candidate {user_id}: {e}") from e
+
+
+async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
+    """Advance the cadence clock, once the briefing is safely on the queue."""
+    try:
+        await prisma.user.update(
+            where={"id": user_id}, data={"lastBriefingAt": sent_at}
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to record briefing time for user {user_id}: {e}"
+        ) from e
+
+
+class BillingEmailRecipient(BaseModel):
+    """The four fields the billing emails need about a customer.
+
+    A narrow model rather than the Prisma `User`, because this crosses the
+    DatabaseManager RPC boundary: the lifecycle handlers run in the REST API
+    when a Stripe webhook arrives, and in the notification service when the
+    welcome is picked up off the work queue. That second process has no Prisma
+    connection.
+    """
+
+    id: str
+    email: str
+    name: str | None = None
+    welcome_email_sent_at: datetime | None = None
+
+
+async def get_billing_email_recipient(
+    stripe_customer_id: str,
+) -> BillingEmailRecipient | None:
+    """The account behind a Stripe customer, or None for a deleted or unknown
+    one — better to skip than to email into the void."""
+    try:
+        row = await prisma.user.find_first(
+            where={"stripeCustomerId": stripe_customer_id}
+        )
+        if row is None:
+            return None
+        return BillingEmailRecipient(
+            id=row.id,
+            email=row.email,
+            name=row.name,
+            welcome_email_sent_at=row.welcomeEmailSentAt,
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to look up the account for Stripe customer "
+            f"{stripe_customer_id}: {e}"
+        ) from e
+
+
+async def claim_welcome_email(user_id: str) -> bool:
+    """Take the one-shot welcome claim. True only for the caller that set it.
+
+    Conditional on the column still being null, so two webhook deliveries
+    racing each other cannot both send.
+    """
+    try:
+        claimed = await prisma.user.update_many(
+            where={"id": user_id, "welcomeEmailSentAt": None},
+            data={"welcomeEmailSentAt": datetime.now(tz=timezone.utc)},
+        )
+        return claimed > 0
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to claim the welcome email for user {user_id}: {e}"
+        ) from e
+
+
+async def release_welcome_email(user_id: str) -> None:
+    """Give the claim back when the send fails.
+
+    This is a column, not a key with a TTL: left set after a failed publish it
+    marks the customer welcomed forever, and every retry takes the
+    returning-customer branch instead.
+    """
+    try:
+        await prisma.user.update_many(
+            where={"id": user_id}, data={"welcomeEmailSentAt": None}
+        )
+    except Exception:
+        logger.warning(
+            "Could not release the welcome claim for user %s; they will not be "
+            "greeted on a retry",
+            user_id,
+            exc_info=True,
+        )
+
+
+# The volume-knob choices a Briefing footer can carry.
+FOOTER_CHOICES = frozenset({"daily", "weekly", "monthly", "alerts", "off"})
+
+
+def generate_preference_link(user_id: str, choice: str) -> str:
+    """A footer link that changes one setting in one click.
+
+    The choice is bound to the recipient by an HMAC, for the same reason the
+    unsubscribe link is: the settings page applies it on arrival, so a bare
+    `?f=off` would let any third party change an authenticated reader's
+    preferences simply by getting them to follow a link. Signing it means only
+    a link we generated, for that person, for that choice, is honoured.
+    """
+    if choice not in FOOTER_CHOICES:
+        raise ValueError(f"Unknown footer choice: {choice}")
+    token = _sign_preference_choice(user_id, choice)
+    base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+    return f"{base_url}/settings/account?f={choice}&t={quote_plus(token)}"
+
+
+def verify_preference_token(token: str, choice: str) -> str | None:
+    """The user id this token authorises for this choice, or None.
+
+    Returns None rather than raising: a bad token means the link is ignored and
+    the page loads normally, which is the right outcome for a stale forward or
+    a tampered URL.
+    """
+    try:
+        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
+        user_id, received = decoded.rsplit(":", 1)
+    except Exception:
+        return None
+    expected = _sign_preference_choice(user_id, choice)
+    try:
+        expected_sig = (
+            base64.urlsafe_b64decode(expected).decode("utf-8").rsplit(":", 1)[1]
+        )
+    except Exception:
+        return None
+    if not hmac.compare_digest(expected_sig, received):
+        return None
+    return user_id
+
+
+def _sign_preference_choice(user_id: str, choice: str) -> str:
+    secret_key = settings.secrets.unsubscribe_secret_key
+    # The choice is inside the signed payload, so a token minted for "daily"
+    # cannot be replayed as "off".
+    signature = hmac.new(
+        secret_key.encode("utf-8"),
+        f"{user_id}:{choice}".encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(
+        f"{user_id}:{signature.hex()}".encode("utf-8")
+    ).decode("utf-8")

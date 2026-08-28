@@ -6,7 +6,7 @@ import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import { getLatestAssistantStatusMessage } from "./helpers";
+import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
@@ -128,6 +128,7 @@ export function useCopilotPage() {
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,
@@ -176,6 +177,7 @@ export function useCopilotPage() {
     userId: user?.id ?? null,
     sessionId,
     hydratedMessages,
+    activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,
     copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
