@@ -93,11 +93,11 @@ RECOMBINE_MAX_TOKENS = 16384
 SANITIZE_MAX_TOKENS = 16384
 
 # Per-phase LLM wall-clock ceilings, passed through structured_completion
-# → call_provider. The shared DEFAULT_REQUEST_TIMEOUT_SECONDS (120s) is
-# sized for short chat completions; recombine/sanitize carry 16384-token
-# output budgets precisely because real responses exceed 8192 tokens, and
-# at real decode speeds (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K
-# response takes 150-400s — the 120s wall killed exactly the responses
+# → call_provider. These exist because a single shared default can't fit
+# every phase: recombine/sanitize carry 16384-token output budgets precisely
+# because real responses exceed 8192 tokens, and at real decode speeds
+# (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K response takes 150-400s
+# — the old 120s shared default killed exactly the responses
 # the token-cap raise above was meant to save.
 #
 # A conservative ~20 tok/s decode floor would ask for max_output_tokens/20

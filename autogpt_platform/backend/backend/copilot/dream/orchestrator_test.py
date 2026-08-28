@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
-from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
@@ -452,16 +451,29 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     ]
 
 
+# The 120s the shared default used to be hardcoded to. Pinned as a literal
+# rather than imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS` — that default
+# is now a config setting sized for generic block calls, independent of this
+# budget, and no longer a stand-in for "the value that truncated recombine".
+_HISTORICAL_TRUNCATING_TIMEOUT_SECONDS = 120
+
+
 def test_long_output_phase_timeouts_exceed_the_shared_request_default():
-    """Regression pin: every phase used to run on the shared 120s
-    ``DEFAULT_REQUEST_TIMEOUT_SECONDS``, which cannot decode the 16384
-    output tokens recombine/sanitize are budgeted for. If these ever
-    drop back to (or below) the default, the token-cap raise becomes
-    dead letter again."""
-    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
-    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
+    """Regression pin: every phase used to run on the shared 120s default,
+    which cannot decode the 16384 output tokens recombine/sanitize are
+    budgeted for. If these ever drop back to (or below) that, the
+    token-cap raise becomes dead letter again."""
     assert (
-        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= DEFAULT_REQUEST_TIMEOUT_SECONDS
+        orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
+        > _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
+    )
+    assert (
+        orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
+        > _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
+    )
+    assert (
+        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
+        >= _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
     )
 
 
