@@ -110,12 +110,6 @@ vi.mock("../components/ChatMessagesContainer/components/CopyButton", () => ({
   CopyButton: () => null,
 }));
 vi.mock(
-  "../components/ChatMessagesContainer/components/CollapsedToolGroup",
-  () => ({
-    CollapsedToolGroup: () => null,
-  }),
-);
-vi.mock(
   "../components/ChatMessagesContainer/components/MessageAttachments",
   () => ({
     MessageAttachments: () => null,
@@ -131,26 +125,16 @@ vi.mock("../components/ChatMessagesContainer/components/QueueBadge", () => ({
   QueueBadge: () => null,
 }));
 vi.mock(
-  "../components/ChatMessagesContainer/components/ReasoningGroup",
-  () => ({
-    ReasoningGroup: () => null,
-  }),
-);
-vi.mock(
   "../components/ChatMessagesContainer/components/ThinkingIndicator",
   () => ({
     ThinkingIndicator: () => null,
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  buildRenderSegments: () => [],
+  getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: () => ({ markerType: null }),
-  shouldShowTaskListNotice: () => false,
-  splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoning: [],
-    response: parts,
-  }),
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -729,7 +713,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(expertDetailRequests).toBe(0);
   });
 
-  it("renders no expert header or identity for plain sessions", () => {
+  it("wears the Autopilot identity on plain sessions", () => {
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -739,7 +723,9 @@ describe("ChatMessagesContainer — expert identity", () => {
       />,
     );
 
-    expect(screen.queryByTestId("expert-thread-header")).toBeNull();
+    const header = screen.getByTestId("expert-thread-header");
+    expect(header.textContent).toContain("Autopilot");
+    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 });

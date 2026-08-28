@@ -5,6 +5,7 @@ const postV1GetOrCreateUserMock = vi.fn();
 const getOnboardingStatusMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const scheduleAccountCreatedGoalMock = vi.fn();
+const cookieSetMock = vi.fn();
 
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: () => getServerSessionMock(),
@@ -27,6 +28,11 @@ vi.mock("@/services/analytics/datafast-server", async (importOriginal) => ({
 
 vi.mock("@/app/api/helpers", () => ({
   getOnboardingStatus: () => getOnboardingStatusMock(),
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: () => Promise.resolve({ set: cookieSetMock }),
+  headers: () => new Headers(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -77,6 +83,7 @@ beforeEach(() => {
   getOnboardingStatusMock.mockReset();
   revalidatePathMock.mockReset();
   scheduleAccountCreatedGoalMock.mockReset();
+  cookieSetMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -137,6 +144,13 @@ describe("auth callback GET — account creation tracking", () => {
     expect(response.headers.get("location")).toBe(`${origin}/copilot`);
     expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledOnce();
     expect(scheduleAccountCreatedGoalMock).toHaveBeenCalledWith("google");
+    // The browser reports the Google Ads sign-up conversion from this flag on
+    // the page it lands on.
+    expect(cookieSetMock).toHaveBeenCalledWith(
+      "agpt_account_created",
+      "google",
+      expect.objectContaining({ maxAge: 600, path: "/" }),
+    );
   });
 
   it("does not track a returning Google user", async () => {
@@ -145,6 +159,7 @@ describe("auth callback GET — account creation tracking", () => {
     await GET(makeCallbackRequest());
 
     expect(scheduleAccountCreatedGoalMock).not.toHaveBeenCalled();
+    expect(cookieSetMock).not.toHaveBeenCalled();
   });
 });
 

@@ -6,9 +6,12 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
+import { EXPERT_CHANGE_TOOLS } from "./ExpertCards";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
+import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 import { SwapText } from "./SwapText";
+import { getCatalogLabel } from "./toolCatalog";
 import { ToolResult } from "./ToolResult";
 import { ToolStatusBadge } from "./ToolStatusBadge";
 
@@ -46,30 +49,102 @@ interface Props {
   isLast: boolean;
 }
 
+const SUB_SESSION_TOOLS = new Set([
+  "run_sub_session",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "get_sub_session_result",
+]);
+
+function isLiveSubSessionRow(row: ChainRow): boolean {
+  if (!row.tool || !SUB_SESSION_TOOLS.has(row.tool)) return false;
+  // A blocking delegate has no output while the teammate works — that IS
+  // the live window, covered by the pending card built from the input.
+  // Result polls render no pending card (see ToolResult), so an outputless
+  // poll row has nothing to open.
+  if (row.output === undefined)
+    return row.state === "running" && row.tool !== "get_sub_session_result";
+  if (!row.output || typeof row.output !== "object") return false;
+  const status = (row.output as { status?: unknown }).status;
+  return (
+    typeof status === "string" &&
+    ["running", "queued"].includes(status.toLowerCase())
+  );
+}
+
 export function ChainRowView({ row, isLast }: Props) {
   const [open, setOpen] = useState(row.requiresAction === true);
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
+  // What the row needs from the user is only known once the output lands, so
+  // a live row mounts closed and flips here — the user can still collapse it.
+  useEffect(() => {
+    if (row.requiresAction) setOpen(true);
+  }, [row.requiresAction]);
   // Browser steps carry the page screenshots the artifact panel shows —
   // auto-expand them while the panel is open so the steps are visible
   // from the start.
   useEffect(() => {
     if (row.category === "browser" && artifactPanelOpen) setOpen(true);
   }, [row.category, artifactPanelOpen]);
+  // A delegated run's card is the live view of the teammate working —
+  // surface it without a click while the sub-session is still going.
+  const liveSubSession = isLiveSubSessionRow(row) && !row.supersededSubSession;
+  useEffect(() => {
+    if (liveSubSession) setOpen(true);
+  }, [liveSubSession]);
+  // A delegate output frozen at "running" got its done-state label
+  // ("Teammate handled:") while the teammate is in fact still working —
+  // keep the running label + shimmer until the polled session goes idle.
+  const output =
+    row.output && typeof row.output === "object"
+      ? (row.output as Record<string, unknown>)
+      : null;
+  const isSubTool = !!row.tool && SUB_SESSION_TOOLS.has(row.tool);
+  const effectiveStatus = useSubSessionEffectiveStatus(
+    isSubTool && typeof output?.sub_session_id === "string"
+      ? output.sub_session_id
+      : null,
+    isSubTool && typeof output?.status === "string" ? output.status : null,
+  );
+  // "unknown" means the poll died, not that the teammate finished — the row
+  // only has a running label and a done label, and claiming a result landed
+  // is the worse of the two guesses. It also keeps this row consistent with
+  // the card below it, whose poll caps on its own mount clock.
+  const stillWorking =
+    isSubTool &&
+    row.state === "done" &&
+    ["running", "queued", "unknown"].includes(
+      effectiveStatus?.toLowerCase() ?? "",
+    );
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
+  // An expert being hired/raised has no output until it lands — the skeleton
+  // card stands in for it, so the row has something to show while running.
+  const pendingExpertChange =
+    !!row.tool &&
+    EXPERT_CHANGE_TOOLS.has(row.tool) &&
+    row.output === undefined &&
+    row.state === "running";
   const hasContent = isReasoning
     ? !!row.reasoningText
-    : row.output !== undefined;
-  // Action-required cards (credential setup, review, login) must stay on
-  // screen until resolved — the row cannot be collapsed.
-  const forcedOpen = row.requiresAction === true && hasContent;
-  const showContent = liveReasoning || forcedOpen || (open && hasContent);
+    : !row.supersededSubSession &&
+      ((row.output !== undefined && row.output !== "") ||
+        liveSubSession ||
+        pendingExpertChange);
+  useEffect(() => {
+    if (pendingExpertChange) setOpen(true);
+  }, [pendingExpertChange]);
+  const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
-      text={row.text}
-      shimmer={row.state === "running"}
+      text={
+        stillWorking && row.tool
+          ? (getCatalogLabel(row.tool, row.input, "running")?.text ?? row.text)
+          : row.text
+      }
+      shimmer={row.state === "running" || stillWorking}
       className={cn(
         "max-w-full text-sm transition-colors duration-300",
         row.state === "error" ? "text-red-500" : "text-zinc-600",
@@ -99,7 +174,7 @@ export function ChainRowView({ row, isLast }: Props) {
         )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
-        {hasContent && !forcedOpen ? (
+        {hasContent ? (
           <button
             type="button"
             onClick={() => setOpen(!open)}
@@ -129,7 +204,7 @@ export function ChainRowView({ row, isLast }: Props) {
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={showContent ? undefined : ("" as unknown as boolean)}
+            inert={!showContent ? ("" as unknown as boolean) : undefined}
             className="min-h-0 overflow-hidden"
           >
             <div

@@ -351,16 +351,16 @@ describe("TeamPage", () => {
   test("shows weekly spend as a progress bar on the expert card", async () => {
     const budgetMaria: Expert = {
       ...hiredMaria,
-      weekly_budget: 50,
-      weekly_spend: 12,
+      weekly_budget: 5000,
+      weekly_spend: 1200,
     };
     server.use(getListExpertsMockHandler([budgetMaria]));
 
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText("Credits this week")).toBeDefined();
-    expect(screen.getByText("12 / 50")).toBeDefined();
+    expect(screen.getByText("Spend this week")).toBeDefined();
+    expect(screen.getByText("$12 / $50")).toBeDefined();
   });
 
   test("paused expert offers one-click resume", async () => {
@@ -1217,7 +1217,7 @@ describe("TeamPage", () => {
     expect(within(group).getByText(/nothing installed yet/i)).toBeDefined();
   });
 
-  test("lists adoptable and local-only agents under Your agents", async () => {
+  test("lists adoptable and local-only agents under Your workflows", async () => {
     const user = userEvent.setup();
     server.use(
       getListExpertsMockHandler([hiredMaria]),
@@ -1228,7 +1228,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).getByText("My Private Agent")).toBeDefined();
     expect(within(agents).getByRole("button", { name: "Adopt" })).toBeDefined();
@@ -1240,7 +1242,7 @@ describe("TeamPage", () => {
     );
   });
 
-  test("hides already-installed agents from Your agents", async () => {
+  test("hides already-installed agents from Your workflows", async () => {
     const installedAgent = makeLibraryAgent({
       id: "lib-installed",
       graph_id: "graph-1",
@@ -1256,7 +1258,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("My Private Agent")).toBeNull();
     expect(
@@ -1289,7 +1293,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-maria"));
@@ -1326,7 +1332,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
     expect(screen.queryByText(/undo anytime/i)).toBeNull();
     await user.click(
@@ -1381,7 +1389,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
@@ -1400,15 +1410,17 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByRole("region", { name: "Maria runs" });
-    await screen.findByRole("region", { name: "Your agents" });
+    await screen.findByRole("region", { name: "Your workflows" });
 
     await user.click(screen.getByRole("button", { name: "Agents" }));
     expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
-    expect(screen.getByRole("region", { name: "Your agents" })).toBeDefined();
+    expect(
+      screen.getByRole("region", { name: "Your workflows" }),
+    ).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Members" }));
     expect(screen.getByRole("region", { name: "Maria runs" })).toBeDefined();
-    expect(screen.queryByRole("region", { name: "Your agents" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Your workflows" })).toBeNull();
   });
 
   test("keeps only workflows with actual jobs when Scheduled is active", async () => {
@@ -1547,7 +1559,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() =>
@@ -1574,7 +1588,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     await user.click(within(agents).getByRole("button", { name: "Adopt" }));
 
     await waitFor(() =>
@@ -1615,7 +1631,9 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     const rows = within(agents).getAllByTestId("what-runs-agent-row");
     const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
     const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
@@ -1642,7 +1660,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     expect(
-      await screen.findByText(/could not load your agents/i),
+      await screen.findByText(/could not load your workflows/i),
     ).toBeDefined();
 
     server.use(
@@ -1652,7 +1670,9 @@ describe("TeamPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
   });
 
@@ -1677,9 +1697,11 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(
-      await within(agents).findByText("No available agents to adopt."),
+      await within(agents).findByText("No available workflows to adopt."),
     ).toBeDefined();
   });
 
@@ -1708,13 +1730,15 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("Second-page Agent")).toBeNull();
     expect(requestedPages).toEqual(["1"]);
 
     await user.click(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     );
 
     expect(await within(agents).findByText("Second-page Agent")).toBeDefined();
@@ -1738,12 +1762,14 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(
-      within(agents).queryByText("Every agent is already on your team."),
+      within(agents).queryByText("Every workflow is already on your team."),
     ).toBeNull();
     expect(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     ).toBeDefined();
   });
 
@@ -1773,14 +1799,16 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    const agents = await screen.findByRole("region", { name: "Your agents" });
+    const agents = await screen.findByRole("region", {
+      name: "Your workflows",
+    });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     await user.click(
-      within(agents).getByRole("button", { name: "Load more agents" }),
+      within(agents).getByRole("button", { name: "Load more workflows" }),
     );
 
     expect(
-      await within(agents).findByText("We could not load more agents."),
+      await within(agents).findByText("We could not load more workflows."),
     ).toBeDefined();
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
 

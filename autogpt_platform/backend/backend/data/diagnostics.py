@@ -33,8 +33,8 @@ SYSTEM_JOB_IDS = {
     "cleanup_expired_files",
     "report_late_executions",
     "report_block_error_rates",
-    "process_existing_batches",
-    "process_weekly_summary",
+    "flush_matured_alerts",
+    "send_due_briefings",
 }
 
 
