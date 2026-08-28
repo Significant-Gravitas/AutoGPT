@@ -25,13 +25,13 @@ _DEFAULT_RERANKER_MODEL = "gpt-4.1-nano"
 _DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 
 # Local-transport defaults. Mirrors dev's chat-side ``--with-ollama``
-# default (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``, per
-# ``docs/platform/copilot-local-llm.md`` — 4B params, ~3.4GB resident,
-# 256k native context, vetted for OpenAI-shim structured output). The
+# default (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``, per
+# ``docs/platform/copilot-local-llm.md`` — 9B params, ~5.8GB model file,
+# 262k native context, and OpenAI-compatible tool calling). The
 # reranker reuses the same model since the prompts are simpler than
 # extraction and pulling a second model for it would double the local
 # install's disk + RAM footprint.
-_LOCAL_LLM_MODEL = "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+_LOCAL_LLM_MODEL = "hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 _LOCAL_RERANKER_MODEL = _LOCAL_LLM_MODEL
 # Embedder defaults to Ollama's ``nomic-embed-text`` (~270MB, 768-dim
 # vectors, well-supported by the OpenAI ``/v1/embeddings`` shim).
@@ -275,10 +275,10 @@ class GraphitiConfig(BaseSettings):
         still at their cloud defaults and the operator hasn't pinned
         a ``GRAPHITI_*_MODEL`` override:
 
-        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M``
+        - ``llm_model`` (``gpt-4.1-mini``) → ``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M``
           (matches dev's chat default — one Ollama pull powers both
           surfaces; vetted for structured output / tool-calling shape).
-        - ``reranker_model`` (``gpt-4.1-nano``) → same Qwen slug.
+        - ``reranker_model`` (``gpt-4.1-nano``) → same Ornith slug.
           Reranker prompts are simpler than extraction; reusing the
           chat model avoids pulling a second model just for reranking.
         - ``embedder_model`` (``text-embedding-3-small``) →
