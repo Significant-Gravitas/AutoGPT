@@ -112,7 +112,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 63_000 for consult_teammate (T10): a bounded, tool-less
+# cross-expert check — expert_id/work/authority/question params plus its own
+# description. Merged registry measures 61260 chars; ~1.7k headroom.
+_CHAR_BUDGET = 63_000
 
 
 @pytest.fixture(scope="module")

@@ -74,14 +74,11 @@ class ConsultTeammateTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Ask a teammate to CHECK a piece of your work before it leaves "
-            "the conversation, and get back pass / block / insufficient with "
-            "the exact lines they object to. Use it before anything that "
-            "commits the user's company — money, refunds, credits, discounts, "
-            "dates, guarantees, policy. You must state the authority you are "
-            "relying on; they judge the work against that and against their "
-            "own stated limits, and see nothing else. Use delegate_to_expert "
-            "instead when you need a teammate to DO the work, not judge it."
+            "Ask a teammate to CHECK a piece of work: pass / block / "
+            "insufficient, with the offending lines quoted. Use before any "
+            "commitment (money, dates, refunds, guarantees) leaves the "
+            "conversation — state the authority it rests on. Use "
+            "delegate_to_expert when a teammate should DO the work instead."
         )
 
     @property
@@ -91,35 +88,23 @@ class ConsultTeammateTool(BaseTool):
             "properties": {
                 "expert_id": {
                     "type": "string",
-                    "description": (
-                        "Teammate to ask: their expert id from "
-                        "<team_context>, or their exact name. Not you."
-                    ),
+                    "description": "Teammate to ask: expert id from <team_context>, or name. Not you.",
                 },
                 "work": {
                     "type": "string",
-                    "description": (
-                        "The work to be checked, verbatim and complete — the "
-                        "draft as it would actually be sent."
-                    ),
+                    "description": "The work to check, verbatim.",
                 },
                 "authority": {
                     "type": "string",
                     "description": (
-                        "Every commitment the work makes, and what each one "
-                        "rests on: what the user explicitly approved, what is "
-                        "already done, what a system confirmed. Quote the "
-                        "user where you can. Write 'none' if the work commits "
-                        "to nothing — do not invent authority you do not have."
+                        "What each commitment rests on — user approval, "
+                        "done work, a system confirmation. 'none' if it "
+                        "commits to nothing."
                     ),
                 },
                 "question": {
                     "type": "string",
-                    "description": (
-                        "Optional extra thing to rule on, phrased so that "
-                        '"yes" means there is a problem. The commitment check '
-                        "runs either way."
-                    ),
+                    "description": "Extra thing to rule on ('yes' = a problem). The commitment check always runs.",
                     "default": "",
                 },
             },
