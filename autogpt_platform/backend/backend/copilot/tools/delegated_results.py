@@ -3,11 +3,13 @@
 import re
 from typing import Literal
 
+from backend.api.features.experts.models import ExpertWorkItem, ExpertWorkStatus
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.sdk.session_waiter import SessionOutcome, SessionResult
 
 from .models import (
     DelegatedArtifact,
+    DelegatedCriterionState,
     DelegatedExpertInfo,
     DelegatedExpertStatusResponse,
     WorkspaceFileInfoData,
@@ -140,6 +142,79 @@ def delegated_response_from_outcome(
         **common,
     )
     return _fit_packet(response)
+
+
+def delegated_response_from_work_item(
+    *,
+    item: ExpertWorkItem,
+    expert: DelegatedExpertInfo,
+    parent_session_id: str | None,
+) -> DelegatedExpertStatusResponse:
+    """Return the original assignment state for an idempotent retry."""
+    status = _response_status(item.status)
+    message = {
+        "queued": f"{expert.name}'s task is already queued.",
+        "running": f"{expert.name} is already working on this task.",
+        "completed": f"{expert.name} already completed this task.",
+        "incomplete": f"{expert.name} already reported that this task needs work.",
+        "error": f"{expert.name} already reported that this task failed.",
+    }[status]
+    elapsed = None
+    if item.started_at is not None:
+        ended_at = item.completed_at or item.updated_at
+        elapsed = max(0, (ended_at - item.started_at).total_seconds())
+    return _fit_packet(
+        DelegatedExpertStatusResponse(
+            message=message,
+            status=status,
+            session_id=parent_session_id,
+            sub_session_id=item.delegated_session_id,
+            sub_autopilot_session_id=item.delegated_session_id,
+            sub_autopilot_session_link=_sub_session_link(item.delegated_session_id),
+            elapsed_seconds=round(elapsed, 2) if elapsed is not None else None,
+            expert=expert,
+            deliverable_mode=item.deliverable_mode,
+            work_item_id=item.id,
+            summary=_summary_preview(item.result or "") or None,
+            criteria=[
+                DelegatedCriterionState(
+                    criterion=criterion.criterion,
+                    status=criterion.status,
+                    evidence=criterion.evidence,
+                )
+                for criterion in item.success_criteria
+            ],
+            blockers=[item.blocker] if item.blocker else [],
+            artifacts=[
+                DelegatedArtifact(
+                    name=_clip(artifact.name, _MAX_ARTIFACT_NAME_CHARS),
+                    read_path=_clip(artifact.uri, _MAX_ARTIFACT_PATH_CHARS),
+                    mime_type=_clip(
+                        artifact.mime_type or "application/octet-stream",
+                        _MAX_MIME_TYPE_CHARS,
+                    ),
+                    size_bytes=max(0, artifact.size_bytes or 0),
+                )
+                for artifact in item.artifacts[:_MAX_ARTIFACT_PREVIEW]
+            ],
+            artifact_count=len(item.artifacts),
+            tool_call_count=0,
+        )
+    )
+
+
+def _response_status(
+    status: ExpertWorkStatus,
+) -> Literal["queued", "running", "completed", "incomplete", "error"]:
+    if status == "queued":
+        return "queued"
+    if status == "running":
+        return "running"
+    if status == "delivered":
+        return "completed"
+    if status in {"partial", "blocked_manager"}:
+        return "incomplete"
+    return "error"
 
 
 def _artifact(file: WorkspaceFileInfoData) -> DelegatedArtifact:

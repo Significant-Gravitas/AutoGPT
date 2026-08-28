@@ -28,10 +28,12 @@ expert handing work back to one already waiting on it
 (:func:`expert_delegation.chain_refusal`, shared with ``handoff_to_expert``).
 """
 
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from backend.api.features.experts import work_items
 from backend.api.features.experts.models import (
@@ -40,17 +42,21 @@ from backend.api.features.experts.models import (
     ExpertWorkCriterion,
 )
 from backend.copilot.context import get_current_permissions
-from backend.copilot.model import (
-    ChatSession,
-    child_session_origin,
-    create_chat_session,
-    get_chat_session,
+from backend.copilot.delegation_attempts import (
+    DelegationPersistenceError,
+    DelegationWorkSpec,
+    persist_delegation_attempt,
 )
+from backend.copilot.model import ChatSession, child_session_origin, get_chat_session
 from backend.copilot.sdk.session_waiter import run_copilot_turn_via_queue
 from backend.data.db_accessors import experts_db
 
 from .base import BaseTool
-from .delegated_results import DeliverableMode, delegated_response_from_outcome
+from .delegated_results import (
+    DeliverableMode,
+    delegated_response_from_outcome,
+    delegated_response_from_work_item,
+)
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
@@ -257,16 +263,6 @@ class DelegateToExpertTool(BaseTool):
         if refusal is not None:
             return self._error(refusal, session)
 
-        inner_session_id = await self._resolve_session(
-            user_id=user_id,
-            session=session,
-            target=target,
-            delegated_session_id=delegated_session_id.strip(),
-            deliverable_mode=deliverable_mode,
-        )
-        if isinstance(inner_session_id, ErrorResponse):
-            return inner_session_id
-
         caller = await self._caller_name(user_id, session.expert_id)
         criteria = [
             ExpertWorkCriterion(criterion=value.strip())
@@ -275,35 +271,95 @@ class DelegateToExpertTool(BaseTool):
         ]
         artifacts = _source_artifacts(source_artifacts or [])
         timeout = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
-        work_item = await work_items.create_work_item(
+        title = _task_title(task_title, prompt)
+        expected = expected_deliverable.strip() or prompt.strip()
+        clean_dependencies = _clean_strings(dependencies)
+        clean_constraints = _clean_strings(constraints)
+        clean_boundaries = _clean_strings(approval_boundaries)
+        estimate = (
+            max(1, min(estimate_minutes, 10_080))
+            if isinstance(estimate_minutes, int)
+            else None
+        )
+        work_item_id, new_session_id = _delegation_ids(
+            manager_session_id=session.session_id,
+            expert_id=target.id,
+            delegated_session_id=delegated_session_id.strip(),
+            prompt=prompt,
+            system_context=system_context,
+            task_title=title,
+            project_phase=project_phase.strip(),
+            expected_deliverable=expected,
+            deliverable_mode=deliverable_mode,
+            success_criteria=criteria,
+            dependencies=clean_dependencies,
+            source_artifacts=artifacts,
+            constraints=clean_constraints,
+            approval_boundaries=clean_boundaries,
+            estimate_minutes=estimate,
+        )
+        inner_session = await self._resolve_session(
+            user_id=user_id,
+            session=session,
+            target=target,
+            delegated_session_id=delegated_session_id.strip(),
+            new_session_id=new_session_id,
+            deliverable_mode=deliverable_mode,
+        )
+        if isinstance(inner_session, ErrorResponse):
+            return inner_session
+        work = DelegationWorkSpec(
+            work_item_id=work_item_id,
             user_id=user_id,
             expert_id=target.id,
             manager_session_id=session.session_id,
-            delegated_session_id=inner_session_id,
+            delegated_session_id=inner_session.session_id,
             project_phase=project_phase.strip(),
-            task_title=_task_title(task_title, prompt),
-            expected_deliverable=(expected_deliverable.strip() or prompt.strip()),
+            task_title=title,
+            expected_deliverable=expected,
             deliverable_mode=deliverable_mode,
             success_criteria=criteria,
-            dependencies=_clean_strings(dependencies),
+            dependencies=clean_dependencies,
             source_artifacts=artifacts,
-            constraints=_clean_strings(constraints),
-            approval_boundaries=_clean_strings(approval_boundaries),
-            estimate_minutes=(
-                max(1, min(estimate_minutes, 10_080))
-                if isinstance(estimate_minutes, int)
-                else None
-            ),
+            constraints=clean_constraints,
+            approval_boundaries=clean_boundaries,
+            estimate_minutes=estimate,
             manager_wait_expires_at=(
                 datetime.now(timezone.utc) + timedelta(seconds=timeout)
                 if timeout > 0
                 else None
             ),
         )
+        try:
+            inner_session, work_item, created = await persist_delegation_attempt(
+                session=inner_session,
+                work=work,
+                create_session=not delegated_session_id.strip(),
+            )
+        except DelegationPersistenceError:
+            return self._persistence_error(session, retryable=False)
+        except Exception:
+            logger.warning("Could not persist delegated work", exc_info=True)
+            return self._persistence_error(session, retryable=True)
+
+        expert_info = DelegatedExpertInfo(
+            id=target.id,
+            name=target.name,
+            role=target.role,
+            avatar_url=target.avatar_url,
+            color=target.color,
+        )
+        if not created:
+            return delegated_response_from_work_item(
+                item=work_item,
+                expert=expert_info,
+                parent_session_id=session.session_id,
+            )
+
         await work_items.mark_work_started(work_item.id, user_id)
         started_at = time.monotonic()
         outcome, result = await run_copilot_turn_via_queue(
-            session_id=inner_session_id,
+            session_id=inner_session.session_id,
             user_id=user_id,
             message=_handoff_message(
                 caller,
@@ -321,26 +377,20 @@ class DelegateToExpertTool(BaseTool):
         )
         elapsed = time.monotonic() - started_at
         workspace_files = (
-            await list_sub_workspace_files(user_id, inner_session_id)
+            await list_sub_workspace_files(user_id, inner_session.session_id)
             if outcome == "completed"
             else None
         )
         response = delegated_response_from_outcome(
             outcome=outcome,
             result=result,
-            inner_session_id=inner_session_id,
+            inner_session_id=inner_session.session_id,
             parent_session_id=session.session_id,
             elapsed=elapsed,
             workspace_files=workspace_files,
             deliverable_mode=deliverable_mode,
             work_item_id=work_item.id,
-            expert=DelegatedExpertInfo(
-                id=target.id,
-                name=target.name,
-                role=target.role,
-                avatar_url=target.avatar_url,
-                color=target.color,
-            ),
+            expert=expert_info,
         )
         await _record_work_outcome(
             work_item.id,
@@ -353,6 +403,23 @@ class DelegateToExpertTool(BaseTool):
 
     def _error(self, message: str, session: ChatSession) -> ErrorResponse:
         return ErrorResponse(message=message, session_id=session.session_id)
+
+    def _persistence_error(
+        self, session: ChatSession, *, retryable: bool
+    ) -> ErrorResponse:
+        return ErrorResponse(
+            message=(
+                "The assignment could not be recorded safely. Retry once shortly."
+                if retryable
+                else "The assignment record is inconsistent. Do not retry the same "
+                "request; start a fresh task phase."
+            ),
+            details={
+                "code": "DELEGATION_PERSISTENCE_FAILED",
+                "retryable": retryable,
+            },
+            session_id=session.session_id,
+        )
 
     async def _load_delegate_target(
         self, user_id: str, target_id: str, session: ChatSession
@@ -385,8 +452,9 @@ class DelegateToExpertTool(BaseTool):
         session: ChatSession,
         target: Expert,
         delegated_session_id: str,
+        new_session_id: str,
         deliverable_mode: DeliverableMode,
-    ) -> str | ErrorResponse:
+    ) -> ChatSession | ErrorResponse:
         """Reuse a prior delegation thread with this teammate, or open one.
 
         Resuming is restricted to threads this session itself delegated, so a
@@ -394,9 +462,21 @@ class DelegateToExpertTool(BaseTool):
         guessing an id.
         """
         if not delegated_session_id:
-            new_session = await create_chat_session(
+            try:
+                organization_id, team_id = (
+                    await experts_db().resolve_private_expert_tenancy(
+                        user_id, target.id
+                    )
+                )
+            except Exception:
+                logger.warning(
+                    "Could not resolve delegated expert tenancy", exc_info=True
+                )
+                return self._persistence_error(session, retryable=True)
+            return ChatSession.new(
                 user_id,
                 dry_run=session.dry_run,
+                session_id=new_session_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=target.id,
@@ -404,8 +484,9 @@ class DelegateToExpertTool(BaseTool):
                 delegated_by_session_id=session.session_id,
                 delegated_deliverable_mode=deliverable_mode,
                 origin=child_session_origin(session.metadata),
+                organization_id=organization_id,
+                team_id=team_id,
             )
-            return new_session.session_id
 
         prior = await get_chat_session(delegated_session_id)
         if (
@@ -438,7 +519,7 @@ class DelegateToExpertTool(BaseTool):
                 "Leave delegated_session_id empty to start a fresh task.",
                 session,
             )
-        return delegated_session_id
+        return prior
 
     async def _caller_name(self, user_id: str, caller_expert_id: str | None) -> str:
         """Who to introduce the hand-off as. Plain sessions are AutoPilot."""
@@ -519,6 +600,53 @@ def _source_artifacts(values: list[dict[str, Any]]) -> list[ExpertWorkArtifact]:
         except (ValueError, TypeError):
             continue
     return artifacts
+
+
+def _delegation_ids(
+    *,
+    manager_session_id: str,
+    expert_id: str,
+    delegated_session_id: str,
+    prompt: str,
+    system_context: str,
+    task_title: str,
+    project_phase: str,
+    expected_deliverable: str,
+    deliverable_mode: DeliverableMode,
+    success_criteria: list[ExpertWorkCriterion],
+    dependencies: list[str],
+    source_artifacts: list[ExpertWorkArtifact],
+    constraints: list[str],
+    approval_boundaries: list[str],
+    estimate_minutes: int | None,
+) -> tuple[str, str]:
+    assignment = json.dumps(
+        {
+            "manager_session_id": manager_session_id,
+            "expert_id": expert_id,
+            "delegated_session_id": delegated_session_id,
+            "prompt": prompt.strip(),
+            "system_context": system_context.strip(),
+            "task_title": task_title,
+            "project_phase": project_phase,
+            "expected_deliverable": expected_deliverable,
+            "deliverable_mode": deliverable_mode,
+            "success_criteria": [item.model_dump() for item in success_criteria],
+            "dependencies": dependencies,
+            "source_artifacts": [item.model_dump() for item in source_artifacts],
+            "constraints": constraints,
+            "approval_boundaries": approval_boundaries,
+            "estimate_minutes": estimate_minutes,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    work_item_id = str(uuid5(NAMESPACE_URL, f"expert-work:{assignment}"))
+    session_id = delegated_session_id or str(
+        uuid5(NAMESPACE_URL, f"expert-session:{work_item_id}")
+    )
+    return work_item_id, session_id
 
 
 def _lines(values) -> str:

@@ -9,10 +9,12 @@ sub is created in, and who may poll it afterwards.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.api.features.experts.models import ExpertWorkItem
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
@@ -26,24 +28,24 @@ from .models import ErrorResponse, SubSessionStatusResponse
 def mock_work_items(monkeypatch):
     created: list[MagicMock] = []
 
-    async def create_work_item(**kwargs):
+    async def persist_delegation_attempt(*, session, work, create_session):
         item = MagicMock()
         item.id = f"work-{len(created) + 1}"
-        item.project_phase = kwargs["project_phase"]
-        item.task_title = kwargs["task_title"]
-        item.expected_deliverable = kwargs["expected_deliverable"]
-        item.success_criteria = kwargs["success_criteria"]
-        item.dependencies = kwargs["dependencies"]
-        item.source_artifacts = kwargs["source_artifacts"]
-        item.constraints = kwargs["constraints"]
-        item.approval_boundaries = kwargs["approval_boundaries"]
-        item.estimate_minutes = kwargs["estimate_minutes"]
+        item.project_phase = work.project_phase
+        item.task_title = work.task_title
+        item.expected_deliverable = work.expected_deliverable
+        item.success_criteria = work.success_criteria
+        item.dependencies = work.dependencies
+        item.source_artifacts = work.source_artifacts
+        item.constraints = work.constraints
+        item.approval_boundaries = work.approval_boundaries
+        item.estimate_minutes = work.estimate_minutes
         created.append(item)
-        return item
+        return session, item, True
 
     monkeypatch.setattr(
-        "backend.copilot.tools.delegate_to_expert.work_items.create_work_item",
-        create_work_item,
+        "backend.copilot.tools.delegate_to_expert.persist_delegation_attempt",
+        persist_delegation_attempt,
     )
     monkeypatch.setattr(
         "backend.copilot.tools.delegate_to_expert.work_items.mark_work_started",
@@ -114,6 +116,7 @@ def roster(monkeypatch):
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
+    db.resolve_private_expert_tenancy = AsyncMock(return_value=("org-1", None))
     for module in (
         "delegate_to_expert",
         "get_sub_session_result",
@@ -143,9 +146,15 @@ def mock_sessions(monkeypatch):
     """Fake session CRUD shared by the delegate tool and the poll tool."""
     created: list[MagicMock] = []
 
-    async def fake_create(user_id, **kwargs):
-        sess = _session(user_id, f"inner-{len(created) + 1}", kwargs.get("expert_id"))
+    def fake_new(user_id, **kwargs):
+        sess = _session(
+            user_id,
+            f"inner-{len(created) + 1}",
+            kwargs.get("expert_id"),
+        )
         sess.dry_run = kwargs.get("dry_run", False)
+        sess.organization_id = kwargs.get("organization_id")
+        sess.team_id = kwargs.get("team_id")
         sess.metadata.delegated_by_expert_id = kwargs.get("delegated_by_expert_id")
         sess.metadata.delegated_by_session_id = kwargs.get("delegated_by_session_id")
         sess.metadata.delegated_deliverable_mode = kwargs.get(
@@ -165,7 +174,8 @@ def mock_sessions(monkeypatch):
         return next((s for s in created if s.session_id == session_id), None)
 
     monkeypatch.setattr(
-        "backend.copilot.tools.delegate_to_expert.create_chat_session", fake_create
+        "backend.copilot.tools.delegate_to_expert.ChatSession.new",
+        staticmethod(fake_new),
     )
     monkeypatch.setattr(
         "backend.copilot.tools.delegate_to_expert.get_chat_session", fake_get
@@ -175,6 +185,10 @@ def mock_sessions(monkeypatch):
     )
     monkeypatch.setattr(
         "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+        AsyncMock(return_value=None),
     )
     return created
 
@@ -405,6 +419,87 @@ class TestValidation:
 
 
 class TestDelegation:
+    @pytest.mark.asyncio
+    async def test_idempotent_retry_does_not_enqueue_duplicate_work(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        now = datetime.now(timezone.utc)
+
+        async def existing_attempt(*, session, work, create_session):
+            item = ExpertWorkItem(
+                id=work.work_item_id,
+                expert_id=work.expert_id,
+                manager_session_id=work.manager_session_id,
+                delegated_session_id=session.session_id,
+                project_phase=work.project_phase,
+                task_title=work.task_title,
+                expected_deliverable=work.expected_deliverable,
+                deliverable_mode=work.deliverable_mode,
+                success_criteria=work.success_criteria,
+                dependencies=work.dependencies,
+                source_artifacts=work.source_artifacts,
+                constraints=work.constraints,
+                approval_boundaries=work.approval_boundaries,
+                estimate_minutes=work.estimate_minutes,
+                progress=25,
+                status="running",
+                result=None,
+                blocker=None,
+                confidence="unknown",
+                artifacts=[],
+                created_at=now,
+                updated_at=now,
+                started_at=now,
+                completed_at=None,
+                link="/copilot",
+            )
+            return session, item, False
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.persist_delegation_attempt",
+            existing_attempt,
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="research the market",
+            wait_for_result=0,
+        )
+
+        assert response.status == "running"
+        assert response.work_item_id is not None
+        mock_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_persistence_failure_returns_typed_safe_error(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        async def fail_persistence(**kwargs):
+            raise RuntimeError("database URL and raw table details")
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.persist_delegation_attempt",
+            fail_persistence,
+        )
+
+        response = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id=None),
+            expert_id="expert-b",
+            prompt="research the market",
+            wait_for_result=0,
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.details == {
+            "code": "DELEGATION_PERSISTENCE_FAILED",
+            "retryable": True,
+        }
+        assert "database URL" not in response.model_dump_json()
+        mock_turn.assert_not_awaited()
+
     @pytest.mark.asyncio
     async def test_completed_result_is_bounded_and_omits_tool_transcript(
         self, roster, mock_turn, mock_sessions, monkeypatch

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sentry_sdk
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -322,30 +323,15 @@ async def create_chat_session(
     requested_expert_id = expert_id
     if requested_expert_id:
         async with db.transaction() as tx:
-            expert_id = await resolve_attributable_expert(
+            return await create_chat_session_in_transaction(
                 tx,
+                session_id,
                 user_id,
-                requested_expert_id,
-                lock_for_update=True,
+                organization_id=organization_id,
+                team_id=team_id,
+                metadata=metadata,
+                expert_id=requested_expert_id,
             )
-            if expert_id is None:
-                # Fail closed: the expert vanished (archived/deleted/shared)
-                # between the caller's tenancy pre-check and this locked
-                # re-check. Creating an unattributed session would silently
-                # land the chat in AutoPilot memory scope — the opposite of
-                # what the caller asked for.
-                raise ExpertNotFoundError(requested_expert_id)
-            prisma_session = await PrismaChatSession.prisma(tx).create(
-                data=_chat_session_create_input(
-                    session_id=session_id,
-                    user_id=user_id,
-                    organization_id=organization_id,
-                    team_id=team_id,
-                    metadata=metadata,
-                    expert_id=expert_id,
-                )
-            )
-        return ChatSessionInfo.from_db(prisma_session)
 
     prisma_session = await PrismaChatSession.prisma().create(
         data=_chat_session_create_input(
@@ -355,6 +341,38 @@ async def create_chat_session(
             team_id=team_id,
             metadata=metadata,
             expert_id=None,
+        )
+    )
+    return ChatSessionInfo.from_db(prisma_session)
+
+
+async def create_chat_session_in_transaction(
+    tx: Prisma,
+    session_id: str,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
+    expert_id: str,
+) -> ChatSessionInfo:
+    """Create an expert session inside a caller-owned transaction."""
+    attributable_expert_id = await resolve_attributable_expert(
+        tx,
+        user_id,
+        expert_id,
+        lock_for_update=True,
+    )
+    if attributable_expert_id is None:
+        raise ExpertNotFoundError(expert_id)
+    prisma_session = await PrismaChatSession.prisma(tx).create(
+        data=_chat_session_create_input(
+            session_id=session_id,
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            metadata=metadata,
+            expert_id=attributable_expert_id,
         )
     )
     return ChatSessionInfo.from_db(prisma_session)

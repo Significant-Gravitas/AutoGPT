@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import prisma.enums
 import prisma.models
+from prisma import Prisma
 from pydantic import TypeAdapter
 
 from backend.api.features.experts.models import (
@@ -58,10 +59,12 @@ async def create_work_item(
     approval_boundaries: list[str],
     estimate_minutes: int | None,
     manager_wait_expires_at: datetime | None,
+    work_item_id: str | None = None,
+    client: Prisma | None = None,
 ) -> ExpertWorkItem:
-    row = await prisma.models.ExpertWorkItem.prisma().create(
+    row = await prisma.models.ExpertWorkItem.prisma(client).create(
         data={
-            "id": str(uuid4()),
+            "id": work_item_id or str(uuid4()),
             "ownerUserId": user_id,
             "expertId": expert_id,
             "managerSessionId": manager_session_id,
