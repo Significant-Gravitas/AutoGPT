@@ -1005,8 +1005,23 @@ class TestSystemPromptPreset:
         assert isinstance(fresh, dict)
         assert fresh.get("exclude_dynamic_sections") is True
 
-    def test_default_config_is_enabled(self, _clean_config_env):
-        """The default value for claude_agent_cross_user_prompt_cache is True."""
+    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
+        """The default config passes only AutoGPT's Copilot system prompt."""
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -1017,20 +1032,6 @@ class TestSystemPromptPreset:
             aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
-
-    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
 class TestStreamErrorCodePrefix:
