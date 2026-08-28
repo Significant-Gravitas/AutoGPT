@@ -10,6 +10,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { act } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +88,23 @@ function openFilesCard() {
       lastArtifact: null,
     },
   });
+}
+
+function closeFilesCard() {
+  useCopilotUIStore.setState({
+    artifactPanel: {
+      isOpen: false,
+      activeArtifact: null,
+      history: [],
+      activeTab: "files",
+      lastArtifact: null,
+    },
+  });
+}
+
+// Long enough for a mounted list query to reach the MSW handler.
+function flushRequests() {
+  return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
 function activityMessages(): UIMessage[] {
@@ -184,6 +202,25 @@ describe("WorkspaceFileCards", () => {
     });
     const { container } = render(<WorkspaceFileCards sessionId={SESSION} />);
     expect(container.textContent).toBe("");
+  });
+
+  it("requests the file list only while the card is open", async () => {
+    let listRequests = 0;
+    server.use(
+      getListWorkspaceFilesMockHandler200(() => {
+        listRequests += 1;
+        return listResponse();
+      }),
+    );
+    closeFilesCard();
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+    await flushRequests();
+    expect(listRequests).toBe(0);
+
+    act(() => openFilesCard());
+
+    expect(await screen.findByText("uploaded.png")).toBeDefined();
+    expect(listRequests).toBeGreaterThan(0);
   });
 
   it("opens a file as an artifact preview on click", async () => {

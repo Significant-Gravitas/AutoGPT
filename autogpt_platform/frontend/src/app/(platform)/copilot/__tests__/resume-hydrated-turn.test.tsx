@@ -35,17 +35,12 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
 }));
 
-// The hydrated-tail trim in `resumeStreamFromStart` only runs under the new
-// tool UI, so this suite must opt that flag in (every other flag stays off).
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
       typeof import("@/services/feature-flags/use-get-flag")
     >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.NEW_TOOL_UI,
-  };
+  return { ...actual, useGetFlag: () => false };
 });
 
 const EARLIER_PROMPT = "What is on my calendar";

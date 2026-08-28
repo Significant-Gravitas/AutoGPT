@@ -66,8 +66,9 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "platform"; credentialId: null }
   | { authProvider: "codex"; credentialId: string };
 
-/** Context panel tab. */
-export type ContextPanelTab = "progress" | "files" | "artifacts";
+/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
+ *  the docked artifacts library. */
+export type ContextPanelTab = "files" | "artifacts";
 
 const isClient = typeof window !== "undefined";
 
@@ -79,7 +80,9 @@ function getPersistedOpen(): boolean {
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
-  return saved === "progress" || saved === "artifacts" ? saved : "files";
+  // Anything else (including a "progress" tab persisted by the retired
+  // sidebar) falls back to the files card.
+  return saved === "artifacts" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -187,7 +190,6 @@ interface CopilotUIState {
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
-  setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
@@ -195,7 +197,6 @@ interface CopilotUIState {
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
-  openContextPanelForProgress: () => void;
   autoOpenArtifact: (ref: ArtifactRef) => void;
   showFilesTab: () => void;
 
@@ -405,19 +406,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  setActiveTab: (tab) =>
-    set((state) => {
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
-      return {
-        // Selecting a tab returns to the tabs view (drops any open preview).
-        artifactPanel: {
-          ...state.artifactPanel,
-          activeTab: tab,
-          activeArtifact: null,
-          history: [],
-        },
-      };
-    }),
   toggleContextPanel: () =>
     set((state) => {
       const nextOpen = !state.artifactPanel.isOpen;
@@ -482,22 +470,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
     }));
   },
-  openContextPanelForProgress: () => {
-    if (_autoOpenUserClosed) return;
-    if (isClient) {
-      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
-    }
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeTab: "progress",
-        activeArtifact: null,
-        history: [],
-      },
-    }));
-  },
 
   // Auto-open path for sessions that already have generated files: surfaces the
   // last generated file directly in the Artifact panel. Respects the user's
@@ -514,8 +486,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
     }));
   },
-  // Explicit user action (Artifact panel folder button): always opens the
-  // Context panel on the Files tab, dropping any open artifact preview.
+  // Explicit user action (the artifact panel's files button): drops the open
+  // preview and hands the region to the floating files card.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");

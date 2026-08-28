@@ -5,7 +5,6 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
@@ -105,7 +104,6 @@ export function CredentialsFlatView({
   onAddCredential,
   onDeleteCredential,
 }: Props) {
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
   const hasCredentials = credentials.length > 0;
   // Ayrshare has no user-settable credential — provisioning runs on the
   // server after the user clicks the Connect Social Media Accounts
@@ -119,39 +117,20 @@ export function CredentialsFlatView({
     <>
       {showTitle && (
         <div className="mb-2 flex items-center gap-2">
-          {isNewToolUI ? (
-            <Text variant="small" className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-zinc-600">
-                {displayName} credentials
-                {isOptional && (
-                  <span className="font-normal text-gray-500">(optional)</span>
-                )}
-                {!isOptional && !selectedCredential && (
-                  <span className="inline-flex items-center gap-1 text-red-600">
-                    <ExclamationTriangleIcon className="size-3.5" />
-                    <span className="font-normal">required</span>
-                  </span>
-                )}
-              </span>
-            </Text>
-          ) : (
-            <Text variant="large-medium" className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1">
-                {displayName} credentials
-                {isOptional && (
-                  <span className="text-sm font-normal text-gray-500">
-                    (optional)
-                  </span>
-                )}
-                {!isOptional && !selectedCredential && (
-                  <span className="inline-flex items-center gap-1 text-red-600">
-                    <ExclamationTriangleIcon className="size-4" />
-                    <span className="text-sm font-normal">required</span>
-                  </span>
-                )}
-              </span>
-            </Text>
-          )}
+          <Text variant="small" className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-zinc-600">
+              {displayName} credentials
+              {isOptional && (
+                <span className="font-normal text-gray-500">(optional)</span>
+              )}
+              {!isOptional && !selectedCredential && (
+                <span className="inline-flex items-center gap-1 text-red-600">
+                  <ExclamationTriangleIcon className="size-3.5" />
+                  <span className="font-normal">required</span>
+                </span>
+              )}
+            </span>
+          </Text>
           {schema.description && (
             <InformationTooltip description={schema.description} />
           )}
@@ -209,24 +188,12 @@ export function CredentialsFlatView({
           {showAyrshareConnect && <AyrshareConnectButton className="mt-2" />}
         </>
       ) : showAddAction ? (
-        isNewToolUI ? (
-          <ProviderConnectRow
-            provider={provider}
-            displayName={displayName}
-            actionButtonText={actionButtonText}
-            onAddCredential={onAddCredential}
-          />
-        ) : (
-          <Button
-            variant="primary"
-            size="small"
-            onClick={onAddCredential}
-            className="w-fit"
-            type="button"
-          >
-            {actionButtonText}
-          </Button>
-        )
+        <ProviderConnectRow
+          provider={provider}
+          displayName={displayName}
+          actionButtonText={actionButtonText}
+          onAddCredential={onAddCredential}
+        />
       ) : showAyrshareConnect ? (
         <AyrshareConnectButton className="mt-2" />
       ) : null}

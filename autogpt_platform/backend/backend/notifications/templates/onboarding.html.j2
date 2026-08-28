@@ -1,0 +1,107 @@
+{#- ============================================================
+    onboarding.html.j2 — the 6-email "White Glove Tour"
+    (John Ababseh's MailerLite sequence, re-skinned to the unified
+    design system). One template; `part` (1–6) selects the email.
+    Context: user_name, user_email, part, of, day, urls
+    Sent from MailerLite · marketing footer · signed by John.
+    ============================================================ -#}
+{%- import "_lifecycle_ui.j2" as ui with context -%}
+<!doctype html>
+<html lang="en">
+<head>
+{{ ui.head_block(subject) }}
+</head>
+<body style="margin:0; padding:0; background-color:#eceaf6; -webkit-text-size-adjust:100%; font-family:'Poppins',Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{%- set TOUR_HEROES = {1: 'tour_firstwin', 2: 'tour_fiveways', 3: 'tour_workspace',
+                       4: 'tour_listening', 5: 'tour_shipping', 6: 'tour_directline'} -%}
+{{ ui.hero(TOUR_HEROES[part]) }}
+    <tr><td bgcolor="#ffffff" style="border-radius:0 0 16px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{%- if part == 1 %}
+{% call ui.eyebrow(color='#5635b2') %}PART 1 OF {{ of }} · GETTING STARTED{% endcall %}
+{% call ui.headline() %}Welcome — let's get you your first win{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — welcome aboard, and thank you for subscribing. You now have the full platform, and over the next two weeks I'll send you a short tour: one email at a time, each with something real you can do in a couple of minutes.{% endcall %}
+{% call ui.para() %}I'm John, and I work on product here. You can reply to any of these emails and it comes straight to me — that's not a support queue, it's my inbox.{% endcall %}
+{% call ui.para(top=22) %}<strong style="color:#070629;">Your first win, in 2 minutes:</strong>{% endcall %}
+{{ ui.steps([
+    ('Open AutoPilot.', "It's the first thing you see when you log in."),
+    ('Describe a task in plain language.', 'Try: "Research the top 5 competitors in my space and summarize their pricing."'),
+    ('Watch it work.', 'AutoPilot figures out the steps, runs them, and delivers the result — while you do something else.'),
+]) }}
+{{ ui.cta('Open AutoPilot', urls.dashboard) }}
+{{ ui.media_link('A quick welcome from our founder', '90 seconds on why we built this — and what we hope you do with it.', urls.founder_video) }}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: the five workflows our users run most — steal them.{% endcall %}
+{%- elif part == 2 %}
+{% call ui.eyebrow(color='#5635b2') %}PART 2 OF {{ of }} · FIRST WORKFLOWS{% endcall %}
+{% call ui.headline() %}5 tasks you can hand to AutoPilot today{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — the best way to get value out of AutoGPT isn't to explore menus. It's to hand it something from your actual to-do list. Here are five workflows that ran start-to-finish in our demo, with zero hand-holding:{% endcall %}
+{{ ui.emoji_cards([
+    ('🖥', 'Engineering & bug triage', 'Connected to Sentry, ranked bugs by impact, pushed sprint actions to Linear, and notified the team on Discord.'),
+    ('📦', 'End-to-end marketing', 'Pulled release notes from GitHub, wrote a changelog email in our brand voice, and built it in send-ready HTML.'),
+    ('📈', 'Strategy & competitive intel', 'Analyzed 13 competitors, built a SWOT with threat scores, and delivered an interactive strategy report.'),
+    ('🔍', 'Talent sourcing & outreach', 'Took a job description, sourced and scored candidates, and wrote personalized outreach — ready to send.'),
+    ('🎯', 'Sales funnel & demo prep', 'Found leads matching our ICP, built curated demo agents, and wrote scripts and follow-up questions.'),
+]) }}
+{{ ui.media_link('Watch all five in 6 minutes', 'Everything in the demo ran autonomously — and these five are just what fit in six minutes.', urls.demo_video) }}
+{% call ui.para() %}Pick the one closest to your work, open AutoPilot, and describe it in your own words. That's it — no setup, no flowcharts.{% endcall %}
+{{ ui.cta('Try a workflow', urls.dashboard) }}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: a tour of your workspace — artifacts, briefings, and the builder.{% endcall %}
+{%- elif part == 3 %}
+{% call ui.eyebrow(color='#5635b2') %}PART 3 OF {{ of }} · KNOW YOUR WORKSPACE{% endcall %}
+{% call ui.headline() %}A quick tour of your workspace{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — now that you've run a task or two, here's what the rest of your workspace does for you. Three things worth knowing about, so you know them when you see them:{% endcall %}
+{{ ui.emoji_cards([
+    ('🎨', 'Artifacts, right in the conversation', 'Reports open as interactive documents, charts render live, and PDFs are readable in a side panel. No downloads, no tab-juggling.'),
+    ('📋', 'Agent briefings at a glance', "Your Home screen shows a live briefing for each agent: what it's doing, what it finished, and what's next. Scheduled agents surface their upcoming runs automatically."),
+    ('💬', 'Chat with your builder', 'Building a custom workflow? The flow builder has its own AI chat panel that knows your graph and helps you debug or extend it — without switching context.'),
+]) }}
+{{ ui.cta('Open AutoGPT', urls.dashboard) }}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: a quick personal check-in from me. No screenshots, no buttons — just a question.{% endcall %}
+{%- elif part == 4 %}
+{% call ui.eyebrow(color='#5635b2') %}PART 4 OF {{ of }} · JUST A QUESTION{% endcall %}
+{% call ui.headline() %}How's it going so far?{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — quick one from me. No screenshots, no buttons.{% endcall %}
+{% call ui.para() %}You've had AutoGPT for a week now. <strong style="color:#070629;">How's it actually going?</strong> Did something click? Did something get in your way?{% endcall %}
+{% call ui.para() %}I ask because we're a small team, we ship every week, and the roadmap is genuinely shaped by what subscribers tell us. If AutoPilot mis-handled a task, or there's a feature you keep wishing existed, I want to know about it — the unpolished version is the most useful version.{% endcall %}
+{% call ui.para() %}<strong style="color:#070629;">Just hit reply.</strong> It comes straight to me, and I read every single one.{% endcall %}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}P.S. If it's easier: here's a <a href="{{ urls.feedback_form }}" style="color:#5635b2; text-decoration:underline;">2-minute feedback form</a>, or <a href="{{ urls.booking }}" style="color:#5635b2; text-decoration:underline;">book 30 minutes with me</a> — no agenda needed.{% endcall %}
+{%- elif part == 5 %}
+{% call ui.eyebrow(color='#5635b2') %}PART 5 OF {{ of }} · ALWAYS SHIPPING{% endcall %}
+{% call ui.headline() %}We shipped while you were reading this{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — one thing subscribers tell us they didn't expect: the pace. We ship improvements every week, and everything lands in the public changelog — so you always know what's new and what your feedback turned into.{% endcall %}
+{% call ui.para(top=22) %}<strong style="color:#070629;">Shipped in the last few weeks:</strong>{% endcall %}
+{{ ui.emoji_cards([
+    ('🎨', 'Rich artifacts in a side panel', 'Reports, charts, PDFs — even playable games — open right beside the conversation.'),
+    ('📋', 'Live agent briefings', 'On your Home screen, with upcoming run times for every scheduled agent.'),
+    ('💬', 'An AI chat panel inside the flow builder', 'It knows your graph and helps you debug or extend it.'),
+    ('🔔', 'Web push notifications', 'Plus long-term memory blocks and the latest models — Claude Opus 4.7 and Grok.'),
+]) }}
+{{ ui.cta("See what's new", urls.changelog) }}
+{% call ui.para() %}The best part of shipping weekly: your feedback doesn't sit in a backlog for a year. The Give Feedback button inside the app goes to the same board we plan our sprints from.{% endcall %}
+{% call ui.para(color='#575072', size=13, lh=20, top=18) %}Next up: the last email of the tour — and the most important one.{% endcall %}
+{%- else %}
+{% call ui.eyebrow(color='#5635b2') %}PART 6 OF {{ of }} · YOU'RE IN{% endcall %}
+{% call ui.headline() %}Your direct line to the team{% endcall %}
+{% call ui.para() %}Hi {{ user_name }} — that's the end of the tour. You know your way around AutoPilot, your workspace, and everything we ship weekly. From here on we mostly stay out of your inbox: you'll hear from us when there's something genuinely new.{% endcall %}
+{% call ui.para(top=22) %}<strong style="color:#070629;">Before I go, three things worth keeping:</strong>{% endcall %}
+{{ ui.emoji_cards([
+    ('💬', 'The community', "5,000+ builders share what they're automating in our Discord. The team is in there daily — it's the fastest way to get unstuck."),
+    ('📝', 'The feedback form', "Two minutes, and it directly shapes the roadmap — what's working, what's not, what you wish existed."),
+    ('📅', 'A call with me', "If you'd rather talk it through: 30 minutes, no agenda. I'd love to hear what you're building and what you need from us."),
+]) }}
+{% call ui.para() %}We built AutoGPT to be the business partner you always needed. Thanks for giving us the chance to prove it.{% endcall %}
+{{ ui.cta('Join the Discord', urls.discord) }}
+{%- endif %}
+{{ ui.signature('John Ababseh', 'Product Manager · AutoGPT', 'john.ababseh@agpt.co') }}
+{{ ui.close_row('Email ' ~ part ~ ' of ' ~ of ~ ' in the getting-started tour · day ' ~ day ~ '.', 'Choose which emails you get', urls.prefs) }}
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.legal_footer('You received this email because you signed up on our website. This is part ' ~ part ~ ' of ' ~ of ~ ' of the getting-started tour, for ' ~ user_email ~ '.', 'Unsubscribe', urls.unsubscribe, discord=true) }}
+
+</td></tr>
+</table>
+</body></html>

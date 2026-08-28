@@ -7,6 +7,7 @@ charter — what the expert owns, what good looks like, and where they stop —
 before the user is ever asked to approve.
 """
 
+import logging
 import uuid
 from typing import Any
 
@@ -16,9 +17,11 @@ from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
     WEEKLY_BUDGET_MAX_CREDITS,
+    Expert,
     ExpertSoulFieldsPatch,
 )
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
@@ -56,6 +59,9 @@ COLOR_TOKENS = [
     "violet-300",
     "fuchsia-300",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 class _RaiseParams(BaseModel):
@@ -200,6 +206,28 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        try:
+            duplicate = await _active_expert_named(user_id, params.name)
+        except _RosterUnavailable as e:
+            # Nothing downstream enforces name uniqueness, so a roster read we
+            # could not perform must not pass for "no duplicate".
+            logger.warning(f"raise_expert duplicate-name check failed: {e}")
+            return ErrorResponse(
+                message="Could not check the team roster right now. Try again.",
+                session_id=session_id,
+            )
+        if duplicate:
+            return ErrorResponse(
+                message=(
+                    f"An active expert named {duplicate.name} already exists "
+                    f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
+                    "do not raise them again. Delegate work to them with "
+                    "delegate_to_expert, or change their charter with "
+                    "update_expert. Only propose a differently-named expert "
+                    "if the user truly wants a second, separate one."
+                ),
+                session_id=session_id,
+            )
         if error := await capacity_error(user_id, session_id, "raise"):
             return error
 
@@ -236,6 +264,31 @@ class RaiseExpertTool(BaseTool):
             preview=preview,
             confirmation_id=confirmation_id,
         )
+
+
+class _RosterUnavailable(Exception):
+    """The roster could not be read — distinct from "nobody has this name"."""
+
+
+async def _active_expert_named(user_id: str, name: str) -> Expert | None:
+    """The active expert already carrying *name*, or None.
+
+    Only the read is treated as recoverable: a bug in the matching below is
+    not a roster outage and propagates instead of being retried forever.
+    """
+    try:
+        experts = await experts_db().list_experts(user_id, with_metrics=False)
+    except Exception as e:
+        raise _RosterUnavailable(str(e)) from e
+    wanted = name.strip().casefold()
+    return next(
+        (
+            expert
+            for expert in experts
+            if not expert.is_archived and expert.name.strip().casefold() == wanted
+        ),
+        None,
+    )
 
 
 def _validation_detail(error: ValidationError) -> str:

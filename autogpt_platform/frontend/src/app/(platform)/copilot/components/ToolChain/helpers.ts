@@ -138,7 +138,12 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   return undefined;
 }
 
+// The compaction row owns its own progress bar and payoff frame — folding
+// it into a chain would bury both behind a collapsed "summarized context".
+export const COMPACTION_PART_TYPE = "tool-context_compaction";
+
 export function isChainPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE) return false;
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
@@ -309,7 +314,6 @@ export type ChainSegment =
 export function buildChainSegments(
   parts: MessagePart[],
   isChainable: (part: MessagePart) => boolean = isChainPart,
-  isStreaming = false,
 ): ChainSegment[] {
   const segments: ChainSegment[] = [];
   let chain: Extract<ChainSegment, { kind: "chain" }> | null = null;
@@ -335,16 +339,12 @@ export function buildChainSegments(
       chain.parts.push(part);
       return;
     }
-    // Fold short progress narration into the surrounding chain.  While
-    // streaming, fold optimistically so the text lands inside the chain
-    // from the first token; once settled, keep it only when another tool
-    // call follows, so the turn's final answer (even a short one) always
-    // renders as regular message text.
-    if (
-      chain &&
-      narrationText(part) !== null &&
-      (isStreaming || hasChainableAhead(index + 1))
-    ) {
+    // Fold short progress narration into the surrounding chain, but only
+    // once a later tool call proves it was narration and not the answer.
+    // Folding optimistically while streaming made every trailing answer
+    // render inside the chain and then jump out to regular message text —
+    // either when it outgrew NARRATION_MAX_CHARS or when the stream ended.
+    if (chain && narrationText(part) !== null && hasChainableAhead(index + 1)) {
       chain.parts.push(part);
       return;
     }

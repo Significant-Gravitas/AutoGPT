@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -9,6 +8,10 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { environment } from "@/services/environment";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { useOnboardingWizardStore } from "../../store";
 import {
   getSubscriptionPricingExperimentConfig,
@@ -34,7 +37,14 @@ vi.mock("@/components/atoms/AutoGPTLogo/AutoGPTLogo", () => ({
   AutoGPTLogo: () => <span>AutoGPTLogo</span>,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim, the location stub and NEXT_PUBLIC_GOOGLE_ADS_ID into every
+  // later test here.
+  restoreLocation();
+  removeGtagShim();
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   postHog.variant = undefined;
@@ -45,6 +55,28 @@ beforeEach(() => {
   // The local-bypass test below opts back into LOCAL.
   vi.spyOn(environment, "isLocal").mockReturnValue(false);
 });
+
+const originalLocation = window.location;
+
+// The success path hands off to Stripe via window.location.href; jsdom tears
+// the environment down on a real navigation, so swap in a plain object.
+function stubLocation() {
+  const location = { origin: "http://localhost", href: "http://localhost/" };
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: location,
+  });
+  return location;
+}
+
+function restoreLocation() {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    writable: true,
+    value: originalLocation,
+  });
+}
 
 describe("subscription pricing experiment helpers", () => {
   test("defaults to monthly billing with no highlighted plan (matches the paywall)", () => {
@@ -203,9 +235,61 @@ describe("SubscriptionStep", () => {
     expect(capturedTierBody!.cancel_url).toContain(
       "/onboarding?step=1&subscription=cancelled",
     );
+    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
+    // report the subscription value to Google Ads.
+    expect(capturedTierBody!.success_url).toContain(
+      "&session_id={CHECKOUT_SESSION_ID}&plan=PRO&cycle=monthly",
+    );
     // Paywall-first: no profile data exists yet, so nothing is POSTed here —
     // the Preparing step submits the profile at the end of onboarding.
     expect(profileCalled).toBe(false);
+  });
+
+  test("reports begin_checkout with the plan price to Google Ads before redirecting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: "https://checkout.stripe.com/pay/cs_test" }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(gtagCalls).toContainEqual([
+        "event",
+        "conversion",
+        { send_to: "AW-123/BC", value: 50, currency: "USD" },
+      ]);
+    });
+    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+  });
+
+  test("reports no begin_checkout when Stripe returns no Checkout URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    // The backend modified the subscription in place — no Checkout ever
+    // started, so counting it would inflate the funnel.
+    server.use(
+      http.post("*/api/credits/subscription", () =>
+        HttpResponse.json({ url: null }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().currentStep).toBeGreaterThan(
+        1,
+      );
+    });
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
   });
 
   test("switching to yearly + selecting Pro forwards billing_cycle=yearly", async () => {
