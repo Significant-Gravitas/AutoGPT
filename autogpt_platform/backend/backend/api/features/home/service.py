@@ -13,7 +13,9 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.api.features.library import db as library_db
+from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
+from backend.copilot.model import ChatSessionInfo
 from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
@@ -49,6 +51,7 @@ class HomeSourceData(BaseModel):
     cost_summary: UserExecutionCostSummary
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
     credits_balance: int | None
+    questions: list[ChatSessionInfo]
     timezone_name: str
 
 
@@ -86,6 +89,7 @@ async def build_home_dashboard(
         cost_summary=data.cost_summary,
         credits_balance=data.credits_balance,
         timezone_name=data.timezone_name,
+        questions=data.questions,
         persisted_briefing=persisted_briefing,
     )
 
@@ -167,6 +171,7 @@ async def _load_home_source_data(
     credits_task = asyncio.create_task(
         _get_credits(user_id=user_id, organization_id=organization_id)
     )
+    questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
     # otherwise leave the rest detached with their exceptions never retrieved.
@@ -177,6 +182,7 @@ async def _load_home_source_data(
         cost_summary_task,
         schedules_task,
         credits_task,
+        questions_task,
         user_task,
     ]
     await asyncio.gather(*started)
@@ -190,6 +196,7 @@ async def _load_home_source_data(
         cost_summary=cost_summary_task.result(),
         schedules=schedules_task.result(),
         credits_balance=credits_task.result(),
+        questions=questions_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
 
@@ -206,6 +213,23 @@ async def _get_schedules(
     except Exception:
         logger.warning(
             "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+
+
+async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
+    # Fail-soft like schedules and credits: a chat that was deleted or whose
+    # metadata no longer parses must cost the user one row, not the page.
+    try:
+        # Question items ship with the expert-team surface; without the flag
+        # the Home page stays exactly what it was.
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+            return []
+        return await chat_db.get_sessions_with_pending_question(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load pending questions for user %s",
+            user_id[:_LOG_ID_CHARS],
         )
         return []
 

@@ -15,6 +15,8 @@ import {
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionPricingExperiment } from "./useSubscriptionPricingExperiment";
+import { useMountEffect } from "@/hooks/useMountEffect";
+import { trackPaywallView } from "./tracking";
 
 const PLAN_TO_TIER: Record<
   Exclude<PlanKey, typeof PLAN_KEYS.TEAM | typeof PLAN_KEYS.BUSINESS>,
@@ -42,6 +44,13 @@ export function useSubscriptionStep() {
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
   const { billing, plans } = useSubscriptionPricingExperiment();
+
+  // This step only mounts once the paywall is genuinely on screen, so mount is
+  // the honest moment to report the impression — and the one moment it can't
+  // be missed, whatever the flags resolve to afterwards.
+  useMountEffect(() => {
+    trackPaywallView();
+  });
   // Local guard that flips synchronously on first click so the profile-save
   // phase (which runs before `isUpdatingTier` becomes true) can't be
   // re-entered by a fast double-click queueing duplicate POSTs.

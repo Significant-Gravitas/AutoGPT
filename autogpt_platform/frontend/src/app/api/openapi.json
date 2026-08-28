@@ -3120,6 +3120,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/user/preferences/from-email": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Apply a volume-knob choice from a Briefing footer link",
+        "description": "Apply one footer choice, authorised by the token in the link.\n\nDeliberately not `Security(requires_user)`. The session is the wrong\nauthority here: the settings page applies this on arrival, so a\nsession-authenticated write would let any third party change a logged-in\nreader's preferences just by getting them to follow a link. The HMAC binds\nthe choice to the recipient we sent it to, exactly as the unsubscribe link\ndoes, and works whether or not they happen to be signed in.",
+        "operationId": "postV1Apply a volume-knob choice from a briefing footer link",
+        "parameters": [
+          {
+            "name": "choice",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Choice" }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreference"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/user/timezone": {
       "get": {
         "tags": ["v1", "auth"],
@@ -16521,6 +16563,11 @@
         ],
         "title": "BriefingDecisionItem"
       },
+      "BriefingFrequency": {
+        "type": "string",
+        "enum": ["DAILY", "WEEKLY", "MONTHLY", "OFF"],
+        "title": "BriefingFrequency"
+      },
       "BriefingResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -16726,10 +16773,35 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
           },
+          "origin": {
+            "anyOf": [
+              { "type": "string", "enum": ["interactive", "automation"] },
+              { "type": "null" }
+            ],
+            "title": "Origin"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dream Pass Id"
+          },
+          "delegated_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Expert Id"
+          },
+          "delegated_by_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Session Id"
+          },
+          "handed_off_from_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Handed Off From Expert Id"
+          },
+          "pending_question": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingQuestion" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -16838,6 +16910,11 @@
           "example": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Example"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
           }
         },
         "type": "object",
@@ -20497,7 +20574,7 @@
           "id": { "type": "string", "title": "Id" },
           "kind": {
             "type": "string",
-            "enum": ["approval", "setup", "paused", "credits"],
+            "enum": ["approval", "setup", "paused", "credits", "question"],
             "title": "Kind"
           },
           "priority": {
@@ -22454,79 +22531,57 @@
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
           "email": { "type": "string", "format": "email", "title": "Email" },
-          "preferences": {
-            "additionalProperties": { "type": "boolean" },
-            "propertyNames": {
-              "$ref": "#/components/schemas/NotificationType"
-            },
-            "type": "object",
-            "title": "Preferences",
-            "description": "Which notifications the user wants"
+          "briefing_frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency",
+            "default": "WEEKLY"
+          },
+          "alerts_enabled": {
+            "type": "boolean",
+            "title": "Alerts Enabled",
+            "default": true
+          },
+          "store_verdicts_enabled": {
+            "type": "boolean",
+            "title": "Store Verdicts Enabled",
+            "default": true
           },
           "daily_limit": {
             "type": "integer",
             "title": "Daily Limit",
-            "default": 10
-          },
-          "emails_sent_today": {
-            "type": "integer",
-            "title": "Emails Sent Today",
-            "default": 0
-          },
-          "last_reset_date": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Last Reset Date"
+            "default": 3
           }
         },
         "type": "object",
         "required": ["user_id", "email"],
-        "title": "NotificationPreference"
+        "title": "NotificationPreference",
+        "description": "The volume knob from the Briefing footer, not a checkbox list. Billing\nand account messages are service mail and are not represented here — they\nare sent regardless of these settings."
       },
       "NotificationPreferenceDTO": {
         "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "title": "Email",
-            "description": "User's email address"
+          "email": { "type": "string", "format": "email", "title": "Email" },
+          "briefing_frequency": {
+            "$ref": "#/components/schemas/BriefingFrequency"
           },
-          "preferences": {
-            "additionalProperties": { "type": "boolean" },
-            "propertyNames": {
-              "$ref": "#/components/schemas/NotificationType"
-            },
-            "type": "object",
-            "title": "Preferences",
-            "description": "Which notifications the user wants"
+          "alerts_enabled": { "type": "boolean", "title": "Alerts Enabled" },
+          "store_verdicts_enabled": {
+            "type": "boolean",
+            "title": "Store Verdicts Enabled"
           },
           "daily_limit": {
             "type": "integer",
             "title": "Daily Limit",
-            "description": "Max emails per day"
+            "description": "Max product emails per day; 0 sends none. Account and billing messages are service mail and ignore it.",
+            "default": 3
           }
         },
         "type": "object",
-        "required": ["email", "preferences", "daily_limit"],
-        "title": "NotificationPreferenceDTO"
-      },
-      "NotificationType": {
-        "type": "string",
-        "enum": [
-          "AGENT_RUN",
-          "ZERO_BALANCE",
-          "LOW_BALANCE",
-          "BLOCK_EXECUTION_FAILED",
-          "CONTINUOUS_AGENT_ERROR",
-          "DAILY_SUMMARY",
-          "WEEKLY_SUMMARY",
-          "MONTHLY_SUMMARY",
-          "REFUND_REQUEST",
-          "REFUND_PROCESSED",
-          "AGENT_APPROVED",
-          "AGENT_REJECTED"
+        "required": [
+          "email",
+          "briefing_frequency",
+          "alerts_enabled",
+          "store_verdicts_enabled"
         ],
-        "title": "NotificationType"
+        "title": "NotificationPreferenceDTO"
       },
       "OAuth2Credentials": {
         "properties": {
@@ -23075,6 +23130,20 @@
         "required": ["open_bot_url"],
         "title": "PendingInstallInfo",
         "description": "The caller added the bot to a server but hasn't linked an account yet.\n\n``open_bot_url`` deep-links into the bot's chat on the platform, where the\nnext step (the bot's Link Account prompt) is waiting."
+      },
+      "PendingQuestion": {
+        "properties": {
+          "text": { "type": "string", "title": "Text" },
+          "asked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Asked At"
+          }
+        },
+        "type": "object",
+        "required": ["text", "asked_at"],
+        "title": "PendingQuestion",
+        "description": "The last unanswered question a session asked the user."
       },
       "PhaseUsage": {
         "properties": {
@@ -24389,7 +24458,10 @@
           "skill_loaded",
           "skill_deleted",
           "skill_list",
-          "expert_soul_updated"
+          "expert_soul_updated",
+          "expert_change_proposed",
+          "expert_change_applied",
+          "team_roster"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

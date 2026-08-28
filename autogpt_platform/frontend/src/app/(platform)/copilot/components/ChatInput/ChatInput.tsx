@@ -43,6 +43,8 @@ import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
@@ -72,6 +74,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Session id for the dev-only token badge in the tray. */
+  sessionId?: string | null;
   /** When true, the submit button is hidden until there is something to send. */
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
@@ -91,6 +95,7 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
 }: Props) {
@@ -186,13 +191,21 @@ export function ChatInput({
   } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceFiles } = partitionAttachments(attachments);
-      await onSend(
-        message,
-        localFiles.length > 0 ? localFiles : undefined,
-        workspaceFiles.length > 0 ? workspaceFiles : undefined,
-      );
-      // Only clear after successful send (onSend throws on failure)
+      // Chips clear eagerly for the same reason the text does (see
+      // useChatInput.handleSend); a failed send restores them unless the
+      // user already attached new ones in the meantime.
+      const sent = attachments;
       setAttachments([]);
+      try {
+        await onSend(
+          message,
+          localFiles.length > 0 ? localFiles : undefined,
+          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+        );
+      } catch (error) {
+        setAttachments((prev) => (prev.length > 0 ? prev : sent));
+        throw error;
+      }
     },
     disabled: isTextareaDisabled,
     canSendEmpty: hasAttachments,
@@ -259,8 +272,12 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
+  // Narrows to string, so neither render site needs to re-test sessionId.
+  const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const hasTrayItems =
-    (showModeToggle && !isStreaming) || (showDryRunToggle && !hasSession);
+    (showModeToggle && !isStreaming) ||
+    (showDryRunToggle && !hasSession) ||
+    Boolean(devtoolSessionId);
 
   const canSend =
     !disabled &&
@@ -388,6 +405,14 @@ export function ChatInput({
                 onToggle={handleToggleDryRun}
               />
             )}
+            {/* ComposerTray renders only under the brain-dump flag, so the
+                badge is duplicated here to stay reachable in both layouts. */}
+            {!isBrainDumpEnabled && devtoolSessionId && (
+              <TokenDevtoolBadge
+                sessionId={devtoolSessionId}
+                className="ml-auto"
+              />
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">
@@ -467,6 +492,12 @@ export function ChatInput({
             <DryRunToggleButton
               isDryRun={isDryRun}
               onToggle={handleToggleDryRun}
+            />
+          )}
+          {devtoolSessionId && (
+            <TokenDevtoolBadge
+              sessionId={devtoolSessionId}
+              className="ml-auto"
             />
           )}
         </ComposerTray>

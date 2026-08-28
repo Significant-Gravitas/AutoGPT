@@ -29,6 +29,7 @@ function resetStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —
@@ -230,14 +231,6 @@ describe("context panel open/close guards", () => {
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().openContextPanelForFiles();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
-    useCopilotUIStore.getState().openContextPanelForProgress();
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
-    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });
 
@@ -544,5 +537,39 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     vi.resetModules();
     const { useCopilotUIStore: fresh } = await import("../store");
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
+  });
+
+  it("falls back to the files card for a persisted tab the sidebar no longer has", async () => {
+    window.localStorage.setItem("copilot-context-panel-tab", "progress");
+    vi.resetModules();
+    const { useCopilotUIStore: fresh } = await import("../store");
+    expect(fresh.getState().artifactPanel.activeTab).toBe("files");
+  });
+});
+
+describe("lastArtifact session scoping", () => {
+  beforeEach(resetStore);
+
+  it("closeArtifactPanel remembers the preview for the in-session toggle", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact?.id).toBe(
+      "a",
+    );
+  });
+
+  it("clearLastArtifact drops the memory so a new chat cannot restore the previous chat's artifact", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().clearLastArtifact();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+
+  it("closing the artifacts tab forgets the remembered preview", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
   });
 });

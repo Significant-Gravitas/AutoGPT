@@ -46,7 +46,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
 
   return (
     <>
-      <MessageActions className="mt-1 opacity-30 transition-opacity group-hover:opacity-100">
+      <MessageActions className="mt-1">
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}

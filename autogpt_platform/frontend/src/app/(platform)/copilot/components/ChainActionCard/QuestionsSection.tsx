@@ -8,8 +8,9 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { m } from "framer-motion";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { QuestionRequest } from "./helpers";
+import { QuestionAnswerField } from "./QuestionAnswerField";
 
 interface Props {
   requests: QuestionRequest[];
@@ -22,13 +23,20 @@ interface Props {
  *  step, drafts every answer into the chat input. */
 export function QuestionsSection({ requests, isReady, onProceed }: Props) {
   const [step, setStep] = useState(0);
-  const questions = requests.flatMap((request) =>
-    request.questions.map((question) => ({ request, question })),
-  );
+  const sectionId = useId();
+  // Keyed by position, not keyword: keywords are unique only within a request,
+  // and a duplicate would collapse two questions onto one id — the field would
+  // never remount and the second question would show the first one's answer.
+  const questions = requests
+    .flatMap((request) =>
+      request.questions.map((question) => ({ request, question })),
+    )
+    .map((entry, index) => ({ ...entry, id: `${entry.request.id}-${index}` }));
   if (questions.length === 0) return null;
 
   const current = Math.min(step, questions.length - 1);
-  const { request, question } = questions[current];
+  const { request, question, id } = questions[current];
+  const labelId = `${sectionId}-${id}`;
   const answered = (request.answers[question.keyword] ?? "").trim().length > 0;
   const isLast = current === questions.length - 1;
   const actionEnabled = isLast ? isReady : answered;
@@ -60,27 +68,27 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       </div>
 
       <m.div
-        key={question.keyword}
+        key={id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
         className="flex flex-col gap-1.5 px-4 py-3"
       >
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-zinc-700">{question.question}</span>
-          <input
-            type="text"
-            required
-            autoFocus={current > 0}
-            value={request.answers[question.keyword] ?? ""}
-            onChange={(e) => request.onAnswer(question.keyword, e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAction()}
-            placeholder={
-              question.example ? `e.g. ${question.example}` : "Type your answer"
-            }
-            className="rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
-          />
-        </label>
+        <span id={labelId} className="text-sm text-zinc-700">
+          {question.question}
+        </span>
+        <QuestionAnswerField
+          // The field's typing toggle must reset per question; keying it here
+          // rather than only on the wrapper keeps that contract local to the
+          // component that owns the state.
+          key={id}
+          question={question}
+          value={request.answers[question.keyword] ?? ""}
+          labelId={labelId}
+          autoFocus={current > 0}
+          onChange={(value) => request.onAnswer(question.keyword, value)}
+          onSubmit={handleAction}
+        />
       </m.div>
 
       <div className="flex items-center justify-between px-4 pb-3 pt-1">
@@ -95,9 +103,9 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
             <Icon icon={ArrowLeft01Icon} size={14} />
           </button>
           <span className="flex items-center gap-1.5">
-            {questions.map(({ question: q }, i) => (
+            {questions.map(({ id: questionId }, i) => (
               <button
-                key={q.keyword}
+                key={questionId}
                 type="button"
                 aria-label={`Go to question ${i + 1}`}
                 aria-current={i === current ? "step" : undefined}

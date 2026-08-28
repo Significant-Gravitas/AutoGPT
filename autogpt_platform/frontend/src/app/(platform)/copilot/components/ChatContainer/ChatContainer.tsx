@@ -5,6 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -20,10 +21,16 @@ import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/Usag
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
+import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
+import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import type { ExpertIdentity } from "../../useExpertMap";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { updateHistoryBreakdown } from "../../tokenDevtool/store";
+import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import {
   getKickoffAttemptToken,
   getKickoffExpertId,
@@ -86,6 +93,9 @@ export interface ChatContainerProps {
   isAdoptingExpertSession?: boolean;
   /** True until a newly hired expert's first kickoff has been handed off. */
   isKickoffStarting?: boolean;
+  /** The layout floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports; the thread header clears them. */
+  hasFloatingControls?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -120,12 +130,13 @@ export const ChatContainer = ({
   isResolvingExpertIdentity,
   isAdoptingExpertSession,
   isKickoffStarting,
+  hasFloatingControls,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
-  // Old tool UI keeps its interactive in-transcript question card; the dock
-  // is the new-UI answering surface, so gate it to avoid double forms.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
+  // The composer and the message column only slide aside while the floating
+  // files card is shown; this host is the one that mounts the card.
+  const areFilesOpen = useAreWorkspaceFileCardsOpen();
   useAutoOpenArtifacts({
     sessionId,
     messages,
@@ -188,6 +199,18 @@ export const ChatContainer = ({
     return () => ro.disconnect();
   }, [isLimitReached]);
 
+  // Token devtool: estimate the context from loaded history so the badge
+  // shows a value before the first live turn. Guarded by breakdownCacheKey so
+  // it does not run per stream delta — serializing every part is not free.
+  const devtoolBreakdownKeyRef = useRef("");
+  useEffect(() => {
+    if (!sessionId || !isTokenDevtoolEnabled() || messages.length === 0) return;
+    const key = breakdownCacheKey(sessionId, messages, isStreaming);
+    if (key === devtoolBreakdownKeyRef.current) return;
+    devtoolBreakdownKeyRef.current = key;
+    updateHistoryBreakdown(sessionId, messages);
+  }, [sessionId, messages, isStreaming]);
+
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -223,16 +246,22 @@ export const ChatContainer = ({
 
   return (
     <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider
-        value={isNewToolUI ? getPendingQuestions(messages) : null}
-      >
+      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
         <LayoutGroup id="copilot-2-chat-layout">
           <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
             {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
             {sessionId ? (
-              <div className="flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+                {isArtifactsEnabled && (
+                  <>
+                    <div className="absolute right-0 top-0 z-30">
+                      <ContextPanelToggle sessionId={sessionId} />
+                    </div>
+                    <WorkspaceFileCards sessionId={sessionId} />
+                  </>
+                )}
                 <ChatMessagesContainer
                   messages={messages}
                   status={status}
@@ -251,6 +280,8 @@ export const ChatContainer = ({
                   queuedMessages={queuedMessages}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  hasFloatingControls={hasFloatingControls}
+                  areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (
                   <ArchivedExpertNotice
@@ -262,7 +293,10 @@ export const ChatContainer = ({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
-                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+                    className={cn(
+                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+                      areFilesOpen && "xl:-translate-x-40",
+                    )}
                   >
                     {isLimitReached && (
                       <div
@@ -306,6 +340,7 @@ export const ChatContainer = ({
                             droppedFiles={droppedFiles}
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
+                            sessionId={sessionId}
                           />
                         </div>
                       </TooltipTrigger>
