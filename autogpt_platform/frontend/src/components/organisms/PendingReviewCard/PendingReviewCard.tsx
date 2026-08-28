@@ -4,36 +4,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useEffect, useState } from "react";
 
-interface StructuredReviewPayload {
-  data: unknown;
-  instructions?: string;
-}
-
-function isStructuredReviewPayload(
-  payload: unknown,
-): payload is StructuredReviewPayload {
-  return (
-    payload !== null &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (typeof (payload as any).instructions === "string" ||
-      (payload as any).instructions === undefined)
-  );
-}
-
-function extractReviewData(payload: unknown): {
-  data: unknown;
-  instructions?: string;
-} {
-  if (isStructuredReviewPayload(payload)) {
-    return {
-      data: payload.data,
-      instructions: payload.instructions,
-    };
-  }
-
-  return { data: payload };
-}
+type ReviewPayload = PendingHumanReviewModel["payload"];
 
 interface PendingReviewCardProps {
   review: PendingHumanReviewModel;
@@ -54,7 +25,6 @@ export function PendingReviewCard({
   showAutoApprove = true,
   nodeId,
 }: PendingReviewCardProps) {
-  const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
 
   let instructions = review.instructions;
@@ -65,7 +35,10 @@ export function PendingReviewCard({
     instructions = undefined;
   }
 
-  const [currentData, setCurrentData] = useState(extractedData.data);
+  // Render the payload as stored: it is exactly what the reviewer's decision
+  // sends back as the block's input, so unwrapping any key here would show
+  // one thing and execute another.
+  const [currentData, setCurrentData] = useState<ReviewPayload>(review.payload);
 
   useEffect(() => {
     if (externalDataValue !== undefined) {
@@ -76,7 +49,7 @@ export function PendingReviewCard({
     }
   }, [externalDataValue]);
 
-  const handleDataChange = (newValue: unknown) => {
+  const handleDataChange = (newValue: ReviewPayload) => {
     setCurrentData(newValue);
     onReviewDataChange(review.node_exec_id, JSON.stringify(newValue, null, 2));
   };
