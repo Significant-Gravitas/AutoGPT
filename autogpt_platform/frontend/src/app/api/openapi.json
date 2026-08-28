@@ -16780,6 +16780,10 @@
             ],
             "title": "Origin"
           },
+          "auto_mode": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Auto Mode"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -24413,6 +24417,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "schedule_list",
           "schedule_deleted",
           "schedule_created",

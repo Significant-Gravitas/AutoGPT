@@ -12,7 +12,12 @@ from backend.data.db_accessors import workspace_db
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
-from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
+from .models import (
+    ApprovalRequiredResponse,
+    ErrorResponse,
+    NeedLoginResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +189,13 @@ class BaseTool:
                 success=False,
             )
 
+        # Auto-mode gate. Sits here because both engines funnel every registry
+        # tool through this method — baseline via ``execute_tool``, SDK via
+        # ``_execute_tool_sync`` — so there is one place to add, not two.
+        gated = await self._gate(user_id, session, tool_call_id, kwargs)
+        if gated is not None:
+            return gated
+
         try:
             result = await self._execute(user_id, session, **kwargs)
             raw_output = result.model_dump_json(exclude_none=True)
@@ -214,6 +226,76 @@ class BaseTool:
                 ).model_dump_json(),
                 success=False,
             )
+
+    async def _gate(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        kwargs: dict[str, Any],
+    ) -> StreamToolOutputAvailable | None:
+        """Refusal to return instead of running, or None to proceed.
+
+        A gate that crashes must not become a gate that passes, so an
+        unexpected failure here refuses the call rather than falling through.
+        """
+        from backend.copilot.gate import check_action, note_taint_source
+
+        try:
+            await note_taint_source(session.session_id, self.name)
+            decision = await check_action(
+                self.name,
+                kwargs,
+                user_id,
+                session,
+                tool_description=self.description,
+            )
+        except Exception:
+            logger.warning(f"Action gate failed for {self.name}", exc_info=True)
+            return self._refusal(
+                tool_call_id,
+                session,
+                "This action could not be checked against your approval "
+                "settings, so nothing ran. Tell the user and stop.",
+            )
+
+        if decision.allowed:
+            return None
+        return self._refusal(
+            tool_call_id, session, decision.reason, review_id=decision.review_id
+        )
+
+    def _refusal(
+        self,
+        tool_call_id: str,
+        session: ChatSession,
+        reason: str,
+        review_id: str | None = None,
+    ) -> StreamToolOutputAvailable:
+        """``graph_exec_id`` is what mounts the chat's approval card: the
+        frontend scans tool outputs for that key (``extractGraphExecId``)."""
+        from backend.copilot.gate.review import session_exec_id
+
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=self.name,
+            output=ApprovalRequiredResponse(
+                message=(
+                    f"Nothing ran. {reason} Tell the user exactly what you "
+                    "wanted to do and why, then stop. Do not retry, do not "
+                    "work around it, and do not use another tool for the "
+                    "same effect."
+                ),
+                session_id=session.session_id,
+                tool_name=self.name,
+                reason=reason,
+                review_id=review_id,
+                graph_exec_id=(
+                    session_exec_id(session.session_id) if review_id else None
+                ),
+            ).model_dump_json(),
+            success=False,
+        )
 
     async def _execute(
         self,
