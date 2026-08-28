@@ -20,7 +20,7 @@ from ._test_data import (
     setup_test_data,
 )
 from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
-from .run_agent import RunAgentInput, RunAgentTool
+from .run_agent import RunAgentInput, RunAgentTool, _safe_record_workflow_result
 
 # This is so the formatter doesn't remove the fixture imports
 setup_llm_test_data = setup_llm_test_data
@@ -1617,3 +1617,35 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_dry_run_persists_node_failures_as_validation_evidence(mocker):
+    session = make_session(user_id="user-1")
+    graph = MagicMock(id="graph-1", version=3)
+    record = mocker.patch(
+        "backend.copilot.tools.run_agent.workflow_state.record_workflow_validation",
+        AsyncMock(return_value=False),
+    )
+    mocker.patch(
+        "backend.copilot.tools.run_agent._expert_workflow_state_enabled",
+        AsyncMock(return_value=True),
+    )
+
+    await _safe_record_workflow_result(
+        user_id="user-1",
+        session=session,
+        graph=graph,
+        library_agent_id="library-1",
+        execution_id="run-1",
+        dry_run=True,
+        transport_succeeded=True,
+        node_error_count=1,
+        node_failures=[{"node_id": "node-1", "block_name": "Fetcher", "error": "boom"}],
+        outputs={"result": ["partial"]},
+    )
+
+    assert record.await_args.kwargs["node_failures"] == [
+        {"node_id": "node-1", "block_name": "Fetcher", "error": "boom"}
+    ]
+    assert record.await_args.kwargs["node_error_count"] == 1

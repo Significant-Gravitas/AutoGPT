@@ -687,12 +687,16 @@ def _workflow_learning_policy(expert_id: str | None) -> str:
 {ownership}
 
 - When work has happened twice, or has a predictable schedule, treat it as a
-  workflow candidate. Search the user's library and the marketplace first.
+  workflow candidate. First call `find_library_agent` to search private/custom
+  workflows by the job they perform. If none fits, call `find_agent` for the
+  marketplace. Do not assume a workflow is absent from the private library
+  because it was not visible in the conversation.
 - Reuse a suitable installed workflow. If none fits, load
   `read_skill(name="agent_building_guide")`, build with `create_agent`, validate
   the saved graph, run it safely with `run_agent(dry_run=true,
   wait_for_result=60)`, and install it only after that test completes without
-  failed nodes.
+  failed nodes. Keep the returned `library_agent_id`; that exact saved version
+  is the private source to validate, install, and schedule.
 - `install_expert_workflow` requires exactly one marketplace listing version
   or private library agent. Record why it exists, expected inputs and outputs,
   and an on-demand or scheduled cadence. Prefer it on the next matching task.

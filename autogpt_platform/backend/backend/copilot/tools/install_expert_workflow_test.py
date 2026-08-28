@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.experts.workflow_state import WorkflowValidationEvidence
 
 from . import expert_tool_disabled_groups, get_available_tools
 from .install_expert_workflow import InstallExpertWorkflowTool
@@ -115,10 +116,25 @@ def _db(expert: Expert | None = None, workflow: ExpertWorkflowRef | None = None)
     return db
 
 
-def _wire(monkeypatch, db, *, enabled: bool = True) -> None:
+def _wire(monkeypatch, db, *, enabled: bool = True, validated: bool = True) -> None:
     monkeypatch.setattr(f"{_MODULE}.experts_db", lambda: db)
     monkeypatch.setattr(
         f"{_MODULE}.is_feature_enabled", AsyncMock(return_value=enabled)
+    )
+    monkeypatch.setattr(
+        f"{_MODULE}.workflow_state.get_passed_workflow_validation",
+        AsyncMock(
+            return_value=(
+                WorkflowValidationEvidence(
+                    id="validation-1",
+                    graph_version=3,
+                    test_execution_id="dry-run-1",
+                    artifacts=[],
+                )
+                if validated
+                else None
+            )
+        ),
     )
 
 
@@ -176,6 +192,13 @@ async def test_expert_defaults_to_self_for_private_workflow(monkeypatch):
         "expert-1",
         "library-1",
     )
+    assert (
+        db.install_library_workflow.await_args.kwargs["validation_graph_version"] == 3
+    )
+    assert (
+        db.install_library_workflow.await_args.kwargs["validation_execution_id"]
+        == "dry-run-1"
+    )
 
 
 @pytest.mark.asyncio
@@ -197,14 +220,33 @@ async def test_expert_cannot_install_on_teammate(monkeypatch):
 @pytest.mark.asyncio
 async def test_private_workflow_requires_completed_safe_test(monkeypatch):
     db = _db()
-    _wire(monkeypatch, db)
+    _wire(monkeypatch, db, validated=False)
 
     response = await _execute(
-        _session(), expert_id="expert-1", library_agent_id="library-1"
+        _session(tested=True),
+        expert_id="expert-1",
+        library_agent_id="library-1",
     )
 
     assert isinstance(response, ErrorResponse)
-    assert "safe test" in response.message
+    assert "no successful validation" in response.message
+    db.install_library_workflow.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_artifact_contract_requires_workspace_delivery(monkeypatch):
+    db = _db()
+    _wire(monkeypatch, db)
+
+    response = await _execute(
+        _session("expert-1"),
+        library_agent_id="library-1",
+        delivery_target="message",
+        artifact_outputs=["report"],
+    )
+
+    assert isinstance(response, ErrorResponse)
+    assert "require workspace_files" in response.message
     db.install_library_workflow.assert_not_awaited()
 
 

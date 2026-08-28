@@ -61,7 +61,12 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     ExpertWriteNotReadableError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
+
+from .workflow_state import (
+    get_workflow_delivery_statuses as get_workflow_delivery_statuses,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +80,16 @@ def _raised_identity(name: str) -> str:
 _WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 _MAX_EXPERT_RUNS = 20
+
+
+def _semantic_run_status(
+    run_state: prisma.models.ExpertWorkflowRunState | None,
+) -> str | None:
+    if run_state is None:
+        return None
+    status = str(run_state.status)
+    return status if status in {"DELIVERED", "PARTIAL", "BLOCKED", "FAILED"} else None
+
 
 FirstJobUnavailableError = raise_attachments.RaiseAttachmentUnavailableError
 
@@ -95,7 +110,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         name, description = library_agent.name, library_agent.description
     else:
         name, description = None, None
-    return ExpertWorkflowRef(
+    ref = ExpertWorkflowRef(
         id=row.id,
         store_listing_version_id=row.storeListingVersionId,
         library_agent_id=row.libraryAgentId,
@@ -110,12 +125,23 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         expected_outputs=row.expectedOutputs,
         cadence=row.cadence,
     )
+    ref.validation_graph_version = row.validationGraphVersion
+    ref.validation_execution_id = row.validationExecutionId
+    ref.delivery_target = (
+        "workspace_files"
+        if row.deliveryTarget
+        == prisma.enums.ExpertWorkflowDeliveryTarget.WORKSPACE_FILES
+        else "message"
+    )
+    ref.artifact_output_names = row.artifactOutputNames
+    return ref
 
 
 def _to_model(
     row: prisma.models.Expert,
     latest_run: prisma.models.AgentGraphExecution | None = None,
     weekly_spend: int = 0,
+    semantic_outcomes_enabled: bool = False,
 ) -> Expert:
     """Translate the overloaded ``voicePreferences`` column safely.
 
@@ -149,7 +175,18 @@ def _to_model(
         is_archived=row.isArchived,
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
         last_run_at=latest_run.createdAt if latest_run else None,
-        last_run_status=(str(latest_run.executionStatus) if latest_run else None),
+        last_run_status=(
+            (
+                _semantic_run_status(
+                    getattr(latest_run, "ExpertWorkflowRunState", None)
+                )
+                if semantic_outcomes_enabled
+                else None
+            )
+            or str(latest_run.executionStatus)
+            if latest_run
+            else None
+        ),
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
@@ -159,6 +196,8 @@ def _to_model(
 
 async def _latest_runs(
     expert_ids: list[str],
+    *,
+    include_semantic_state: bool = False,
 ) -> dict[str, prisma.models.AgentGraphExecution]:
     """Latest execution per expert, one indexed query via Prisma distinct."""
     if not expert_ids:
@@ -167,6 +206,7 @@ async def _latest_runs(
         where={"expertId": {"in": expert_ids}, "isDeleted": False},
         order=[{"expertId": "asc"}, {"createdAt": "desc"}],
         distinct=["expertId"],
+        include={"ExpertWorkflowRunState": True} if include_semantic_state else None,
     )
     return {row.expertId: row for row in rows if row.expertId is not None}
 
@@ -228,10 +268,19 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
     )
     if not with_metrics:
         return [_to_model(row) for row in rows]
-    latest_runs = await _latest_runs([row.id for row in rows])
+    semantic_outcomes_enabled = await _semantic_outcomes_enabled(user_id)
+    latest_runs = await _latest_runs(
+        [row.id for row in rows],
+        include_semantic_state=semantic_outcomes_enabled,
+    )
     weekly_spends = await _weekly_spends([row.id for row in rows])
     return [
-        _to_model(row, latest_runs.get(row.id), weekly_spends.get(row.id, 0))
+        _to_model(
+            row,
+            latest_runs.get(row.id),
+            weekly_spends.get(row.id, 0),
+            semantic_outcomes_enabled,
+        )
         for row in rows
     ]
 
@@ -313,8 +362,16 @@ async def get_expert(
     )
     if row is None:
         return None
-    latest_runs = await _latest_runs([row.id])
-    return _to_model(row, latest_runs.get(row.id), await get_weekly_spend(row.id))
+    semantic_outcomes_enabled = await _semantic_outcomes_enabled(user_id)
+    latest_runs = await _latest_runs(
+        [row.id], include_semantic_state=semantic_outcomes_enabled
+    )
+    return _to_model(
+        row,
+        latest_runs.get(row.id),
+        await get_weekly_spend(row.id),
+        semantic_outcomes_enabled,
+    )
 
 
 async def list_expert_runs(
@@ -358,15 +415,28 @@ async def list_expert_runs(
     # Exact per-execution review state (WAITING reviews for exactly these
     # ids) — a page of the user's newest reviews could miss an older run
     # that is still genuinely blocked.
-    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "status": prisma.enums.ReviewStatus.WAITING,
-            "graphExecId": {"in": execution_ids},
-        }
+    semantic_outcomes_enabled = await _semantic_outcomes_enabled(user_id)
+    waiting_reviews, classified = await asyncio.gather(
+        prisma.models.PendingHumanReview.prisma().find_many(
+            where={
+                "userId": user_id,
+                "status": prisma.enums.ReviewStatus.WAITING,
+                "graphExecId": {"in": execution_ids},
+            }
+        ),
+        _classify_run_outputs(execution_ids),
+    )
+    run_states = (
+        await prisma.models.ExpertWorkflowRunState.prisma().find_many(
+            where={"userId": user_id, "executionId": {"in": execution_ids}}
+        )
+        if semantic_outcomes_enabled
+        else []
     )
     reviewing = {review.graphExecId for review in waiting_reviews}
-    classified = await _classify_run_outputs(execution_ids)
+    delivery_by_execution = {
+        state.executionId: _semantic_run_status(state) for state in run_states
+    }
 
     return [
         _to_expert_run(
@@ -374,9 +444,18 @@ async def list_expert_runs(
             workflow_by_graph.get(execution.agentGraphId),
             *classified.get(execution.id, ("unknown", None)),
             needs_review=execution.id in reviewing,
+            delivery_status=delivery_by_execution.get(execution.id),
         )
         for execution in executions
     ]
+
+
+async def _semantic_outcomes_enabled(user_id: str) -> bool:
+    try:
+        return await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+    except Exception:
+        logger.warning("Could not resolve expert outcome semantics flag", exc_info=True)
+        return False
 
 
 async def _classify_run_outputs(
@@ -465,6 +544,7 @@ def _to_expert_run(
     output_key: str | None,
     *,
     needs_review: bool,
+    delivery_status: str | None = None,
 ) -> ExpertRun:
     listing = workflow.StoreListingVersion if workflow else None
     library_agent_id = workflow.libraryAgentId if workflow else None
@@ -473,7 +553,10 @@ def _to_expert_run(
         graph_id=execution.agentGraphId,
         agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
         library_agent_id=library_agent_id,
-        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
+        status=cast(
+            ExpertRunStatus,
+            (delivery_status or str(execution.executionStatus)).lower(),
+        ),
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,
@@ -1055,6 +1138,10 @@ async def install_workflow(
     expected_inputs: str | None = None,
     expected_outputs: str | None = None,
     cadence: str | None = None,
+    validation_graph_version: int | None = None,
+    validation_execution_id: str | None = None,
+    delivery_target: Literal["message", "workspace_files"] | None = None,
+    artifact_output_names: list[str] | None = None,
 ) -> ExpertWorkflowRef:
     expert = await prisma.models.Expert.prisma().find_first(
         where={
@@ -1083,6 +1170,10 @@ async def install_workflow(
                 expected_inputs=expected_inputs,
                 expected_outputs=expected_outputs,
                 cadence=cadence,
+                validation_graph_version=validation_graph_version,
+                validation_execution_id=validation_execution_id,
+                delivery_target=delivery_target,
+                artifact_output_names=artifact_output_names,
             )
         )
 
@@ -1117,6 +1208,10 @@ async def install_workflow(
             expected_inputs=expected_inputs,
             expected_outputs=expected_outputs,
             cadence=cadence,
+            validation_graph_version=validation_graph_version,
+            validation_execution_id=validation_execution_id,
+            delivery_target=delivery_target,
+            artifact_output_names=artifact_output_names,
         )
     )
 
@@ -1130,6 +1225,10 @@ async def install_library_workflow(
     expected_inputs: str | None = None,
     expected_outputs: str | None = None,
     cadence: str | None = None,
+    validation_graph_version: int | None = None,
+    validation_execution_id: str | None = None,
+    delivery_target: Literal["message", "workspace_files"] | None = None,
+    artifact_output_names: list[str] | None = None,
 ) -> ExpertWorkflowRef:
     """Attach one active, private workflow the user created to an expert.
 
@@ -1235,6 +1334,10 @@ async def install_library_workflow(
             expected_inputs=expected_inputs,
             expected_outputs=expected_outputs,
             cadence=cadence,
+            validation_graph_version=validation_graph_version,
+            validation_execution_id=validation_execution_id,
+            delivery_target=delivery_target,
+            artifact_output_names=artifact_output_names,
         )
     )
 
@@ -1246,6 +1349,10 @@ async def _record_workflow_contract(
     expected_inputs: str | None,
     expected_outputs: str | None,
     cadence: str | None,
+    validation_graph_version: int | None,
+    validation_execution_id: str | None,
+    delivery_target: Literal["message", "workspace_files"] | None,
+    artifact_output_names: list[str] | None,
 ) -> prisma.models.ExpertWorkflow:
     values = {
         "purpose": purpose,
@@ -1253,17 +1360,35 @@ async def _record_workflow_contract(
         "expectedOutputs": expected_outputs,
         "cadence": cadence,
     }
-    has_contract = False
+    changed = False
     for field, value in values.items():
         cleaned = value.strip() if value else ""
         if not cleaned:
             continue
-        has_contract = True
+        changed = True
         await prisma.models.ExpertWorkflow.prisma().update_many(
             where={"id": row.id, field: None},
             data={field: cleaned},
         )
-    if not has_contract:
+    evidence: dict[str, object] = {}
+    if validation_graph_version is not None:
+        evidence["validationGraphVersion"] = validation_graph_version
+    if validation_execution_id:
+        evidence["validationExecutionId"] = validation_execution_id
+    if delivery_target is not None:
+        evidence["deliveryTarget"] = (
+            prisma.enums.ExpertWorkflowDeliveryTarget.WORKSPACE_FILES
+            if delivery_target == "workspace_files"
+            else prisma.enums.ExpertWorkflowDeliveryTarget.MESSAGE
+        )
+    if artifact_output_names is not None:
+        evidence["artifactOutputNames"] = artifact_output_names
+    if evidence:
+        changed = True
+        await prisma.models.ExpertWorkflow.prisma().update_many(
+            where={"id": row.id}, data=evidence
+        )
+    if not changed:
         return row
     refreshed = await prisma.models.ExpertWorkflow.prisma().find_unique(
         where={"id": row.id},

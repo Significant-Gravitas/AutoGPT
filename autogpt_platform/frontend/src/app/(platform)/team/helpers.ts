@@ -65,9 +65,11 @@ export function getLastRunLabel(expert: Expert) {
   const when = formatDistanceToNow(new Date(expert.last_run_at), {
     addSuffix: true,
   });
-  if (expert.last_run_status === "COMPLETED")
+  if (["COMPLETED", "DELIVERED"].includes(expert.last_run_status ?? ""))
     return `Last run succeeded ${when}`;
   if (expert.last_run_status === "FAILED") return `Last run failed ${when}`;
+  if (["PARTIAL", "BLOCKED"].includes(expert.last_run_status ?? ""))
+    return `Last run needs attention ${when}`;
   return `Last run ${when}`;
 }
 

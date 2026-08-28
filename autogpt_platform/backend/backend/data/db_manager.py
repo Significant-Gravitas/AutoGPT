@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import learned_notes_db as experts_learned_notes_db
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.experts import workflow_state as experts_workflow_state
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -532,6 +533,10 @@ class DatabaseManager(AppService):
     install_workflow = _(experts_db.install_workflow)
     install_library_workflow = _(experts_db.install_library_workflow)
     claim_workflow_schedule = _(experts_db.claim_workflow_schedule)
+    get_workflow_delivery_statuses = _(
+        experts_workflow_state.get_workflow_delivery_statuses
+    )
+    finalize_workflow_run = _(experts_workflow_state.finalize_workflow_run)
     list_learned_notes = _(experts_learned_notes_db.list_learned_notes)
     promote_learned_notes = _(experts_learned_notes_db.promote_learned_notes)
     archive_notes_for_rules = _(experts_learned_notes_db.archive_notes_for_rules)
@@ -658,6 +663,8 @@ class DatabaseManagerClient(AppServiceClient):
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
     deliver_run_failed_watcher = _(d.deliver_run_failed_watcher)
+    get_workflow_delivery_statuses = _(d.get_workflow_delivery_statuses)
+    finalize_workflow_run = _(d.finalize_workflow_run)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
@@ -913,6 +920,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     install_workflow = d.install_workflow
     install_library_workflow = d.install_library_workflow
     claim_workflow_schedule = d.claim_workflow_schedule
+    get_workflow_delivery_statuses = d.get_workflow_delivery_statuses
+    finalize_workflow_run = d.finalize_workflow_run
     list_learned_notes = d.list_learned_notes
     promote_learned_notes = d.promote_learned_notes
     archive_notes_for_rules = d.archive_notes_for_rules

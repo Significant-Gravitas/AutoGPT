@@ -1,7 +1,7 @@
-import json
 import logging
 from typing import Any
 
+from backend.api.features.experts import workflow_state
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
@@ -35,7 +35,7 @@ class InstallExpertWorkflowTool(BaseTool):
         return (
             "Install one tested workflow. AutoPilot may target any owned "
             "expert; experts may target only themselves. Pass exactly one "
-            "source. Private workflows require a run_agent dry run."
+            "source. Private workflows require a persisted successful safe test."
         )
 
     @property
@@ -70,6 +70,16 @@ class InstallExpertWorkflowTool(BaseTool):
                 "cadence": {
                     "type": "string",
                     "description": "Reuse cadence.",
+                },
+                "delivery_target": {
+                    "type": "string",
+                    "enum": ["message", "workspace_files"],
+                    "description": "Required delivery form.",
+                },
+                "artifact_outputs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Output names that must contain workspace files.",
                 },
                 "schedule_cron": {
                     "type": "string",
@@ -115,6 +125,8 @@ class InstallExpertWorkflowTool(BaseTool):
         expected_inputs: str = "",
         expected_outputs: str = "",
         cadence: str = "",
+        delivery_target: str = "",
+        artifact_outputs: list[str] | None = None,
         schedule_cron: str = "",
         schedule_name: str = "",
         schedule_inputs: dict[str, Any] | None = None,
@@ -122,9 +134,18 @@ class InstallExpertWorkflowTool(BaseTool):
         schedule_approved: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
-        if not user_id or not await is_feature_enabled(
-            Flag.HIRE_EXPERTS, user_id, default=False
-        ):
+        try:
+            enabled = bool(
+                user_id
+                and await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+            )
+        except Exception:
+            logger.warning(
+                "Could not resolve expert workflow management flag",
+                exc_info=True,
+            )
+            enabled = False
+        if not enabled or not user_id:
             return ErrorResponse(
                 message="Expert workflow management is not available.",
                 session_id=session.session_id,
@@ -168,12 +189,44 @@ class InstallExpertWorkflowTool(BaseTool):
                 ),
                 session_id=session.session_id,
             )
-        if library_source and not _has_successful_safe_test(session, library_source):
+        target = delivery_target.strip()
+        if target not in ("", "message", "workspace_files"):
+            return ErrorResponse(
+                message="Choose message or workspace_files as the delivery target.",
+                session_id=session.session_id,
+            )
+        artifact_output_names = sorted(
+            {
+                value.strip()
+                for value in (artifact_outputs or [])
+                if isinstance(value, str) and value.strip()
+            }
+        )
+        if artifact_output_names and target != "workspace_files":
             return ErrorResponse(
                 message=(
-                    "This private workflow has not passed a completed safe test "
-                    "in this chat. Run it with dry_run=true and wait for the "
-                    "result; fix any failed nodes before installing."
+                    "Artifact output names require workspace_files as the "
+                    "delivery target."
+                ),
+                session_id=session.session_id,
+            )
+        validation = None
+        if library_source:
+            validation = await workflow_state.get_passed_workflow_validation(
+                user_id=user_id,
+                library_agent_id=library_source,
+                delivery_target=(
+                    "workspace_files" if target == "workspace_files" else "message"
+                ),
+                artifact_output_names=artifact_output_names,
+            )
+        if library_source and validation is None:
+            return ErrorResponse(
+                message=(
+                    "This private workflow has no successful validation for its "
+                    "current version. Run a safe test and wait for its persisted "
+                    "result; fix failed nodes or missing required artifacts before "
+                    "installing."
                 ),
                 session_id=session.session_id,
             )
@@ -191,6 +244,14 @@ class InstallExpertWorkflowTool(BaseTool):
                 "expected_inputs": expected_inputs.strip()[:2000],
                 "expected_outputs": expected_outputs.strip()[:2000],
                 "cadence": cadence.strip()[:500],
+                "delivery_target": target or None,
+                "artifact_output_names": artifact_output_names or None,
+                "validation_graph_version": (
+                    validation.graph_version if validation else None
+                ),
+                "validation_execution_id": (
+                    validation.test_execution_id if validation else None
+                ),
             }
             if store_source:
                 workflow = await db.install_workflow(
@@ -347,52 +408,3 @@ def _expert_summary(expert: Expert) -> ExpertSummary:
         avatar_url=expert.avatar_url,
         color=expert.color,
     )
-
-
-def _has_successful_safe_test(session: ChatSession, library_agent_id: str) -> bool:
-    calls: dict[str, dict[str, Any]] = {}
-    for message in session.messages:
-        if message.role != "assistant" or not message.tool_calls:
-            continue
-        for call in message.tool_calls:
-            function = call.get("function", call)
-            if function.get("name") != "run_agent":
-                continue
-            arguments = _json_object(function.get("arguments"))
-            if (
-                arguments.get("library_agent_id") == library_agent_id
-                and arguments.get("dry_run") is True
-            ):
-                call_id = call.get("id")
-                if isinstance(call_id, str):
-                    calls[call_id] = arguments
-    if not calls:
-        return False
-
-    for message in reversed(session.messages):
-        if message.role != "tool" or message.tool_call_id not in calls:
-            continue
-        output = _json_object(message.content)
-        execution = output.get("execution")
-        if not isinstance(execution, dict):
-            continue
-        if (
-            output.get("type") == "agent_output"
-            and output.get("library_agent_id") == library_agent_id
-            and str(execution.get("status", "")).lower() == "completed"
-            and not execution.get("nodes_failed")
-        ):
-            return True
-    return False
-
-
-def _json_object(value: object) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if not isinstance(value, str):
-        return {}
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}

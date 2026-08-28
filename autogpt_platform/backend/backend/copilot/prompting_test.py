@@ -161,18 +161,22 @@ class TestFlaggedExpertOperatingPolicies:
         result = prompting.get_delegation_supplement()
 
         assert "work has happened twice" in result
-        assert "Search the user's library and the marketplace first" in result
+        assert "First call `find_library_agent`" in result
+        assert "If none fits, call `find_agent`" in result
         assert 'read_skill(name="agent_building_guide")' in result
         assert "only after that test completes" in result
+        assert "Keep the returned `library_agent_id`" in result
         assert "any active expert the user owns" in result
 
     def test_expert_workflow_policy_is_self_only_and_reuses_learning(self):
         result = prompting.get_delegation_supplement("expert-1")
 
         assert "only on yourself" in result
+        assert "First call `find_library_agent`" in result
         assert "delegate that request to AutoPilot or that teammate" in result
         assert "update the matching skill" in result
         assert "Load it again before future matching work" in result
+
 
 class TestGraphitiMemoryScope:
     def test_supplement_describes_assistant_scoped_memory(self):

@@ -27,7 +27,9 @@
     "weekly_spend": 0,
     "workflows": [
       {
+        "artifact_output_names": [],
         "cadence": null,
+        "delivery_target": "message",
         "description": "Writes SEO-optimized blog posts",
         "expected_inputs": null,
         "expected_outputs": null,
@@ -38,7 +40,9 @@
         "purpose": null,
         "schedule_cron": null,
         "schedule_id": null,
-        "store_listing_version_id": "listing-version-1"
+        "store_listing_version_id": "listing-version-1",
+        "validation_execution_id": null,
+        "validation_graph_version": null
       }
     ]
   }

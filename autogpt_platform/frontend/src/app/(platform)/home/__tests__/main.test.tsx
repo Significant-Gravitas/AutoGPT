@@ -336,6 +336,39 @@ test("filters briefing outcomes by their real status", async () => {
   expect(screen.queryByText("Your camera research is ready")).toBeNull();
 });
 
+test("renders partial workflow delivery as needing attention", async () => {
+  const user = userEvent.setup();
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      outcomes: [
+        dashboard.briefing.outcomes[0],
+        {
+          ...dashboard.briefing.outcomes[1],
+          status: "partial",
+          title: "Lead research needs attention",
+          summary: "One required workflow step failed.",
+        },
+      ],
+    },
+  });
+
+  render(<HomePage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Filter briefing outcomes: All",
+    }),
+  );
+  await user.click(
+    screen.getByRole("menuitemradio", { name: "Needs attention" }),
+  );
+
+  expect(screen.getByText("Lead research needs attention")).toBeDefined();
+  expect(screen.queryByText("Your camera research is ready")).toBeNull();
+});
+
 test("labels a filter option for an unrecognised briefing status", async () => {
   const user = userEvent.setup();
   mockDashboard({

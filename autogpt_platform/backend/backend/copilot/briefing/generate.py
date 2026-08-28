@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.experts.workflow_state import WorkflowTerminalDeliveryStatus
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
 from backend.data.db_accessors import (
     execution_db,
@@ -71,6 +72,8 @@ def compose_briefing(
     agent_info_by_graph_id: dict[str, AgentInfo],
     generated_at: datetime,
     tz_name: str,
+    semantic_outcomes_enabled: bool = False,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus] | None = None,
 ) -> BriefingContent | None:
     experts_by_id = {e.id: e for e in experts}
     zero_expert_fallback = not experts
@@ -86,12 +89,34 @@ def compose_briefing(
     terminal.sort(key=lambda e: str(e.status) != "FAILED")
 
     run_items = [
-        _run_item(execution, agent_info_by_graph_id, experts_by_id)
+        _run_item(
+            execution,
+            agent_info_by_graph_id,
+            experts_by_id,
+            semantic_outcomes_enabled,
+            workflow_delivery_statuses or {},
+        )
         for execution in terminal[:_MAX_RUN_ITEMS]
     ]
     # Counted before the cap: home reports "N completed / N failed" off the
     # stored row, and len(run_items) would under-report a busy night.
-    failed_total = sum(1 for e in terminal if str(e.status) == "FAILED")
+    failed_total = sum(
+        item.semantic_status in {"partial", "blocked", "failed"}
+        or item.status == "FAILED"
+        for item in run_items
+    )
+    failed_total += sum(
+        1
+        for execution in terminal[len(run_items) :]
+        if str(execution.status) == "FAILED"
+        or (workflow_delivery_statuses or {}).get(execution.id)
+        in {"partial", "blocked", "failed"}
+        or (
+            semantic_outcomes_enabled
+            and execution.stats is not None
+            and execution.stats.node_error_count > 0
+        )
+    )
 
     expert_id_by_exec = {e.id: e.expert_id for e in executions}
     decision_items = []
@@ -146,6 +171,8 @@ def _run_item(
     execution: GraphExecutionMeta,
     agent_info_by_graph_id: dict[str, AgentInfo],
     experts_by_id: dict[str, Expert],
+    semantic_outcomes_enabled: bool,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus],
 ) -> BriefingRunItem:
     info = agent_info_by_graph_id.get(execution.graph_id)
     return compose_run_outcome(
@@ -153,6 +180,8 @@ def _run_item(
         agent_name=info.name if info else DEFAULT_AGENT_NAME,
         library_agent_id=info.library_agent_id if info else None,
         expert=experts_by_id.get(execution.expert_id or ""),
+        semantic_outcomes_enabled=semantic_outcomes_enabled,
+        workflow_delivery_status=workflow_delivery_statuses.get(execution.id),
     )
 
 
@@ -222,6 +251,17 @@ async def _compose_fresh_briefing(
     # with >100 agents, leaving an unlinkable "Agent" row.
     graph_ids = list({e.graph_id for e in executions} | {r.graph_id for r in reviews})
     refs = await library_db().get_library_agent_refs_by_graph_ids(user_id, graph_ids)
+    try:
+        delivery_statuses = await experts_db().get_workflow_delivery_statuses(
+            user_id=user_id,
+            execution_ids=[execution.id for execution in executions],
+        )
+    except Exception:
+        logger.warning(
+            "Could not load semantic expert workflow outcomes for briefing",
+            exc_info=True,
+        )
+        delivery_statuses = {}
     agent_info: dict[str, AgentInfo] = {
         ref.graph_id: AgentInfo(ref.name or DEFAULT_AGENT_NAME, ref.id) for ref in refs
     }
@@ -234,6 +274,8 @@ async def _compose_fresh_briefing(
         agent_info_by_graph_id=agent_info,
         generated_at=now_local,
         tz_name=tz_name,
+        semantic_outcomes_enabled=True,
+        workflow_delivery_statuses=delivery_statuses,
     )
     if content is None:
         return None

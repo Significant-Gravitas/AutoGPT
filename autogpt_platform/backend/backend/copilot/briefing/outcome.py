@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from backend.api.features.experts.models import Expert
+from backend.api.features.experts.workflow_state import WorkflowTerminalDeliveryStatus
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 from .models import BriefingRunItem
@@ -18,6 +19,8 @@ from .models import BriefingRunItem
 DEFAULT_AGENT_NAME = "Agent task"
 _FAILED_DETAIL = "Open the run to inspect the failure and choose the next step."
 _COMPLETED_DETAIL = "Completed successfully."
+_PARTIAL_DETAIL = "One or more required workflow steps failed."
+_BLOCKED_DETAIL = "The required workflow deliverable was not produced."
 # Longest a summary's first sentence may run before it is clipped into a title.
 _TITLE_MAX = 120
 
@@ -28,6 +31,8 @@ def compose_run_outcome(
     agent_name: str,
     library_agent_id: str | None,
     expert: Expert | None,
+    semantic_outcomes_enabled: bool = False,
+    workflow_delivery_status: WorkflowTerminalDeliveryStatus | None = None,
 ) -> BriefingRunItem:
     """Describe one terminal execution as a briefing item.
 
@@ -37,10 +42,32 @@ def compose_run_outcome(
     """
     failed = execution.status == ExecutionStatus.FAILED
     stats = execution.stats
-    raw_summary = stats.activity_status if stats else None
-    fallback_title, fallback_detail = outcome_fallbacks(
-        agent_name, failed=failed, error=stats.error if stats else None
+    explicit_status = workflow_delivery_status if semantic_outcomes_enabled else None
+    semantic_failed = not failed and explicit_status == "failed"
+    partial = bool(
+        not failed
+        and (
+            explicit_status == "partial"
+            or (semantic_outcomes_enabled and stats and stats.node_error_count > 0)
+        )
     )
+    blocked = not failed and explicit_status == "blocked"
+    raw_summary = (
+        stats.activity_status
+        if stats and not partial and not blocked and not semantic_failed
+        else None
+    )
+    fallback_title, fallback_detail = outcome_fallbacks(
+        agent_name,
+        failed=failed or semantic_failed,
+        error=stats.error if stats and failed else None,
+    )
+    if partial:
+        fallback_title = f"{agent_name} needs attention"
+        fallback_detail = _PARTIAL_DETAIL
+    elif blocked:
+        fallback_title = f"{agent_name} needs attention"
+        fallback_detail = _BLOCKED_DETAIL
     # Only an AI summary may become the headline. A raw exception string is the
     # detail, never the card title.
     title, detail = split_summary(
@@ -56,6 +83,19 @@ def compose_run_outcome(
         execution_id=execution.id,
         library_agent_id=library_agent_id,
         status="FAILED" if failed else "COMPLETED",
+        semantic_status=(
+            (
+                "failed"
+                if failed or semantic_failed
+                else (
+                    "blocked"
+                    if blocked
+                    else "partial" if partial else explicit_status or "delivered"
+                )
+            )
+            if semantic_outcomes_enabled
+            else None
+        ),
         summary=raw_summary,
         title=title,
         detail=detail,

@@ -10,7 +10,7 @@ thread (the activity strip is the overflow surface).
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME
@@ -71,6 +71,14 @@ def _post_run_result(
         return
     if status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
         return
+    outputs = (
+        _resolve_run_outputs(db_client, graph_exec)
+        if status == ExecutionStatus.COMPLETED
+        else {}
+    )
+    delivery_status = _finalize_workflow_run(
+        db_client, graph_exec, expert_id, status, exec_stats, outputs
+    )
     if status == ExecutionStatus.FAILED and _watcher_took_failure(
         db_client, graph_exec, expert_id, exec_stats
     ):
@@ -94,7 +102,11 @@ def _post_run_result(
             graph_exec.graph_id, graph_exec.graph_version
         )
         agent_name = metadata.name if metadata else DEFAULT_AGENT_NAME
-        succeeded = status == ExecutionStatus.COMPLETED
+        succeeded = status == ExecutionStatus.COMPLETED and delivery_status not in {
+            "partial",
+            "blocked",
+            "failed",
+        }
         library_agent_id = db_client.get_library_agent_id_by_graph_id(
             graph_exec.user_id, graph_exec.graph_id
         )
@@ -104,11 +116,12 @@ def _post_run_result(
             summary=exec_stats.activity_status,
             error=str(exec_stats.error) if exec_stats.error else None,
             library_agent_id=library_agent_id,
+            delivery_status=delivery_status,
         )
         output_type: OutputType
         output_key: str | None
-        if succeeded:
-            output_type, output_key = _resolve_run_output(db_client, graph_exec)
+        if status == ExecutionStatus.COMPLETED:
+            output_type, output_key = classify_run_output(outputs)
         else:
             output_type, output_key = "unknown", None
         posted_session = db_client.append_expert_run_message(
@@ -124,7 +137,7 @@ def _post_run_result(
                 "graph_id": graph_exec.graph_id,
                 "library_agent_id": library_agent_id,
                 "graph_name": agent_name,
-                "status": "completed" if succeeded else "failed",
+                "status": delivery_status or ("completed" if succeeded else "failed"),
                 "output_type": output_type,
                 "output_key": output_key,
             },
@@ -169,6 +182,7 @@ def build_expert_run_message(
     summary: str | None = None,
     error: str | None = None,
     library_agent_id: str | None = None,
+    delivery_status: str | None = None,
 ) -> str:
     """The summary and error both derive from workflow output — untrusted
     text that this message replays into the thread's conversation history.
@@ -182,6 +196,17 @@ def build_expert_run_message(
         if library_agent_id
         else ""
     )
+    if delivery_status == "partial":
+        return (
+            f"I ran **{agent_name}** in the background. It produced a partial "
+            f"result because one or more steps failed. I marked it for "
+            f"attention instead of delivery.{link}"
+        )
+    if delivery_status == "blocked":
+        return (
+            f"I ran **{agent_name}** in the background, but its required "
+            f"deliverable was not produced. I marked it as blocked.{link}"
+        )
     if succeeded:
         body = (
             f"\n\nHere's the summary it generated:\n\n{_quote(summary)}"
@@ -202,12 +227,10 @@ def build_expert_run_message(
     )
 
 
-def _resolve_run_output(
+def _resolve_run_outputs(
     db_client: "DatabaseManagerClient", graph_exec: GraphExecutionEntry
-) -> tuple[OutputType, str | None]:
-    """Best-effort output classification; any retrieval failure degrades to
-    ``("unknown", None)`` so a thread post never hinges on fetching run
-    outputs."""
+) -> dict[str, list[Any]]:
+    """Best-effort output retrieval; a thread post never hinges on it."""
     try:
         node_execs = db_client.get_node_executions(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -218,13 +241,47 @@ def _resolve_run_output(
             for node in node_execs
             if node.status != ExecutionStatus.INCOMPLETE
         )
-        return classify_run_output(outputs)
+        return outputs
     except Exception as e:
         logger.warning(
             f"Failed to classify output for run #{graph_exec.graph_exec_id}: "
             f"{type(e).__name__}: {e}"
         )
-        return "unknown", None
+        return {}
+
+
+def _finalize_workflow_run(
+    db_client: "DatabaseManagerClient",
+    graph_exec: GraphExecutionEntry,
+    expert_id: str,
+    status: ExecutionStatus,
+    exec_stats: GraphExecutionStats,
+    outputs: dict[str, list[Any]],
+) -> str | None:
+    try:
+        result = db_client.finalize_workflow_run(
+            user_id=graph_exec.user_id,
+            expert_id=expert_id,
+            graph_id=graph_exec.graph_id,
+            graph_version=graph_exec.graph_version,
+            execution_id=graph_exec.graph_exec_id,
+            transport_status=(
+                "completed" if status == ExecutionStatus.COMPLETED else "failed"
+            ),
+            node_error_count=exec_stats.node_error_count,
+            node_failures=[],
+            outputs=outputs,
+        )
+        return (
+            result if result in {"delivered", "partial", "blocked", "failed"} else None
+        )
+    except Exception as error:
+        logger.warning(
+            "Could not finalize workflow state for run #%s: %s",
+            graph_exec.graph_exec_id,
+            type(error).__name__,
+        )
+        return None
 
 
 def _quote(text: str) -> str:

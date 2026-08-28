@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from backend.api.features.experts.models import Expert, ExpertWorkItem
+from backend.api.features.experts.workflow_state import WorkflowTerminalDeliveryStatus
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.briefing.outcome import (
     as_utc,
@@ -34,12 +35,21 @@ def compose_briefing(
     agent_by_graph: dict[str, AgentRef],
     persisted: BriefingContent | None = None,
     work_items: list[ExpertWorkItem] | None = None,
+    semantic_outcomes_enabled: bool = False,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus] | None = None,
 ) -> HomeBriefing:
     delegated = work_items or []
+    delivery_statuses = workflow_delivery_statuses or {}
     if persisted is None:
         window_start = now - _BRIEFING_WINDOW
         outcomes = _live_outcomes(
-            executions, window_start, now, expert_by_id, agent_by_graph
+            executions,
+            window_start,
+            now,
+            expert_by_id,
+            agent_by_graph,
+            semantic_outcomes_enabled,
+            delivery_statuses,
         )
         outcomes.extend(_work_outcomes(delegated, window_start, expert_by_id))
         outcomes.sort(
@@ -61,7 +71,13 @@ def compose_briefing(
     fresh = [
         outcome
         for outcome in _live_outcomes(
-            executions, generated_at, now, expert_by_id, agent_by_graph
+            executions,
+            generated_at,
+            now,
+            expert_by_id,
+            agent_by_graph,
+            semantic_outcomes_enabled,
+            delivery_statuses,
         )
         if outcome.id not in anchored_ids
     ]
@@ -157,6 +173,8 @@ def _live_outcomes(
     now: datetime,
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    semantic_outcomes_enabled: bool,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus],
 ) -> list[HomeBriefingOutcome]:
     terminal = [
         execution
@@ -172,7 +190,16 @@ def _live_outcomes(
         )
     )
     return [
-        _outcome(_run_item(execution, expert_by_id, agent_by_graph), expert_by_id)
+        _outcome(
+            _run_item(
+                execution,
+                expert_by_id,
+                agent_by_graph,
+                semantic_outcomes_enabled,
+                workflow_delivery_statuses,
+            ),
+            expert_by_id,
+        )
         for execution in terminal
     ]
 
@@ -211,6 +238,8 @@ def _run_item(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    semantic_outcomes_enabled: bool,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus],
 ) -> BriefingRunItem:
     agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
     return compose_run_outcome(
@@ -218,13 +247,16 @@ def _run_item(
         agent_name=agent.name,
         library_agent_id=agent.library_agent_id,
         expert=expert_by_id.get(execution.expert_id or ""),
+        semantic_outcomes_enabled=semantic_outcomes_enabled,
+        workflow_delivery_status=workflow_delivery_statuses.get(execution.id),
     )
 
 
 def _outcome(
     item: BriefingRunItem, expert_by_id: dict[str, Expert]
 ) -> HomeBriefingOutcome:
-    failed = item.status == "FAILED"
+    failed = item.status == "FAILED" or item.semantic_status == "failed"
+    needs_attention = item.semantic_status in {"partial", "blocked"}
     # `error=None` because there is no error left to pass: the shared composer
     # already resolved it into `item.detail`. These fallbacks only cover an
     # item whose text fields are empty (a row older than them, or one the
@@ -232,9 +264,12 @@ def _outcome(
     fallback_title, fallback_detail = outcome_fallbacks(
         item.agent_name, failed=failed, error=None
     )
+    if needs_attention:
+        fallback_title = f"{item.agent_name} needs attention"
+        fallback_detail = item.detail or "The workflow did not fully deliver."
     return HomeBriefingOutcome(
         id=item.execution_id,
-        status="failed" if failed else "completed",
+        status="failed" if failed else "partial" if needs_attention else "completed",
         title=item.title or fallback_title,
         summary=item.detail or fallback_detail,
         expert=_expert(item, expert_by_id),

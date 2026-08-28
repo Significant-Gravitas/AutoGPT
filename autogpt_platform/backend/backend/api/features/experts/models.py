@@ -12,6 +12,9 @@ ExpertRunStatus = Literal[
     "queued",
     "running",
     "completed",
+    "delivered",
+    "partial",
+    "blocked",
     "terminated",
     "failed",
     "review",
@@ -109,6 +112,10 @@ class ExpertWorkflowRef(BaseModel):
     expected_inputs: str | None = None
     expected_outputs: str | None = None
     cadence: str | None = None
+    validation_graph_version: int | None = None
+    validation_execution_id: str | None = None
+    delivery_target: Literal["message", "workspace_files"] = "message"
+    artifact_output_names: list[str] = Field(default_factory=list)
 
     def with_contract(
         self,

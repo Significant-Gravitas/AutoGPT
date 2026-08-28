@@ -21,9 +21,11 @@ export function ExpertWorkflowGroup({ group }: Props) {
   const lastRunVariant =
     expert.last_run_status === "FAILED"
       ? "error"
-      : expert.last_run_status === "COMPLETED"
-        ? "success"
-        : "info";
+      : ["PARTIAL", "BLOCKED"].includes(expert.last_run_status ?? "")
+        ? "warning"
+        : ["COMPLETED", "DELIVERED"].includes(expert.last_run_status ?? "")
+          ? "success"
+          : "info";
 
   return (
     <section

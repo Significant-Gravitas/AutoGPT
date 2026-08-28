@@ -29,7 +29,9 @@ def render_briefing_markdown(content: BriefingContent) -> str:
         lines.append("**What ran**")
         for item in content.run_items:
             who = f"{_md(item.expert_name)}: " if item.expert_name else ""
-            outcome = "completed" if item.status == "COMPLETED" else "failed"
+            outcome = item.semantic_status or (
+                "completed" if item.status == "COMPLETED" else "failed"
+            )
             name = _md_link(_md(item.agent_name), item.link)
             lines.append(f"- {who}{name} — {outcome}")
         lines.append("")

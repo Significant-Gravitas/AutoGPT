@@ -1829,4 +1829,18 @@ describe("TeamPage", () => {
     expect(within(group).getByText("Maria · 2 workflows")).toBeDefined();
     expect(within(group).getByText(/Last run succeeded/)).toBeDefined();
   });
+
+  test("does not describe a partial workflow run as successful", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...scheduledMaria, last_run_status: "PARTIAL" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const group = await screen.findByRole("region", { name: "Maria runs" });
+    expect(within(group).getByText(/Last run needs attention/)).toBeDefined();
+    expect(within(group).queryByText(/Last run succeeded/)).toBeNull();
+  });
 });

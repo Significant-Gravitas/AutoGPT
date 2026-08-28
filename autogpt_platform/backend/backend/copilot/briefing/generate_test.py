@@ -329,7 +329,10 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
     monkeypatch.setattr(
         generate,
         "experts_db",
-        lambda: MagicMock(list_experts=AsyncMock(return_value=[expert])),
+        lambda: MagicMock(
+            list_experts=AsyncMock(return_value=[expert]),
+            get_workflow_delivery_statuses=AsyncMock(return_value={}),
+        ),
     )
     monkeypatch.setattr(
         generate,
@@ -368,6 +371,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
         generated_at=fixed_now,
         tz_name="UTC",
+        semantic_outcomes_enabled=True,
     )
     assert expected_content is not None
 

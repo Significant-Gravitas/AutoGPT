@@ -10,7 +10,7 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
 )
 from backend.api.features.executions.review.model import PendingHumanReviewModel
-from backend.api.features.experts import experts_db, work_items
+from backend.api.features.experts import experts_db, work_items, workflow_state
 from backend.api.features.experts.models import Expert, ExpertWorkItem
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
@@ -69,6 +69,12 @@ async def build_home_dashboard(
         now=now,
         week_start=week_start,
     )
+    semantic_outcomes_enabled = await _semantic_outcomes_enabled(user_id)
+    workflow_delivery_statuses = await _workflow_delivery_statuses(
+        user_id=user_id,
+        execution_ids=[execution.id for execution in data.executions],
+        enabled=semantic_outcomes_enabled,
+    )
     graph_ids = list(
         {execution.graph_id for execution in data.executions}
         | {review.graph_id for review in data.reviews}
@@ -93,7 +99,40 @@ async def build_home_dashboard(
         questions=data.questions,
         persisted_briefing=persisted_briefing,
         work_items=data.expert_work,
+        semantic_outcomes_enabled=semantic_outcomes_enabled,
+        workflow_delivery_statuses=workflow_delivery_statuses,
     )
+
+
+async def _semantic_outcomes_enabled(user_id: str) -> bool:
+    try:
+        return await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+    except Exception:
+        logger.warning(
+            "Home could not resolve expert outcome semantics for user %s",
+            user_id[:_LOG_ID_CHARS],
+            exc_info=True,
+        )
+        return False
+
+
+async def _workflow_delivery_statuses(
+    *, user_id: str, execution_ids: list[str], enabled: bool
+) -> dict[str, workflow_state.WorkflowTerminalDeliveryStatus]:
+    if not enabled:
+        return {}
+    try:
+        return await workflow_state.get_workflow_delivery_statuses(
+            user_id=user_id,
+            execution_ids=execution_ids,
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load expert workflow outcomes for user %s",
+            user_id[:_LOG_ID_CHARS],
+            exc_info=True,
+        )
+        return {}
 
 
 async def _persisted_briefing(

@@ -13,6 +13,9 @@ interface Props {
 
 const STATUS_INFO: Record<string, RunStatusInfo> = {
   COMPLETED: { label: "Completed", variant: "success" },
+  DELIVERED: { label: "Delivered", variant: "success" },
+  PARTIAL: { label: "Needs attention", variant: "warning" },
+  BLOCKED: { label: "Blocked", variant: "warning" },
   FAILED: { label: "Failed", variant: "error" },
   RUNNING: { label: "Running", variant: "info" },
   QUEUED: { label: "Queued", variant: "info" },

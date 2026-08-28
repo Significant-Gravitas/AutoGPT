@@ -8,6 +8,7 @@ export type BriefingFilter = "all" | HomeBriefingOutcome["status"];
 const FILTER_LABELS: Partial<Record<BriefingFilter, string>> = {
   all: "All",
   completed: "Completed",
+  partial: "Needs attention",
   failed: "Failed",
 };
 

@@ -317,6 +317,25 @@ def test_completed_post_output_type_degrades_to_unknown_on_fetch_failure():
     assert metadata["output_key"] is None
 
 
+def test_node_failed_completion_posts_partial_instead_of_delivered():
+    db_client = MagicMock()
+    db_client.finalize_workflow_run.return_value = "partial"
+    db_client.get_graph_metadata.return_value = SimpleNamespace(name="Weekly Report")
+    db_client.get_library_agent_id_by_graph_id.return_value = "lib-1"
+    with patch(f"{_MODULE}.get_redis", return_value=_redis_allowing_posts()):
+        handle_expert_run_post(
+            db_client,
+            _entry(expert_id="expert-1"),
+            ExecutionStatus.COMPLETED,
+            GraphExecutionStats(node_error_count=1),
+        )
+
+    call = db_client.append_expert_run_message.call_args.kwargs
+    assert call["metadata"]["status"] == "partial"
+    assert "partial result" in call["content"]
+    assert "completed successfully" not in call["content"]
+
+
 def test_release_uses_admission_key_across_midnight():
     """The slot released must be the slot reserved: the key is captured once
     at admission, so a UTC date rollover between reservation and release

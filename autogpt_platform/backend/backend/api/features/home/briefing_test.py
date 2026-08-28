@@ -23,6 +23,7 @@ def _execution(
     error: str | None = None,
     expert_id: str | None = None,
     graph_id: str = "graph",
+    node_error_count: int = 0,
 ) -> GraphExecutionMeta:
     return GraphExecutionMeta(
         id=exec_id,
@@ -38,7 +39,11 @@ def _execution(
         ended_at=ended_at,
         expert_id=expert_id,
         stats=GraphExecutionMeta.Stats(
-            activity_status=activity_status, error=error, duration=42.0, cost=7
+            activity_status=activity_status,
+            error=error,
+            duration=42.0,
+            cost=7,
+            node_error_count=node_error_count,
         ),
     )
 
@@ -131,6 +136,55 @@ def test_briefing_ignores_runs_outside_the_24h_window() -> None:
     assert briefing.window_started_at == NOW - timedelta(hours=24)
     assert briefing.completed_count == 1
     assert [outcome.id for outcome in briefing.outcomes] == ["fresh"]
+
+
+def test_flagged_briefing_never_counts_failed_nodes_as_delivered() -> None:
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[
+            _execution(
+                exec_id="partial",
+                status=ExecutionStatus.COMPLETED,
+                ended_at=NOW,
+                activity_status="Verified end to end.",
+                expert_id="expert-1",
+                node_error_count=1,
+            )
+        ],
+        expert_by_id={"expert-1": _expert()},
+        agent_by_graph=TRIAGE,
+        semantic_outcomes_enabled=True,
+    )
+
+    assert briefing.completed_count == 0
+    assert briefing.failed_count == 1
+    assert briefing.outcomes[0].status == "partial"
+    assert briefing.outcomes[0].title == "Inbox triage needs attention"
+
+
+def test_flagged_briefing_uses_persisted_missing_artifact_state() -> None:
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[
+            _execution(
+                exec_id="blocked",
+                status=ExecutionStatus.COMPLETED,
+                ended_at=NOW,
+                activity_status="The report is ready.",
+                expert_id="expert-1",
+            )
+        ],
+        expert_by_id={"expert-1": _expert()},
+        agent_by_graph=TRIAGE,
+        semantic_outcomes_enabled=True,
+        workflow_delivery_statuses={"blocked": "blocked"},
+    )
+
+    assert briefing.completed_count == 0
+    assert briefing.failed_count == 1
+    assert briefing.outcomes[0].status == "partial"
+    assert briefing.outcomes[0].title == "Inbox triage needs attention"
+    assert "deliverable was not produced" in briefing.outcomes[0].summary
 
 
 def test_briefing_lists_failures_before_successes() -> None:

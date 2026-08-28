@@ -16743,6 +16743,16 @@
             "title": "Library Agent Id"
           },
           "status": { "type": "string", "title": "Status" },
+          "semantic_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["delivered", "partial", "blocked", "failed"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Semantic Status"
+          },
           "summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Summary"
@@ -19321,6 +19331,9 @@
               "queued",
               "running",
               "completed",
+              "delivered",
+              "partial",
+              "blocked",
               "terminated",
               "failed",
               "review"
@@ -19653,6 +19666,25 @@
           "cadence": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Cadence"
+          },
+          "validation_graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Validation Graph Version"
+          },
+          "validation_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Validation Execution Id"
+          },
+          "delivery_target": {
+            "type": "string",
+            "enum": ["message", "workspace_files"],
+            "title": "Delivery Target",
+            "default": "message"
+          },
+          "artifact_output_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Artifact Output Names"
           }
         },
         "type": "object",
@@ -21045,7 +21077,7 @@
           "id": { "type": "string", "title": "Id" },
           "status": {
             "type": "string",
-            "enum": ["completed", "failed"],
+            "enum": ["completed", "partial", "failed"],
             "title": "Status"
           },
           "title": { "type": "string", "title": "Title" },

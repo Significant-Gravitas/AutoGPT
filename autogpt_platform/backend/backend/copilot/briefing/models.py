@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +13,7 @@ class BriefingRunItem(BaseModel):
     execution_id: str
     library_agent_id: str | None
     status: str
+    semantic_status: Literal["delivered", "partial", "blocked", "failed"] | None = None
     # Raw `stats.activity_status`, kept verbatim for the markdown renderer.
     summary: str | None
     link: str | None

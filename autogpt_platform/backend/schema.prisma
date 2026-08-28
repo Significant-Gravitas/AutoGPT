@@ -133,21 +133,23 @@ model User {
 
   // Relations
 
-  AgentGraphs          AgentGraph[]
-  AgentGraphExecutions AgentGraphExecution[]
-  AnalyticsDetails     AnalyticsDetails[]
-  AnalyticsMetrics     AnalyticsMetrics[]
-  CreditTransactions   CreditTransaction[]
-  UserBalance          UserBalance?
-  ChatSessions         ChatSession[]
-  UserBriefings        UserBriefing[]
-  AgentPresets         AgentPreset[]
-  LibraryAgents        LibraryAgent[]
-  LibraryFolders       LibraryFolder[]
-  OwnedExperts         Expert[]
-  ExpertPods           ExpertPod[]
-  ExpertWorkItems      ExpertWorkItem[]
-  ExpertLearnedNotes   ExpertLearnedNote[]
+  AgentGraphs               AgentGraph[]
+  AgentGraphExecutions      AgentGraphExecution[]
+  AnalyticsDetails          AnalyticsDetails[]
+  AnalyticsMetrics          AnalyticsMetrics[]
+  CreditTransactions        CreditTransaction[]
+  UserBalance               UserBalance?
+  ChatSessions              ChatSession[]
+  UserBriefings             UserBriefing[]
+  AgentPresets              AgentPreset[]
+  LibraryAgents             LibraryAgent[]
+  LibraryFolders            LibraryFolder[]
+  OwnedExperts              Expert[]
+  ExpertPods                ExpertPod[]
+  ExpertWorkItems           ExpertWorkItem[]
+  ExpertLearnedNotes        ExpertLearnedNote[]
+  ExpertWorkflowValidations ExpertWorkflowValidation[]
+  ExpertWorkflowRunStates   ExpertWorkflowRunState[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -221,19 +223,19 @@ model UserOnboarding {
   // backend, OpenAPI-generated union on the frontend). Storing as String[]
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
-  completedSteps                String[]         @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      String[]         @default([])
-  rewardedFor                   String[]         @default([])
+  completedSteps                String[]  @default([])
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -298,13 +300,13 @@ model OnboardingBrainDump {
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
   /// is instant — the user has already waited through the loading screen.
-  greeting         String?
+  greeting             String?
   /// List of {title, prompt} objects the user can pick from under the
   /// greeting. JSON so the shape can evolve without a migration.
-  suggestedPrompts Json    @default("[]")
+  suggestedPrompts     Json    @default("[]")
   /// True once the user has sent their first message. The greeting is
   /// never shown again after this, but its content is kept.
-  greetingSeen     Boolean @default(false)
+  greetingSeen         Boolean @default(false)
   /// List of {provider, reason} objects Claude picks from the transcript
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
@@ -524,10 +526,10 @@ model ChatSession {
   // "execution not shared" state).
   autoShareExecutions Boolean @default(false)
 
-  SharedChatFiles  SharedChatFile[]
-  ChatLinkedShares ChatLinkedShare[]
-  ManagedExpertWork   ExpertWorkItem[] @relation("ManagedExpertWork")
-  DelegatedExpertWork ExpertWorkItem[] @relation("DelegatedExpertWork")
+  SharedChatFiles     SharedChatFile[]
+  ChatLinkedShares    ChatLinkedShare[]
+  ManagedExpertWork   ExpertWorkItem[]  @relation("ManagedExpertWork")
+  DelegatedExpertWork ExpertWorkItem[]  @relation("DelegatedExpertWork")
 
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
@@ -789,7 +791,7 @@ model AlertCondition {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  cause AlertCause
+  cause    AlertCause
   // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
   // id>"), so re-raising the same condition updates one row instead of piling
   // up duplicates, and resolving it can find the row without the payload.
@@ -801,7 +803,7 @@ model AlertCondition {
   resolvedAt DateTime?
   // Set once the condition has been carried into a Briefing's attention
   // block, so the next Briefing doesn't repeat it.
-  briefedAt DateTime?
+  briefedAt  DateTime?
 
   @@unique([userId, causeKey])
   @@index([status, createdAt])
@@ -865,9 +867,9 @@ model PushSubscription {
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   lastRunAt DateTime?
 
   userId String
@@ -901,7 +903,8 @@ model LibraryAgent {
 
   settings Json @default("{}")
 
-  ExpertWorkflows ExpertWorkflow[]
+  ExpertWorkflows           ExpertWorkflow[]
+  ExpertWorkflowValidations ExpertWorkflowValidation[]
 
   // Tenancy
   organizationId String?
@@ -959,17 +962,17 @@ model Expert {
   ownerUserId String?
   OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  name      String
-  avatarUrl String?
+  name             String
+  avatarUrl        String?
   // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
-  color     String   @default("")
-  role      String
-  tagline   String?
-  identity  String
-  bio       String?
-  skills    String[] @default([])
-  voicePreferences String @default("")
-  boundaries       String @default("")
+  color            String   @default("")
+  role             String
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
 
   toolProfile Json?
 
@@ -983,18 +986,19 @@ model Expert {
   // Weekly credit guardrail: null = platform default from config.
   // Spend is tracked per ISO week in Redis and reconciled from
   // CreditTransaction via the execution's expertId.
-  weeklyBudget Int?
+  weeklyBudget      Int?
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
 
-  Workflows       ExpertWorkflow[]
-  ChatSessions    ChatSession[]
-  GraphExecutions AgentGraphExecution[]
-  AgentPresets    AgentPreset[]
-  PauseEvents     ExpertPauseEvent[]
-  WorkItems       ExpertWorkItem[]
-  LearnedNotes    ExpertLearnedNote[]
+  Workflows         ExpertWorkflow[]
+  ChatSessions      ChatSession[]
+  GraphExecutions   AgentGraphExecution[]
+  AgentPresets      AgentPreset[]
+  PauseEvents       ExpertPauseEvent[]
+  WorkItems         ExpertWorkItem[]
+  LearnedNotes      ExpertLearnedNote[]
+  WorkflowRunStates ExpertWorkflowRunState[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1044,15 +1048,106 @@ model ExpertWorkflow {
   // Why this workflow was adopted and the stable contract future turns use
   // to decide whether it matches. These fields describe the attachment; the
   // LibraryAgent's own inputs, credentials and settings remain untouched.
-  purpose         String?
-  expectedInputs  String?
-  expectedOutputs String?
-  cadence         String?
+  purpose                String?
+  expectedInputs         String?
+  expectedOutputs        String?
+  cadence                String?
+  validationGraphVersion Int?
+  validationExecutionId  String?
+  deliveryTarget         ExpertWorkflowDeliveryTarget @default(MESSAGE)
+  artifactOutputNames    String[]                     @default([])
+
+  RunStates ExpertWorkflowRunState[]
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
   @@unique([expertId, libraryAgentId])
   @@index([expertId])
+}
+
+enum ExpertWorkflowValidationStatus {
+  PASSED
+  FAILED
+}
+
+enum ExpertWorkflowDeliveryTarget {
+  MESSAGE
+  WORKSPACE_FILES
+}
+
+enum ExpertWorkflowDeliveryStatus {
+  QUEUED
+  RUNNING
+  DELIVERED
+  PARTIAL
+  BLOCKED
+  FAILED
+}
+
+// Deterministic evidence that a specific private workflow graph version passed
+// a safe test. Installation and scheduling consume this record instead of
+// trusting a model-authored claim in one chat transcript.
+model ExpertWorkflowValidation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  libraryAgentId String
+  LibraryAgent   LibraryAgent @relation(fields: [libraryAgentId], references: [id], onDelete: Cascade)
+
+  testExecutionId String              @unique
+  TestExecution   AgentGraphExecution @relation(fields: [testExecutionId], references: [id], onDelete: Cascade)
+
+  sessionId    String
+  graphId      String
+  graphVersion Int
+  status       ExpertWorkflowValidationStatus
+
+  deliveryTarget           ExpertWorkflowDeliveryTarget @default(MESSAGE)
+  artifactOutputNames      String[]                     @default([])
+  artifacts                Json                         @default("[]")
+  requiredArtifactsPresent Boolean                      @default(true)
+  nodeErrorCount           Int                          @default(0)
+  nodeFailures             Json                         @default("[]")
+
+  @@index([userId, libraryAgentId, graphId, graphVersion, status, createdAt])
+}
+
+// Semantic state for one execution of an installed expert workflow. Transport
+// COMPLETED is not delivery: failed nodes or missing required artifacts keep a
+// run out of DELIVERED even when the graph executor itself finished.
+model ExpertWorkflowRunState {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  completedAt DateTime?
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  workflowId String
+  Workflow   ExpertWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  executionId String              @unique
+  Execution   AgentGraphExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  status                   ExpertWorkflowDeliveryStatus @default(QUEUED)
+  deliveryTarget           ExpertWorkflowDeliveryTarget @default(MESSAGE)
+  artifactOutputNames      String[]                     @default([])
+  artifacts                Json                         @default("[]")
+  requiredArtifactsPresent Boolean                      @default(true)
+  nodeErrorCount           Int                          @default(0)
+  nodeFailures             Json                         @default("[]")
+  blocker                  String?
+
+  @@index([userId, expertId, status, createdAt])
+  @@index([workflowId, createdAt])
 }
 
 enum ExpertLearnedNoteStatus {
@@ -1082,9 +1177,9 @@ model ExpertLearnedNote {
 
   status ExpertLearnedNoteStatus @default(ACTIVE)
 
+  @@unique([userId, expertId, dedupeKey])
   @@index([userId, expertId, status])
   @@index([userId, sourceRuleId])
-  @@unique([userId, expertId, dedupeKey])
 }
 
 model ExpertWorkItem {
@@ -1104,16 +1199,16 @@ model ExpertWorkItem {
   delegatedSessionId String
   DelegatedSession   ChatSession @relation("DelegatedExpertWork", fields: [delegatedSessionId], references: [id], onDelete: Cascade)
 
-  projectPhase       String @default("")
-  taskTitle          String
+  projectPhase        String   @default("")
+  taskTitle           String
   expectedDeliverable String
-  deliverableMode    String @default("message")
-  successCriteria    Json   @default("[]")
-  dependencies       String[] @default([])
-  sourceArtifacts    Json   @default("[]")
-  constraints        String[] @default([])
-  approvalBoundaries String[] @default([])
-  estimateMinutes    Int?
+  deliverableMode     String   @default("message")
+  successCriteria     Json     @default("[]")
+  dependencies        String[] @default([])
+  sourceArtifacts     Json     @default("[]")
+  constraints         String[] @default([])
+  approvalBoundaries  String[] @default([])
+  estimateMinutes     Int?
 
   progress   Int                  @default(0)
   status     ExpertWorkItemStatus @default(QUEUED)
@@ -1122,10 +1217,10 @@ model ExpertWorkItem {
   confidence ExpertWorkConfidence @default(UNKNOWN)
   artifacts  Json                 @default("[]")
 
-  startedAt           DateTime?
-  completedAt         DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
   managerWaitExpiresAt DateTime?
-  parentWokenAt       DateTime?
+  parentWokenAt        DateTime?
 
   @@index([ownerUserId, createdAt])
   @@index([expertId, status, updatedAt])
@@ -1306,15 +1401,17 @@ model AgentGraphExecution {
   ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
 
   // Sharing fields
-  isShared             Boolean               @default(false)
-  shareToken           String?               @unique
-  sharedAt             DateTime?
+  isShared                 Boolean                   @default(false)
+  shareToken               String?                   @unique
+  sharedAt                 DateTime?
   // Provenance: USER = explicitly shared by owner, CHAT_LINK = enabled
   // as part of a ChatSession share.  Drives cascade-revoke logic so that
   // user-initiated shares survive chat-share revocation.
-  sharedVia            SharedVia?
-  SharedExecutionFiles SharedExecutionFile[]
-  ChatLinkedShares     ChatLinkedShare[]
+  sharedVia                SharedVia?
+  SharedExecutionFiles     SharedExecutionFile[]
+  ChatLinkedShares         ChatLinkedShare[]
+  ExpertWorkflowValidation ExpertWorkflowValidation?
+  ExpertWorkflowRunState   ExpertWorkflowRunState?
 
   // Tenancy (nullable until cutover migration backfills existing data)
   organizationId String?

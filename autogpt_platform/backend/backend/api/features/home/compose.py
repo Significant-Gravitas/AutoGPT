@@ -2,6 +2,7 @@ from datetime import datetime
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkItem
+from backend.api.features.experts.workflow_state import WorkflowTerminalDeliveryStatus
 from backend.api.features.library.model import LibraryAgentRef
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
@@ -36,6 +37,8 @@ def compose_home_dashboard(
     questions: list[ChatSessionInfo] | None = None,
     persisted_briefing: BriefingContent | None = None,
     work_items: list[ExpertWorkItem] | None = None,
+    semantic_outcomes_enabled: bool = False,
+    workflow_delivery_statuses: dict[str, WorkflowTerminalDeliveryStatus] | None = None,
 ) -> HomeDashboardResponse:
     delegated_work = work_items or []
     hired = [
@@ -89,6 +92,8 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
             persisted=persisted_briefing,
             work_items=delegated_work,
+            semantic_outcomes_enabled=semantic_outcomes_enabled,
+            workflow_delivery_statuses=workflow_delivery_statuses,
         ),
         active_tasks=compose_active_tasks(
             executions, expert_by_id, agent_by_graph, delegated_work

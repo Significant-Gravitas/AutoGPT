@@ -4,6 +4,9 @@ import { getRunStatusInfo } from "../RunStatusBadge";
 describe("getRunStatusInfo", () => {
   it.each([
     ["COMPLETED", "Completed"],
+    ["DELIVERED", "Delivered"],
+    ["PARTIAL", "Needs attention"],
+    ["BLOCKED", "Blocked"],
     ["FAILED", "Failed"],
     ["RUNNING", "Running"],
     ["QUEUED", "Queued"],
@@ -17,6 +20,8 @@ describe("getRunStatusInfo", () => {
   it("only COMPLETED reads as completed", () => {
     const nonTerminal = [
       "FAILED",
+      "PARTIAL",
+      "BLOCKED",
       "RUNNING",
       "QUEUED",
       "REVIEW",

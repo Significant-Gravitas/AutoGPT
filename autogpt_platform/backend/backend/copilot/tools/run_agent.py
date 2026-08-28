@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.api.features.experts import workflow_state
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
@@ -24,6 +25,7 @@ from backend.util.exceptions import (
     MissingConfigError,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -90,6 +92,94 @@ async def _safe_link_to_chat_share(session_id: str, execution_id: str) -> None:
             session_id,
             execution_id,
             exc_info=True,
+        )
+
+
+async def _expert_workflow_state_enabled(user_id: str) -> bool:
+    try:
+        return await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False)
+    except Exception:
+        logger.warning("Could not resolve expert workflow state flag", exc_info=True)
+        return False
+
+
+async def _safe_record_workflow_run_start(
+    *,
+    user_id: str,
+    session: ChatSession,
+    graph: GraphModel,
+    execution_id: str,
+    dry_run: bool,
+) -> None:
+    if dry_run or not session.expert_id:
+        return
+    if not await _expert_workflow_state_enabled(user_id):
+        return
+    try:
+        await workflow_state.record_workflow_run_start(
+            user_id=user_id,
+            expert_id=session.expert_id,
+            graph_id=graph.id,
+            graph_version=graph.version,
+            execution_id=execution_id,
+        )
+    except Exception:
+        logger.warning(
+            "Could not record expert workflow run start for %s",
+            execution_id,
+            exc_info=True,
+        )
+
+
+async def _safe_record_workflow_result(
+    *,
+    user_id: str,
+    session: ChatSession,
+    graph: GraphModel,
+    library_agent_id: str,
+    execution_id: str,
+    dry_run: bool,
+    transport_succeeded: bool,
+    node_error_count: int,
+    node_failures: list[NodeFailureSummary],
+    outputs: dict[str, list[Any]],
+) -> None:
+    if not dry_run and not session.expert_id:
+        return
+    if not await _expert_workflow_state_enabled(user_id):
+        return
+    serialized_failures: list[object] = [dict(failure) for failure in node_failures]
+    try:
+        if dry_run:
+            await workflow_state.record_workflow_validation(
+                user_id=user_id,
+                library_agent_id=library_agent_id,
+                graph_id=graph.id,
+                graph_version=graph.version,
+                test_execution_id=execution_id,
+                session_id=session.session_id,
+                transport_succeeded=transport_succeeded,
+                node_error_count=node_error_count,
+                node_failures=serialized_failures,
+                delivery_target="message",
+                artifact_output_names=[],
+                outputs=outputs,
+            )
+        elif session.expert_id:
+            await workflow_state.finalize_workflow_run(
+                user_id=user_id,
+                expert_id=session.expert_id,
+                graph_id=graph.id,
+                graph_version=graph.version,
+                execution_id=execution_id,
+                transport_status=("completed" if transport_succeeded else "failed"),
+                node_error_count=node_error_count,
+                node_failures=serialized_failures,
+                outputs=outputs,
+            )
+    except Exception:
+        logger.warning(
+            "Could not persist workflow result for %s", execution_id, exc_info=True
         )
 
 
@@ -918,6 +1008,14 @@ class RunAgentTool(BaseTool):
                 action_verb="running",
             )
 
+        await _safe_record_workflow_run_start(
+            user_id=user_id,
+            session=session,
+            graph=graph,
+            execution_id=execution.id,
+            dry_run=dry_run,
+        )
+
         # Track successful run (dry runs don't count against the session limit)
         if not dry_run:
             session.successful_agent_runs[library_agent.graph_id] = (
@@ -995,6 +1093,20 @@ class RunAgentTool(BaseTool):
                         execution.id,
                         exc_info=True,
                     )
+                await _safe_record_workflow_result(
+                    user_id=user_id,
+                    session=session,
+                    graph=graph,
+                    library_agent_id=library_agent.id,
+                    execution_id=execution.id,
+                    dry_run=dry_run,
+                    transport_succeeded=True,
+                    node_error_count=(
+                        completed.stats.node_error_count if completed.stats else 0
+                    ),
+                    node_failures=node_failures,
+                    outputs=outputs or {},
+                )
                 await _safe_link_to_chat_share(
                     session_id=session_id, execution_id=execution.id
                 )
@@ -1029,6 +1141,20 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
                 error_detail = completed.stats.error if completed.stats else None
+                await _safe_record_workflow_result(
+                    user_id=user_id,
+                    session=session,
+                    graph=graph,
+                    library_agent_id=library_agent.id,
+                    execution_id=execution.id,
+                    dry_run=dry_run,
+                    transport_succeeded=False,
+                    node_error_count=(
+                        completed.stats.node_error_count if completed.stats else 0
+                    ),
+                    node_failures=[],
+                    outputs={},
+                )
                 # Auto-share the failed run too — share-modal users may
                 # want public viewers to drill into the failure.  Without
                 # this hook, ``_collect_execution_ids_from_messages`` can't
@@ -1048,6 +1174,20 @@ class RunAgentTool(BaseTool):
                 )
             elif completed and completed.status == ExecutionStatus.TERMINATED:
                 error_detail = completed.stats.error if completed.stats else None
+                await _safe_record_workflow_result(
+                    user_id=user_id,
+                    session=session,
+                    graph=graph,
+                    library_agent_id=library_agent.id,
+                    execution_id=execution.id,
+                    dry_run=dry_run,
+                    transport_succeeded=False,
+                    node_error_count=(
+                        completed.stats.node_error_count if completed.stats else 0
+                    ),
+                    node_failures=[],
+                    outputs={},
+                )
                 # Auto-share terminated runs (cancelled / killed) for the
                 # same reason as the FAILED branch — backfill at re-share
                 # time won't pick them up.

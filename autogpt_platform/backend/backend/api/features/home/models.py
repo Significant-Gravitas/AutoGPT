@@ -37,7 +37,7 @@ class HomeAttentionItem(BaseModel):
 
 class HomeBriefingOutcome(BaseModel):
     id: str
-    status: Literal["completed", "failed"]
+    status: Literal["completed", "partial", "failed"]
     title: str
     summary: str
     expert: HomeExpert | None = None

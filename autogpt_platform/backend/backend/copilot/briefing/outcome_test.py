@@ -13,6 +13,7 @@ def _execution(
     status: ExecutionStatus = ExecutionStatus.COMPLETED,
     activity_status: str | None = None,
     error: str | None = None,
+    node_error_count: int = 0,
 ) -> GraphExecutionMeta:
     return GraphExecutionMeta(
         id="run-1",
@@ -28,7 +29,11 @@ def _execution(
         ended_at=NOW,
         expert_id="expert-1",
         stats=GraphExecutionMeta.Stats(
-            activity_status=activity_status, error=error, duration=30.0, cost=9
+            activity_status=activity_status,
+            error=error,
+            duration=30.0,
+            cost=9,
+            node_error_count=node_error_count,
         ),
     )
 
@@ -99,6 +104,55 @@ def test_a_failure_without_an_error_gets_a_next_step_detail() -> None:
     assert item.detail == (
         "Open the run to inspect the failure and choose the next step."
     )
+
+
+def test_required_node_error_is_partial_when_expert_semantics_are_enabled() -> None:
+    item = compose_run_outcome(
+        _execution(
+            activity_status="Everything worked.",
+            node_error_count=1,
+        ),
+        agent_name="Lead research",
+        library_agent_id="lib-1",
+        expert=_expert(),
+        semantic_outcomes_enabled=True,
+    )
+
+    assert item.status == "COMPLETED"
+    assert item.semantic_status == "partial"
+    assert item.title == "Lead research needs attention"
+    assert item.summary is None
+
+
+def test_flag_off_keeps_transport_completion_behavior() -> None:
+    item = compose_run_outcome(
+        _execution(
+            activity_status="Everything worked.",
+            node_error_count=1,
+        ),
+        agent_name="Lead research",
+        library_agent_id="lib-1",
+        expert=_expert(),
+    )
+
+    assert item.status == "COMPLETED"
+    assert item.semantic_status is None
+    assert item.title == "Everything worked."
+
+
+def test_persisted_missing_artifact_state_is_not_delivered() -> None:
+    item = compose_run_outcome(
+        _execution(node_error_count=0),
+        agent_name="Report Builder",
+        library_agent_id="lib-1",
+        expert=None,
+        semantic_outcomes_enabled=True,
+        workflow_delivery_status="blocked",
+    )
+
+    assert item.semantic_status == "blocked"
+    assert item.title == "Report Builder needs attention"
+    assert "deliverable was not produced" in item.detail
 
 
 def test_split_summary_uses_fallbacks_for_empty_input() -> None:

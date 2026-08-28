@@ -259,7 +259,9 @@ def _facts_block(content: BriefingContent) -> str:
 
 
 def _fact_line(item: BriefingRunItem) -> str:
-    status = "failed" if item.status == "FAILED" else "completed"
+    status = item.semantic_status or (
+        "failed" if item.status == "FAILED" else "delivered"
+    )
     who = f"{_clean(item.expert_name)} / " if item.expert_name else ""
     return f"- [{status}] {who}{_clean(item.agent_name)}: {_clean(item.title)}"
 

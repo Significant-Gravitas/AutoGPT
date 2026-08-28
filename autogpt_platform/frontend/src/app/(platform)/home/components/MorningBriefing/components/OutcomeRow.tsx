@@ -17,16 +17,21 @@ interface Props {
 
 export function OutcomeRow({ outcome }: Props) {
   const failed = outcome.status === "failed";
+  const needsAttention = outcome.status === "partial";
   const content = (
     <>
       <span
         className={cn(
           "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-          failed ? "bg-rose-50 text-rose-600" : "bg-zinc-100 text-zinc-500",
+          failed
+            ? "bg-rose-50 text-rose-600"
+            : needsAttention
+              ? "bg-amber-50 text-amber-700"
+              : "bg-zinc-100 text-zinc-500",
         )}
       >
         <Icon
-          icon={failed ? AlertDiamondIcon : CheckListIcon}
+          icon={failed || needsAttention ? AlertDiamondIcon : CheckListIcon}
           size={16}
           aria-hidden="true"
         />

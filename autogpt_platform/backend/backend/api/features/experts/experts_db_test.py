@@ -2089,6 +2089,40 @@ async def test_install_private_workflow_is_idempotent_and_preserves_settings(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_private_workflow_persists_validation_and_delivery_contract(
+    server: SpinTestServer, test_user
+):
+    library_agent = await _seed_private_library_agent(server, test_user)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    installed = await experts_db.install_library_workflow(
+        test_user.id,
+        hired.expert.id,
+        library_agent.id,
+        validation_graph_version=library_agent.graph_version,
+        validation_execution_id="validated-run-1",
+        delivery_target="workspace_files",
+        artifact_output_names=["report"],
+    )
+
+    row = await prisma.models.ExpertWorkflow.prisma().find_unique(
+        where={"id": installed.id}
+    )
+    assert row is not None
+    assert installed.validation_graph_version == library_agent.graph_version
+    assert installed.validation_execution_id == "validated-run-1"
+    assert installed.delivery_target == "workspace_files"
+    assert installed.artifact_output_names == ["report"]
+    assert row.validationGraphVersion == library_agent.graph_version
+    assert row.validationExecutionId == "validated-run-1"
+    assert (
+        row.deliveryTarget == prisma.enums.ExpertWorkflowDeliveryTarget.WORKSPACE_FILES
+    )
+    assert row.artifactOutputNames == ["report"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_concurrent_private_workflow_installs_return_one_row(
     server: SpinTestServer, test_user
 ):
@@ -3371,6 +3405,33 @@ def test_to_expert_run_falls_back_when_workflow_unresolved():
     assert run.link is None
 
 
+def test_to_expert_run_uses_semantic_delivery_status():
+    run = experts_db._to_expert_run(
+        _run_execution(),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+        delivery_status="PARTIAL",
+    )
+    assert run.status == "partial"
+
+
+async def test_latest_runs_only_loads_semantic_state_when_enabled():
+    execution_client = SimpleNamespace(find_many=AsyncMock(return_value=[]))
+    with patch.object(
+        prisma.models.AgentGraphExecution,
+        "prisma",
+        return_value=execution_client,
+    ):
+        await experts_db._latest_runs(["expert-1"])
+        await experts_db._latest_runs(["expert-1"], include_semantic_state=True)
+
+    disabled_call, enabled_call = execution_client.find_many.await_args_list
+    assert disabled_call.kwargs["include"] is None
+    assert enabled_call.kwargs["include"] == {"ExpertWorkflowRunState": True}
+
+
 def _output_node_exec(
     name: str,
     value,
@@ -3492,6 +3553,16 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     review_client = SimpleNamespace(
         find_many=AsyncMock(return_value=[SimpleNamespace(graphExecId="exec-2")])
     )
+    run_state_client = SimpleNamespace(
+        find_many=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    executionId="exec-1",
+                    status=prisma.enums.ExpertWorkflowDeliveryStatus.PARTIAL,
+                )
+            ]
+        )
+    )
 
     with (
         patch.object(prisma.models.Expert, "prisma", return_value=expert_client),
@@ -3506,6 +3577,11 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
             return_value=review_client,
         ),
         patch.object(
+            prisma.models.ExpertWorkflowRunState,
+            "prisma",
+            return_value=run_state_client,
+        ),
+        patch.object(
             experts_db,
             "_classify_run_outputs",
             new=AsyncMock(
@@ -3514,6 +3590,11 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
                     "exec-2": ("unknown", None),
                 }
             ),
+        ),
+        patch.object(
+            experts_db,
+            "is_feature_enabled",
+            new=AsyncMock(return_value=True),
         ),
     ):
         runs = await experts_db.list_expert_runs("owner-1", "expert-1")
@@ -3535,8 +3616,10 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     review_where = review_client.find_many.await_args.kwargs["where"]
     assert review_where["userId"] == "owner-1"
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
-    assert [run.status for run in runs] == ["completed", "review"]
+    assert [run.status for run in runs] == ["partial", "review"]
     assert [run.needs_review for run in runs] == [False, True]
+    run_state_where = run_state_client.find_many.await_args.kwargs["where"]
+    assert run_state_where["userId"] == "owner-1"
 
 
 @pytest.mark.asyncio
