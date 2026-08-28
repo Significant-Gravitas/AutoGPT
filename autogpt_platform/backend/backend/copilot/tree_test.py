@@ -285,27 +285,30 @@ async def test_admit_turn_fails_closed_for_children_open_for_roots(monkeypatch) 
 
     monkeypatch.setattr(tree, "resolve_root_ceiling_microdollars", _ceiling)
     broken = TreeLedger(cast(AsyncRedisClient, BrokenRedis()))
+    # A root never touches the ledger, so a dead Redis cannot block a chat.
     await admit_turn(root_envelope("t"), user_id="u", ledger=broken)
     with pytest.raises(TreeRefusal):
         await admit_turn(_child(root_envelope("t")), user_id="u", ledger=broken)
 
 
 @pytest.mark.asyncio
-async def test_admit_turn_opens_root_with_resolved_ceiling(monkeypatch) -> None:
+async def test_first_spawn_opens_the_tree_with_the_root_counted(monkeypatch) -> None:
     async def _ceiling(_user_id):
         return 42
 
     monkeypatch.setattr(tree, "resolve_root_ceiling_microdollars", _ceiling)
+    monkeypatch.setattr(tree.config, "tree_max_nodes", 2)
     redis = FakeRedis()
-    await admit_turn(
-        root_envelope("t"),
-        user_id="u",
-        ledger=TreeLedger(cast(AsyncRedisClient, redis)),
-    )
-    snapshot = await TreeLedger(cast(AsyncRedisClient, redis)).snapshot("t")
-    assert snapshot["ceiling"] == 42
-    assert snapshot["nodes"] == 1
+    ledger = TreeLedger(cast(AsyncRedisClient, redis))
+    root = root_envelope("t")
+    await admit_turn(root, user_id="u", ledger=ledger)
+    assert "copilot:tree:t" not in redis.hashes
+    await admit_turn(_child(root), user_id="u", ledger=ledger)
+    snapshot = await ledger.snapshot("t")
+    assert snapshot == {"ceiling": 42, "spent": 0, "nodes": 2, "max_nodes": 2}
     assert redis.ttls["copilot:tree:t"] > 0
+    with pytest.raises(TreeRefusal):
+        await admit_turn(_child(root), user_id="u", ledger=ledger)
 
 
 def test_all_tool_names_cover_the_denied_set() -> None:

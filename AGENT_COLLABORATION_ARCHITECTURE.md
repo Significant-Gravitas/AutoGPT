@@ -1,7 +1,8 @@
 # Agent collaboration architecture (TODO T15)
 
-**Status:** plan → two parallel roasts (§11) → smallest working slice (§9).
-Branch `pwuts/agent-collab-architecture`, worktree `AutoGPT4`.
+**Status:** plan → two parallel roasts (§11) → revised → slice built and
+committed (§9, `5422a83e99`). Branch `pwuts/agent-collab-architecture`,
+worktree `AutoGPT4`. Not pushed — push hold in effect, and §10 applies.
 
 ---
 
@@ -209,16 +210,23 @@ there is no code path that mints a child turn without passing here — because
 tree:<tree_id>  →  { ceiling_microdollars, spent_microdollars, nodes, max_nodes, expires_at }
 ```
 
-Written once when a root turn starts: `ceiling = min(configured root ceiling,
-user's remaining daily/weekly cap)`; `max_nodes = MAX_TREE_NODES`; TTL =
-the root's deadline plus slack. Two atomic Lua operations:
+Opened by the **first spawn**, not by the root: `ceiling = min(configured
+tree ceiling, user's remaining daily/weekly cap)`; `max_nodes` from config;
+`nodes = 1` for the root; TTL = the maximum turn lifetime. Roots never
+touch the ledger — the HTTP route, the scheduler and `AutoPilotBlock` pay
+nothing for this change, and a tree that never spawns never exists. Two
+operations, both single Redis hash commands:
 
-- `admit(tree_id)` at `schedule_turn`: refuse unless `spent < ceiling` and
-  `nodes < max_nodes`; increment `nodes`. This is the fan-out bound (per
-  tree, which *is* representable) and the budget bound.
+- `admit(tree_id)` at `dispatch_turn` for depth > 0: refuse unless
+  `spent < ceiling`; `HINCRBY nodes` and roll back if it passed
+  `max_nodes`. Increment-then-check with rollback is the same non-locked
+  admission `acquire_turn_slot` uses; the over-admit-by-one under a race is
+  the bound's stated slack. This is the fan-out bound (per tree, which *is*
+  representable) and the budget bound.
 - `charge(tree_id, microdollars)` from `token_tracking` when any turn in the
   tree records its cost (`token_tracking.py:228` already has the session and
-  the cost in hand).
+  the cost in hand). A root's own cost lands only if its tree exists — i.e.
+  if it spawned — which is the only case the ceiling is for.
 
 This is an **accounting** invariant, not a conservation law: a node that
 would exceed the ceiling does not get a turn. Overshoot is bounded by one
@@ -960,9 +968,50 @@ isolate chain, the 9th node is refused at `max_nodes = 8`, and a tree whose
 metered spend crosses its ceiling admits no further turn. No LLM is called;
 the claim is structural and the demonstration is of the structure.
 
+**What was built (commit `5422a83e99`).** Items 1–7 above, with these
+specifics worth knowing before reading the diff:
+
+- `copilot/tree.py` (envelope, derivation, ledger, admit/release/charge)
+  and `tree_test.py` (22 tests: monotonicity of every field, refusal on
+  every overflow, concurrent admits under a fake Redis, fail-closed for
+  children / fail-open for roots when Redis is down). Run without pytest
+  via a plain runner per the brief's rule; 22/22 pass. The demo prints:
+
+  ```
+  fan-out: 7 admitted, 23 refused          (max_nodes 8, root counted)
+  every leaf: tools=['read_workspace_file'], cannot spawn, cannot act outward
+  hop 4 (delegate) refused at depth 3
+  a child asking for a tool its spawner lacks does not get it
+  after 5 charged turns the tree refused    (ceiling $0.50, $0.12/turn)
+  ```
+
+- The ledger admits with increment-then-check-then-rollback on the node
+  counter — the same non-locked pattern `acquire_turn_slot` uses — rather
+  than Lua; the over-admit-by-one under a race is the bound's stated slack.
+- Fan-out is counted **per tree** (`tree_max_nodes`, default 8), not per
+  node per turn, because only the former is representable atomically.
+- `run_sub_session` children are **leaves** (`may_spawn=False`);
+  `delegate_to_expert` / `handoff_to_expert` children may spawn. This is a
+  behaviour change for nested isolates, which today can recurse without
+  bound.
+- `run_sub_session` now writes `delegated_by_session_id`, which also means
+  an isolate's `pending_question` no longer surfaces on Home (the Home
+  predicate excludes delegated sub-threads) — consistent with the tree
+  rule that a child escalates to its parent, and noted here because it is
+  visible.
+- `chain_refusal`'s provenance walk is left in place (loop check plus
+  belt-and-braces on depth); the envelope is the real bound.
+- Existing `sub_session_test.py` fixtures were updated for the creator
+  rule and two tests added (resume requires the creating session; a fresh
+  sub records its creator). Other suites were not run (brief: no pytest);
+  `dispatch_turn` touches Redis only for spawned turns (depth > 0), so
+  every existing root path — HTTP chat, scheduler, `AutoPilotBlock`, and
+  their tests — is byte-for-byte unaffected by the ledger.
+
 Not in the slice, each a named follow-up: deadline watcher; brief slots in
-the tool schemas; typed report parsing; workspace write confinement;
-`block_filters` (tools only in v1); pod-scoped roster for spawning nodes;
+the tool schemas (`content`, `authority`, `acceptance`) and typed report
+parsing (`findings`); workspace write confinement; `block_filters` (tools
+only in v1); roster withheld from leaves and pod-scoped for spawning nodes;
 T9/T10 integrations.
 
 ---

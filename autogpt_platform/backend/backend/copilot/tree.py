@@ -184,14 +184,26 @@ class TreeLedger:
     def key(tree_id: str) -> str:
         return f"{_LEDGER_KEY_PREFIX}{tree_id}"
 
+    async def exists(self, tree_id: str) -> bool:
+        return await cast(
+            Awaitable[bool], self._redis.hexists(self.key(tree_id), "ceiling")
+        )
+
     async def open(
-        self, tree_id: str, *, ceiling_microdollars: int, max_nodes: int
+        self,
+        tree_id: str,
+        *,
+        ceiling_microdollars: int,
+        max_nodes: int,
+        initial_nodes: int = 0,
     ) -> None:
+        """Idempotent: two first-children racing to open the same tree both
+        land on one set of fields."""
         key = self.key(tree_id)
         for field, value in (
             ("ceiling", max(0, ceiling_microdollars)),
             ("spent", 0),
-            ("nodes", 0),
+            ("nodes", max(0, initial_nodes)),
             ("max_nodes", max(1, max_nodes)),
         ):
             await self._hsetnx(key, field, value)
@@ -222,7 +234,8 @@ class TreeLedger:
 
     async def release(self, tree_id: str) -> None:
         """Undo an admit whose dispatch never happened."""
-        await self._hincrby(self.key(tree_id), "nodes", -1)
+        if await self.exists(tree_id):
+            await self._hincrby(self.key(tree_id), "nodes", -1)
 
     async def charge(self, tree_id: str, microdollars: int) -> None:
         if microdollars <= 0:
@@ -273,30 +286,38 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
 async def admit_turn(
     envelope: TurnEnvelope, *, user_id: str | None, ledger: TreeLedger | None = None
 ) -> None:
-    """Open the tree for a root, then admit. Spawned turns fail closed when
-    the ledger is unreachable; a root runs as it does today, since the
-    per-user rate limit already gates it."""
+    """Admit a spawned turn against its tree, opening the tree on first use.
+
+    Roots never touch the ledger: the per-user rate limit already gates
+    them, and the tree only needs to exist once something is spawned. So
+    the HTTP route, the scheduler and ``AutoPilotBlock`` pay nothing here,
+    and a spawned turn fails closed when the ledger is unreachable.
+    """
+    if envelope.depth == 0:
+        return
     try:
         ledger = ledger or await get_tree_ledger()
-        if envelope.depth == 0:
+        if not await ledger.exists(envelope.tree_id):
             await ledger.open(
                 envelope.tree_id,
                 ceiling_microdollars=await resolve_root_ceiling_microdollars(user_id),
                 max_nodes=config.tree_max_nodes,
+                # The root is a node of its own tree.
+                initial_nodes=1,
             )
         await ledger.admit(envelope)
     except TreeRefusal:
         raise
     except Exception as e:
-        if envelope.depth > 0:
-            logger.warning(f"Tree ledger unavailable; refusing spawn: {e}")
-            raise TreeRefusal(
-                "Could not account for this work right now; try again shortly."
-            ) from e
-        logger.warning(f"Tree ledger unavailable for root turn; continuing: {e}")
+        logger.warning(f"Tree ledger unavailable; refusing spawn: {e}")
+        raise TreeRefusal(
+            "Could not account for this work right now; try again shortly."
+        ) from e
 
 
 async def release_turn(envelope: TurnEnvelope) -> None:
+    if envelope.depth == 0:
+        return
     try:
         await (await get_tree_ledger()).release(envelope.tree_id)
     except Exception as e:
@@ -304,6 +325,8 @@ async def release_turn(envelope: TurnEnvelope) -> None:
 
 
 async def charge_turn(envelope: TurnEnvelope, microdollars: int) -> None:
+    """Charge a turn's cost to its tree. A root whose tree never opened (no
+    spawns) has nothing to charge, and ``charge`` ignores unknown trees."""
     try:
         await (await get_tree_ledger()).charge(envelope.tree_id, microdollars)
     except Exception as e:
