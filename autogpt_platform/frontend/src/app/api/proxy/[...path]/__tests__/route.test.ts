@@ -282,6 +282,53 @@ describe("proxy route — handler pass-through", () => {
       `${BACKEND}/api/v1/items?page=2&size=20`,
     );
   });
+
+  it.each([
+    {
+      label: "personal",
+      organizationId: null,
+      teamId: "",
+    },
+    {
+      label: "organization",
+      organizationId: "org-a",
+      teamId: "",
+    },
+    {
+      label: "team",
+      organizationId: "org-a",
+      teamId: "team-a",
+    },
+  ])(
+    "forwards $label scope through the buffered workspace download path",
+    async ({ organizationId, teamId }) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("artifact", {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        }),
+      );
+
+      const fileId = "550e8400-e29b-41d4-a716-446655440000";
+      const headers = new Headers({ "x-team-id": teamId });
+      if (organizationId) headers.set("x-org-id", organizationId);
+      const req = new NextRequest(
+        `https://app.test/api/proxy/api/workspace/files/${fileId}/download`,
+        { headers },
+      );
+
+      const res = await GET(
+        req,
+        makeParams(["api", "workspace", "files", fileId, "download"]),
+      );
+
+      expect(res.status).toBe(200);
+      const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
+      expect(sentHeaders.get("authorization")).toBe("Bearer test-token");
+      expect(sentHeaders.get("x-org-id")).toBe(organizationId);
+      expect(sentHeaders.get("x-team-id")).toBe(teamId || null);
+    },
+  );
 });
 
 describe("proxy route — response-start timeout", () => {

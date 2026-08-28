@@ -581,8 +581,12 @@ class TestTerminalResponse:
         r = await self._handoff()
         assert r.sub_session_id == "inner-1"
         assert r.sub_autopilot_session_id == "inner-1"
-        assert r.sub_autopilot_session_link == "/copilot?sessionId=inner-1"
-        assert "/copilot?sessionId=inner-1" in r.message
+        assert r.sub_autopilot_session_link == (
+            "/copilot?organizationId=org-1&teamId=team-1&sessionId=inner-1"
+        )
+        assert (
+            "/copilot?organizationId=org-1&teamId=team-1&sessionId=inner-1" in r.message
+        )
 
     @pytest.mark.asyncio
     async def test_no_elapsed_time_is_reported_for_a_zero_wait_tool(

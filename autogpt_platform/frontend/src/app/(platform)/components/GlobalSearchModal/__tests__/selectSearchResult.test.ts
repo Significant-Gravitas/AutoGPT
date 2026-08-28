@@ -21,13 +21,17 @@ describe("selectSearchResult", () => {
   it("routes a chat_session to copilot via the sessionId query param", () => {
     const { router, push } = makeRouter();
     selectSearchResult(router, asItem({ id: "abc 1", type: "chat_session" }));
-    expect(push).toHaveBeenCalledWith("/copilot?sessionId=abc%201");
+    expect(push).toHaveBeenCalledWith(
+      "/copilot?sessionId=abc+1&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("routes a library_agent to its detail page", () => {
     const { router, push } = makeRouter();
     selectSearchResult(router, asItem({ id: "lib1", type: "library_agent" }));
-    expect(push).toHaveBeenCalledWith("/library/agents/lib1");
+    expect(push).toHaveBeenCalledWith(
+      "/library/agents/lib1?organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("routes a store_agent to the marketplace using creator and slug", () => {
@@ -54,15 +58,37 @@ describe("selectSearchResult", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("opens a workspace_file download in a new tab", () => {
+  it("opens a tenant-scoped workspace_file download in a new tab", async () => {
     const { router, push } = makeRouter();
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const replace = vi.fn();
+    const target = {
+      close: vi.fn(),
+      location: { replace },
+    } as unknown as Window;
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(target);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("workspace file", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-file");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     selectSearchResult(router, asItem({ id: "file1", type: "workspace_file" }));
     expect(openSpy).toHaveBeenCalledWith(
-      "/api/proxy/api/workspace/files/file1/download",
+      "about:blank",
       "_blank",
       "noopener,noreferrer",
     );
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/proxy/api/workspace/files/file1/download",
+        {
+          headers: { "X-Org-Id": "", "X-Team-Id": "" },
+        },
+      );
+      expect(replace).toHaveBeenCalledWith("blob:workspace-file");
+    });
     expect(push).not.toHaveBeenCalled();
   });
 });

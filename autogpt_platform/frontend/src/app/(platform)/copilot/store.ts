@@ -6,6 +6,8 @@ import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 export interface DeleteTarget {
   id: string;
   title: string | null | undefined;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 /**
@@ -36,6 +38,13 @@ export interface ArtifactRef {
   origin: "agent" | "user-upload";
   /** Size in bytes if known — used by `classifyArtifact` for size gating. */
   sizeBytes?: number;
+  organizationId?: string | null;
+  teamId?: string | null;
+}
+
+interface ArtifactTenantScope {
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 interface ArtifactPanelState {
@@ -181,6 +190,8 @@ interface CopilotUIState {
   setShowNotificationDialog: (show: boolean) => void;
 
   // Artifact panel
+  artifactTenantScope: ArtifactTenantScope | null;
+  setArtifactTenantScope: (scope: ArtifactTenantScope | null) => void;
   artifactPanel: ArtifactPanelState;
   // `persist: false` skips the localStorage write — used by the public
   // /tour demo so a scripted open/close never leaks into the panel state
@@ -236,6 +247,18 @@ interface CopilotUIState {
 const _autoOpenKnownIds = new Set<string>();
 let _autoOpenReady = false;
 let _autoOpenUserClosed = false;
+
+function withArtifactScope(
+  ref: ArtifactRef,
+  scope: ArtifactTenantScope | null,
+): ArtifactRef {
+  if ("organizationId" in ref || "teamId" in ref || scope === null) return ref;
+  return {
+    ...ref,
+    organizationId: scope.organizationId,
+    teamId: scope.teamId,
+  };
+}
 
 export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   initialPrompt: null,
@@ -318,6 +341,25 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   // Artifact panel
+  artifactTenantScope: null,
+  setArtifactTenantScope: (scope) =>
+    set((state) => {
+      if (
+        state.artifactTenantScope?.organizationId === scope?.organizationId &&
+        state.artifactTenantScope?.teamId === scope?.teamId
+      ) {
+        return state;
+      }
+      return {
+        artifactTenantScope: scope,
+        artifactPanel: {
+          ...state.artifactPanel,
+          activeArtifact: null,
+          history: [],
+          lastArtifact: null,
+        },
+      };
+    }),
   artifactPanel: {
     isOpen: getPersistedOpen(),
     activeArtifact: null,
@@ -327,11 +369,12 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   },
   openArtifact: (ref, opts) =>
     set((state) => {
+      const scopedRef = withArtifactScope(ref, state.artifactTenantScope);
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
-      const isReturningToTop = topOfHistory?.id === ref.id;
+      const isReturningToTop = topOfHistory?.id === scopedRef.id;
       const shouldPushHistory =
-        activeArtifact != null && activeArtifact.id !== ref.id;
+        activeArtifact != null && activeArtifact.id !== scopedRef.id;
       const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
@@ -344,7 +387,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         artifactPanel: {
           ...state.artifactPanel,
           isOpen: true,
-          activeArtifact: ref,
+          activeArtifact: scopedRef,
           history,
         },
       };
@@ -477,14 +520,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
   autoOpenArtifact: (ref) => {
     if (_autoOpenUserClosed) return;
     if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeArtifact: ref,
-        history: [],
-      },
-    }));
+    set((state) => {
+      const scopedRef = withArtifactScope(ref, state.artifactTenantScope);
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: true,
+          activeArtifact: scopedRef,
+          history: [],
+        },
+      };
+    });
   },
   // Explicit user action (the artifact panel's files button): drops the open
   // preview and hands the region to the floating files card.
@@ -513,7 +559,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       const active = get().artifactPanel.activeArtifact;
       if (active?.id === ref.id && !active.mimeType && ref.mimeType) {
         set((state) => ({
-          artifactPanel: { ...state.artifactPanel, activeArtifact: ref },
+          artifactPanel: {
+            ...state.artifactPanel,
+            activeArtifact: withArtifactScope(ref, state.artifactTenantScope),
+          },
         }));
       }
       return;

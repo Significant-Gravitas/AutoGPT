@@ -112,11 +112,13 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time():
         raised = mock_db_client.raise_alert_condition.call_args.kwargs
         assert raised["cause"] == AlertCause.ZERO_BALANCE
         assert raised["user_id"] == user_id
-        assert raised["cause_key"] == "zero_balance:exec-1"
+        assert raised["cause_key"] == "zero_balance:org-1:team-1:exec-1"
         assert raised["data"]["agent"] == "Test Agent"
 
         # Verify Redis was checked with correct key pattern
-        expected_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+        expected_key = (
+            f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:org-1:team-1:{graph_id}"
+        )
         mock_redis_client.set.assert_called_once()
         call_args = mock_redis_client.set.call_args
         assert call_args[0][0] == expected_key
@@ -244,11 +246,11 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         calls = mock_redis_client.set.call_args_list
         assert (
             calls[0][0][0]
-            == f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id_1}"
+            == f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:_:_:{graph_id_1}"
         )
         assert (
             calls[1][0][0]
-            == f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id_2}"
+            == f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:_:_:{graph_id_2}"
         )
 
 

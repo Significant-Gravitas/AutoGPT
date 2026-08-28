@@ -2,7 +2,7 @@ import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/end
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import { server } from "@/mocks/mock-server";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { ArtifactsTab } from "../components/ArtifactsTab/ArtifactsTab";
 
@@ -25,8 +25,15 @@ function listResponse(names: string[]): ListFilesResponse {
   };
 }
 
+beforeEach(() => {
+  useCopilotUIStore.setState({
+    artifactTenantScope: { organizationId: null, teamId: null },
+  });
+});
+
 afterEach(() => {
   useCopilotUIStore.setState({
+    artifactTenantScope: null,
     artifactPanel: {
       isOpen: false,
       activeArtifact: null,

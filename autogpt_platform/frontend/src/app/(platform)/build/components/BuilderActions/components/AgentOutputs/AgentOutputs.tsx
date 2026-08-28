@@ -27,8 +27,10 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { BookOpen01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
+  const tenantScope = useBuilderTenantScope();
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
   const nodes = useNodeStore(useShallow((state) => state.nodes));
 
@@ -45,11 +47,16 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
           .filter((result) => result.output_data?.output !== undefined)
           .map((result) => {
             const outputData = result.output_data!.output;
-            const renderer = globalRegistry.getRenderer(outputData);
+            const metadata = {
+              organizationId: tenantScope.organizationId,
+              teamId: tenantScope.teamId,
+            };
+            const renderer = globalRegistry.getRenderer(outputData, metadata);
             return {
               nodeExecID: result.node_exec_id,
               value: outputData,
               renderer,
+              metadata,
             };
           })
           .filter(
@@ -68,12 +75,14 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
             name: node.data.hardcodedValues?.name || "Output",
             description:
               node.data.hardcodedValues?.description || "Output from the agent",
+            organizationId: tenantScope.organizationId,
+            teamId: tenantScope.teamId,
           },
           items,
         };
       })
       .filter((group): group is NonNullable<typeof group> => group !== null);
-  }, [nodes]);
+  }, [nodes, tenantScope.organizationId, tenantScope.teamId]);
 
   const actionItems = useMemo(() => {
     return outputs.flatMap((group) =>

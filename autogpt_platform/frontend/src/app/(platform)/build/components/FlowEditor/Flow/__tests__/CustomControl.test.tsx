@@ -2,6 +2,7 @@ import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
 import { fireEvent, render } from "@testing-library/react";
 import { ReactElement } from "react";
 import { describe, expect, test, vi } from "vitest";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 
 vi.mock("@xyflow/react", () => ({
   useReactFlow: () => ({
@@ -31,7 +32,11 @@ vi.mock("next/navigation", () => ({
 import { CustomControls } from "../components/CustomControl";
 
 function renderControls(ui: ReactElement) {
-  return render(<TooltipProvider>{ui}</TooltipProvider>);
+  return render(
+    <NuqsTestingAdapter>
+      <TooltipProvider>{ui}</TooltipProvider>
+    </NuqsTestingAdapter>,
+  );
 }
 
 describe("CustomControls", () => {

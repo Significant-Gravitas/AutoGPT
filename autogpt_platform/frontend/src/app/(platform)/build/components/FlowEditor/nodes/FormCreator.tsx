@@ -9,6 +9,7 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { gateDiscriminatorOptions } from "@/components/renderers/InputRenderer/custom/CredentialField/gateDiscriminatorOptions";
 import { credentialNotApplicable } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import { useBuilderTenantScope } from "../../../hooks/useBuilderTenantScope";
 
 function isCredentialsProperty(schema: RJSFSchema, key: string): boolean {
   const property = schema.properties?.[key];
@@ -39,6 +40,7 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
     className,
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
+    const tenantScope = useBuilderTenantScope();
 
     const getHardCodedValues = useNodeStore(
       (state) => state.getHardCodedValues,
@@ -155,6 +157,8 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
             uiType: uiType,
             showHandles: showHandles,
             size: "small",
+            organizationId: tenantScope.organizationId,
+            teamId: tenantScope.teamId,
           }}
         />
       </div>

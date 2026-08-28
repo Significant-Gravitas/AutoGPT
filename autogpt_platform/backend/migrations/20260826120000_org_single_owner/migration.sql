@@ -103,7 +103,13 @@ BEGIN
        AND TG_OP = 'UPDATE'
        AND to_jsonb(NEW)->>'executionStatus' IN (
            'COMPLETED', 'FAILED', 'TERMINATED'
-       ) THEN
+       )
+       AND to_jsonb(NEW)->>'userId'
+           IS NOT DISTINCT FROM to_jsonb(OLD)->>'userId'
+       AND to_jsonb(NEW)->>'organizationId'
+           IS NOT DISTINCT FROM to_jsonb(OLD)->>'organizationId'
+       AND to_jsonb(NEW)->>'teamId'
+           IS NOT DISTINCT FROM to_jsonb(OLD)->>'teamId' THEN
         RETURN NEW;
     END IF;
 
@@ -111,6 +117,14 @@ BEGIN
         to_jsonb(NEW)->>'organizationId',
         to_jsonb(NEW)->>'owningOrgId'
     );
+    owner_team_id := COALESCE(
+        to_jsonb(NEW)->>'teamIdRestriction',
+        to_jsonb(NEW)->>'teamId'
+    );
+    IF owner_org_id IS NULL AND owner_team_id IS NOT NULL THEN
+        RAISE EXCEPTION 'team-scoped resource requires organization tenancy'
+            USING ERRCODE = '23514';
+    END IF;
     IF owner_org_id IS NULL THEN
         RETURN NEW;
     END IF;
@@ -124,10 +138,6 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    owner_team_id := COALESCE(
-        to_jsonb(NEW)->>'teamIdRestriction',
-        to_jsonb(NEW)->>'teamId'
-    );
     PERFORM 1 FROM "User" WHERE id = owner_user_id FOR UPDATE;
     PERFORM 1 FROM "Organization"
     WHERE id = owner_org_id FOR UPDATE;

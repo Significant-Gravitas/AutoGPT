@@ -11,6 +11,8 @@ export interface WorkRunMetadata {
   status: string;
   outputType: OutputType;
   outputKey: string | null;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 const RUN_METADATA_KIND = "expert_run";
@@ -45,6 +47,8 @@ export function getWorkRunMetadata(value: unknown): WorkRunMetadata | null {
     status: asString(meta.status) ?? "completed",
     outputType,
     outputKey: asString(meta.output_key),
+    organizationId: asString(meta.organization_id),
+    teamId: asString(meta.team_id),
   };
 }
 

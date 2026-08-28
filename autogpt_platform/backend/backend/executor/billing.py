@@ -406,9 +406,12 @@ def handle_insufficient_funds_notif(
     team_id: str | None = None,
     source_graph_execution_id: str | None = None,
 ) -> None:
-    # Check if we've already sent a notification for this user+agent combo.
-    # We only send one notification per user per agent until they top up credits.
-    redis_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+    organization_scope = organization_id or "_"
+    team_scope = team_id or "_"
+    redis_key = (
+        f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:"
+        f"{organization_scope}:{team_scope}:{graph_id}"
+    )
     try:
         redis_client = redis.get_redis()
         # SET NX returns True only if the key was newly set (didn't exist)
@@ -451,7 +454,10 @@ def handle_insufficient_funds_notif(
     db_client.raise_alert_condition(
         user_id=user_id,
         cause=AlertCause.ZERO_BALANCE,
-        cause_key=f"zero_balance:{source_graph_execution_id or graph_id}",
+        cause_key=(
+            f"zero_balance:{organization_scope}:{team_scope}:"
+            f"{source_graph_execution_id or graph_id}"
+        ),
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,

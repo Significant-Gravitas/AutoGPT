@@ -245,7 +245,7 @@ describe("ToolResult", () => {
 
       expect(screen.getByText("creator/scraper")).toBeDefined();
       expect(screen.getByLabelText("Open execution").getAttribute("href")).toBe(
-        "/library/agents/graph-9?activeTab=runs&activeItem=exec-2",
+        "/library/agents/graph-9?organizationId=__personal__&teamId=__org_home__&activeTab=runs&activeItem=exec-2",
       );
     });
 
@@ -395,7 +395,7 @@ describe("ToolResult", () => {
       expect(screen.getByText("1,200 runs")).toBeDefined();
       expect(screen.getByText("4.5")).toBeDefined();
       expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
-        "/library/agents/lib-1",
+        "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__",
       );
     });
   });

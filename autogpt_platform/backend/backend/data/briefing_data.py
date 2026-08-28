@@ -40,6 +40,10 @@ class ScoredRun(BaseModel):
 
     execution_id: str
     graph_id: str
+    graph_version: int
+    library_agent_id: str | None
+    organization_id: str | None
+    team_id: str | None
     agent: str
     interestingness: float
     activity_status: str | None
@@ -122,6 +126,10 @@ async def get_top_scored_runs(
             SELECT
                 e."id" AS execution_id,
                 e."agentGraphId" AS graph_id,
+                e."agentGraphVersion" AS graph_version,
+                library_agent."id" AS library_agent_id,
+                e."organizationId" AS organization_id,
+                e."teamId" AS team_id,
                 COALESCE(g."name", '') AS agent,
                 COALESCE(e."interestingness", 0) AS interestingness,
                 e."stats"::jsonb->>'activity_status' AS activity_status
@@ -132,6 +140,14 @@ async def get_top_scored_runs(
                   AND g."userId" = e."userId"
                   AND g."organizationId" IS NOT DISTINCT FROM e."organizationId"
                   AND g."teamId" IS NOT DISTINCT FROM e."teamId"
+            LEFT JOIN {schema_prefix}"LibraryAgent" library_agent
+                   ON library_agent."userId" = e."userId"
+                  AND library_agent."agentGraphId" = e."agentGraphId"
+                  AND library_agent."agentGraphVersion" = e."agentGraphVersion"
+                  AND library_agent."organizationId"
+                        IS NOT DISTINCT FROM e."organizationId"
+                  AND library_agent."teamId" IS NOT DISTINCT FROM e."teamId"
+                  AND library_agent."isDeleted" = false
             WHERE e."userId" = $1
               AND e."isDeleted" = false
               -- `endedAt` is `timestamp without time zone` holding UTC, and the
@@ -162,6 +178,10 @@ async def get_top_scored_runs(
             ScoredRun(
                 execution_id=row["execution_id"],
                 graph_id=row["graph_id"],
+                graph_version=int(row["graph_version"]),
+                library_agent_id=row["library_agent_id"],
+                organization_id=row["organization_id"],
+                team_id=row["team_id"],
                 agent=row["agent"] or _fallback_name(row["graph_id"]),
                 interestingness=float(row["interestingness"] or 0),
                 activity_status=row["activity_status"],

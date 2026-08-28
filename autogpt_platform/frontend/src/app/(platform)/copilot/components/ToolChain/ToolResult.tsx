@@ -2,6 +2,8 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { useContext } from "react";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
@@ -193,7 +195,12 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
-function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
+function toolCard(
+  row: ChainRow,
+  output: Record<string, unknown> | null,
+  organizationId: string | null,
+  teamId: string | null,
+) {
   const input = asObject(row.input);
 
   if (output) {
@@ -219,7 +226,13 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
             href={
               str(output, "library_agent_link") ??
               (graphID && executionID
-                ? `/library/agents/${graphID}?activeTab=runs&activeItem=${executionID}`
+                ? getLibraryAgentHref(
+                    graphID,
+                    organizationId,
+                    teamId,
+                    executionID,
+                    "runs",
+                  )
                 : undefined)
             }
           />
@@ -413,6 +426,7 @@ interface Props {
 export function ToolResult({ row }: Props) {
   const output = asObject(row.output);
   const pendingQuestions = useContext(PendingQuestionsContext);
+  const scope = useCopilotTenantScope();
 
   // The latest unanswered clarifying questions render as an interactive
   // answer form right on their chain row (older ones keep the read-only
@@ -439,7 +453,7 @@ export function ToolResult({ row }: Props) {
     );
   }
 
-  const card = toolCard(row, output);
+  const card = toolCard(row, output, scope.organizationId, scope.teamId);
   if (card) return card;
 
   if (!output) return <KeyValueList value={row.output} />;

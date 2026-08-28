@@ -9,11 +9,14 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface Props {
   status: AgentStatus;
   agentID: string;
   executionID?: string;
+  organizationID: string | null;
+  teamID: string | null;
   className?: string;
 }
 
@@ -21,6 +24,8 @@ export function ContextualActionButton({
   status,
   agentID,
   executionID,
+  organizationID,
+  teamID,
   className,
 }: Props) {
   const router = useRouter();
@@ -32,10 +37,15 @@ export function ContextualActionButton({
     e.preventDefault();
     e.stopPropagation();
 
-    const params = new URLSearchParams();
-    if (executionID) params.set("activeItem", executionID);
-    const query = params.toString();
-    router.push(`/library/agents/${agentID}${query ? `?${query}` : ""}`);
+    router.push(
+      getLibraryAgentHref(
+        agentID,
+        organizationID,
+        teamID,
+        executionID,
+        executionID ? "runs" : null,
+      ),
+    );
   }
 
   return (

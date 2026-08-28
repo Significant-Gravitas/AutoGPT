@@ -1,6 +1,6 @@
 import {
   getGetV2ListMySubmissionsQueryKey,
-  useDeleteV2DeleteStoreSubmission,
+  deleteV2DeleteStoreSubmission,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -10,6 +10,11 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 type PublishStep = "select" | "info" | "review";
 
@@ -25,6 +30,8 @@ type EditState = {
     | (StoreSubmissionEditRequest & {
         store_listing_version_id: string | undefined;
         graph_id: string;
+        organization_id: string | null;
+        team_id: string | null;
       })
     | null;
 };
@@ -33,6 +40,9 @@ export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
   const { user } = useAuth();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,
@@ -45,16 +55,6 @@ export const useMainDashboardPage = () => {
     submission: null,
   });
 
-  const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
-
   const {
     data: submissions,
     isSuccess,
@@ -64,8 +64,14 @@ export const useMainDashboardPage = () => {
       select: (x) => {
         return x.data as StoreSubmissionsResponse;
       },
-      enabled: !!user,
+      enabled: !!user && isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListMySubmissionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
     },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
   const onViewSubmission = (submission: StoreSubmission) => {
@@ -80,6 +86,8 @@ export const useMainDashboardPage = () => {
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
       graph_id: string;
+      organization_id: string | null;
+      team_id: string | null;
     },
   ) => {
     setEditState({
@@ -113,9 +121,13 @@ export const useMainDashboardPage = () => {
     });
   };
 
-  const onDeleteSubmission = async (submission_id: string) => {
-    await deleteSubmission({
-      submissionId: submission_id,
+  const onDeleteSubmission = async (submission: StoreSubmission) => {
+    await deleteV2DeleteStoreSubmission(
+      submission.listing_version_id,
+      getTenantRequestInit(submission.organization_id, submission.team_id),
+    );
+    await queryClient.invalidateQueries({
+      queryKey: getGetV2ListMySubmissionsQueryKey(),
     });
   };
 

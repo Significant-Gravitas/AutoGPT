@@ -12,11 +12,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface useEditAgentFormProps {
   submission: StoreSubmissionEditRequest & {
     store_listing_version_id: string | undefined;
     graph_id: string;
+    organization_id: string | null;
+    team_id: string | null;
   };
   onSuccess: (submission: StoreSubmission) => void;
   onClose: () => void;
@@ -60,7 +63,12 @@ export const useEditAgentForm = ({
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission();
+  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
+    request: getTenantRequestInit(
+      submission.organization_id,
+      submission.team_id,
+    ),
+  });
 
   const queryClient = useQueryClient();
   const { toast } = useToast();

@@ -62,6 +62,7 @@ import {
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "../../hooks/useBuilderTenantScope";
 
 export function AgentRunDraftView({
   graph,
@@ -107,7 +108,11 @@ export function AgentRunDraftView({
       doDeletePreset: (presetID: LibraryAgentPresetID) => void;
     }
 )): React.ReactNode {
-  const api = useBackendAPI();
+  const tenantScope = useBuilderTenantScope();
+  const api = useBackendAPI({
+    organizationId: tenantScope.organizationId,
+    teamId: tenantScope.teamId,
+  });
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
   const allProviders = useContext(CredentialsProvidersContext);
@@ -776,6 +781,8 @@ export function AgentRunDraftView({
                   setChangedPresetAttributes((prev) => prev.add("inputs"));
                 }}
                 data-testid={`agent-input-${key}`}
+                organizationId={tenantScope.organizationId}
+                teamId={tenantScope.teamId}
               />
             ))}
 

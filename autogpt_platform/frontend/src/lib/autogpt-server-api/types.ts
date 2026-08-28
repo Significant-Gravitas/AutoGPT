@@ -319,6 +319,8 @@ export type GraphExecutionMeta = {
     | "REVIEW";
   started_at: Date | null;
   ended_at: Date | null;
+  organization_id?: string | null;
+  team_id?: string | null;
   stats: {
     error: string | null;
     cost: number;
@@ -353,6 +355,8 @@ export type GraphMeta = {
   version: number;
   is_active: boolean;
   created_at: Date;
+  organization_id?: string | null;
+  team_id?: string | null;
   name: string;
   description: string;
   instructions?: string | null;

@@ -313,10 +313,14 @@ async def test_handle_subscribe_graph_execs_branch(
     not subscribe_graph_exec — regression guard for the aggregate channel."""
     message = WSMessage(
         method=WSMethod.SUBSCRIBE_GRAPH_EXECS,
-        data={"graph_id": "graph-abc"},
+        data={
+            "graph_id": "graph-abc",
+            "organization_id": "org-1",
+            "team_id": "team-1",
+        },
     )
     mock_manager.subscribe_graph_execs.return_value = (
-        "user-1|graph#graph-abc|executions"
+        "user-1|org#org-1|team#team-1|graph#graph-abc|executions"
     )
 
     await handle_subscribe(
@@ -329,6 +333,8 @@ async def test_handle_subscribe_graph_execs_branch(
     mock_manager.subscribe_graph_execs.assert_called_once_with(
         user_id="user-1",
         graph_id="graph-abc",
+        organization_id="org-1",
+        team_id="team-1",
         websocket=mock_websocket,
     )
     mock_manager.subscribe_graph_exec.assert_not_called()

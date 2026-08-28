@@ -11,6 +11,7 @@ import {
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   folder: LibraryFolder;
@@ -52,6 +53,10 @@ export function LibraryFolderDeleteDialog({
         });
       },
     },
+    request: getTenantRequestInit(
+      folder.organization_id ?? null,
+      folder.team_id ?? null,
+    ),
   });
 
   function handleDelete() {

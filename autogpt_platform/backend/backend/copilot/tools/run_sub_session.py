@@ -39,6 +39,7 @@ from backend.copilot.sdk.session_waiter import (
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 from backend.data.tenancy import ResourceAccess
+from backend.util.tenancy_urls import copilot_path
 
 from .base import BaseTool
 from .models import (
@@ -254,6 +255,8 @@ class RunSubSessionTool(BaseTool):
             parent_session_id=session.session_id,
             elapsed=elapsed,
             workspace_files=workspace_files,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
 
@@ -281,7 +284,11 @@ def apply_delegated_expert(
     )
 
 
-def _sub_session_link(inner_session_id: str | None) -> str | None:
+def _sub_session_link(
+    inner_session_id: str | None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str | None:
     """Build the CoPilot UI URL for a sub-AutoPilot session.
 
     Kept in one place so the format stays consistent across the
@@ -290,7 +297,7 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     """
     if not inner_session_id:
         return None
-    return f"/copilot?sessionId={inner_session_id}"
+    return copilot_path(inner_session_id, organization_id, team_id)
 
 
 async def list_sub_workspace_files(
@@ -411,6 +418,8 @@ def response_from_outcome(
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
     actor: str = "Sub-AutoPilot",
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
@@ -432,7 +441,7 @@ def response_from_outcome(
     message was appended to its pending buffer and will be processed by
     the existing turn on its next drain.
     """
-    link = _sub_session_link(inner_session_id)
+    link = _sub_session_link(inner_session_id, organization_id, team_id)
     if outcome == "queued":
         return SubSessionStatusResponse(
             message=(

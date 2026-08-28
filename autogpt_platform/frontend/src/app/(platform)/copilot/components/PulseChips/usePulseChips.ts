@@ -20,6 +20,8 @@ export function usePulseChips(): PulseChipData[] {
       status: item.status,
       priority: item.priority,
       shortMessage: item.message,
+      organizationId: item.organizationId,
+      teamId: item.teamId,
     }));
   }, [sitrepItems]);
 }

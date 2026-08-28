@@ -2,6 +2,7 @@
 
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { ScheduleActionsDropdown } from "./ScheduleActionsDropdown";
@@ -26,6 +27,8 @@ export function ScheduleListItem({
   onDeleted,
   onRunCreated,
 }: Props) {
+  const { user } = useAuth();
+
   return (
     <SidebarItemCard
       title={schedule.name}
@@ -44,6 +47,7 @@ export function ScheduleListItem({
         <ScheduleActionsDropdown
           agent={agent}
           schedule={schedule}
+          canDelete={schedule.user_id === user?.id}
           onDeleted={onDeleted}
           onRunCreated={onRunCreated}
         />

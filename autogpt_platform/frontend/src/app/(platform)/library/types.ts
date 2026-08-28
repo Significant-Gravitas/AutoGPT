@@ -60,6 +60,8 @@ export interface SitrepItemData {
   agentName: string;
   agentImageUrl?: string | null;
   executionID?: string;
+  organizationId: string | null;
+  teamId: string | null;
   priority: SitrepPriority;
   message: string;
   status: AgentStatus;

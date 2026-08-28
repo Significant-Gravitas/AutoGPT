@@ -12,6 +12,10 @@ import Link from "next/link";
 import { useRemoveTriggerAgent } from "../../../../hooks/useRemoveTriggerAgent";
 import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  getBuilderHref,
+  getLibraryAgentHref,
+} from "@/services/org-team/builder";
 
 interface Props {
   parentAgent: LibraryAgent;
@@ -47,7 +51,11 @@ export function TriggerAgentActionsDropdown({
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <Link
-              href={`/library/agents/${triggerAgent.id}`}
+              href={getLibraryAgentHref(
+                triggerAgent.id,
+                triggerAgent.organization_id ?? null,
+                triggerAgent.team_id ?? null,
+              )}
               onClick={(e) => e.stopPropagation()}
             >
               View in library
@@ -55,7 +63,12 @@ export function TriggerAgentActionsDropdown({
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link
-              href={`/build?flowID=${triggerAgent.graph_id}`}
+              href={getBuilderHref({
+                graphId: triggerAgent.graph_id,
+                graphVersion: triggerAgent.graph_version,
+                organizationId: triggerAgent.organization_id ?? null,
+                teamId: triggerAgent.team_id ?? null,
+              })}
               onClick={(e) => e.stopPropagation()}
             >
               Open in builder

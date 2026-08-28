@@ -14,9 +14,11 @@ from prisma.enums import AlertCause, ReviewStatus
 from prisma.models import PendingHumanReview
 
 from backend.data import alerts as alerts_db
+from backend.api.features.library.db import get_library_agent_id_by_graph_id
 from backend.data.graph import get_graph_metadata
 from backend.notifications.alert_causes import AwaitingReviewCause
 from backend.util.logging import TruncatedLogger
+from backend.util.tenancy_urls import builder_path, library_agent_path
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[ReviewAlerts]")
 
@@ -54,8 +56,30 @@ async def sync_awaiting_review(user_id: str, graph_id: str, graph_exec_id: str) 
             metadata.team_id,
         ) == (organization_id, team_id):
             agent_name = metadata.name or agent_name
+        library_agent_id = await get_library_agent_id_by_graph_id(
+            user_id,
+            graph_id,
+            organization_id,
+            team_id,
+        )
+        if library_agent_id:
+            cta_path = library_agent_path(
+                library_agent_id,
+                organization_id,
+                team_id,
+                active_tab="runs",
+                active_item=graph_exec_id,
+            )
+        else:
+            cta_path = builder_path(
+                graph_id,
+                waiting[0].graphVersion,
+                organization_id,
+                team_id,
+                execution_id=graph_exec_id,
+            )
         cause = AwaitingReviewCause(
-            cta_path=f"/library/agents/{graph_id}/reviews",
+            cta_path=cta_path,
             agent=agent_name,
             count=len(waiting),
             since_label=f"{oldest.day} {oldest.strftime('%b')}, {oldest.strftime('%H:%M')}",

@@ -19,6 +19,8 @@ interface Props {
   executionId: string;
   isShared?: boolean;
   shareToken?: string | null;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 export function ShareRunButton({
@@ -26,6 +28,8 @@ export function ShareRunButton({
   executionId,
   isShared: initialIsShared = false,
   shareToken: initialShareToken,
+  organizationId,
+  teamId,
 }: Props) {
   const {
     isShared,
@@ -40,6 +44,8 @@ export function ShareRunButton({
     executionId,
     isShared: initialIsShared,
     shareToken: initialShareToken,
+    organizationId,
+    teamId,
   });
 
   return (

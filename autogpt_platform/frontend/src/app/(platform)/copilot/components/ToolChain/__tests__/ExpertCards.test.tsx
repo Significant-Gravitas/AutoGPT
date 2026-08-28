@@ -74,7 +74,9 @@ describe("expert change cards", () => {
     ).toBe("/team/exp-otto");
     expect(
       screen.getByRole("link", { name: /Chat/ }).getAttribute("href"),
-    ).toBe("/copilot?expertId=exp-otto");
+    ).toBe(
+      "/copilot?expertId=exp-otto&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("names the workflows that failed to install on a partial hire", () => {

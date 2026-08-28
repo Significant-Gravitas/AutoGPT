@@ -101,6 +101,7 @@ export function MainAgentPage({ params }: Props) {
             <AgentInfo
               user={user}
               agentId={agentData.active_version_id ?? "–"}
+              agentGraphID={agentData.graph_id}
               name={agentData.agent_name ?? ""}
               creator={agentData.creator ?? ""}
               creatorAvatar={agentData.creator_avatar ?? ""}
@@ -120,7 +121,7 @@ export function MainAgentPage({ params }: Props) {
                   : "1"
               }
               storeListingVersionId={agentData.store_listing_version_id ?? ""}
-              isAgentAddedToLibrary={Boolean(libraryAgent)}
+              libraryAgent={libraryAgent}
               creatorSlug={params.creator}
               agentSlug={params.slug}
             />

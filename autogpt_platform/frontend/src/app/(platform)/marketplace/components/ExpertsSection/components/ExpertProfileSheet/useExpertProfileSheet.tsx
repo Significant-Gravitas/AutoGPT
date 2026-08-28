@@ -16,6 +16,7 @@ import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-exp
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { getCopilotExpertHref } from "@/services/org-team/builder";
 
 function celebrate(result: HireResult) {
   toast({
@@ -66,7 +67,14 @@ export function useExpertProfileSheet(
       celebrate(completedHire);
       // Hiring isn't installing: hand the user straight to the expert's thread
       // with kickoff=1 so it introduces itself and starts its day-one job.
-      router.push(`/copilot?expertId=${completedHire.expert.id}&kickoff=1`);
+      router.push(
+        getCopilotExpertHref(
+          completedHire.expert.id,
+          completedHire.expert.organization_id ?? null,
+          completedHire.expert.team_id ?? null,
+          true,
+        ),
+      );
     }
     onClose();
   }

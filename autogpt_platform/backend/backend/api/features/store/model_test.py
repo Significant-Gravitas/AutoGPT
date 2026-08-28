@@ -6,7 +6,12 @@ import pytest
 from . import model as store_model
 
 
-def _listing_version(owning_org_id: str | None) -> MagicMock:
+def _listing_version(
+    owning_org_id: str | None,
+    *,
+    organization_id: str | None = "org-42",
+    team_id: str | None = "team-7",
+) -> MagicMock:
     """A StoreListingVersion stand-in with its StoreListing included."""
     listing = MagicMock()
     listing.id = "listing-1"
@@ -35,18 +40,21 @@ def _listing_version(owning_org_id: str | None) -> MagicMock:
     version.reviewerId = None
     version.reviewComments = None
     version.internalComments = None
+    version.organizationId = organization_id
+    version.teamId = team_id
     return version
 
 
 @pytest.mark.parametrize("owning_org_id", ["org-42", None])
-def test_from_listing_version_surfaces_owning_org(owning_org_id: str | None) -> None:
-    """The listing's owning org is what drives the org badge on submissions,
-    so it has to survive the mapping — including the pre-backfill NULL case."""
+def test_from_listing_version_surfaces_exact_version_scope(
+    owning_org_id: str | None,
+) -> None:
     submission = store_model.StoreSubmission.from_listing_version(
         _listing_version(owning_org_id)
     )
 
-    assert submission.organization_id == owning_org_id
+    assert submission.organization_id == "org-42"
+    assert submission.team_id == "team-7"
 
 
 def test_admin_view_from_listing_version_surfaces_owning_org() -> None:
@@ -56,3 +64,4 @@ def test_admin_view_from_listing_version_surfaces_owning_org() -> None:
     )
 
     assert submission.organization_id == "org-42"
+    assert submission.team_id == "team-7"

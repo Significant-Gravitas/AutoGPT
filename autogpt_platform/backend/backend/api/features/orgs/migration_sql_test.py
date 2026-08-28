@@ -68,6 +68,24 @@ def _search_path_repair_migration_sql() -> str:
     ).read_text(encoding="utf-8")
 
 
+def _tenant_owner_hardening_migration_sql() -> str:
+    return (
+        Path(__file__).parents[4]
+        / "migrations"
+        / "20260827140000_harden_tenant_owner_trigger"
+        / "migration.sql"
+    ).read_text(encoding="utf-8")
+
+
+def _tenant_integrity_migration_sql() -> str:
+    return (
+        Path(__file__).parents[4]
+        / "migrations"
+        / "20260827180000_assert_tenant_integrity"
+        / "migration.sql"
+    ).read_text(encoding="utf-8")
+
+
 def test_migration_enforces_single_live_org_owner_and_invitation() -> None:
     sql = _migration_sql()
 
@@ -225,3 +243,56 @@ def test_tenancy_validation_writes_share_hot_parent_locks() -> None:
     assert 'FROM "User" WHERE id = owner_user_id FOR SHARE' in sql
     assert "WHERE id = owner_org_id FOR SHARE" in sql
     assert "FOR UPDATE" not in sql
+
+
+def test_tenant_owner_hardening_validates_terminal_identity_updates() -> None:
+    for sql in (
+        _migration_sql(),
+        _validation_lock_migration_sql(),
+        _tenant_owner_hardening_migration_sql(),
+    ):
+        assert "to_jsonb(OLD)->>'userId'" in sql
+        assert "to_jsonb(OLD)->>'organizationId'" in sql
+        assert "to_jsonb(OLD)->>'teamId'" in sql
+        assert "team-scoped resource requires organization tenancy" in sql
+
+    repair = _tenant_owner_hardening_migration_sql()
+    assert "current_schema()" in repair
+    assert "FOR SHARE" in repair
+
+
+def test_tenant_integrity_migration_audits_historical_rows() -> None:
+    sql = _tenant_integrity_migration_sql()
+
+    for table in (
+        "AgentGraph",
+        "AgentGraphExecution",
+        "AgentPreset",
+        "LibraryAgent",
+        "ChatSession",
+        "IntegrationWebhook",
+        "APIKey",
+        "OAuthApplication",
+        "StoreListingVersion",
+    ):
+        assert f'"{table}"' in sql or f"'{table}'" in sql
+    assert "tenant rows without a live owner membership" in sql
+    assert "parent-child scope mismatches" in sql
+    assert "graph or listing scope mismatches" in sql
+
+
+def test_tenant_integrity_migration_prevents_team_scope_collapse() -> None:
+    sql = _tenant_integrity_migration_sql()
+
+    for table in (
+        "ChatSession",
+        "AgentGraph",
+        "AgentPreset",
+        "LibraryAgent",
+        "LibraryFolder",
+        "Expert",
+        "AgentGraphExecution",
+        "IntegrationWebhook",
+    ):
+        assert f'ALTER TABLE "{table}"' in sql
+    assert sql.count("ON DELETE RESTRICT ON UPDATE CASCADE") == 8

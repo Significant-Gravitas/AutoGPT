@@ -108,6 +108,35 @@ async def test_live_resource_lease_reuses_exact_active_guard() -> None:
 
 
 @pytest.mark.asyncio
+async def test_multi_scope_lease_reuses_one_guard_for_nested_scope_access() -> None:
+    client = MagicMock()
+    scopes = [("org-1", None), ("org-1", "team-1")]
+    client.acquire_live_resource_scopes_lease = AsyncMock(
+        return_value=("lease-1", scopes)
+    )
+    client.acquire_live_resource_lease = AsyncMock()
+    client.release_live_resource_lease = AsyncMock(return_value=True)
+    client.is_live_resource_lease_active = AsyncMock(return_value=True)
+
+    with patch("backend.data.db_accessors.credit_db", return_value=client):
+        async with db_accessors.live_resource_scopes_lease(
+            "user-1", list(reversed(scopes)), "view"
+        ) as authorized:
+            assert authorized == scopes
+            async with db_accessors.live_resource_lease(
+                "user-1", "org-1", "team-1", "view"
+            ) as nested:
+                assert isinstance(nested, db_accessors.LiveResourceLeaseGuard)
+                assert nested.lease_id == "lease-1"
+
+    client.acquire_live_resource_scopes_lease.assert_awaited_once_with(
+        "user-1", scopes, "view"
+    )
+    client.acquire_live_resource_lease.assert_not_awaited()
+    client.release_live_resource_lease.assert_awaited_once_with("lease-1")
+
+
+@pytest.mark.asyncio
 async def test_transferred_guard_is_reused_without_acquiring_another_lease() -> None:
     client = MagicMock()
     client.is_live_resource_lease_active = AsyncMock(return_value=True)

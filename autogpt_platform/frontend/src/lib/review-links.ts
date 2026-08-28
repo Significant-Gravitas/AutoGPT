@@ -1,4 +1,8 @@
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import {
+  getCopilotHref,
+  getLibraryAgentHref,
+} from "@/services/org-team/builder";
 
 /**
  * Deep link to wherever a pending human review can be acted on.
@@ -21,12 +25,19 @@ import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pen
  */
 export function getReviewLink(review: PendingHumanReviewModel): string {
   if (review.session_id) {
-    return `/copilot?sessionId=${encodeURIComponent(review.session_id)}`;
+    return getCopilotHref(
+      review.session_id,
+      review.organization_id ?? null,
+      review.team_id ?? null,
+    );
   }
   if (review.library_agent_id) {
-    return (
-      `/library/agents/${encodeURIComponent(review.library_agent_id)}` +
-      `?activeTab=runs&activeItem=${encodeURIComponent(review.graph_exec_id)}`
+    return getLibraryAgentHref(
+      review.library_agent_id,
+      review.organization_id ?? null,
+      review.team_id ?? null,
+      review.graph_exec_id,
+      "runs",
     );
   }
   return "/library";

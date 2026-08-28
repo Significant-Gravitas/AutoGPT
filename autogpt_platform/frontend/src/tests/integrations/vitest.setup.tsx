@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, afterEach, vi } from "vitest";
+import { beforeAll, afterAll, afterEach, beforeEach, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { mockNextjsModules } from "./setup-nextjs-mocks";
 import { mockAuthRequest } from "./mock-auth-request";
@@ -45,6 +45,23 @@ beforeAll(() => {
   mockNextjsModules();
   mockAuthRequest(); // If you need user's data - please mock auth actions in your specific test - it sends null user [It's only to avoid cookies() call]
   return server.listen({ onUnhandledRequest: "error" });
+});
+beforeEach(async () => {
+  const { environment } = await import("@/services/environment");
+  if (
+    typeof (environment as { isServerSide?: unknown }).isServerSide !==
+    "function"
+  ) {
+    return;
+  }
+  const { useOrgTeamStore } = await import("@/services/org-team/store");
+  useOrgTeamStore.setState({
+    activeOrgID: null,
+    activeTeamID: null,
+    orgs: [],
+    teams: [],
+    isLoaded: true,
+  });
 });
 afterEach(() => {
   cleanup();

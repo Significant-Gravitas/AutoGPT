@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -133,6 +133,7 @@ from backend.data.db_accessors import (
     LiveResourceAccessRevoked,
     LiveResourceLeaseGuard,
     live_resource_lease,
+    live_resource_scopes_lease,
     require_exact_chat_session_scope,
 )
 from backend.data.model import Credentials
@@ -638,19 +639,14 @@ async def list_sessions(
         if ctx.team_id is not None
         else await get_user_team_ids(user_id, ctx.org_id)
     )
-    scopes = (
-        [(ctx.org_id, ctx.team_id)]
-        if ctx.team_id is not None
-        else [(ctx.org_id, None)]
-        + [(ctx.org_id, team_id) for team_id in sorted(set(visible_team_ids or []))]
-    )
-    async with AsyncExitStack() as stack:
-        for organization_id, team_id in scopes:
-            allowed = await stack.enter_async_context(
-                live_resource_lease(user_id, organization_id, team_id, "view")
-            )
-            if not allowed:
-                raise HTTPException(status_code=404, detail="Session not found")
+    scopes: list[tuple[str, str | None]] = [(ctx.org_id, ctx.team_id)]
+    if ctx.team_id is None:
+        scopes.extend(
+            (ctx.org_id, team_id) for team_id in sorted(set(visible_team_ids or []))
+        )
+    async with live_resource_scopes_lease(user_id, scopes, "view") as authorized:
+        if set(authorized) != set(scopes):
+            raise HTTPException(status_code=404, detail="Session not found")
         sessions, total_count = await get_user_sessions(
             user_id,
             limit,
@@ -1704,8 +1700,8 @@ async def stream_chat_post(
             session_id,
         )
 
-    turn_org_id = ctx.org_id
-    turn_team_id = ctx.team_id
+    turn_org_id = session.organization_id
+    turn_team_id = session.team_id
 
     try:
         turn_in_flight = (

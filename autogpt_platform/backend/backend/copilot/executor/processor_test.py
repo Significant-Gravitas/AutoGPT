@@ -15,6 +15,7 @@ import concurrent.futures
 import logging
 import threading
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,6 +39,7 @@ from backend.copilot.expert_context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.data import db_accessors
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
     CodexCredentialIntegrityError,
@@ -494,6 +496,55 @@ async def test_guarded_driver_stream_rechecks_before_advancing_provider() -> Non
     assert lease_attempts == 2
     assert provider_advanced_after_first_yield is False
     assert provider_closed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("organization_id", "team_id"),
+    [(None, None), ("org-1", None), ("org-1", "team-1")],
+)
+async def test_guarded_driver_stream_does_not_leak_event_lease_into_provider_tasks(
+    organization_id: str | None,
+    team_id: str | None,
+) -> None:
+    client = MagicMock()
+    client.is_live_resource_lease_active = AsyncMock(return_value=True)
+    guard = db_accessors.LiveResourceLeaseGuard(client, "event-lease")
+    inherited_contexts = []
+    provider_state = ContextVar("provider_state", default="unset")
+    observed_provider_state = []
+
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        token = db_accessors._active_live_resource_leases.set(("event-lease",))
+        try:
+            yield guard
+        finally:
+            db_accessors._active_live_resource_leases.reset(token)
+
+    async def provider_stream():
+        inherited_contexts.append(db_accessors._active_live_resource_leases.get())
+        observed_provider_state.append(provider_state.get())
+        provider_state.set("preserved")
+        yield MagicMock()
+        inherited_contexts.append(db_accessors._active_live_resource_leases.get())
+        observed_provider_state.append(provider_state.get())
+        yield MagicMock()
+
+    guarded = _guard_stream_with_live_resource_lease(
+        provider_stream(),
+        "user-1",
+        organization_id,
+        team_id,
+    )
+
+    with patch("backend.copilot.executor.processor.live_resource_lease", lease):
+        await anext(guarded)
+        await anext(guarded)
+        await guarded.aclose()
+
+    assert inherited_contexts == [(), ()]
+    assert observed_provider_state == ["unset", "preserved"]
 
 
 @pytest.mark.asyncio

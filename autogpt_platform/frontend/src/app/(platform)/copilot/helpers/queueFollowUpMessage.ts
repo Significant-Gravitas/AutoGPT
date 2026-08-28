@@ -1,6 +1,6 @@
 import { environment } from "@/services/environment";
 
-import { getCopilotAuthHeaders } from "../helpers";
+import { getCopilotAuthHeaders, type CopilotTenantScope } from "../helpers";
 
 export interface QueueFollowUpResult {
   buffer_length: number;
@@ -22,13 +22,14 @@ export class QueueFollowUpNotActiveError extends Error {
 export async function queueFollowUpMessage(
   sessionId: string,
   message: string,
+  scope?: CopilotTenantScope,
 ): Promise<QueueFollowUpResult> {
   const url = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/messages/pending`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(await getCopilotAuthHeaders()),
+      ...(await getCopilotAuthHeaders(scope)),
     },
     body: JSON.stringify({
       message,

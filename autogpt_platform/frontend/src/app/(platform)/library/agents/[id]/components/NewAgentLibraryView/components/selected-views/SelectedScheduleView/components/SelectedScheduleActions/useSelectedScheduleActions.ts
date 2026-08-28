@@ -8,10 +8,15 @@ import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endp
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 interface UseSelectedScheduleActionsProps {
   agent: LibraryAgent;
@@ -31,6 +36,8 @@ export function useSelectedScheduleActions({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const organizationId = schedule?.organization_id ?? agent.organization_id;
+  const teamId = schedule?.team_id ?? agent.team_id;
 
   const deleteMutation = useDeleteV1DeleteExecutionSchedule({
     mutation: {
@@ -52,10 +59,13 @@ export function useSelectedScheduleActions({
           variant: "destructive",
         }),
     },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   const { mutateAsync: executeAgent, isPending: isRunning } =
-    usePostV1ExecuteGraphAgent();
+    usePostV1ExecuteGraphAgent({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   function handleDelete() {
     if (!scheduleId) return;
@@ -88,7 +98,11 @@ export function useSelectedScheduleActions({
       const newRunID = okData(res)?.id;
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+          organizationId,
+          teamId,
+        ),
       });
 
       if (newRunID && onSelectRun) {
@@ -106,7 +120,12 @@ export function useSelectedScheduleActions({
     }
   }
 
-  const openInBuilderHref = `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`;
+  const openInBuilderHref = getBuilderHref({
+    graphId: agent.graph_id,
+    graphVersion: agent.graph_version,
+    organizationId: organizationId ?? null,
+    teamId: teamId ?? null,
+  });
 
   return {
     openInBuilderHref,

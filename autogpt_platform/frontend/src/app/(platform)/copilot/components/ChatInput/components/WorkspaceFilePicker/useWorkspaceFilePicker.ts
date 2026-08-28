@@ -1,6 +1,11 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useCopilotTenantScope } from "../../../../CopilotTenantScopeContext";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import {
   type InfiniteData,
   keepPreviousData,
@@ -14,6 +19,7 @@ const PAGE_SIZE = 50;
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
 export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
+  const scope = useCopilotTenantScope();
   const [searchTerm, setSearchTerm] = useState("");
   // Keep the full item (not just id) so a selection survives a search that
   // pages the file off the currently-loaded list.
@@ -28,9 +34,16 @@ export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
   const q = debouncedSearch || undefined;
 
   const query = useInfiniteQuery({
-    queryKey: ["workspace-file-picker", "list", { q: q ?? null }] as const,
+    queryKey: getTeamScopedQueryKey(
+      ["workspace-file-picker", "list", { q: q ?? null }],
+      scope.organizationId,
+      scope.teamId,
+    ),
     queryFn: ({ pageParam }) =>
-      listWorkspaceFiles({ limit: PAGE_SIZE, offset: pageParam, q }),
+      listWorkspaceFiles(
+        { limit: PAGE_SIZE, offset: pageParam, q },
+        getTenantRequestInit(scope.organizationId, scope.teamId),
+      ),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;

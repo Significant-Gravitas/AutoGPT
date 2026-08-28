@@ -79,7 +79,7 @@ describe("useSelectedScheduleActions", () => {
       { wrapper },
     );
     expect(result.current.openInBuilderHref).toBe(
-      "/build?flowID=graph-xyz&flowVersion=1",
+      "/build?flowID=graph-xyz&flowVersion=1&organizationId=__personal__&teamId=__org_home__",
     );
   });
 

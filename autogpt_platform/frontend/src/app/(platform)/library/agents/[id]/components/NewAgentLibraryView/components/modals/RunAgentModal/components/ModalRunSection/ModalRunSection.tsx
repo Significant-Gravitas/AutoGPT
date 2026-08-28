@@ -91,6 +91,8 @@ export function ModalRunSection() {
               placeholder={inputSubSchema.description}
               onChange={(value) => setInputValue(key, value)}
               data-testid={`agent-input-${key}`}
+              organizationId={agent.organization_id ?? null}
+              teamId={agent.team_id ?? null}
             />
           ))}
         </ModalSection>

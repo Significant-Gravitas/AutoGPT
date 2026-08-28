@@ -267,11 +267,21 @@ describe("fetchAndExportChat", () => {
     await fetchAndExportChat("session-1", "My Chat", mockFetch);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenNthCalledWith(1, "session-1", { limit: 200 });
-    expect(mockFetch).toHaveBeenNthCalledWith(2, "session-1", {
-      limit: 200,
-      before_sequence: 42,
-    });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      "session-1",
+      { limit: 200 },
+      undefined,
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "session-1",
+      {
+        limit: 200,
+        before_sequence: 42,
+      },
+      undefined,
+    );
     expect(clickSpy).toHaveBeenCalled();
   });
 

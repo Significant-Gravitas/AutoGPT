@@ -25,6 +25,7 @@ import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
+import { getCopilotExpertHref } from "@/services/org-team/builder";
 
 const MAIN_CLASS =
   "container min-h-screen space-y-8 pb-20 pt-8 sm:px-8 md:px-12";
@@ -133,7 +134,11 @@ export default function ExpertDetailPage() {
         <div className="flex shrink-0 items-center gap-2">
           <Button
             as="NextLink"
-            href={`/copilot?expertId=${expert.id}`}
+            href={getCopilotExpertHref(
+              expert.id,
+              expert.organization_id ?? null,
+              expert.team_id ?? null,
+            )}
             variant="primary"
             size="small"
           >

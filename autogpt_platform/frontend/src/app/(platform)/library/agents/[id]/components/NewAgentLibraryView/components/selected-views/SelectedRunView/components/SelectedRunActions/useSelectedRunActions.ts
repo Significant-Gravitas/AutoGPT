@@ -13,8 +13,13 @@ import type { GraphExecution } from "@/app/api/__generated__/models/graphExecuti
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 interface Params {
   agentGraphId: string;
@@ -39,15 +44,23 @@ export function useSelectedRunActions({
   const canStop = run?.status === "RUNNING" || run?.status === "QUEUED";
 
   const canRunManually = !agent?.trigger_setup_info;
+  const organizationId = agent?.organization_id ?? null;
+  const teamId = agent?.team_id ?? null;
 
   const { mutateAsync: stopRun, isPending: isStopping } =
-    usePostV1StopGraphExecution();
+    usePostV1StopGraphExecution({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   const { mutateAsync: executeRun, isPending: isRunningAgain } =
-    usePostV1ExecuteGraphAgent();
+    usePostV1ExecuteGraphAgent({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   const { mutateAsync: createPreset, isPending: isCreatingTemplate } =
-    usePostV2CreateANewPreset();
+    usePostV2CreateANewPreset({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   async function handleStopRun() {
     try {
@@ -59,7 +72,11 @@ export function useSelectedRunActions({
       toast({ title: "Run stopped" });
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(agentGraphId),
+          organizationId,
+          teamId,
+        ),
       });
     } catch (error: unknown) {
       toast({
@@ -99,7 +116,11 @@ export function useSelectedRunActions({
       const newRunId = okData(res)?.id;
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(agentGraphId),
+          organizationId,
+          teamId,
+        ),
       });
 
       if (newRunId && onSelectRun) onSelectRun(newRunId);
@@ -145,9 +166,11 @@ export function useSelectedRunActions({
 
         if (agent) {
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({
-              graph_id: agent.graph_id,
-            }),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+              organizationId,
+              teamId,
+            ),
           });
         }
 
@@ -167,7 +190,13 @@ export function useSelectedRunActions({
 
   // Open in builder URL helper
   const openInBuilderHref = run
-    ? `/build?flowID=${run.graph_id}&flowVersion=${run.graph_version}&flowExecutionID=${run.id}`
+    ? getBuilderHref({
+        graphId: run.graph_id,
+        graphVersion: run.graph_version,
+        executionId: run.id,
+        organizationId: run.organization_id ?? null,
+        teamId: run.team_id ?? null,
+      })
     : undefined;
 
   return {

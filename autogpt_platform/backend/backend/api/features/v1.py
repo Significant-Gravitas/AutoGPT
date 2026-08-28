@@ -141,7 +141,6 @@ from backend.data.tenancy import (
     agent_graph_attachment_barrier,
     agent_graph_attachment_barriers,
     get_user_team_ids,
-    live_agent_graph_access_barrier,
     live_resource_access_barrier,
     live_resource_permission_barrier,
 )
@@ -2449,6 +2448,7 @@ async def update_graph_settings(
         user_id=user_id,
         organization_id=ctx.org_id,
         team_id_restriction=target_team_id,
+        exact_scope=True,
     )
     if not library_agent:
         raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
@@ -2510,15 +2510,37 @@ async def execute_graph(
             )
 
     try:
+        if preset_id is not None:
+            preset = await library_db.get_preset(
+                user_id,
+                preset_id,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+                enforce_team_scope=True,
+            )
+            if (
+                preset is None
+                or preset.graph_id != graph_id
+                or (graph_version is not None and preset.graph_version != graph_version)
+            ):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Preset #{preset_id} is not available for this graph in this workspace",
+                )
+            if graph_version is None:
+                graph_version = preset.graph_version
+
         library_agent = await library_db.get_library_agent_by_graph_id(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
             organization_id=ctx.org_id,
             team_id_restriction=ctx.team_id,
+            exact_scope=True,
         )
         execution_team_id = library_agent.team_id if library_agent else None
-        if library_agent is None:
+        authorized_scope = library_agent is not None
+        if library_agent is None and ctx.team_id is not None:
             grant = await resolve_graph_grant(
                 user_id,
                 graph_id,
@@ -2529,6 +2551,12 @@ async def execute_graph(
             )
             if grant is not None:
                 execution_team_id = grant.principalId
+                authorized_scope = True
+        if not authorized_scope:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Graph #{graph_id} is not available in this workspace",
+            )
 
         result = await execution_utils.add_graph_execution(
             graph_id=graph_id,
@@ -2621,6 +2649,7 @@ async def _stop_graph_run(
     }
     if (
         candidate is None
+        or candidate.user_id != user_id
         or candidate.graph_id != graph_id
         or candidate.status not in active_statuses
     ):
@@ -2643,6 +2672,7 @@ async def _stop_graph_run(
         )
         if (
             execution is None
+            or execution.user_id != user_id
             or execution.graph_id != graph_id
             or execution.status not in active_statuses
         ):
@@ -3150,16 +3180,53 @@ async def create_graph_execution_schedule(
             raise HTTPException(
                 status_code=404, detail=f"Expert #{expert_id} not found."
             )
+        if (expert.organization_id, expert.team_id) != (
+            ctx.org_id,
+            resolved_team_id,
+        ):
+            raise HTTPException(
+                status_code=404, detail=f"Expert #{expert_id} not found."
+            )
     else:
-        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
+        expert_id = await experts_db.resolve_expert_for_graph(
+            user_id,
+            graph_id,
+            organization_id=ctx.org_id,
+            team_id=resolved_team_id,
+            enforce_scope=True,
+        )
 
-    async with live_agent_graph_access_barrier(
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        organization_id=ctx.org_id,
+        team_id_restriction=resolved_team_id,
+        exact_scope=True,
+    )
+    authorized_scope = library_agent is not None
+    if library_agent is None and resolved_team_id is not None:
+        grant = await resolve_graph_grant(
+            user_id,
+            graph_id,
+            capability=GrantCapability.EXECUTE,
+            graph_version=graph.version,
+            organization_id=ctx.org_id,
+            team_id_restriction=resolved_team_id,
+        )
+        authorized_scope = grant is not None
+    if not authorized_scope:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Graph #{graph_id} is not available in this workspace",
+        )
+
+    async with live_resource_permission_barrier(
         user_id,
         ctx.org_id,
         resolved_team_id,
-        "create",
-        graph_id,
-        graph.version,
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.CREATE_AGENTS,
     ) as allowed:
         if not allowed:
             raise HTTPException(status_code=403, detail="Resource scope is inactive")
@@ -3273,7 +3340,11 @@ async def list_copilot_turn_schedules(
     # concrete schema. If a row ever slips through the discriminator (e.g.
     # legacy untyped row, scheduler-side bug), we drop it rather than fail
     # the response with a Pydantic validation error.
-    return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
+    return [
+        s
+        for s in schedules
+        if isinstance(s, scheduler.CopilotTurnJobInfo) and s.user_id == user_id
+    ]
 
 
 @v1_router.delete(
@@ -3287,7 +3358,7 @@ async def delete_graph_execution_schedule(
     ctx: Annotated[
         RequestContext,
         requires_resource_permission(
-            OrgAction.CREATE_RESOURCES, TeamAction.DELETE_AGENTS
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
         ),
     ],
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
@@ -3302,7 +3373,7 @@ async def delete_graph_execution_schedule(
         )
         target_team_ids = [candidate.team_id] if candidate.team_id is not None else []
         async with live_resource_access_barrier(
-            user_id, ctx.org_id, candidate.team_id, "delete"
+            user_id, ctx.org_id, candidate.team_id, "create"
         ) as allowed:
             if not allowed:
                 raise HTTPException(403, detail="Resource scope is inactive")
@@ -3570,20 +3641,20 @@ async def create_api_key(
             status_code=400,
             detail="The requested team must match the active workspace context.",
         )
+    team_id_restriction = await _resolve_write_team_id(
+        user_id,
+        ctx.org_id,
+        request.team_id if request.team_id is not None else ctx.team_id,
+    )
     async with live_resource_permission_barrier(
         user_id,
         ctx.org_id,
-        ctx.team_id,
+        team_id_restriction,
         OrgAction.MANAGE_CREDENTIALS,
         TeamAction.MANAGE_CREDENTIALS,
     ) as allowed:
         if not allowed:
             raise HTTPException(status_code=403, detail="Resource scope is inactive")
-        team_id_restriction = await _resolve_write_team_id(
-            user_id,
-            ctx.org_id,
-            request.team_id if request.team_id is not None else ctx.team_id,
-        )
         api_key_info, plain_text_key = await api_key_db.create_api_key(
             name=request.name,
             user_id=user_id,
@@ -3612,8 +3683,17 @@ async def get_api_keys(
     ],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
+    if ctx.team_id is not None:
+        return await api_key_db.list_user_api_keys(
+            user_id,
+            organization_id=ctx.org_id or None,
+            team_id_restriction=ctx.team_id,
+            exact_scope=True,
+        )
     return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None
+        user_id,
+        organization_id=ctx.org_id or None,
+        team_ids=await _schedule_team_ids(user_id, ctx),
     )
 
 
@@ -3624,11 +3704,13 @@ async def _live_api_key_target(
     ctx: RequestContext,
 ) -> AsyncIterator[api_key_db.APIKeyInfo]:
     candidate = await api_key_db.get_api_key_by_id(
-        key_id, user_id, organization_id=ctx.org_id or None
+        key_id,
+        user_id,
+        organization_id=ctx.org_id or None,
+        team_id_restriction=ctx.team_id,
+        exact_scope=ctx.team_id is not None,
     )
-    if candidate is None or (
-        ctx.team_id is not None and candidate.team_id_restriction != ctx.team_id
-    ):
+    if candidate is None:
         raise HTTPException(status_code=404, detail="API key not found")
     target_team_id = candidate.team_id_restriction
     async with live_resource_permission_barrier(
@@ -3641,7 +3723,11 @@ async def _live_api_key_target(
         if not allowed:
             raise HTTPException(status_code=403, detail="Resource scope is inactive")
         current = await api_key_db.get_api_key_by_id(
-            key_id, user_id, organization_id=ctx.org_id or None
+            key_id,
+            user_id,
+            organization_id=ctx.org_id or None,
+            team_id_restriction=target_team_id,
+            exact_scope=True,
         )
         if current is None or current.team_id_restriction != target_team_id:
             raise HTTPException(status_code=404, detail="API key not found")
@@ -3688,7 +3774,11 @@ async def delete_api_key(
     """Revoke an API key"""
     async with _live_api_key_target(key_id, user_id, ctx):
         return await api_key_db.revoke_api_key(
-            key_id, user_id, organization_id=ctx.org_id or None
+            key_id,
+            user_id,
+            organization_id=ctx.org_id or None,
+            team_id_restriction=ctx.team_id,
+            exact_scope=True,
         )
 
 
@@ -3711,7 +3801,11 @@ async def suspend_key(
     """Suspend an API key"""
     async with _live_api_key_target(key_id, user_id, ctx):
         return await api_key_db.suspend_api_key(
-            key_id, user_id, organization_id=ctx.org_id or None
+            key_id,
+            user_id,
+            organization_id=ctx.org_id or None,
+            team_id_restriction=ctx.team_id,
+            exact_scope=True,
         )
 
 
@@ -3739,4 +3833,6 @@ async def update_permissions(
             user_id,
             request.permissions,
             organization_id=ctx.org_id or None,
+            team_id_restriction=ctx.team_id,
+            exact_scope=True,
         )

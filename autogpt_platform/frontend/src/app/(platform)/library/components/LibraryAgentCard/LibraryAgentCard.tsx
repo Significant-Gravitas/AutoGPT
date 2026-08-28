@@ -22,6 +22,11 @@ import {
 } from "@/components/ui/tooltip";
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  getCopilotStartHref,
+  getLibraryAgentHref,
+} from "@/services/org-team/builder";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props {
   agent: LibraryAgent;
@@ -35,6 +40,11 @@ export function LibraryAgentCard({
   draggable = true,
 }: Props) {
   const { id, name, image_url } = agent;
+  const agentHref = getLibraryAgentHref(
+    id,
+    agent.organization_id ?? null,
+    agent.team_id ?? null,
+  );
   const router = useRouter();
   const { triggerFavoriteAnimation } = useFavoriteAnimation();
 
@@ -71,7 +81,7 @@ export function LibraryAgentCard({
         }}
         style={{ willChange: "transform" }}
       >
-        <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
+        <NextLink href={agentHref} className="flex-shrink-0">
           <div className="relative flex items-center gap-3 pl-2 pr-4 pt-3">
             <StatusBadge status={statusInfo.status} />
             <Text variant="small" className="text-zinc-400">
@@ -88,7 +98,7 @@ export function LibraryAgentCard({
 
         <div className="flex w-full flex-1 flex-col px-4 pb-2">
           <NextLink
-            href={`/library/agents/${id}`}
+            href={agentHref}
             className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline focus:ring-0"
           >
             <Text
@@ -121,6 +131,7 @@ export function LibraryAgentCard({
                 alt={`${name} preview image`}
                 width={107}
                 height={58}
+                unoptimized={shouldBypassImageOptimization(image_url)}
                 className="flex-shrink-0 rounded-small object-cover"
               />
             )}
@@ -129,7 +140,7 @@ export function LibraryAgentCard({
           <div className="mt-4 flex w-full items-center justify-end gap-1 border-t border-zinc-100 pb-0 pt-2">
             <button
               type="button"
-              onClick={() => router.push(`/library/agents/${id}`)}
+              onClick={() => router.push(agentHref)}
               data-testid="library-agent-card-see-runs-link"
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >
@@ -140,14 +151,20 @@ export function LibraryAgentCard({
               status={statusInfo.status}
               agentID={id}
               executionID={statusInfo.activeExecutionID ?? undefined}
+              organizationID={agent.organization_id ?? null}
+              teamID={agent.team_id ?? null}
             />
             <button
               type="button"
               onClick={() => {
-                const prompt = encodeURIComponent(
-                  `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
+                const prompt = `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`;
+                router.push(
+                  getCopilotStartHref(
+                    agent.organization_id ?? null,
+                    agent.team_id ?? null,
+                    prompt,
+                  ),
                 );
-                router.push(`/copilot?autosubmit=true#prompt=${prompt}`);
               }}
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >

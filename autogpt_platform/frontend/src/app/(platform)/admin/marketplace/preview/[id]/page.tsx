@@ -113,6 +113,7 @@ export default function AdminPreviewPage() {
           <AgentInfo
             user={null}
             agentId={data.graph_id}
+            agentGraphID={data.graph_id}
             name={data.agent_name}
             creator={data.creator}
             creatorAvatar={data.creator_avatar}
@@ -123,7 +124,6 @@ export default function AdminPreviewPage() {
             lastUpdated={String(data.last_updated)}
             version={data.versions[0] || "1"}
             storeListingVersionId={data.store_listing_version_id}
-            isAgentAddedToLibrary={false}
           />
         </div>
         <div className="lg:col-span-3">

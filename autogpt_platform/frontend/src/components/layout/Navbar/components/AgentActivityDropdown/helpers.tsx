@@ -1,6 +1,7 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta as GeneratedGraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
+import { getTenantEntityKey } from "@/services/org-team/identity";
 
 // Time constants
 const MILLISECONDS_PER_SECOND = 1000;
@@ -70,7 +71,13 @@ export function enrichExecutionWithAgentInfo(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): AgentExecutionWithInfo {
-  const agentInfo = agentInfoMap.get(execution.graph_id);
+  const agentInfo = agentInfoMap.get(
+    getTenantEntityKey(
+      execution.graph_id,
+      execution.organization_id,
+      execution.team_id,
+    ),
+  );
 
   return {
     ...execution,

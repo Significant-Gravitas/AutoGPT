@@ -1,4 +1,5 @@
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
+import { getCopilotHref } from "@/services/org-team/builder";
 
 const MESSAGE_PREVIEW_MAX_LEN = 140;
 
@@ -16,7 +17,11 @@ export function describeFollowup(followup: CopilotTurnJobInfo) {
   // schedule fires.  Surface that explicitly to the renderer so it can
   // disable the link and show a "New chat" pill instead.
   const sessionHref = followup.session_id
-    ? `/copilot?sessionId=${encodeURIComponent(followup.session_id)}`
+    ? getCopilotHref(
+        followup.session_id,
+        followup.organization_id ?? null,
+        followup.team_id ?? null,
+      )
     : null;
 
   return { messagePreview, sessionHref };

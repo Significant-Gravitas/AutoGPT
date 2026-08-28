@@ -184,7 +184,9 @@ async def restore_existing_library_agent(
     if restored is None:
         return None
 
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=ag.id)
+    schedule_info = await _fetch_schedule_info(
+        user_id, graph_id=ag.id, exact_scope=True
+    )
     return library_model.LibraryAgent.from_db(
         restored,
         schedule_info=schedule_info,
@@ -236,7 +238,9 @@ async def add_graph_to_library(
         f"for store listing version #{store_listing_version.id} "
         f"to library for user #{user_id}"
     )
-    schedule_info = await _fetch_schedule_info(user_id, graph_id=graph_model.id)
+    schedule_info = await _fetch_schedule_info(
+        user_id, graph_id=graph_model.id, exact_scope=True
+    )
     return library_model.LibraryAgent.from_db(
         added_agent,
         schedule_info=schedule_info,

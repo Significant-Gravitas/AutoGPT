@@ -6,11 +6,14 @@ import { TeamBadge } from "@/components/contextual/TeamBadge/TeamBadge";
 
 import { capabilityLabel } from "../ShareAgentDialog/helpers";
 import { useSharedWithTeamsSection } from "./useSharedWithTeamsSection";
+import { getBuilderHref } from "@/services/org-team/builder";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 // Agents other members shared with the viewer's teams. Rides /grants/received.
 // Renders nothing for solo users, while loading, or when nothing is shared, so
 // it only appears as a distinct library section once there's content to show.
 export function SharedWithTeamsSection() {
+  const organizationId = useOrgTeamStore((state) => state.activeOrgID);
   const { hasTeams, grants, isLoading, isError } = useSharedWithTeamsSection();
 
   if (!hasTeams || isLoading || isError || grants.length === 0) return null;
@@ -47,7 +50,12 @@ export function SharedWithTeamsSection() {
             <div className="mt-3 flex justify-end gap-2">
               <Button
                 as="NextLink"
-                href={`/build?flowID=${encodeURIComponent(grant.agent_graph_id)}&flowVersion=${grant.agent_graph_version}`}
+                href={getBuilderHref({
+                  graphId: grant.agent_graph_id,
+                  graphVersion: grant.agent_graph_version,
+                  organizationId,
+                  teamId: grant.principal_id,
+                })}
                 variant="secondary"
                 size="small"
               >
@@ -56,7 +64,12 @@ export function SharedWithTeamsSection() {
               {grant.capability === "EXECUTE" ? (
                 <Button
                   as="NextLink"
-                  href={`/build?flowID=${encodeURIComponent(grant.agent_graph_id)}&flowVersion=${grant.agent_graph_version}`}
+                  href={getBuilderHref({
+                    graphId: grant.agent_graph_id,
+                    graphVersion: grant.agent_graph_version,
+                    organizationId,
+                    teamId: grant.principal_id,
+                  })}
                   size="small"
                 >
                   Run

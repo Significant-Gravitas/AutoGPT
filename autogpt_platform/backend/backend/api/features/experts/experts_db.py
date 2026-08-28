@@ -505,6 +505,8 @@ def _to_expert_run(
         started_at=execution.startedAt,
         ended_at=execution.endedAt,
         link=run_link(library_agent_id, execution.id),
+        organization_id=execution.organizationId,
+        team_id=execution.teamId,
     )
 
 
@@ -1174,7 +1176,14 @@ async def install_workflow(
     return _to_workflow_ref(row)
 
 
-async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
+async def resolve_expert_for_graph(
+    user_id: str,
+    graph_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    enforce_scope: bool = False,
+) -> str | None:
     """Expert attribution for a manually scheduled graph.
 
     Returns the id of the single active hired expert that has *graph_id*
@@ -1191,6 +1200,15 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     Raises:
         ExpertNotFoundError: if any matching expert is not PRIVATE.
     """
+    library_agent_where: dict[str, object] = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        "isDeleted": False,
+    }
+    if enforce_scope:
+        library_agent_where["organizationId"] = organization_id
+        library_agent_where["teamId"] = team_id
+
     rows = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={
             "Expert": {
@@ -1200,13 +1218,7 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
                     "isArchived": False,
                 }
             },
-            "LibraryAgent": {
-                "is": {
-                    "userId": user_id,
-                    "agentGraphId": graph_id,
-                    "isDeleted": False,
-                }
-            },
+            "LibraryAgent": {"is": library_agent_where},
         },
         include={"Expert": True},
     )

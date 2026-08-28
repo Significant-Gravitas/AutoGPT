@@ -50,6 +50,7 @@ import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { UserMessageClamp } from "./components/UserMessageClamp";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getWorkspaceDownloadHref } from "@/services/org-team/workspace";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -63,6 +64,8 @@ interface Props {
    *  zero on every fresh mount. */
   activeStreamStartedAt?: string | null;
   sessionID?: string | null;
+  organizationId?: string | null;
+  teamId?: string | null;
   /** Session-level lifecycle: ``"idle" | "queued" | "running"``.
    *  The Queued badge anchors on the latest user message iff this is
    *  ``"queued"``. */
@@ -290,6 +293,8 @@ export function ChatMessagesContainer({
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
+  organizationId,
+  teamId,
   sessionChatStatus,
   hasMoreMessages,
   isLoadingMore,
@@ -305,6 +310,10 @@ export function ChatMessagesContainer({
   hasFloatingControls = false,
   areFilesOpen = false,
 }: Props) {
+  const scopedFileUrlBuilder =
+    fileUrlBuilder ??
+    ((fileId: string) =>
+      getWorkspaceDownloadHref(fileId, organizationId ?? null, teamId ?? null));
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
     [allMessages],
@@ -618,7 +627,7 @@ export function ChatMessagesContainer({
                       messageID={message.id}
                       isCurrentlyStreaming={isCurrentlyStreaming}
                       onRetry={isLastAssistant ? onRetry : undefined}
-                      fileUrlBuilder={fileUrlBuilder}
+                      fileUrlBuilder={scopedFileUrlBuilder}
                       forceArtifacts={readOnly}
                       readOnly={readOnly}
                       compactionPhase={compactionPhase}
@@ -633,7 +642,7 @@ export function ChatMessagesContainer({
                           part={part}
                           messageID={message.id}
                           partIndex={i}
-                          fileUrlBuilder={fileUrlBuilder}
+                          fileUrlBuilder={scopedFileUrlBuilder}
                           forceArtifacts={readOnly}
                           readOnly={readOnly}
                           compactionPhase={compactionPhase}
@@ -701,6 +710,9 @@ export function ChatMessagesContainer({
                     isUser={message.role === "user"}
                     forceArtifacts={readOnly}
                     filePattern={filePattern}
+                    fileUrlBuilder={scopedFileUrlBuilder}
+                    organizationId={organizationId ?? null}
+                    teamId={teamId ?? null}
                     readOnly={readOnly}
                   />
                 )}
@@ -756,7 +768,11 @@ export function ChatMessagesContainer({
             </Message>
           )}
           {!readOnly && graphExecId && (
-            <CopilotPendingReviews graphExecId={graphExecId} />
+            <CopilotPendingReviews
+              graphExecId={graphExecId}
+              organizationId={organizationId ?? null}
+              teamId={teamId ?? null}
+            />
           )}
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (

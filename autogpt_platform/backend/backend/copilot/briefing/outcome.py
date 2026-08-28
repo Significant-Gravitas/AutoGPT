@@ -7,10 +7,9 @@ the home card disagree about the same run, so both now come through here.
 """
 
 from datetime import datetime, timezone
-from urllib.parse import quote
-
 from backend.api.features.experts.models import Expert
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+from backend.util.tenancy_urls import library_agent_path
 
 from .models import BriefingRunItem
 
@@ -62,7 +61,12 @@ def compose_run_outcome(
         occurred_at=as_utc_or_none(execution.ended_at or execution.started_at),
         duration_seconds=stats.duration if stats else 0,
         cost_cents=stats.cost if stats else 0,
-        link=run_link(library_agent_id, execution.id),
+        link=run_link(
+            library_agent_id,
+            execution.id,
+            execution.organization_id,
+            execution.team_id,
+        ),
     )
 
 
@@ -90,7 +94,12 @@ def split_summary(
     return f"{title[: _TITLE_MAX - 1].rstrip()}.", detail
 
 
-def run_link(library_agent_id: str | None, execution_id: str) -> str | None:
+def run_link(
+    library_agent_id: str | None,
+    execution_id: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> str | None:
     """Deep link that opens a specific run on the library agent page.
 
     ``activeTab``/``activeItem`` are the params that page actually parses
@@ -104,9 +113,12 @@ def run_link(library_agent_id: str | None, execution_id: str) -> str | None:
     """
     if not library_agent_id:
         return None
-    return (
-        f"/library/agents/{quote(library_agent_id, safe='')}"
-        f"?activeTab=runs&activeItem={quote(execution_id, safe='')}"
+    return library_agent_path(
+        library_agent_id,
+        organization_id,
+        team_id,
+        active_tab="runs",
+        active_item=execution_id,
     )
 
 

@@ -10,4 +10,6 @@ export interface PulseChipData {
   status: AgentStatus;
   priority: SitrepPriority;
   shortMessage: string;
+  organizationId: string | null;
+  teamId: string | null;
 }

@@ -3,6 +3,7 @@
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { executionSharePath } from "@/lib/share/routes";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 import { useRouter } from "next/navigation";
 import {
   ContentCard,
@@ -12,6 +13,7 @@ import {
   ContentGrid,
 } from "../../../../components/ToolAccordion/AccordionContent";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { useCopilotTenantScope } from "../../../../CopilotTenantScopeContext";
 
 interface Props {
   output: ExecutionStartedResponse;
@@ -36,6 +38,7 @@ export function titleForStatus(status: string | undefined): string {
 
 export function ExecutionStartedCard({ output }: Props) {
   const router = useRouter();
+  const scope = useCopilotTenantScope();
   // In the builder panel the run_agent effect already drops the exec_id
   // onto the URL so the builder's in-place execution UI opens — the
   // "View Execution" button here would navigate the user away from the
@@ -53,7 +56,13 @@ export function ExecutionStartedCard({ output }: Props) {
   const href = linkedShareToken
     ? executionSharePath(linkedShareToken)
     : (output.library_agent_link ??
-      `/library/agents/${output.graph_id}?activeTab=runs&activeItem=${output.execution_id}`);
+      getLibraryAgentHref(
+        output.graph_id,
+        scope.organizationId,
+        scope.teamId,
+        output.execution_id,
+        "runs",
+      ));
 
   return (
     <ContentGrid>

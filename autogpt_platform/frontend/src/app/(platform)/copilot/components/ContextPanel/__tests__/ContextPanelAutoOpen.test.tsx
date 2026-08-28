@@ -31,6 +31,7 @@ describe("ContextPanelAutoOpen", () => {
   beforeEach(() => {
     useCopilotUIStore.getState().resetAutoOpenState?.();
     useCopilotUIStore.setState((s) => ({
+      artifactTenantScope: { organizationId: null, teamId: null },
       artifactPanel: {
         ...s.artifactPanel,
         isOpen: false,

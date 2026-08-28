@@ -1,7 +1,15 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useGetSearchGlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
+import {
+  getGetSearchGlobalSearchQueryKey,
+  useGetSearchGlobalSearch,
+} from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { buildActionsBucket } from "./actions";
 import { buildBucketsFromResponse } from "./helpers";
 import { buildNavigationBucket } from "./navigation";
@@ -11,6 +19,8 @@ const PER_TYPE_LIMIT = 4;
 
 export function useGlobalSearch(isOpen: boolean) {
   const pathname = usePathname();
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -28,21 +38,28 @@ export function useGlobalSearch(isOpen: boolean) {
     return () => window.clearTimeout(timeout);
   }, [query]);
 
-  const { data, isFetching, isError } = useGetSearchGlobalSearch(
-    { q: debouncedQuery.trim(), per_type_limit: PER_TYPE_LIMIT },
-    {
-      query: {
-        enabled: isOpen,
-        // Keep the previous bucket of results visible while a new
-        // query is in-flight so the modal doesn't flash empty on every
-        // keystroke.
-        placeholderData: (prev) => prev,
-        // Recent-items (empty query) responses are cached server-side
-        // but a short client cache cuts the request on quick re-opens.
-        staleTime: 10_000,
-      },
+  const params = {
+    q: debouncedQuery.trim(),
+    per_type_limit: PER_TYPE_LIMIT,
+  };
+  const { data, isFetching, isError } = useGetSearchGlobalSearch(params, {
+    request: getTenantRequestInit(activeOrgID, activeTeamID),
+    query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetSearchGlobalSearchQueryKey(params),
+        activeOrgID,
+        activeTeamID,
+      ),
+      enabled: isOpen,
+      // Keep the previous bucket of results visible while a new
+      // query is in-flight so the modal doesn't flash empty on every
+      // keystroke.
+      placeholderData: (prev) => prev,
+      // Recent-items (empty query) responses are cached server-side
+      // but a short client cache cuts the request on quick re-opens.
+      staleTime: 10_000,
     },
-  );
+  });
 
   const response =
     data?.status === 200 ? (data.data as GlobalSearchResponse) : undefined;

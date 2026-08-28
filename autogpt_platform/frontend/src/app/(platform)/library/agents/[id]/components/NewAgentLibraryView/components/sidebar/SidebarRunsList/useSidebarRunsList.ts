@@ -8,10 +8,19 @@ import {
   getPaginatedTotalCount,
   unpaginate,
 } from "@/app/api/helpers";
-import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV1ListGraphExecutionsQueryKey,
+  useGetV1ListGraphExecutionsInfinite,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2ListTriggerAgentsQueryKey,
+  useGetV2ListTriggerAgents,
+} from "@/app/api/__generated__/endpoints/library/library";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+  useGetV1ListExecutionSchedulesForAGraph,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import {
   activeItemParamFor,
   isWebhookPreset,
@@ -22,6 +31,10 @@ import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 function parseTab(
   value: string | null,
@@ -59,6 +72,8 @@ export function useSidebarRunsList({
 }: Args) {
   const graphId = agent.graph_id;
   const libraryAgentID = agent.id;
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
   const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({
     activeItem: parseAsString,
     activeTab: parseAsString,
@@ -71,7 +86,16 @@ export function useSidebarRunsList({
     graphId,
     { page: 1, page_size: 20 },
     {
+      request: getTenantRequestInit(organizationId, teamId),
       query: {
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListGraphExecutionsQueryKey(graphId, {
+            page: 1,
+            page_size: 20,
+          }),
+          organizationId,
+          teamId,
+        ),
         enabled: !!graphId,
         refetchOnWindowFocus: false,
         getNextPageParam: getPaginationNextPageNumber,
@@ -80,17 +104,33 @@ export function useSidebarRunsList({
   );
 
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
+    request: getTenantRequestInit(organizationId, teamId),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
+        organizationId,
+        teamId,
+      ),
       enabled: !!graphId,
       select: okData,
     },
   });
 
-  const presetsQuery = useAgentPresetsQuery(graphId || undefined);
+  const presetsQuery = useAgentPresetsQuery(
+    graphId || undefined,
+    organizationId,
+    teamId,
+  );
 
   const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
   const triggerAgentsQuery = useGetV2ListTriggerAgents(libraryAgentID, {
+    request: getTenantRequestInit(organizationId, teamId),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListTriggerAgentsQueryKey(libraryAgentID),
+        organizationId,
+        teamId,
+      ),
       enabled: triggerAgentsEnabled && !!libraryAgentID,
       select: okData,
       retry: retryUnlessClientError,
@@ -139,6 +179,8 @@ export function useSidebarRunsList({
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
+    organizationId: agent.organization_id ?? null,
+    teamId: agent.team_id ?? null,
     enabled: !!graphId && tabValue === "runs",
     onExecutionUpdate: (_execution) => {
       // Invalidate and refetch the query to ensure we have the latest data

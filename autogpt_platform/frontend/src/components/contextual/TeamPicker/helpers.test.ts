@@ -3,6 +3,8 @@ import { TEAM_HEADER_NAME } from "@/services/org-team/headers";
 import {
   getLastUsedTeam,
   getTeamRequestInit,
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
   setLastUsedTeam,
 } from "./helpers";
 
@@ -63,5 +65,36 @@ describe("getTeamRequestInit", () => {
     expect(getTeamRequestInit(null, false)).toEqual({
       headers: { [TEAM_HEADER_NAME]: "__org_context_loading__" },
     });
+  });
+});
+
+describe("getTenantRequestInit", () => {
+  it("pins both persisted organization and team", () => {
+    expect(getTenantRequestInit("org-1", "team-9")).toEqual({
+      headers: { "X-Org-Id": "org-1", "X-Team-Id": "team-9" },
+    });
+  });
+
+  it("uses empty sentinels for personal and org-home scope", () => {
+    expect(getTenantRequestInit(null, null)).toEqual({
+      headers: { "X-Org-Id": "", "X-Team-Id": "" },
+    });
+  });
+});
+
+describe("getTeamScopedQueryKey", () => {
+  it("isolates the same request across teams and org-home", () => {
+    const generatedKey = ["/api/graphs/graph-1/executions"];
+
+    expect(getTeamScopedQueryKey(generatedKey, "org-1", "team-a")).not.toEqual(
+      getTeamScopedQueryKey(generatedKey, "org-1", "team-b"),
+    );
+    expect(getTeamScopedQueryKey(generatedKey, "org-1", null)).not.toEqual(
+      getTeamScopedQueryKey(generatedKey, "org-1", "team-a"),
+    );
+    expect(getTeamScopedQueryKey(generatedKey, "org-1", null)).toEqual([
+      "/api/graphs/graph-1/executions",
+      { organizationId: "org-1", teamId: "__org_home__" },
+    ]);
   });
 });

@@ -5,6 +5,8 @@ export interface OutputMetadata {
   language?: string;
   mimeType?: string;
   filename?: string;
+  organizationId?: string | null;
+  teamId?: string | null;
   [key: string]: any;
 }
 

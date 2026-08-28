@@ -168,6 +168,8 @@ class ExpertRun(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 class ExpertDetachPreview(BaseModel):

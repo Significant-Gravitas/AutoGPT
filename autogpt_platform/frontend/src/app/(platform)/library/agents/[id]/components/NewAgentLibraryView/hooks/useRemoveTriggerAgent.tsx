@@ -9,6 +9,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
 
@@ -38,14 +42,21 @@ export function useRemoveTriggerAgent({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
+  const organizationId = parentAgent.organization_id ?? null;
+  const teamId = triggerAgent.team_id ?? parentAgent.team_id ?? null;
 
   const { mutate: deleteLibraryAgent, isPending } =
     useDeleteV2DeleteLibraryAgent({
+      request: getTenantRequestInit(organizationId, teamId),
       mutation: {
         onSuccess: async () => {
           toast({ title: "Trigger removed" });
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListTriggerAgentsQueryKey(parentAgent.id),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2ListTriggerAgentsQueryKey(parentAgent.id),
+              organizationId,
+              parentAgent.team_id ?? null,
+            ),
           });
           setShowDialog(false);
           onDeleted?.();

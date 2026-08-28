@@ -10,6 +10,7 @@ import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { updateFavoriteInQueries } from "./helpers";
 
 interface Props {
@@ -24,7 +25,12 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
   const [isFavorite, setIsFavorite] = useState(is_favorite);
   const { toast } = useToast();
   const queryClient = getQueryClient();
-  const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
+  const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent({
+    request: getTenantRequestInit(
+      agent.organization_id ?? null,
+      agent.team_id ?? null,
+    ),
+  });
   const { user, isLoggedIn } = useAuth();
   const logoutInProgress = isLogoutInProgress();
 

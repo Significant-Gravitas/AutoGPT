@@ -309,9 +309,7 @@ describe("ArtifactsPage - rich previews", () => {
     render(<ArtifactsPage />);
 
     const img = (await screen.findByAltText("pic.png")) as HTMLImageElement;
-    expect(img.getAttribute("src")).toContain(
-      "/api/proxy/api/workspace/files/img1/preview?w=400",
-    );
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
   });
 
   test("pdf cards render an image from the preview endpoint", async () => {
@@ -333,7 +331,7 @@ describe("ArtifactsPage - rich previews", () => {
     render(<ArtifactsPage />);
 
     const img = (await screen.findByAltText("report.pdf")) as HTMLImageElement;
-    expect(img.getAttribute("src")).toContain("/preview?w=400");
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
   });
 
   test("csv cards render a table from the byte-capped preview", async () => {

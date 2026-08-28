@@ -1,9 +1,12 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { getTenantEntityKey } from "@/services/org-team/identity";
 
 export interface AgentLookupEntry {
   libraryAgentId: string;
   name: string;
   imageUrl?: string | null;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 export function buildAgentLookup(
@@ -11,11 +14,16 @@ export function buildAgentLookup(
 ): Map<string, AgentLookupEntry> {
   const map = new Map<string, AgentLookupEntry>();
   for (const agent of agents) {
-    map.set(agent.graph_id, {
-      libraryAgentId: agent.id,
-      name: agent.name,
-      imageUrl: agent.image_url,
-    });
+    map.set(
+      getTenantEntityKey(agent.graph_id, agent.organization_id, agent.team_id),
+      {
+        libraryAgentId: agent.id,
+        name: agent.name,
+        imageUrl: agent.image_url,
+        organizationId: agent.organization_id ?? null,
+        teamId: agent.team_id ?? null,
+      },
+    );
   }
   return map;
 }

@@ -1,9 +1,11 @@
-import { useDeleteV2DeleteSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { deleteV2DeleteSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCopilotUIStore } from "./store";
-import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
+import { getSessionListQueryKey } from "./useSessionList";
+import type { DeleteTarget } from "./store";
 
 /**
  * Session deletion flow: reads the pending `sessionToDelete` from the store,
@@ -18,42 +20,44 @@ export function useSessionDeletion() {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
 
-  const { mutate: deleteSession, isPending: isDeleting } =
-    useDeleteV2DeleteSession({
-      mutation: {
-        onSuccess: (_data, variables) => {
-          queryClient.invalidateQueries({
-            queryKey: SESSION_LIST_QUERY_KEY,
-          });
-          // Use the mutation's own `variables` — not the closed-over store
-          // value — so a rapid open/cancel/open-different sequence can't
-          // accidentally clear the wrong active session after the network
-          // round-trip.
-          if (variables.sessionId === sessionId) {
-            setSessionId(null);
-          }
-          setSessionToDelete(null);
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete chat",
-            description:
-              error instanceof Error ? error.message : "An error occurred",
-            variant: "destructive",
-          });
-          setSessionToDelete(null);
-        },
-      },
-    });
+  const { mutate: deleteSession, isPending: isDeleting } = useMutation({
+    mutationFn: (target: DeleteTarget) =>
+      deleteV2DeleteSession(
+        target.id,
+        getTenantRequestInit(target.organizationId, target.teamId),
+      ),
+    onSuccess: (_data, target) => {
+      queryClient.invalidateQueries({
+        queryKey: getSessionListQueryKey(target.organizationId, target.teamId),
+      });
+      // Use the mutation's own `variables` — not the closed-over store
+      // value — so a rapid open/cancel/open-different sequence can't
+      // accidentally clear the wrong active session after the network
+      // round-trip.
+      if (target.id === sessionId) {
+        setSessionId(null);
+      }
+      setSessionToDelete(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete chat",
+        description:
+          error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+      setSessionToDelete(null);
+    },
+  });
 
-  function requestDelete(id: string, title: string | null | undefined) {
+  function requestDelete(target: DeleteTarget) {
     if (isDeleting) return;
-    setSessionToDelete({ id, title });
+    setSessionToDelete(target);
   }
 
   function confirmDelete() {
     if (sessionToDelete) {
-      deleteSession({ sessionId: sessionToDelete.id });
+      deleteSession(sessionToDelete);
     }
   }
 

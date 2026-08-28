@@ -9,11 +9,11 @@ from autogpt_libs.auth import RequestContext
 from backend.api.features.chat import routes
 
 
-def _context() -> RequestContext:
+def _context(team_id: str | None = "team") -> RequestContext:
     return RequestContext(
         user_id="user",
         org_id="org",
-        team_id="team",
+        team_id=team_id,
         is_org_owner=False,
         is_org_admin=False,
         is_org_billing_manager=False,
@@ -28,6 +28,7 @@ async def test_list_sessions_holds_live_scope_through_redis_and_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     active = False
+    lease_calls = 0
     now = datetime.now(UTC)
     session = SimpleNamespace(
         session_id="session",
@@ -39,15 +40,17 @@ async def test_list_sessions_holds_live_scope_through_redis_and_response(
         is_pinned=False,
         expert_id=None,
         organization_id="org",
-        team_id="team",
+        team_id="team-a",
     )
 
     @asynccontextmanager
-    async def lease(*_args):
-        nonlocal active
+    async def lease(_user_id, scopes, _access):
+        nonlocal active, lease_calls
+        lease_calls += 1
+        assert scopes == [("org", None), ("org", "team-a"), ("org", "team-b")]
         active = True
         try:
-            yield True
+            yield scopes
         finally:
             active = False
 
@@ -64,13 +67,16 @@ async def test_list_sessions_holds_live_scope_through_redis_and_response(
             return ["running"]
 
     redis = SimpleNamespace(pipeline=lambda **_kwargs: Pipeline())
-    monkeypatch.setattr(routes, "live_resource_lease", lease)
+    monkeypatch.setattr(routes, "live_resource_scopes_lease", lease)
+    monkeypatch.setattr(
+        routes, "get_user_team_ids", AsyncMock(return_value=["team-b", "team-a"])
+    )
     monkeypatch.setattr(routes, "get_user_sessions", get_sessions)
     monkeypatch.setattr(routes, "get_redis_async", AsyncMock(return_value=redis))
 
     response = await routes.list_sessions(
         user_id="user",
-        ctx=_context(),
+        ctx=_context(team_id=None),
         limit=50,
         offset=0,
         expert_id=None,
@@ -79,4 +85,5 @@ async def test_list_sessions_holds_live_scope_through_redis_and_response(
 
     assert response.total == 1
     assert response.sessions[0].is_processing is True
+    assert lease_calls == 1
     assert active is False

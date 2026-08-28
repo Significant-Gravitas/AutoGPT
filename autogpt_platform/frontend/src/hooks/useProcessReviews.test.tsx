@@ -10,6 +10,7 @@ import {
 import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import { server } from "@/mocks/mock-server";
 import { useProcessReviews } from "./useProcessReviews";
+import { getTeamScopedQueryKey } from "@/components/contextual/TeamPicker/helpers";
 
 function setup() {
   const queryClient = new QueryClient({
@@ -35,6 +36,12 @@ const item = {
   approved: true,
   auto_approve_future: false,
 };
+const scopedAction = {
+  item,
+  graphExecId: "run-1",
+  organizationId: "org-1",
+  teamId: "team-1",
+};
 
 // Dual-key invalidation is what makes the home count and the thread's list
 // reconcile after either surface acts on a review; without it one of them
@@ -49,11 +56,15 @@ test("invalidates both the user-wide and the per-execution review queries", asyn
   );
   const { result, invalidatedKeys } = setup();
 
-  await result.current.processReviews([item], ["run-1", "run-1"]);
+  await result.current.processReviews([scopedAction, scopedAction]);
 
   const keys = invalidatedKeys();
   expect(keys).toContainEqual(getGetV2GetPendingReviewsQueryKey());
-  const perExecution = getGetV2GetPendingReviewsForExecutionQueryKey("run-1");
+  const perExecution = getTeamScopedQueryKey(
+    getGetV2GetPendingReviewsForExecutionQueryKey("run-1"),
+    "org-1",
+    "team-1",
+  );
   expect(keys).toContainEqual(perExecution);
   // Deduped: the same execution id twice must not fan out twice.
   expect(
@@ -68,7 +79,7 @@ test("still invalidates when the mutation rejects", async () => {
   const { result, invalidatedKeys } = setup();
 
   await expect(
-    result.current.processReviews([item], ["run-1"]),
+    result.current.processReviews([scopedAction]),
   ).rejects.toBeDefined();
 
   expect(invalidatedKeys()).toContainEqual(getGetV2GetPendingReviewsQueryKey());

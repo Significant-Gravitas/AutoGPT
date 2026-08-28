@@ -25,6 +25,8 @@ export function PublishAgentModal({
   onRequestEdit,
   preSelectedAgentId,
   preSelectedAgentVersion,
+  preSelectedOrganizationId,
+  preSelectedTeamId,
   showTrigger = true,
 }: Props) {
   const {
@@ -34,6 +36,8 @@ export function PublishAgentModal({
     initialData,
     selectedAgentId,
     selectedAgentVersion,
+    selectedAgentOrganizationId,
+    selectedAgentTeamId,
     creatorUsername,
     // Handlers
     handleClose,
@@ -48,6 +52,8 @@ export function PublishAgentModal({
     onStateChange,
     preSelectedAgentId,
     preSelectedAgentVersion,
+    preSelectedOrganizationId,
+    preSelectedTeamId,
   });
 
   const { user, isUserLoading } = useAuth();
@@ -90,6 +96,8 @@ export function PublishAgentModal({
             onSuccess={handleSuccessFromInfo}
             selectedAgentId={selectedAgentId}
             selectedAgentVersion={selectedAgentVersion}
+            selectedAgentOrganizationId={selectedAgentOrganizationId}
+            selectedAgentTeamId={selectedAgentTeamId}
             initialData={initialData}
             isMarketplaceUpdate={!!currentState.submissionData}
           />

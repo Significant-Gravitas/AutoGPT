@@ -6,6 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { ChatShareStateResponse } from "@/app/api/__generated__/models/chatShareStateResponse";
 import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import {
   cleanup,
   fireEvent,
@@ -78,6 +79,51 @@ describe("ShareChatDialog", () => {
     // box the user asked for, regardless of run count.
     expect(
       screen.getByLabelText(/share agent runs from this chat/i),
+    ).toBeDefined();
+  });
+
+  test("switch and Enable sharing clicks persist exact team scope", async () => {
+    mockShareState({ is_shared: false });
+    let requestBody: unknown;
+    let organizationId: string | null = null;
+    let teamId: string | null = null;
+    server.use(
+      http.post("*/api/chat/sessions/:sessionId/share", async ({ request }) => {
+        requestBody = await request.json();
+        organizationId = request.headers.get("x-org-id");
+        teamId = request.headers.get("x-team-id");
+        return HttpResponse.json({
+          share_token: "11111111-2222-3333-4444-555555555555",
+          share_url: "/share/chat/11111111-2222-3333-4444-555555555555",
+        });
+      }),
+    );
+    render(
+      <ShareChatDialog
+        sessionId={SESSION_ID}
+        organizationId="org-a"
+        teamId="team-a"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const toggle = await screen.findByRole("switch", {
+      name: /share agent runs from this chat/i,
+    });
+    await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: /enable sharing/i }));
+
+    await waitFor(() => {
+      expect(requestBody).toEqual({ auto_share_executions: false });
+    });
+    expect(organizationId).toBe("org-a");
+    expect(teamId).toBe("team-a");
+    expect(
+      await screen.findByRole("button", { name: /stop sharing/i }),
     ).toBeDefined();
   });
 

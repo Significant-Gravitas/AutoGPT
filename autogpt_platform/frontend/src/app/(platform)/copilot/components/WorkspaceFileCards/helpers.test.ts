@@ -116,7 +116,7 @@ describe("getSessionActivity", () => {
         libraryAgentId: null,
         status: "RUNNING",
         startedAt: "2026-05-20T10:00:00Z",
-        href: "/library/agents/graph-1?activeTab=runs&activeItem=exec-1",
+        href: "/library/agents/graph-1?organizationId=__personal__&teamId=__org_home__&activeTab=runs&activeItem=exec-1",
       },
     ]);
   });

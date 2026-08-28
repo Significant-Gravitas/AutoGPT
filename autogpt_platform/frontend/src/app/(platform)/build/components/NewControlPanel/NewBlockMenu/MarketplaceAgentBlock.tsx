@@ -11,6 +11,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -53,6 +54,7 @@ export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             alt="integration-icon"
             fill
             sizes="5.625rem"
+            unoptimized={shouldBypassImageOptimization(image_url)}
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}

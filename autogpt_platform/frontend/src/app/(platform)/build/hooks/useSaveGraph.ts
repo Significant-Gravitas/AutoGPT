@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import {
+  getGetV1GetSpecificGraphQueryKey,
   useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
   usePutV1UpdateGraphVersion,
@@ -22,7 +23,11 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
-import { getTeamRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useBuilderTenantScope } from "./useBuilderTenantScope";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -40,6 +45,7 @@ export const useSaveGraph = ({
   teamId = null,
 }: SaveGraphOptions) => {
   const { toast } = useToast();
+  const tenantScope = useBuilderTenantScope();
 
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
@@ -56,14 +62,27 @@ export const useSaveGraph = ({
     {
       query: {
         select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetSpecificGraphQueryKey(
+            flowID ?? "",
+            flowVersion !== null ? { version: flowVersion } : {},
+          ),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
-      request: getTeamRequestInit(teamId),
+      request: getTenantRequestInit(tenantScope.organizationId, teamId),
       mutation: {
         onSuccess: async (response) => {
           const data = response.data as GraphModel;
@@ -133,6 +152,10 @@ export const useSaveGraph = ({
           });
         },
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+      ),
     });
 
   const saveGraph = useCallback(

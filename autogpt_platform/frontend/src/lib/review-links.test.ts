@@ -24,7 +24,7 @@ function makeReview(
 describe("getReviewLink", () => {
   it("opens the CoPilot thread for a session-scoped review", () => {
     expect(getReviewLink(makeReview({ session_id: "sess-1" }))).toBe(
-      "/copilot?sessionId=sess-1",
+      "/copilot?sessionId=sess-1&organizationId=__personal__&teamId=__org_home__",
     );
   });
 
@@ -35,7 +35,9 @@ describe("getReviewLink", () => {
       getReviewLink(
         makeReview({ library_agent_id: "lib-1", graph_exec_id: "run-1" }),
       ),
-    ).toBe("/library/agents/lib-1?activeTab=runs&activeItem=run-1");
+    ).toBe(
+      "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__&activeTab=runs&activeItem=run-1",
+    );
   });
 
   it("prefers the session link when both ids are present", () => {
@@ -43,7 +45,9 @@ describe("getReviewLink", () => {
       getReviewLink(
         makeReview({ session_id: "sess-1", library_agent_id: "lib-1" }),
       ),
-    ).toBe("/copilot?sessionId=sess-1");
+    ).toBe(
+      "/copilot?sessionId=sess-1&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("falls back to the library when neither id resolved", () => {

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import BackendAPI, { buildOAuthLoginQuery } from "../client";
+import {
+  ORG_HEADER_NAME,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/header-names";
 
 describe("BackendAPI.oAuthLogin", () => {
   it("passes credentialID through to buildOAuthLoginQuery", async () => {
@@ -116,5 +120,82 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
     const result = await (api as any)._makeClientRequest("GET", "/x");
 
     expect(result).toEqual({ ok: true });
+  });
+});
+
+describe("BackendAPI tenant scope", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("attaches an explicit org and team to fetch requests", async () => {
+    const api = new BackendAPI("http://test", "ws://test").withTenantScope({
+      organizationId: "org-a",
+      teamId: "team-a",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    await (
+      api as unknown as {
+        _makeClientRequest: (
+          method: string,
+          path: string,
+          payload?: Record<string, unknown>,
+        ) => Promise<unknown>;
+      }
+    )._makeClientRequest("PATCH", "/library/presets/preset-1", {
+      is_active: true,
+    });
+
+    const headers = new Headers(fetchSpy.mock.calls[0][1]?.headers);
+    expect(headers.get(ORG_HEADER_NAME)).toBe("org-a");
+    expect(headers.get(TEAM_HEADER_NAME)).toBe("team-a");
+  });
+
+  it("attaches the explicit scope to XHR uploads", async () => {
+    const requestHeaders = new Map<string, string>();
+    class FakeXMLHttpRequest {
+      status = 200;
+      responseText = JSON.stringify({ file_name: "example.txt" });
+      withCredentials = false;
+      upload = { addEventListener: vi.fn() };
+      private listeners = new Map<string, () => void>();
+
+      addEventListener(name: string, listener: () => void) {
+        this.listeners.set(name, listener);
+      }
+
+      open = vi.fn();
+
+      setRequestHeader(name: string, value: string) {
+        requestHeaders.set(name, value);
+      }
+
+      send() {
+        this.listeners.get("load")?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+    const api = new BackendAPI("http://test", "ws://test").withTenantScope({
+      organizationId: "org-a",
+      teamId: "team-a",
+    });
+
+    await (
+      api as unknown as {
+        _makeClientFileUploadWithProgress: (
+          path: string,
+          body: FormData,
+        ) => Promise<unknown>;
+      }
+    )._makeClientFileUploadWithProgress("/files/upload", new FormData());
+
+    expect(requestHeaders.get(ORG_HEADER_NAME)).toBe("org-a");
+    expect(requestHeaders.get(TEAM_HEADER_NAME)).toBe("team-a");
   });
 });

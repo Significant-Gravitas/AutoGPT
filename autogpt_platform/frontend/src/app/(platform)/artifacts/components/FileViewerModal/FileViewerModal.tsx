@@ -51,6 +51,8 @@ export function FileViewerModal({ file, onClose }: Props) {
         <Header
           name={file.name}
           fileId={file.id}
+          organizationId={file.organization_id ?? null}
+          teamId={file.team_id ?? null}
           showSourceToggle={classification.hasSourceToggle}
           isSourceView={isSourceView}
           onToggleSource={() => setIsSourceView((v) => !v)}
@@ -66,10 +68,7 @@ export function FileViewerModal({ file, onClose }: Props) {
               classification={classification}
             />
           ) : (
-            <DownloadOnly
-              name={file.name}
-              downloadUrl={getFileDownloadUrl(file.id)}
-            />
+            <DownloadOnly file={file} />
           )}
         </div>
       </Dialog.Content>
@@ -80,6 +79,8 @@ export function FileViewerModal({ file, onClose }: Props) {
 interface HeaderProps {
   name: string;
   fileId: string;
+  organizationId: string | null;
+  teamId: string | null;
   showSourceToggle: boolean;
   isSourceView: boolean;
   onToggleSource: () => void;
@@ -88,6 +89,8 @@ interface HeaderProps {
 function Header({
   name,
   fileId,
+  organizationId,
+  teamId,
   showSourceToggle,
   isSourceView,
   onToggleSource,
@@ -99,7 +102,7 @@ function Header({
     if (isDownloading) return;
     setIsDownloading(true);
     try {
-      await downloadFileBlob(fileId, name);
+      await downloadFileBlob(fileId, name, organizationId, teamId);
     } catch (error) {
       toast({
         title: "Failed to download file",
@@ -150,26 +153,38 @@ function Header({
   );
 }
 
-function DownloadOnly({
-  name,
-  downloadUrl,
-}: {
-  name: string;
-  downloadUrl: string;
-}) {
+function DownloadOnly({ file }: { file: WorkspaceFileItem }) {
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  async function handleDownload() {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadFileBlob(
+        file.id,
+        file.name,
+        file.organization_id ?? null,
+        file.team_id ?? null,
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
       <p className="text-sm text-zinc-500">
         This file type can&apos;t be previewed.
       </p>
-      <a
-        href={downloadUrl}
-        download={name}
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={isDownloading}
         className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
       >
         <Icon icon={Download04Icon} size={16} />
-        Download
-      </a>
+        {isDownloading ? "Downloading…" : "Download"}
+      </button>
     </div>
   );
 }
@@ -182,5 +197,7 @@ function toArtifactRef(file: WorkspaceFileItem): ArtifactRef {
     sourceUrl: getFileDownloadUrl(file.id),
     origin: file.origin === "uploaded" ? "user-upload" : "agent",
     sizeBytes: file.size_bytes,
+    organizationId: file.organization_id ?? null,
+    teamId: file.team_id ?? null,
   };
 }

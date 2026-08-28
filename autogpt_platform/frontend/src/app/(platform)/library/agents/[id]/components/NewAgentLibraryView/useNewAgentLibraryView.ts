@@ -1,15 +1,29 @@
 import {
+  getGetV2GetLibraryAgentQueryKey,
+  getGetV2ListTriggerAgentsQueryKey,
   useGetV2GetLibraryAgent,
   useGetV2ListTriggerAgents,
 } from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
-import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  getGetV2GetASpecificPresetQueryKey,
+  useGetV2GetASpecificPreset,
+} from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+  useGetV1ListExecutionSchedulesForAGraph,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -19,6 +33,7 @@ import {
   SelectedTriggerKind,
 } from "./helpers";
 import { useAgentPresetsQuery } from "./hooks/useAgentPresetsQuery";
+import { decodeBuilderTenantScope } from "@/services/org-team/builder";
 
 function parseTab(
   value: string | null,
@@ -37,6 +52,18 @@ function parseTab(
 export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
+  const searchParams = useSearchParams();
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const isOrgTeamLoaded = useOrgTeamStore((s) => s.isLoaded);
+  const explicitScope = decodeBuilderTenantScope(
+    searchParams.get("organizationId"),
+    searchParams.get("teamId"),
+  );
+  const requestedOrgID = explicitScope
+    ? explicitScope.organizationId
+    : activeOrgID;
+  const requestedTeamID = explicitScope ? explicitScope.teamId : activeTeamID;
 
   // TODO(#12740 / autogpt-pr-reviewer): when agent.is_hidden is true,
   // surface a banner that this is a trigger agent and link to its parent.
@@ -47,21 +74,49 @@ export function useNewAgentLibraryView() {
     data: agent,
     isSuccess,
     error,
-  } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
+  } = useGetV2GetLibraryAgent(agentId, {
+    request: getTenantRequestInit(
+      requestedOrgID,
+      requestedTeamID,
+      isOrgTeamLoaded,
+    ),
+    query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetLibraryAgentQueryKey(agentId),
+        requestedOrgID,
+        requestedTeamID,
+      ),
+      enabled: isOrgTeamLoaded,
+      select: okData,
+    },
+  });
+
+  const agentOrgID = agent?.organization_id ?? requestedOrgID;
+  const agentTeamID = agent?.team_id ?? requestedTeamID;
 
   const { enabled: triggerAgentsEnabled, ready: triggerAgentsFlagReady } =
     useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS);
   // This list is unpaginated on the backend, so membership is authoritative.
   const triggerAgentsQuery = useGetV2ListTriggerAgents(agentId, {
+    request: getTenantRequestInit(agentOrgID, agentTeamID),
     query: {
-      enabled: triggerAgentsEnabled && !!agentId,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2ListTriggerAgentsQueryKey(agentId),
+        agentOrgID,
+        agentTeamID,
+      ),
+      enabled: triggerAgentsEnabled && !!agent,
       select: okData,
       retry: retryUnlessClientError,
     },
   });
   const triggerAgents = triggerAgentsQuery.data;
 
-  const presetsQuery = useAgentPresetsQuery(agent?.graph_id);
+  const presetsQuery = useAgentPresetsQuery(
+    agent?.graph_id,
+    agentOrgID,
+    agentTeamID,
+  );
   const presets = presetsQuery.presets;
   const presetsComplete = presetsQuery.presetsComplete;
 
@@ -76,8 +131,14 @@ export function useNewAgentLibraryView() {
 
   const onTemplatesTab = Boolean(activeTab === "templates" && activeItemId);
   const templateQuery = useGetV2GetASpecificPreset(activeItemId ?? "", {
+    request: getTenantRequestInit(agentOrgID, agentTeamID),
     query: {
-      enabled: onTemplatesTab,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetASpecificPresetQueryKey(activeItemId ?? ""),
+        agentOrgID,
+        agentTeamID,
+      ),
+      enabled: onTemplatesTab && !!agent,
       select: okData,
       retry: retryUnlessClientError,
     },
@@ -169,7 +230,15 @@ export function useNewAgentLibraryView() {
   const { data: schedules } = useGetV1ListExecutionSchedulesForAGraph(
     agent?.graph_id || "",
     {
+      request: getTenantRequestInit(agentOrgID, agentTeamID),
       query: {
+        queryKey: getTeamScopedQueryKey(
+          getGetV1ListExecutionSchedulesForAGraphQueryKey(
+            agent?.graph_id || "",
+          ),
+          agentOrgID,
+          agentTeamID,
+        ),
         enabled: !!agent?.graph_id,
         select: okData,
       },

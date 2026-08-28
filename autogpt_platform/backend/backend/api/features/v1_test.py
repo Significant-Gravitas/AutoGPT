@@ -57,8 +57,18 @@ app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
 client = fastapi.testclient.TestClient(app)
 
 
+@pytest.fixture
+def mock_shared_cache(monkeypatch):
+    redis = Mock()
+    redis.get.return_value = None
+    redis.getex.return_value = None
+    monkeypatch.setattr("backend.util.cache._get_redis", lambda: redis)
+
+
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user, setup_test_user, test_user_id, monkeypatch):
+def setup_app_auth(
+    mock_jwt_user, mock_shared_cache, setup_test_user, test_user_id, monkeypatch
+):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
@@ -1683,6 +1693,81 @@ def test_create_schedule_rejects_non_member_team(
     add_schedule_mock.assert_not_awaited()
 
 
+def test_schedule_creator_can_delete_from_member_workspace(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    async def _member_request_context() -> RequestContext:
+        return RequestContext(
+            user_id=test_user_id,
+            org_id="test-org",
+            team_id=TEAM_ID,
+            is_org_owner=False,
+            is_org_admin=False,
+            is_org_billing_manager=False,
+            is_team_admin=False,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+
+    app.dependency_overrides[get_request_context] = _member_request_context
+    schedule = GraphExecutionJobInfo(
+        id="schedule-1",
+        name="s",
+        next_run_time="2025-09-04T13:37:00+00:00",
+        user_id=test_user_id,
+        graph_id="graph-123",
+        graph_version=1,
+        cron="0 0 * * *",
+        input_data={},
+        organization_id="test-org",
+        team_id=TEAM_ID,
+    )
+    get_schedule_mock = AsyncMock(return_value=schedule)
+    delete_schedule_mock = AsyncMock(return_value=schedule)
+    mocker.patch(
+        "backend.api.features.v1.get_scheduler_client",
+        return_value=Mock(
+            get_execution_schedule=get_schedule_mock,
+            delete_schedule=delete_schedule_mock,
+        ),
+    )
+    barrier_calls: list[tuple[str, str | None, str | None, str]] = []
+
+    @asynccontextmanager
+    async def allow_creator_delete(
+        user_id: str,
+        organization_id: str | None,
+        team_id: str | None,
+        access: str,
+    ):
+        barrier_calls.append((user_id, organization_id, team_id, access))
+        yield True
+
+    mocker.patch(
+        "backend.api.features.v1.live_resource_access_barrier",
+        allow_creator_delete,
+    )
+
+    response = client.delete("/schedules/schedule-1")
+
+    assert response.status_code == 200
+    assert response.json() == {"id": "schedule-1"}
+    assert barrier_calls == [(test_user_id, "test-org", TEAM_ID, "create")]
+    assert get_schedule_mock.await_count == 2
+    get_schedule_mock.assert_awaited_with(
+        "schedule-1",
+        user_id=test_user_id,
+        organization_id="test-org",
+        team_ids=[TEAM_ID],
+    )
+    delete_schedule_mock.assert_awaited_once_with(
+        "schedule-1",
+        user_id=test_user_id,
+        organization_id="test-org",
+        team_ids=[TEAM_ID],
+    )
+
+
 def _api_key_info(user_id: str):
     return APIKeyInfo(
         id="key-1",
@@ -2078,10 +2163,21 @@ def test_list_copilot_turn_schedules_filters_to_copilot_kind(
         cron="0 10 * * *",
         input_data={},
     )
+    peer_copilot_info = CopilotTurnJobInfo(
+        id="sched-3",
+        name="peer copilot followup",
+        next_run_time="2026-05-22T12:00:00+00:00",
+        timezone="UTC",
+        user_id="peer-user",
+        session_id="peer-session",
+        message="private peer prompt",
+        cron="0 11 * * *",
+        organization_id="test-org",
+    )
 
     mock_client = Mock()
     mock_client.get_execution_schedules = AsyncMock(
-        return_value=[copilot_info, graph_info]
+        return_value=[copilot_info, graph_info, peer_copilot_info]
     )
     mocker.patch(
         "backend.api.features.v1.get_scheduler_client",
@@ -2103,6 +2199,39 @@ def test_list_copilot_turn_schedules_filters_to_copilot_kind(
         organization_id="test-org",
         team_ids=[],
     )
+
+
+@pytest.mark.asyncio
+async def test_stop_graph_run_rejects_team_visible_peer_before_cancel(mocker):
+    from backend.api.features.v1 import _stop_graph_run
+
+    candidate = Mock(
+        id="execution-1",
+        user_id="other-user",
+        graph_id="graph-1",
+        status=v1_module.execution_db.ExecutionStatus.RUNNING,
+    )
+    mocker.patch.object(
+        v1_module.execution_db,
+        "get_graph_execution",
+        new=AsyncMock(return_value=candidate),
+    )
+    stop = mocker.patch.object(
+        v1_module.execution_utils,
+        "stop_graph_execution",
+        new=AsyncMock(),
+    )
+
+    result = await _stop_graph_run(
+        user_id="caller",
+        graph_id="graph-1",
+        graph_exec_id="execution-1",
+        organization_id="org-1",
+        team_id_restriction="team-1",
+    )
+
+    assert result == []
+    stop.assert_not_awaited()
 
 
 def test_list_copilot_skills_returns_user_skills(

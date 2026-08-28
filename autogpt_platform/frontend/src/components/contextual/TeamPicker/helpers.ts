@@ -1,4 +1,7 @@
-import { TEAM_HEADER_NAME } from "@/services/org-team/headers";
+import {
+  ORG_HEADER_NAME,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/header-names";
 import { Key, storage } from "@/services/storage/local-storage";
 
 // Sentinel Select value for the "Organization" (org-home) choice. The Select
@@ -79,4 +82,35 @@ export function getTeamRequestInit(
         : CONTEXT_LOADING_TEAM_ID,
     },
   };
+}
+
+export function getTenantRequestInit(
+  organizationId: string | null | undefined,
+  teamId: string | null | undefined,
+  isReady = true,
+): RequestInit {
+  return {
+    headers: {
+      [ORG_HEADER_NAME]: isReady
+        ? (organizationId ?? "")
+        : CONTEXT_LOADING_TEAM_ID,
+      [TEAM_HEADER_NAME]: isReady
+        ? (teamId ?? ORG_HOME_TEAM_SENTINEL)
+        : CONTEXT_LOADING_TEAM_ID,
+    },
+  };
+}
+
+export function getTeamScopedQueryKey(
+  queryKey: readonly unknown[],
+  organizationId: string | null | undefined,
+  teamId: string | null | undefined,
+) {
+  return [
+    ...queryKey,
+    {
+      organizationId: organizationId ?? null,
+      teamId: teamId ?? ORG_HOME_OPTION_VALUE,
+    },
+  ] as const;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -13,7 +13,18 @@ import {
 } from "@/app/api/__generated__/endpoints/folders/folders.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import LibraryPage from "../page";
+
+afterEach(() => {
+  useOrgTeamStore.setState({
+    activeOrgID: null,
+    activeTeamID: null,
+    orgs: [],
+    teams: [],
+    isLoaded: false,
+  });
+});
 
 function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
   const base = getGetV2ListLibraryAgentsResponseMock().agents[0];
@@ -167,6 +178,74 @@ describe("LibraryPage", () => {
     expect(await screen.findByText("Work Agents")).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
     expect(screen.getAllByTestId("library-folder")).toHaveLength(2);
+  });
+
+  test("renders org-home and team folders in the organization root", async () => {
+    setupHandlers();
+    const requestedTeamIds: Array<string | null> = [];
+    const foldersByTeam: Record<string, string> = {
+      "org-home": "Organization Folder",
+      "team-a": "Team A Folder",
+      "team-b": "Team B Folder",
+    };
+    server.use(
+      getGetV2ListLibraryFoldersMockHandler(({ request }) => {
+        const teamId = request.headers.get("X-Team-Id");
+        requestedTeamIds.push(teamId);
+        const scope = teamId ?? "org-home";
+        return getGetV2ListLibraryFoldersResponseMock({
+          folders: [
+            {
+              id: `folder-${scope}`,
+              user_id: "test-user",
+              name: foldersByTeam[scope],
+              created_at: new Date(),
+              updated_at: new Date(),
+              organization_id: "org-1",
+              team_id: teamId,
+            },
+          ],
+          pagination: {
+            total_items: 1,
+            total_pages: 1,
+            current_page: 1,
+            page_size: 20,
+          },
+        });
+      }),
+    );
+    useOrgTeamStore.setState({
+      activeOrgID: "org-1",
+      activeTeamID: null,
+      teams: [
+        {
+          id: "team-a",
+          name: "Team A",
+          slug: "team-a",
+          isDefault: false,
+          joinPolicy: "private",
+          orgId: "org-1",
+        },
+        {
+          id: "team-b",
+          name: "Team B",
+          slug: "team-b",
+          isDefault: false,
+          joinPolicy: "private",
+          orgId: "org-1",
+        },
+      ],
+      isLoaded: true,
+    });
+
+    render(<LibraryPage />);
+
+    expect(await screen.findByText("Organization Folder")).toBeDefined();
+    expect(screen.getByText("Team A Folder")).toBeDefined();
+    expect(screen.getByText("Team B Folder")).toBeDefined();
+    expect(new Set(requestedTeamIds)).toEqual(
+      new Set([null, "team-a", "team-b"]),
+    );
   });
 
   test("shows See tasks link on agent card", async () => {

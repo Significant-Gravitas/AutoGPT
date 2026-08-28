@@ -1,7 +1,8 @@
 import { useCallback, useState, useEffect } from "react";
 import { usePatchV1UpdateGraphSettings } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
-  getGetV2GetLibraryAgentQueryOptions,
+  getGetV2GetLibraryAgentByGraphIdQueryKey,
+  getGetV2GetLibraryAgentQueryKey,
   useGetV2GetLibraryAgentByGraphId,
 } from "@/app/api/__generated__/endpoints/library/library";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -10,6 +11,10 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { Graph } from "@/lib/autogpt-server-api/types";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 function getGraphId(graph: GraphModel | LibraryAgent | Graph): string {
   if ("graph_id" in graph) return graph.graph_id || "";
@@ -38,6 +43,13 @@ function isLibraryAgent(
   return "graph_id" in graph && "settings" in graph;
 }
 
+function getTenantScope(graph: GraphModel | LibraryAgent | Graph) {
+  return {
+    organizationId: graph.organization_id ?? null,
+    teamId: graph.team_id ?? null,
+  };
+}
+
 export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -47,9 +59,11 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
   const showHITLToggle = hasHITLBlocks(graph);
   const showSensitiveActionToggle = hasSensitiveActionBlocks(graph);
   const shouldShowToggle = showHITLToggle || showSensitiveActionToggle;
+  const scope = getTenantScope(graph);
+  const request = getTenantRequestInit(scope.organizationId, scope.teamId);
 
   const { mutateAsync: updateGraphSettings, isPending } =
-    usePatchV1UpdateGraphSettings();
+    usePatchV1UpdateGraphSettings({ request });
 
   const { data: libraryAgent, isLoading } = useGetV2GetLibraryAgentByGraphId(
     graphId,
@@ -57,8 +71,14 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
     {
       query: {
         enabled: !isAgent && shouldShowToggle,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetLibraryAgentByGraphIdQueryKey(graphId, {}),
+          scope.organizationId,
+          scope.teamId,
+        ),
         select: okData,
       },
+      request,
     },
   );
 
@@ -106,8 +126,11 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
 
       if (isAgent) {
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetLibraryAgentQueryOptions(graph.id.toString())
-            .queryKey,
+          queryKey: getTeamScopedQueryKey(
+            getGetV2GetLibraryAgentQueryKey(graph.id.toString()),
+            scope.organizationId,
+            scope.teamId,
+          ),
         });
       }
 
@@ -134,6 +157,8 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
     updateGraphSettings,
     queryClient,
     toast,
+    scope.organizationId,
+    scope.teamId,
   ]);
 
   const handleSensitiveActionToggle = useCallback(async () => {
@@ -151,8 +176,11 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
 
       if (isAgent) {
         queryClient.invalidateQueries({
-          queryKey: getGetV2GetLibraryAgentQueryOptions(graph.id.toString())
-            .queryKey,
+          queryKey: getTeamScopedQueryKey(
+            getGetV2GetLibraryAgentQueryKey(graph.id.toString()),
+            scope.organizationId,
+            scope.teamId,
+          ),
         });
       }
 
@@ -179,6 +207,8 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
     updateGraphSettings,
     queryClient,
     toast,
+    scope.organizationId,
+    scope.teamId,
   ]);
 
   return {

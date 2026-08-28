@@ -35,6 +35,7 @@ from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
 )
+from backend.util.tenancy_urls import library_agent_path
 
 from .base import BaseTool
 from .execution_utils import (
@@ -288,6 +289,7 @@ class RunAgentTool(BaseTool):
                 builder_graph_id,
                 organization_id=session.organization_id,
                 team_id_restriction=session.team_id,
+                exact_scope=True,
             )
             if library_agent and (
                 library_agent.organization_id,
@@ -935,6 +937,7 @@ class RunAgentTool(BaseTool):
             graph.version,
             organization_id=session.organization_id,
             team_id_restriction=session.team_id,
+            exact_scope=True,
         )
         if library_agent and (
             library_agent.organization_id,
@@ -996,7 +999,11 @@ class RunAgentTool(BaseTool):
             library_agent_id=library_agent.id,
         )
 
-        library_agent_link = f"/library/agents/{library_agent.id}"
+        library_agent_link = library_agent_path(
+            library_agent.id,
+            library_agent.organization_id,
+            library_agent.team_id,
+        )
 
         # If wait_for_result is requested, wait for execution to complete
         if wait_for_result > 0:
@@ -1299,7 +1306,11 @@ class RunAgentTool(BaseTool):
             library_agent_id=library_agent.id,
         )
 
-        library_agent_link = f"/library/agents/{library_agent.id}"
+        library_agent_link = library_agent_path(
+            library_agent.id,
+            library_agent.organization_id,
+            library_agent.team_id,
+        )
         return ExecutionStartedResponse(
             message=(
                 f"Agent '{library_agent.name}' scheduled successfully as '{schedule_name}'. "

@@ -452,8 +452,10 @@ model BuilderSearchHistory {
 
   // Tenancy
   organizationId String?
+  teamId         String?
 
   @@index([organizationId])
+  @@index([organizationId, teamId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -503,7 +505,7 @@ model ChatSession {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   // When true, the session is pinned to the top of the user's sidebar
   // list, surfacing ahead of unpinned sessions regardless of recency.
@@ -651,7 +653,7 @@ model AgentGraph {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive, id, version])
@@ -713,7 +715,7 @@ model AgentPreset {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([userId])
   @@index([agentGraphId, agentGraphVersion])
@@ -915,7 +917,7 @@ model LibraryAgent {
   teamId         String?
   scopeKey       String             @default("__scope__")
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@unique([userId, agentGraphId, agentGraphVersion, scopeKey])
   @@index([agentGraphId, agentGraphVersion])
@@ -949,7 +951,7 @@ model LibraryFolder {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@unique([userId, parentId, name]) // Name unique per parent per user
   @@index([organizationId])
@@ -1010,7 +1012,7 @@ model Expert {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   // Hire idempotency: one hired copy per (user, template). Postgres allows
   // multiple NULL ownerUserId rows, so templates are unaffected.
@@ -1240,7 +1242,7 @@ model AgentGraphExecution {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
@@ -1386,7 +1388,7 @@ model IntegrationWebhook {
   organizationId String?
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
-  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
 
   @@index([organizationId])
 }
@@ -1759,6 +1761,7 @@ view StoreSubmission {
   review_avg_rating Float
 
   organization_id String?
+  team_id         String?
 }
 
 // StoreCreator view — like Creator but with org_name for org-owned listings

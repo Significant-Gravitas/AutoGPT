@@ -4,6 +4,7 @@ import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/stor
 import type { ChangelogEntry } from "@/app/api/__generated__/models/changelogEntry";
 import type { GetV2GetSpecificAgentParams } from "@/app/api/__generated__/models/getV2GetSpecificAgentParams";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import Avatar, {
   AvatarFallback,
@@ -17,13 +18,13 @@ import { formatTimeAgo } from "@/lib/utils/time";
 import type { User } from "@/lib/auth/types";
 import Link from "next/link";
 import { InstallOnExpertButton } from "../InstallOnExpertButton/InstallOnExpertButton";
+import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
 import { useAgentInfo } from "./useAgentInfo";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentInfoProps {
   user: User | null;
   agentId: string;
+  agentGraphID: string;
   name: string;
   creator: string;
   creatorAvatar?: string;
@@ -34,7 +35,7 @@ interface AgentInfoProps {
   lastUpdated: string;
   version: string;
   storeListingVersionId: string;
-  isAgentAddedToLibrary: boolean;
+  libraryAgent?: LibraryAgent;
   creatorSlug?: string;
   agentSlug?: string;
 }
@@ -42,6 +43,7 @@ interface AgentInfoProps {
 export const AgentInfo = ({
   user,
   agentId,
+  agentGraphID,
   name,
   creator,
   creatorAvatar,
@@ -52,16 +54,12 @@ export const AgentInfo = ({
   lastUpdated,
   version,
   storeListingVersionId,
-  isAgentAddedToLibrary,
+  libraryAgent,
   creatorSlug,
   agentSlug,
 }: AgentInfoProps) => {
-  const {
-    handleDownload,
-    isDownloadingAgent,
-    handleLibraryAction,
-    isAddingAgentToLibrary,
-  } = useAgentInfo({ storeListingVersionId });
+  const { handleDownload, isDownloadingAgent, handleOpenLibraryAgent } =
+    useAgentInfo({ storeListingVersionId, libraryAgent });
 
   // Get store agent data for version history
   const params: GetV2GetSpecificAgentParams = { include_changelog: true };
@@ -184,34 +182,26 @@ export const AgentInfo = ({
 
           {/* Buttons */}
           <div className="mt-6 flex w-full items-center gap-2 lg:mt-8">
-            {user && (
+            {user && libraryAgent && (
               <Button
                 variant="primary"
                 className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
                 data-testid="agent-add-library-button"
-                disabled={isAddingAgentToLibrary}
-                loading={isAddingAgentToLibrary}
-                leftIcon={
-                  !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
-                    <Icon
-                      icon={PlusSignIcon}
-                      size={16}
-                      className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
-                    />
-                  ) : undefined
-                }
-                onClick={() =>
-                  handleLibraryAction({
-                    isAddingAgentFirstTime: !isAgentAddedToLibrary,
-                  })
-                }
+                onClick={handleOpenLibraryAgent}
               >
-                {isAddingAgentToLibrary
-                  ? "Adding..."
-                  : isAgentAddedToLibrary
-                    ? "See runs"
-                    : "Add to library"}
+                See runs
               </Button>
+            )}
+            {user && creatorSlug && agentSlug && (
+              <AddToLibraryButton
+                creatorSlug={creatorSlug}
+                agentSlug={agentSlug}
+                agentName={name}
+                agentGraphID={agentGraphID}
+                variant="primary"
+                size="large"
+                className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+              />
             )}
             <InstallOnExpertButton
               storeListingVersionId={storeListingVersionId}

@@ -15,6 +15,7 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
+import { useCopilotTenantScope } from "../../../../CopilotTenantScopeContext";
 
 interface Props {
   output: BlockOutputResponse;
@@ -23,7 +24,8 @@ interface Props {
 const COLLAPSED_LIMIT = 3;
 
 function RenderOutputValue({ value }: { value: unknown }) {
-  const resolved = resolveForRenderer(value);
+  const scope = useCopilotTenantScope();
+  const resolved = resolveForRenderer(value, scope);
   const renderer = globalRegistry.getRenderer(
     resolved.value,
     resolved.metadata,

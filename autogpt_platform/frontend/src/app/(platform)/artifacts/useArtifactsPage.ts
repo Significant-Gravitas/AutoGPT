@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
 
@@ -16,6 +19,19 @@ export function useArtifactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFolderScope, setSelectedFolderScope] = useState<{
+    organizationId: string | null;
+    teamId: string | null;
+  } | null>(null);
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
+  const organizationId = selectedFolderScope
+    ? selectedFolderScope.organizationId
+    : activeOrgID;
+  const teamId = selectedFolderScope
+    ? selectedFolderScope.teamId
+    : activeTeamID;
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -39,17 +55,24 @@ export function useArtifactsPage() {
         origin: origin ?? null,
         folderId: folderId ?? null,
         rootOnly,
+        organizationId,
+        teamId,
+        isTenantReady,
       },
     ] as const,
     queryFn: ({ pageParam }) =>
-      listWorkspaceFiles({
-        limit: ARTIFACTS_PAGE_SIZE,
-        offset: pageParam,
-        q,
-        origin,
-        folder_id: folderId,
-        root_only: rootOnly,
-      }),
+      listWorkspaceFiles(
+        {
+          limit: ARTIFACTS_PAGE_SIZE,
+          offset: pageParam,
+          q,
+          origin,
+          folder_id: folderId,
+          root_only: rootOnly,
+        },
+        getTenantRequestInit(organizationId, teamId, isTenantReady),
+      ),
+    enabled: isTenantReady,
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;
@@ -73,7 +96,17 @@ export function useArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
-    setSelectedFolderId,
+    selectFolder: (folder: WorkspaceFolder | null) => {
+      setSelectedFolderId(folder?.id ?? null);
+      setSelectedFolderScope(
+        folder
+          ? {
+              organizationId: folder.organization_id ?? null,
+              teamId: folder.team_id ?? null,
+            }
+          : null,
+      );
+    },
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {

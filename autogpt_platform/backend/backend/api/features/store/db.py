@@ -10,6 +10,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
@@ -25,11 +26,13 @@ from backend.data.notifications import (
 )
 from backend.data.tenancy import (
     agent_graph_attachment_barriers,
+    get_user_team_ids,
     live_agent_graph_access_barrier,
 )
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
+from backend.util.tenancy_urls import builder_path
 
 from . import exceptions as store_exceptions
 from . import model as store_model
@@ -38,6 +41,7 @@ from .hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+_AGENT_EXECUTOR_BLOCK_ID = AgentExecutorBlock().id
 
 
 # Constants for default admin values
@@ -47,7 +51,7 @@ DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 async def _lock_store_row(
     tx: prisma.Prisma,
-    table: Literal["StoreListing", "StoreListingVersion"],
+    table: Literal["Profile", "StoreListing", "StoreListingVersion"],
     row_id: str,
 ) -> bool:
     schema = get_database_schema()
@@ -57,6 +61,51 @@ async def _lock_store_row(
         f'SELECT "id" FROM {schema_prefix}"{table}" WHERE "id" = $1 FOR UPDATE',
     )
     return bool(await tx.query_raw(query, row_id))
+
+
+def _referenced_subgraph_versions(
+    graphs: list[prisma.models.AgentGraph],
+) -> set[tuple[str, int]]:
+    refs: set[tuple[str, int]] = set()
+    for graph in graphs:
+        for node in graph.Nodes or []:
+            if not node.AgentBlock or node.AgentBlock.id != _AGENT_EXECUTOR_BLOCK_ID:
+                continue
+            inputs = dict(node.constantInput)
+            graph_id = inputs.get("graph_id")
+            graph_version = inputs.get("graph_version")
+            if (
+                isinstance(graph_id, str)
+                and graph_id
+                and isinstance(graph_version, int)
+            ):
+                refs.add((graph_id, graph_version))
+    return refs
+
+
+async def _get_exact_store_subgraphs(
+    graph: prisma.models.AgentGraph,
+) -> list[prisma.models.AgentGraph]:
+    """Resolve every referenced subgraph in the main graph's exact tenancy."""
+    sub_graphs = await get_sub_graphs(graph)
+    resolved = [graph, *sub_graphs]
+    if any(
+        candidate.userId != graph.userId
+        or candidate.organizationId != graph.organizationId
+        or candidate.teamId != graph.teamId
+        for candidate in sub_graphs
+    ):
+        raise NotFoundError(
+            "Agent composition contains a missing or inaccessible subgraph"
+        )
+    missing = _referenced_subgraph_versions(resolved) - {
+        (candidate.id, candidate.version) for candidate in resolved
+    }
+    if missing:
+        raise NotFoundError(
+            "Agent composition contains a missing or inaccessible subgraph"
+        )
+    return sub_graphs
 
 
 @asynccontextmanager
@@ -75,32 +124,54 @@ async def _stable_review_graphs(
                 f"Store listing version {store_listing_version_id} not found"
             )
 
-        sub_graphs = await get_sub_graphs(submission.AgentGraph)
+        sub_graphs = await _get_exact_store_subgraphs(submission.AgentGraph)
         expected_graphs = {
             (graph.id, graph.version) for graph in [submission.AgentGraph, *sub_graphs]
         }
         async with agent_graph_attachment_barriers(
             {graph_id for graph_id, _ in expected_graphs}
         ):
-            locked_submission = (
-                await prisma.models.StoreListingVersion.prisma().find_unique(
-                    where={"id": store_listing_version_id},
-                    include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+            async with AsyncExitStack() as stack:
+                for graph in sorted(
+                    [submission.AgentGraph, *sub_graphs],
+                    key=lambda candidate: (candidate.id, candidate.version),
+                ):
+                    allowed = await stack.enter_async_context(
+                        live_agent_graph_access_barrier(
+                            graph.userId,
+                            graph.organizationId,
+                            graph.teamId,
+                            "create",
+                            graph.id,
+                            graph.version,
+                        )
+                    )
+                    if not allowed:
+                        raise NotFoundError(
+                            f"Store listing version {store_listing_version_id} "
+                            "not found"
+                        )
+                locked_submission = (
+                    await prisma.models.StoreListingVersion.prisma().find_unique(
+                        where={"id": store_listing_version_id},
+                        include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+                    )
                 )
-            )
-            if locked_submission is None or locked_submission.AgentGraph is None:
-                raise NotFoundError(
-                    f"Store listing version {store_listing_version_id} not found"
+                if locked_submission is None or locked_submission.AgentGraph is None:
+                    raise NotFoundError(
+                        f"Store listing version {store_listing_version_id} not found"
+                    )
+                locked_sub_graphs = await _get_exact_store_subgraphs(
+                    locked_submission.AgentGraph
                 )
-            locked_sub_graphs = await get_sub_graphs(locked_submission.AgentGraph)
-            locked_graphs = {
-                (graph.id, graph.version)
-                for graph in [locked_submission.AgentGraph, *locked_sub_graphs]
-            }
-            if locked_graphs != expected_graphs:
-                continue
-            yield locked_submission, locked_sub_graphs
-            return
+                locked_graphs = {
+                    (graph.id, graph.version)
+                    for graph in [locked_submission.AgentGraph, *locked_sub_graphs]
+                }
+                if locked_graphs != expected_graphs:
+                    continue
+                yield locked_submission, locked_sub_graphs
+                return
 
     raise DatabaseError("Agent composition changed while review was starting")
 
@@ -370,7 +441,11 @@ async def get_store_agent_details(
 
     try:
         agent = await prisma.models.StoreAgent.prisma().find_first(
-            where={"creator_username": username, "slug": agent_name}
+            where={
+                "creator_username": username,
+                "slug": agent_name,
+                "is_available": True,
+            }
         )
 
         if not agent:
@@ -385,6 +460,8 @@ async def get_store_agent_details(
                     where={
                         "storeListingId": agent.listing_id,
                         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                        "isAvailable": True,
+                        "isDeleted": False,
                     },
                     order=[{"version": "desc"}],
                 )
@@ -414,6 +491,7 @@ async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: Literal[False],
     include_subgraphs: bool = False,
+    user_id: str | None = None,
 ) -> GraphModel: ...
 
 
@@ -422,6 +500,7 @@ async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: Literal[True] = True,
     include_subgraphs: bool = False,
+    user_id: str | None = None,
 ) -> GraphModelWithoutNodes: ...
 
 
@@ -429,19 +508,45 @@ async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: bool = True,
     include_subgraphs: bool = False,
+    user_id: str | None = None,
 ) -> GraphModelWithoutNodes | GraphModel:
     """``include_subgraphs`` is required for a complete
     `credentials_input_schema`, which aggregates sub-graph credentials too."""
     try:
-        # Get avaialble, non-deleted store listing version
+        # Public consumers can only read live approved versions. Authenticated
+        # creators can also inspect their own non-deleted pending versions.
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_first(
                 where={
                     "id": store_listing_version_id,
-                    "isAvailable": True,
                     "isDeleted": False,
+                    "StoreListing": {"is": {"isDeleted": False}},
+                    "OR": [
+                        {
+                            "isAvailable": True,
+                            "submissionStatus": (
+                                prisma.enums.SubmissionStatus.APPROVED
+                            ),
+                        },
+                        {
+                            "AgentGraph": {"is": {"userId": user_id}},
+                            "StoreListing": {"is": {"owningUserId": user_id}},
+                        },
+                    ]
+                    if user_id is not None
+                    else [
+                        {
+                            "isAvailable": True,
+                            "submissionStatus": (
+                                prisma.enums.SubmissionStatus.APPROVED
+                            ),
+                        }
+                    ],
                 },
-                include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+                include={
+                    "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
+                    "StoreListing": True,
+                },
             )
         )
 
@@ -450,15 +555,79 @@ async def get_available_graph(
                 f"Store listing version {store_listing_version_id} not found",
             )
 
+        graph = store_listing_version.AgentGraph
+        is_public = (
+            store_listing_version.isAvailable
+            and store_listing_version.submissionStatus
+            == prisma.enums.SubmissionStatus.APPROVED
+        )
+        if not is_public:
+            if (
+                user_id is None
+                or store_listing_version.StoreListing is None
+                or store_listing_version.StoreListing.owningUserId != user_id
+                or graph.userId != user_id
+            ):
+                raise NotFoundError(
+                    f"Store listing version {store_listing_version_id} not found"
+                )
+            async with live_agent_graph_access_barrier(
+                user_id,
+                graph.organizationId,
+                graph.teamId,
+                "view",
+                graph.id,
+                graph.version,
+            ) as allowed:
+                if not allowed:
+                    raise NotFoundError(
+                        f"Store listing version {store_listing_version_id} not found"
+                    )
+                store_listing_version = (
+                    await prisma.models.StoreListingVersion.prisma().find_first(
+                        where={
+                            "id": store_listing_version_id,
+                            "isDeleted": False,
+                            "AgentGraph": {
+                                "is": {
+                                    "id": graph.id,
+                                    "version": graph.version,
+                                    "userId": user_id,
+                                    "organizationId": graph.organizationId,
+                                    "teamId": graph.teamId,
+                                }
+                            },
+                            "StoreListing": {
+                                "is": {
+                                    "isDeleted": False,
+                                    "owningUserId": user_id,
+                                }
+                            },
+                        },
+                        include={
+                            "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
+                            "StoreListing": True,
+                        },
+                    )
+                )
+                if (
+                    store_listing_version is None
+                    or store_listing_version.AgentGraph is None
+                ):
+                    raise NotFoundError(
+                        f"Store listing version {store_listing_version_id} not found"
+                    )
+                graph = store_listing_version.AgentGraph
+
         return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
-            store_listing_version.AgentGraph,
+            graph,
             sub_graphs=(
-                await get_sub_graphs(store_listing_version.AgentGraph)
-                if include_subgraphs
-                else None
+                await _get_exact_store_subgraphs(graph) if include_subgraphs else None
             ),
         )
 
+    except NotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Error getting agent: {e}")
         raise DatabaseError("Failed to fetch agent") from e
@@ -476,7 +645,10 @@ async def get_store_agent_by_version_id(
 
     try:
         agent = await prisma.models.StoreAgent.prisma().find_first(
-            where={"listing_version_id": store_listing_version_id}
+            where={
+                "listing_version_id": store_listing_version_id,
+                "is_available": True,
+            }
         )
 
         if not agent:
@@ -784,25 +956,31 @@ async def get_store_submissions(
             "is_deleted": False,
         }
         if organization_id is not None:
+            if team_id_restriction is not None:
+                org_scope: prisma.types.StoreSubmissionWhereInput = {
+                    "organization_id": organization_id,
+                    "team_id": team_id_restriction,
+                }
+            else:
+                team_ids = await get_user_team_ids(user_id, organization_id)
+                org_scope = {
+                    "organization_id": organization_id,
+                    "OR": [
+                        {"team_id": None},
+                        {"team_id": {"in": team_ids}},
+                    ],
+                }
             # Nested under AND so it can't collide with the search OR below.
             where["AND"] = [
                 {
                     "OR": [
-                        {"organization_id": organization_id},
+                        org_scope,
                         {"user_id": user_id, "organization_id": None},
                     ]
                 }
             ]
         else:
             where["user_id"] = user_id
-        if team_id_restriction is not None:
-            graphs = await prisma.models.AgentGraph.prisma().find_many(
-                where={
-                    "organizationId": organization_id,
-                    "teamId": team_id_restriction,
-                }
-            )
-            where["graph_id"] = {"in": list({graph.id for graph in graphs})}
 
         normalized_query = (search_query or "").strip()
         if normalized_query:
@@ -1053,14 +1231,15 @@ async def create_store_submission(
             "id": graph_id,
             "version": graph_version,
             "userId": user_id,
+            "organizationId": organization_id,
+            "teamId": team_id_restriction,
         }
-        if organization_id is not None:
-            graph_where["organizationId"] = organization_id
-        if team_id_restriction is not None:
-            graph_where["teamId"] = team_id_restriction
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where=graph_where,
-            include={"User": {"include": {"Profile": True}}},
+            include={
+                **AGENT_GRAPH_INCLUDE,
+                "User": {"include": {"Profile": True}},
+            },
         )
 
         if not graph:
@@ -1085,19 +1264,51 @@ async def create_store_submission(
                 "User must create a Marketplace Profile before submitting an agent"
             )
 
+        sub_graphs = await _get_exact_store_subgraphs(graph)
+        expected_graphs = {
+            (candidate.id, candidate.version) for candidate in [graph, *sub_graphs]
+        }
+
         async with AsyncExitStack() as stack:
-            allowed = await stack.enter_async_context(
-                live_agent_graph_access_barrier(
-                    user_id,
-                    graph.organizationId,
-                    graph.teamId,
-                    "create",
-                    graph.id,
-                    graph.version,
+            await stack.enter_async_context(
+                agent_graph_attachment_barriers(
+                    {candidate_id for candidate_id, _ in expected_graphs}
                 )
             )
-            if not allowed:
+            for candidate in sorted(
+                [graph, *sub_graphs],
+                key=lambda current: (current.id, current.version),
+            ):
+                allowed = await stack.enter_async_context(
+                    live_agent_graph_access_barrier(
+                        candidate.userId,
+                        candidate.organizationId,
+                        candidate.teamId,
+                        "create",
+                        candidate.id,
+                        candidate.version,
+                    )
+                )
+                if not allowed:
+                    raise NotFoundError(f"Agent #{graph_id} v{graph_version} not found")
+
+            locked_graph = await prisma.models.AgentGraph.prisma().find_first(
+                where=graph_where,
+                include={
+                    **AGENT_GRAPH_INCLUDE,
+                    "User": {"include": {"Profile": True}},
+                },
+            )
+            if locked_graph is None:
                 raise NotFoundError(f"Agent #{graph_id} v{graph_version} not found")
+            locked_sub_graphs = await _get_exact_store_subgraphs(locked_graph)
+            locked_graphs = {
+                (candidate.id, candidate.version)
+                for candidate in [locked_graph, *locked_sub_graphs]
+            }
+            if locked_graphs != expected_graphs:
+                raise NotFoundError("Agent composition changed during submission")
+            graph = locked_graph
             tx = await stack.enter_async_context(transaction())
 
             # Determine next version number for this listing
@@ -1411,39 +1622,86 @@ async def edit_store_submission(
 
 async def create_store_review(
     user_id: str,
+    username: str,
+    agent_name: str,
     store_listing_version_id: str,
     score: int,
     comments: str | None = None,
 ) -> store_model.StoreReview:
     """Create a review for a store listing as a user to detail their experience"""
     try:
-        data = prisma.types.StoreListingReviewUpsertInput(
-            update=prisma.types.StoreListingReviewUpdateInput(
-                score=score,
-                comments=comments,
-            ),
-            create=prisma.types.StoreListingReviewCreateInput(
-                reviewByUserId=user_id,
-                storeListingVersionId=store_listing_version_id,
-                score=score,
-                comments=comments,
-            ),
-        )
-        review = await prisma.models.StoreListingReview.prisma().upsert(
-            where={
-                "storeListingVersionId_reviewByUserId": {
-                    "storeListingVersionId": store_listing_version_id,
-                    "reviewByUserId": user_id,
+        public_version_where = {
+            "id": store_listing_version_id,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "isAvailable": True,
+            "isDeleted": False,
+            "StoreListing": {
+                "is": {
+                    "slug": agent_name,
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                    "activeVersionId": store_listing_version_id,
+                    "CreatorProfile": {"is": {"username": username}},
                 }
             },
-            data=data,
-        )
+        }
+        async with transaction() as tx:
+            if not await _lock_store_row(
+                tx, "StoreListingVersion", store_listing_version_id
+            ):
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            candidate = await prisma.models.StoreListingVersion.prisma(tx).find_unique(
+                where={"id": store_listing_version_id}
+            )
+            if candidate is None:
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            if not await _lock_store_row(tx, "StoreListing", candidate.storeListingId):
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            listing = await prisma.models.StoreListing.prisma(tx).find_unique(
+                where={"id": candidate.storeListingId}
+            )
+            if listing is None:
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            profile = await prisma.models.Profile.prisma(tx).find_unique(
+                where={"userId": listing.owningUserId}
+            )
+            if profile is None or not await _lock_store_row(tx, "Profile", profile.id):
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+            current = await prisma.models.StoreListingVersion.prisma(tx).find_first(
+                where=public_version_where
+            )
+            if current is None:
+                raise NotFoundError(f"Agent {username}/{agent_name} not found")
+
+            data = prisma.types.StoreListingReviewUpsertInput(
+                update=prisma.types.StoreListingReviewUpdateInput(
+                    score=score,
+                    comments=comments,
+                ),
+                create=prisma.types.StoreListingReviewCreateInput(
+                    reviewByUserId=user_id,
+                    storeListingVersionId=store_listing_version_id,
+                    score=score,
+                    comments=comments,
+                ),
+            )
+            review = await prisma.models.StoreListingReview.prisma(tx).upsert(
+                where={
+                    "storeListingVersionId_reviewByUserId": {
+                        "storeListingVersionId": store_listing_version_id,
+                        "reviewByUserId": user_id,
+                    }
+                },
+                data=data,
+            )
 
         return store_model.StoreReview(
             score=review.score,
             comments=review.comments,
         )
 
+    except NotFoundError:
+        raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating store review: {e}")
         raise DatabaseError("Failed to create store review") from e
@@ -1611,8 +1869,14 @@ async def get_my_agents(
         }
         if organization_id is not None:
             search_filter["organizationId"] = organization_id
-        if team_id_restriction is not None:
-            search_filter["teamId"] = team_id_restriction
+            if team_id_restriction is not None:
+                search_filter["teamId"] = team_id_restriction
+            else:
+                team_ids = await get_user_team_ids(user_id, organization_id)
+                search_filter["OR"] = [
+                    {"teamId": None},
+                    {"teamId": {"in": team_ids}},
+                ]
 
         if sort_by == store_model.MyAgentsSortBy.NAME:
             order: list = [
@@ -1642,6 +1906,8 @@ async def get_my_agents(
                 description=graph.description or "",
                 agent_image=library_agent.imageUrl,
                 recommended_schedule_cron=graph.recommendedScheduleCron,
+                organization_id=library_agent.organizationId,
+                team_id=library_agent.teamId,
             )
             for library_agent in library_agents
             if (graph := library_agent.AgentGraph)
@@ -2010,7 +2276,7 @@ async def _send_submission_review_notification(
             reviewer_name=reviewer_name,
             reviewed_at_label=reviewed_at_label,
             comments=external_comments or "",
-            resubmit_url=f"{base_url}/build?flowID={graph_id}",
+            resubmit_url=f"{base_url}{builder_path(graph_id, reviewed_listing_version.agentGraphVersion, reviewed_listing_version.organizationId, reviewed_listing_version.teamId)}",
         )
 
     notification_event = NotificationEventModel[VerdictData](

@@ -5,12 +5,15 @@ import {
 } from "@/app/api/__generated__/endpoints/default/default";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { executionShareUrl } from "@/lib/share/routes";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface UseShareRunButtonProps {
   graphId: string;
   executionId: string;
   isShared?: boolean;
   shareToken?: string | null;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 export function useShareRunButton({
@@ -18,6 +21,8 @@ export function useShareRunButton({
   executionId,
   isShared: initialIsShared = false,
   shareToken: initialShareToken,
+  organizationId,
+  teamId,
 }: UseShareRunButtonProps) {
   const [isShared, setIsShared] = useState(initialIsShared);
   const [shareToken, setShareToken] = useState(initialShareToken || null);
@@ -33,9 +38,13 @@ export function useShareRunButton({
   const shareUrl = shareToken ? executionShareUrl(shareToken) : "";
 
   const { mutateAsync: enableSharing, isPending: isEnabling } =
-    usePostV1EnableExecutionSharing();
+    usePostV1EnableExecutionSharing({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
   const { mutateAsync: disableSharing, isPending: isDisabling } =
-    useDeleteV1DisableExecutionSharing();
+    useDeleteV1DisableExecutionSharing({
+      request: getTenantRequestInit(organizationId, teamId),
+    });
 
   const loading = isEnabling || isDisabling;
 

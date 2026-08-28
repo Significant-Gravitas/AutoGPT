@@ -20,7 +20,7 @@ describe("AgentListCard", () => {
 
     expect(screen.getByText("Lib Agent")).toBeDefined();
     expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
-      "/library/agents/lib-1",
+      "/library/agents/lib-1?organizationId=__personal__&teamId=__org_home__",
     );
   });
 
@@ -107,7 +107,7 @@ describe("AgentSavedCard", () => {
 
     expect(screen.getByText("Fallback Agent")).toBeDefined();
     expect(screen.getByLabelText("Open in library").getAttribute("href")).toBe(
-      "/library/agents/lib-9",
+      "/library/agents/lib-9?organizationId=__personal__&teamId=__org_home__",
     );
     expect(screen.queryByLabelText("Open in builder")).toBeNull();
   });

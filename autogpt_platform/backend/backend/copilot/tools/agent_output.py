@@ -18,6 +18,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 from backend.data.tenancy import ResourceAccess
+from backend.util.tenancy_urls import library_agent_path
 
 from .base import BaseTool
 from .execution_utils import (
@@ -227,6 +228,7 @@ class AgentOutputTool(BaseTool):
                 graph.id,
                 organization_id=organization_id,
                 team_id_restriction=team_id,
+                exact_scope=True,
             )
             if not agent or (agent.organization_id, agent.team_id) != (
                 organization_id,
@@ -378,7 +380,11 @@ class AgentOutputTool(BaseTool):
         session_id: str | None,
     ) -> AgentOutputResponse:
         """Build the response based on execution data."""
-        library_agent_link = f"/library/agents/{agent.id}"
+        library_agent_link = library_agent_path(
+            agent.id,
+            agent.organization_id,
+            agent.team_id,
+        )
 
         if not execution:
             return AgentOutputResponse(
@@ -542,6 +548,7 @@ class AgentOutputTool(BaseTool):
                 include_node_executions=input_data.show_execution_details,
                 organization_id=session.organization_id,
                 team_id_restriction=session.team_id,
+                exact_scope=True,
             )
             if not execution or (
                 execution.organization_id,
@@ -559,6 +566,7 @@ class AgentOutputTool(BaseTool):
                 execution.graph_version,
                 organization_id=session.organization_id,
                 team_id_restriction=session.team_id,
+                exact_scope=True,
             )
             if not agent or (agent.organization_id, agent.team_id) != (
                 session.organization_id,

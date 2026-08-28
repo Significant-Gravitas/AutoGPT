@@ -171,10 +171,15 @@ async def create_preset(
                 user_id,
                 preset,
                 expert_id=await experts_db.resolve_expert_for_graph(
-                    user_id, preset.graph_id
+                    user_id,
+                    preset.graph_id,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    enforce_scope=True,
                 ),
                 organization_id=ctx.org_id,
                 team_id=ctx.team_id,
+                enforce_scope=True,
             )
         else:
             return await db.create_preset_from_graph_execution(
@@ -227,7 +232,11 @@ async def setup_trigger(
             # infers an expert, so copilot AutoPilot sessions get presets
             # they can actually manage.
             expert_id=await experts_db.resolve_expert_for_graph(
-                user_id, params.graph_id
+                user_id,
+                params.graph_id,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+                enforce_scope=True,
             ),
             organization_id=ctx.org_id,
             team_id=ctx.team_id,

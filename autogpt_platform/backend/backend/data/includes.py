@@ -97,6 +97,7 @@ def library_agent_include(
     include_nodes: bool = True,
     include_executions: bool = True,
     execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
+    execution_scope: tuple[str | None, str | None] | None = None,
 ) -> prisma.types.LibraryAgentInclude:
     """
     Fully configurable includes for library agent queries with performance optimization.
@@ -131,8 +132,15 @@ def library_agent_include(
 
         # Add executions if requested
         if include_executions:
+            execution_where: prisma.types.AgentGraphExecutionWhereInput = {
+                "userId": user_id
+            }
+            if execution_scope is not None:
+                organization_id, team_id = execution_scope
+                execution_where["organizationId"] = organization_id
+                execution_where["teamId"] = team_id
             agent_graph_include["Executions"] = {
-                "where": {"userId": user_id},
+                "where": execution_where,
                 "order_by": {"createdAt": "desc"},
                 "take": execution_limit,
             }

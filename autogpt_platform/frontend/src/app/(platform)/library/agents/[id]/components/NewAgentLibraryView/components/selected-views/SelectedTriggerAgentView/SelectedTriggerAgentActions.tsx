@@ -11,6 +11,10 @@ import {
   PencilIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  getBuilderHref,
+  getLibraryAgentHref,
+} from "@/services/org-team/builder";
 
 interface Props {
   parentAgent: LibraryAgent;
@@ -33,7 +37,11 @@ export function SelectedTriggerAgentActions({
     <>
       <div className="my-4 flex flex-col items-center gap-3">
         <Link
-          href={`/library/agents/${triggerAgent.id}`}
+          href={getLibraryAgentHref(
+            triggerAgent.id,
+            triggerAgent.organization_id ?? null,
+            triggerAgent.team_id ?? null,
+          )}
           aria-label="View in library"
         >
           <Button variant="icon" size="icon" aria-label="View in library">
@@ -41,7 +49,12 @@ export function SelectedTriggerAgentActions({
           </Button>
         </Link>
         <Link
-          href={`/build?flowID=${triggerAgent.graph_id}`}
+          href={getBuilderHref({
+            graphId: triggerAgent.graph_id,
+            graphVersion: triggerAgent.graph_version,
+            organizationId: triggerAgent.organization_id ?? null,
+            teamId: triggerAgent.team_id ?? null,
+          })}
           aria-label="Open in builder"
         >
           <Button variant="icon" size="icon" aria-label="Open in builder">

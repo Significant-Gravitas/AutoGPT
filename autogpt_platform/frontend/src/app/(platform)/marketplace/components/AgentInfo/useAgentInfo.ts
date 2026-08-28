@@ -1,7 +1,3 @@
-import {
-  getGetV2ListLibraryAgentsQueryKey,
-  usePostV2AddMarketplaceAgent,
-} from "@/app/api/__generated__/endpoints/library/library";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
@@ -9,21 +5,22 @@ import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/sto
 import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { agentGraphExportFilename, exportAsJSONFile } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface UseAgentInfoProps {
   storeListingVersionId: string;
+  libraryAgent?: LibraryAgent;
 }
 
-export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
+export const useAgentInfo = ({
+  storeListingVersionId,
+  libraryAgent,
+}: UseAgentInfoProps) => {
   const { toast } = useToast();
   const router = useRouter();
-  const queryClient = useQueryClient();
-
-  const {
-    mutateAsync: addMarketplaceAgentToLibrary,
-    isPending: isAddingAgentToLibrary,
-  } = usePostV2AddMarketplaceAgent();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
 
   const { refetch: downloadAgent, isFetching: isDownloadingAgent } =
     useGetV2DownloadAgentFile(storeListingVersionId, {
@@ -35,45 +32,15 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
       },
     });
 
-  const handleLibraryAction = async ({
-    isAddingAgentFirstTime,
-  }: {
-    isAddingAgentFirstTime: boolean;
-  }) => {
-    try {
-      const { data: response } = await addMarketplaceAgentToLibrary({
-        data: { store_listing_version_id: storeListingVersionId },
-      });
-
-      const data = response as LibraryAgent;
-
-      if (isAddingAgentFirstTime) {
-        await queryClient.invalidateQueries({
-          queryKey: getGetV2ListLibraryAgentsQueryKey(),
-        });
-
-        analytics.sendDatafastEvent("add_to_library", {
-          name: data.name,
-          id: data.id,
-        });
-      }
-
-      router.push(`/library/agents/${data.id}`);
-
-      toast({
-        title: "Agent Added",
-        description: "Redirecting to your library...",
-        duration: 2000,
-      });
-    } catch (error) {
-      Sentry.captureException(error);
-
-      toast({
-        title: "Error",
-        description: "Failed to add agent to library. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handleOpenLibraryAgent = () => {
+    if (!libraryAgent) return;
+    router.push(
+      getLibraryAgentHref(
+        libraryAgent.id,
+        libraryAgent.organization_id ?? activeOrgID ?? null,
+        libraryAgent.team_id ?? activeTeamID ?? null,
+      ),
+    );
   };
 
   const handleDownload = async (agentId: string, agentName: string) => {
@@ -105,8 +72,7 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
   };
 
   return {
-    isAddingAgentToLibrary,
-    handleLibraryAction,
+    handleOpenLibraryAgent,
     handleDownload,
     isDownloadingAgent,
   };

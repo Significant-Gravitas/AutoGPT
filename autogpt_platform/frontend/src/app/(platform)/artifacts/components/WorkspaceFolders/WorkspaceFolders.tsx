@@ -14,7 +14,7 @@ import { FolderAddIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  onSelectFolder: (folderId: string) => void;
+  onSelectFolder: (folder: WorkspaceFolderModel) => void;
 }
 
 export function WorkspaceFolders({ onSelectFolder }: Props) {
@@ -86,11 +86,13 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
               id={folder.id}
               name={folder.name}
               fileCount={folder.file_count ?? 0}
-              onClick={() => onSelectFolder(folder.id)}
+              onClick={() => onSelectFolder(folder)}
               onEdit={() => setEditing(folder)}
               onDelete={() => setDeleting(folder)}
-              onFileDrop={(fileId, folderId) => {
-                moveFileToFolder({ fileId, folderId }).catch(() => {});
+              onFileDrop={(fileId, sourceScope) => {
+                moveFileToFolder({ fileId, folder, sourceScope }).catch(
+                  () => {},
+                );
               }}
             />
           ))}
@@ -119,7 +121,7 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
         isSubmitting={isUpdating}
         onSubmit={(values) => {
           if (!editing) return;
-          updateFolder({ folderId: editing.id, ...values })
+          updateFolder({ folder: editing, ...values })
             .then(() => setEditing(null))
             .catch(() => {});
         }}
@@ -132,7 +134,7 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
         isDeleting={isDeleting}
         onConfirm={() => {
           if (!deleting) return;
-          deleteFolder(deleting.id)
+          deleteFolder(deleting)
             .then(() => setDeleting(null))
             .catch(() => {});
         }}

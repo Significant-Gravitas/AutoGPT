@@ -118,12 +118,10 @@ const METHODS_WITHOUT_BODY: ReadonlySet<string> = new Set([
 
 async function handleWorkspaceDownload(
   backendUrl: string,
+  request: NextRequest,
   token: string | null,
 ): Promise<NextResponse> {
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  const headers = buildForwardHeaders(request, token);
 
   const response = await fetchWorkspaceDownloadWithRetry(
     backendUrl,
@@ -213,7 +211,7 @@ async function handler(
     const token = await getServerAuthToken();
 
     if (method === "GET" && isWorkspaceDownloadRequest(path)) {
-      return await handleWorkspaceDownload(backendUrl, token);
+      return await handleWorkspaceDownload(backendUrl, req, token);
     }
 
     const headers = buildForwardHeaders(req, token);

@@ -60,7 +60,7 @@ export function sleep(ms: number): Promise<void> {
 
 export async function fetchWorkspaceDownloadOnce(
   backendUrl: string,
-  headers: Record<string, string>,
+  headers: HeadersInit,
 ): Promise<Response> {
   const backendResponse = await fetch(backendUrl, {
     method: "GET",
@@ -83,7 +83,7 @@ export async function fetchWorkspaceDownloadOnce(
 
 export async function fetchWorkspaceDownloadWithRetry(
   backendUrl: string,
-  headers: Record<string, string>,
+  headers: HeadersInit,
   maxRetries: number,
   retryDelayMs: number,
 ): Promise<Response> {

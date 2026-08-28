@@ -127,7 +127,7 @@ describe("Marketplace ExpertsSection", () => {
     expect(await screen.findByText("View team")).toBeDefined();
     expect(screen.queryByText("Chat with Maria")).toBeNull();
     expect(mockRouterPush).toHaveBeenCalledWith(
-      `/copilot?expertId=${hiredMaria.id}&kickoff=1`,
+      `/copilot?expertId=${hiredMaria.id}&organizationId=__personal__&teamId=__org_home__&kickoff=1`,
     );
   });
 

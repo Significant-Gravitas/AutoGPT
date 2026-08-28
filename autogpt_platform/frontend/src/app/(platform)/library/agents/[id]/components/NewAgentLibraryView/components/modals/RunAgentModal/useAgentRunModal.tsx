@@ -24,6 +24,7 @@ import {
 } from "react";
 import { getSystemCredentials } from "../../../../../../../../../../components/contextual/CredentialsInput/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
+import { getLibraryAgentScopeRequest } from "./helpers";
 
 export type RunVariant =
   | "manual"
@@ -55,6 +56,10 @@ export function useAgentRunModal(
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
   const hasInitializedSystemCreds = useRef(false);
+  const agentScopeRequest = getLibraryAgentScopeRequest(
+    agent.organization_id,
+    agent.team_id,
+  );
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.trigger_setup_info
@@ -156,6 +161,7 @@ export function useAgentRunModal(
 
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
+    request: agentScopeRequest,
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {
@@ -177,12 +183,15 @@ export function useAgentRunModal(
         showExecutionErrorToast(toast, error, {
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
+          organization_id: agent.organization_id ?? null,
+          team_id: agent.team_id ?? null,
         });
       },
     },
   });
 
   const setupTriggerMutation = usePostV2SetupTrigger({
+    request: agentScopeRequest,
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {

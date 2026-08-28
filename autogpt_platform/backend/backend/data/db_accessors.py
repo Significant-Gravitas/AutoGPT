@@ -39,7 +39,7 @@ class LiveResourceLeaseGuard:
             await asyncio.sleep(0.1)
             await self.validate()
 
-    async def run(self, action: Awaitable[T]) -> T:
+    async def run(self, action: Awaitable[T], *, context: Context | None = None) -> T:
         start = asyncio.Event()
         action_started = False
 
@@ -49,7 +49,10 @@ class LiveResourceLeaseGuard:
             action_started = True
             return await action
 
-        action_task = asyncio.create_task(run_after_initial_validation())
+        action_task = asyncio.create_task(
+            run_after_initial_validation(),
+            context=context,
+        )
         loss_task = asyncio.create_task(self._wait_for_loss())
         try:
             await self.validate()
@@ -256,6 +259,46 @@ async def live_resource_lease(
     )
     try:
         yield guard
+    finally:
+        try:
+            released = await lease_db.release_live_resource_lease(lease_id)
+            if not released:
+                raise LiveResourceAccessRevoked("workspace_lease_lost")
+        finally:
+            _active_live_resource_leases.reset(token)
+
+
+@asynccontextmanager
+async def live_resource_scopes_lease(
+    user_id: str,
+    scopes: list[tuple[str, str | None]],
+    access: ResourceAccess,
+) -> AsyncIterator[list[tuple[str, str | None]]]:
+    normalized = sorted(set(scopes), key=lambda scope: (scope[0], scope[1] or ""))
+    if not normalized:
+        yield []
+        return
+
+    lease_db = credit_db()
+    lease_id, authorized = await lease_db.acquire_live_resource_scopes_lease(
+        user_id, normalized, access
+    )
+    guard = LiveResourceLeaseGuard(lease_db, lease_id)
+    active = tuple(
+        _ActiveLiveResourceLease(
+            user_id=user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            access=access,
+            guard=guard,
+        )
+        for organization_id, team_id in authorized
+    )
+    token = _active_live_resource_leases.set(
+        (*_active_live_resource_leases.get(), *active)
+    )
+    try:
+        yield authorized
     finally:
         try:
             released = await lease_db.release_live_resource_lease(lease_id)

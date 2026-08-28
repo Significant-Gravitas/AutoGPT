@@ -8,11 +8,13 @@ import {
   type MutableValue,
 } from "./copilotStreamTransport";
 import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotTenantScope } from "./helpers";
 
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
   copilotModeRef: MutableValue<CopilotMode | undefined>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  tenantScopeRef: MutableValue<CopilotTenantScope | undefined>;
   onFinish?: (args: {
     isDisconnect?: boolean;
     isAbort?: boolean;
@@ -79,6 +81,9 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
+  const tenantScopeRef: MutableValue<CopilotTenantScope | undefined> = {
+    current: undefined,
+  };
   const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
     {};
   const chat = new Chat<UIMessage>({
@@ -87,6 +92,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
       sessionId,
       copilotModeRef,
       copilotModelRef,
+      tenantScopeRef,
     }),
     onFinish: (args) => {
       if (args.isDisconnect) {
@@ -108,6 +114,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
     chat,
     copilotModeRef,
     copilotModelRef,
+    tenantScopeRef,
     get onData() {
       return callbacks.onData;
     },

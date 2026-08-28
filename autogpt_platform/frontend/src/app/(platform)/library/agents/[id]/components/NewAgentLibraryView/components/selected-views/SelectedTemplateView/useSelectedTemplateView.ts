@@ -10,7 +10,12 @@ import {
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
+import {
+  getTenantRequestInit,
+  getTeamScopedQueryKey,
+} from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,20 +23,29 @@ import { useEffect, useState } from "react";
 
 type Args = {
   templateId: string;
-  graphId: string;
+  agent: LibraryAgent;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
 };
 
 export function useSelectedTemplateView({
   templateId,
-  graphId,
+  agent,
   onRunCreated,
 }: Args) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const organizationId = agent.organization_id ?? null;
+  const teamId = agent.team_id ?? null;
+  const graphId = agent.graph_id;
 
   const query = useGetV2GetASpecificPreset(templateId, {
+    request: getTenantRequestInit(organizationId, teamId),
     query: {
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetASpecificPresetQueryKey(templateId),
+        organizationId,
+        teamId,
+      ),
       enabled: !!templateId,
       select: okData,
     },
@@ -54,6 +68,7 @@ export function useSelectedTemplateView({
   }, [query.data]);
 
   const updateMutation = usePatchV2UpdateAnExistingPreset({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {
@@ -61,10 +76,18 @@ export function useSelectedTemplateView({
             title: "Template updated",
           });
           queryClient.invalidateQueries({
-            queryKey: getGetV2GetASpecificPresetQueryKey(templateId),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2GetASpecificPresetQueryKey(templateId),
+              organizationId,
+              teamId,
+            ),
           });
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({ graph_id: graphId }),
+            queryKey: getTeamScopedQueryKey(
+              getGetV2ListPresetsQueryKey({ graph_id: graphId }),
+              organizationId,
+              teamId,
+            ),
           });
         }
       },
@@ -79,6 +102,7 @@ export function useSelectedTemplateView({
   });
 
   const executeMutation = usePostV2ExecuteAPreset({
+    request: getTenantRequestInit(organizationId, teamId),
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {
@@ -88,7 +112,11 @@ export function useSelectedTemplateView({
               title: "Task started",
             });
             queryClient.invalidateQueries({
-              queryKey: getGetV1ListGraphExecutionsQueryKey(graphId),
+              queryKey: getTeamScopedQueryKey(
+                getGetV1ListGraphExecutionsQueryKey(graphId),
+                organizationId,
+                teamId,
+              ),
             });
             onRunCreated?.(execution);
           }

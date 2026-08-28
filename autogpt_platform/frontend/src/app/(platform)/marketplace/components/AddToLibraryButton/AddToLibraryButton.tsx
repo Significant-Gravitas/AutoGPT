@@ -1,15 +1,16 @@
 "use client";
 
 import {
+  deleteV2DeleteLibraryAgent,
   getGetV2ListLibraryAgentsQueryKey,
   postV2AddMarketplaceAgent,
-  useDeleteV2DeleteLibraryAgent,
   useGetV2ListLibraryAgents,
 } from "@/app/api/__generated__/endpoints/library/library";
 import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import type { ButtonProps } from "@/components/atoms/Button/helpers";
 import {
   SplitButton,
   SplitButtonItem,
@@ -17,13 +18,15 @@ import {
 import {
   CreateSurface,
   getLastUsedTeam,
-  getTeamRequestInit,
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
   setLastUsedTeam,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { analytics } from "@/services/analytics";
 import { useOrgTeamStore } from "@/services/org-team/store";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 import * as Sentry from "@sentry/nextjs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -78,7 +81,8 @@ interface Props {
   agentName: string;
   agentGraphID: string;
   className?: string;
-  isInLibrary?: boolean;
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
 }
 
 const ORG_TARGET_LABEL = "Organization";
@@ -89,7 +93,8 @@ export function AddToLibraryButton({
   agentName,
   agentGraphID,
   className,
-  isInLibrary,
+  variant = "ghost",
+  size = "small",
 }: Props) {
   const { isLoggedIn } = useAuth();
   const { toast } = useToast();
@@ -98,19 +103,22 @@ export function AddToLibraryButton({
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const isLoaded = useOrgTeamStore((s) => s.isLoaded);
   const currentTeams = teams.filter((team) => team.orgId === activeOrgID);
-  const [justAdded, setJustAdded] = useState(false);
+  const libraryListParams = { is_hidden: false, page_size: 1000 };
 
-  // Only fetch library list if isInLibrary wasn't provided by parent
-  const { data: libraryAgents } = useGetV2ListLibraryAgents(
-    { is_hidden: false },
-    {
+  const { data: libraryAgents, isLoading: isLibraryLoading } =
+    useGetV2ListLibraryAgents(libraryListParams, {
+      request: getTenantRequestInit(activeOrgID, null, isLoaded),
       query: {
-        enabled: isLoggedIn && isInLibrary === undefined,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2ListLibraryAgentsQueryKey(libraryListParams),
+          activeOrgID,
+          null,
+        ),
+        enabled: isLoggedIn && isLoaded,
         select: (res) =>
           res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
       },
-    },
-  );
+    });
 
   // Per-team header is chosen at click time, so add via the raw endpoint fn
   // (the generated hook binds its request options once, at hook creation).
@@ -122,24 +130,40 @@ export function AddToLibraryButton({
       }
       const res = await postV2AddMarketplaceAgent(
         { store_listing_version_id: details.data.store_listing_version_id },
-        getTeamRequestInit(teamId),
+        getTenantRequestInit(activeOrgID, teamId),
       );
       return res.data as LibraryAgent;
     },
   });
 
-  const { mutateAsync: removeFromLibrary } = useDeleteV2DeleteLibraryAgent();
+  const { mutateAsync: removeFromLibrary } = useMutation({
+    mutationFn: async (agent: LibraryAgent) =>
+      deleteV2DeleteLibraryAgent(
+        agent.id,
+        getTenantRequestInit(
+          agent.organization_id ?? null,
+          agent.team_id ?? null,
+        ),
+      ),
+  });
 
   if (!isLoggedIn) return null;
-  if (justAdded) return null;
 
-  const isAlreadyInLibrary =
-    isInLibrary ??
-    libraryAgents?.agents?.some(
-      (a: LibraryAgent) => a.graph_id === agentGraphID,
-    );
+  const targets: { id: string | null; name: string }[] = [
+    { id: null, name: ORG_TARGET_LABEL },
+    ...currentTeams.map((team) => ({ id: team.id, name: team.name })),
+  ];
+  const availableTargets = targets.filter(
+    (target) =>
+      !libraryAgents?.agents?.some(
+        (agent) =>
+          agent.graph_id === agentGraphID &&
+          (agent.organization_id ?? null) === (activeOrgID ?? null) &&
+          (agent.team_id ?? null) === target.id,
+      ),
+  );
 
-  if (isAlreadyInLibrary) return null;
+  if (!isLibraryLoading && availableTargets.length === 0) return null;
 
   async function handleAdd(teamId: string | null, e?: React.MouseEvent) {
     e?.stopPropagation();
@@ -153,7 +177,6 @@ export function AddToLibraryButton({
       if (activeOrgID) {
         setLastUsedTeam(activeOrgID, CreateSurface.MarketplaceAdd, teamId);
       }
-      setJustAdded(true);
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
@@ -169,14 +192,17 @@ export function AddToLibraryButton({
         description: (
           <UndoActions
             libraryAgentID={data.id}
-            libraryHref={`/library/agents/${data.id}`}
-            onUndo={async (id) => {
+            libraryHref={getLibraryAgentHref(
+              data.id,
+              data.organization_id ?? activeOrgID ?? null,
+              data.team_id ?? teamId,
+            )}
+            onUndo={async () => {
               try {
-                await removeFromLibrary({ libraryAgentId: id });
+                await removeFromLibrary(data);
                 await queryClient.invalidateQueries({
                   queryKey: getGetV2ListLibraryAgentsQueryKey(),
                 });
-                setJustAdded(false);
                 addedToast.dismiss();
                 toast({
                   title: "Action undone.",
@@ -206,7 +232,10 @@ export function AddToLibraryButton({
     }
   }
 
-  const ghostButtonClassName = `z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`;
+  const buttonClassName =
+    variant === "ghost"
+      ? `z-10 text-zinc-500 hover:border-transparent hover:bg-transparent hover:text-zinc-800 ${className ?? ""}`
+      : className;
 
   // Solo users (no teams): original plain button, adds to their org context.
   // While the org/team store is still loading we render the same control but
@@ -215,13 +244,13 @@ export function AddToLibraryButton({
   if (!isLoaded || currentTeams.length === 0) {
     return (
       <Button
-        variant="ghost"
-        size="small"
+        variant={variant}
+        size={size}
         loading={isPending}
-        disabled={!isLoaded}
+        disabled={!isLoaded || isLibraryLoading}
         leftIcon={<Icon icon={PlusSignIcon} size={14} />}
         onClick={(e) => handleAdd(null, e)}
-        className={ghostButtonClassName}
+        className={buttonClassName}
         aria-label={`Add ${agentName} to library`}
       >
         {isPending ? "Adding..." : "Add"}
@@ -233,16 +262,13 @@ export function AddToLibraryButton({
   const lastUsedId = activeOrgID
     ? getLastUsedTeam(activeOrgID, CreateSurface.MarketplaceAdd)
     : null;
-  const primaryTeam = currentTeams.find((t) => t.id === lastUsedId) ?? null;
-  const primaryTeamId = primaryTeam?.id ?? null;
-  const primaryLabelName = primaryTeam?.name ?? ORG_TARGET_LABEL;
+  const primaryTarget =
+    availableTargets.find((target) => target.id === lastUsedId) ??
+    availableTargets[0];
+  const primaryTeamId = primaryTarget?.id ?? null;
+  const primaryLabelName = primaryTarget?.name ?? ORG_TARGET_LABEL;
 
-  const targets: { id: string | null; name: string }[] = [
-    { id: null, name: ORG_TARGET_LABEL },
-    ...currentTeams.map((t) => ({ id: t.id, name: t.name })),
-  ];
-
-  const menuItems: SplitButtonItem[] = targets
+  const menuItems: SplitButtonItem[] = availableTargets
     .filter((target) => target.id !== primaryTeamId)
     .map((target) => ({
       key: target.id ?? "org-home",
@@ -253,16 +279,17 @@ export function AddToLibraryButton({
   return (
     <span onClick={(e) => e.stopPropagation()} className="z-10 inline-flex">
       <SplitButton
-        variant="ghost"
-        size="small"
+        variant={variant}
+        size={size}
         loading={isPending}
+        disabled={isLibraryLoading}
         leftIcon={<Icon icon={PlusSignIcon} size={14} />}
         primaryLabel={isPending ? "Adding..." : `Add to ${primaryLabelName}`}
         primaryAriaLabel={`Add ${agentName} to ${primaryLabelName}`}
         menuAriaLabel={`Choose where to add ${agentName}`}
         onPrimaryClick={(e) => handleAdd(primaryTeamId, e)}
         items={menuItems}
-        buttonClassName={ghostButtonClassName}
+        buttonClassName={buttonClassName}
       />
     </span>
   );

@@ -12,6 +12,7 @@ import {
   ContentLink,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { useCopilotTenantScope } from "../../CopilotTenantScopeContext";
 import {
   AccordionIcon,
   getAgentHref,
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function FindAgentsTool({ part }: Props) {
+  const scope = useCopilotTenantScope();
   const text = getAnimationText(part);
   const output = getFindAgentsOutput(part);
   const isStreaming =
@@ -92,7 +94,11 @@ export function FindAgentsTool({ part }: Props) {
         >
           <ContentGrid className="sm:grid-cols-2">
             {agentsFoundOutput.agents.map((agent) => {
-              const href = getAgentHref(agent);
+              const href = getAgentHref(
+                agent,
+                scope.organizationId,
+                scope.teamId,
+              );
               const agentSource =
                 agent.source === "library"
                   ? "Library"

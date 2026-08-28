@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "./store";
 
-export const ORG_HEADER_NAME = "X-Org-Id";
-export const TEAM_HEADER_NAME = "X-Team-Id";
+export { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "./header-names";
+import { ORG_HEADER_NAME, TEAM_HEADER_NAME } from "./header-names";
 
 export function getOrgContextHeaders(): Record<string, string> {
   const { activeOrgID, activeTeamID } = useOrgTeamStore.getState();

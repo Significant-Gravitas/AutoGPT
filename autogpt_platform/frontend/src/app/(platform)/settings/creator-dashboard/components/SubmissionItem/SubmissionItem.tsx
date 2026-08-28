@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -16,7 +16,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 
-import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
+import {
+  formatRuns,
+  formatSubmittedAt,
+  getStatusVisual,
+  type EditPayload,
+} from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
 import {
   Delete02Icon,
@@ -28,17 +33,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
-interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string;
-  graph_id: string;
-}
-
 interface Props {
   submission: StoreSubmission;
   rowIndex?: number;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
-  onDelete: (submissionId: string) => Promise<void>;
+  onDelete: (submission: StoreSubmission) => Promise<void>;
   creatorUsername?: string;
 }
 
@@ -103,6 +103,7 @@ export function SubmissionItem({
                 alt={submission.name}
                 fill
                 sizes="80px"
+                unoptimized={shouldBypassImageOptimization(thumbnail)}
                 style={{ objectFit: "cover" }}
                 draggable={false}
                 className="pointer-events-none"

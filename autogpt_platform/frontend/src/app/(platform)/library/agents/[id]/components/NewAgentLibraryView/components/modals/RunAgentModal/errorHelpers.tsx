@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import Link from "next/link";
 import React from "react";
+import { getBuilderHref } from "@/services/org-team/builder";
 
 type ValidationErrorDetail = {
   type: string;
@@ -11,6 +12,8 @@ type ValidationErrorDetail = {
 type AgentInfo = {
   graph_id: string;
   graph_version: number;
+  organization_id: string | null;
+  team_id: string | null;
 };
 
 export function formatValidationError(
@@ -58,7 +61,12 @@ export function formatValidationError(
               Check the agent graph and try to run from there for further
               details.{" "}
               <Link
-                href={`/build?flowID=${agentInfo.graph_id}&flowVersion=${agentInfo.graph_version}`}
+                href={getBuilderHref({
+                  graphId: agentInfo.graph_id,
+                  graphVersion: agentInfo.graph_version,
+                  organizationId: agentInfo.organization_id,
+                  teamId: agentInfo.team_id,
+                })}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cursor-pointer underline hover:no-underline"

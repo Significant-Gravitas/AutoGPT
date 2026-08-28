@@ -20,6 +20,7 @@ let mockLibraryAgent: { id: string; graph_id: string } | undefined;
 let mockIsLoading = false;
 const mockForkAgent = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/library/library", () => ({
+  getGetV2GetLibraryAgentByGraphIdQueryKey: vi.fn(() => ["library-agent"]),
   useGetV2GetLibraryAgentByGraphId: vi.fn(() => ({
     data: mockLibraryAgent,
     isLoading: mockIsLoading,
@@ -78,7 +79,9 @@ describe("useDuplicateGraph", () => {
 
     expect(mockForkAgent).toHaveBeenCalledWith({ libraryAgentId: "lib-1" });
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/build?flowID=graph-2");
+      expect(mockPush).toHaveBeenCalledWith(
+        "/build?flowID=graph-2&organizationId=__personal__&teamId=__org_home__",
+      );
     });
   });
 

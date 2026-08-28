@@ -27,6 +27,7 @@ import type { LibraryFolder } from "@/app/api/__generated__/models/libraryFolder
 import type { getV2ListLibraryFoldersResponseSuccess } from "@/app/api/__generated__/endpoints/folders/folders";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { FOLDER_COLORS } from "../folder-constants";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 const LazyEmojiPicker = dynamic(
   () =>
@@ -148,6 +149,10 @@ export function LibraryFolderEditDialog({ folder, isOpen, setIsOpen }: Props) {
         });
       },
     },
+    request: getTenantRequestInit(
+      folder.organization_id ?? null,
+      folder.team_id ?? null,
+    ),
   });
 
   function onSubmit(values: z.infer<typeof editFolderSchema>) {

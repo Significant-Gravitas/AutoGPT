@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
+import { fetchArtifactResource } from "./artifactRequest";
 import { classifyArtifact } from "./helpers";
 
 export function useArtifactPanel() {
@@ -52,7 +53,7 @@ export function useArtifactPanel() {
     const cached = getCachedArtifactContent(activeArtifact.id);
     const textPromise = cached
       ? Promise.resolve(cached)
-      : fetch(activeArtifact.sourceUrl).then((res) => {
+      : fetchArtifactResource(activeArtifact).then((res) => {
           if (!res.ok) throw new Error(`Copy failed: ${res.status}`);
           return res.text();
         });

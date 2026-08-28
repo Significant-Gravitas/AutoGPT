@@ -8,6 +8,8 @@ import { EditAgentModal } from "../EditAgentModal";
 function makeSubmission(): StoreSubmissionEditRequest & {
   store_listing_version_id: string | undefined;
   graph_id: string;
+  organization_id: string | null;
+  team_id: string | null;
 } {
   return {
     name: "Edit Me Agent",
@@ -20,6 +22,8 @@ function makeSubmission(): StoreSubmissionEditRequest & {
     changes_summary: "Initial edit summary",
     store_listing_version_id: "lv-1",
     graph_id: "graph-1",
+    organization_id: "org-1",
+    team_id: "team-1",
   };
 }
 

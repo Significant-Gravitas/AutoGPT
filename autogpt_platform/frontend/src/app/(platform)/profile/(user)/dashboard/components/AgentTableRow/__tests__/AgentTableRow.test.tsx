@@ -32,9 +32,11 @@ describe("AgentTableRow", () => {
   });
 
   test("shows edit and delete actions for pending submissions", async () => {
+    const pendingSubmission = makeSubmission(SubmissionStatus.PENDING);
+
     render(
       <AgentTableRow
-        storeAgentSubmission={makeSubmission(SubmissionStatus.PENDING)}
+        storeAgentSubmission={pendingSubmission}
         onViewSubmission={onViewSubmission}
         onDeleteSubmission={onDeleteSubmission}
         onEditSubmission={onEditSubmission}
@@ -48,7 +50,7 @@ describe("AgentTableRow", () => {
 
     fireEvent.pointerDown(screen.getByTestId("agent-table-row-actions"));
     fireEvent.click(await screen.findByText("Delete"));
-    expect(onDeleteSubmission).toHaveBeenCalledWith("listing-pending");
+    expect(onDeleteSubmission).toHaveBeenCalledWith(pendingSubmission);
     expect(onViewSubmission).not.toHaveBeenCalled();
   });
 

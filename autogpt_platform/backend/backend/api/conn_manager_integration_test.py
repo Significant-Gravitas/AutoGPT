@@ -6,7 +6,6 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -225,11 +224,14 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
     async def _fake_meta(_uid, gex_id):
         return _meta(user_id, graph_id, gex_id)
 
-    async def _fake_graph(*_args, **_kwargs):
-        return SimpleNamespace(organization_id=None, team_id=None)
+    async def _fake_exact(_uid, gex_id, _organization_id, _team_id):
+        return _meta(user_id, graph_id, gex_id)
 
     monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
-    monkeypatch.setattr("backend.api.conn_manager.get_graph", _fake_graph)
+    monkeypatch.setattr(
+        "backend.api.conn_manager.get_graph_execution_exact_scope",
+        _fake_exact,
+    )
 
     cm = ConnectionManager()
     ws_agg: AsyncMock = AsyncMock(spec=WebSocket)
@@ -244,7 +246,11 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
 
     try:
         await cm.subscribe_graph_execs(
-            user_id=user_id, graph_id=graph_id, websocket=ws_agg
+            user_id=user_id,
+            graph_id=graph_id,
+            organization_id=None,
+            team_id=None,
+            websocket=ws_agg,
         )
         await cm.subscribe_graph_exec(
             user_id=user_id, graph_exec_id=exec_id, websocket=ws_per
@@ -269,7 +275,10 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
         per_msg = json.loads(sent_per[0])
         # Aggregate subscriber's channel key is the per-graph executions key.
         assert agg_msg["channel"] == _graph_execs_channel_key(
-            user_id, graph_id=graph_id
+            user_id,
+            graph_id=graph_id,
+            organization_id=None,
+            team_id=None,
         )
         assert per_msg["channel"] == graph_exec_channel_key(
             user_id, graph_exec_id=exec_id

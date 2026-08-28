@@ -1,5 +1,6 @@
 import {
   getGetV2GetSessionQueryKey,
+  getGetV2ListSessionsQueryKey,
   useGetV2ListChatTransports,
   useGetV2GetSession,
   useGetV2ListSessions,
@@ -11,7 +12,7 @@ import { useCopilotUIStore } from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
-import { parseAsString, useQueryState } from "nuqs";
+import { parseAsString, useQueryState, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
@@ -24,6 +25,12 @@ import {
 } from "./helpers/copilotLlmAuth";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { latestExpertSessionParams } from "./expertSessionQuery";
+import { decodeBuilderTenantScope } from "@/services/org-team/builder";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -37,6 +44,19 @@ export function useChatSession({
   createRequestInit,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [{ organizationId, teamId }] = useQueryStates({
+    organizationId: parseAsString,
+    teamId: parseAsString,
+  });
+  const explicitScope = decodeBuilderTenantScope(organizationId, teamId);
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isOrgTeamLoaded = useOrgTeamStore((state) => state.isLoaded);
+  const requestOrganizationId = explicitScope
+    ? explicitScope.organizationId
+    : activeOrgID;
+  const requestTeamId = explicitScope ? explicitScope.teamId : activeTeamID;
+  const isRequestScopeReady = explicitScope !== null || isOrgTeamLoaded;
   const queryClient = useQueryClient();
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
 
@@ -54,11 +74,21 @@ export function useChatSession({
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
-      enabled: !!sessionId,
+      enabled: !!sessionId && isRequestScopeReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV2GetSessionQueryKey(sessionId ?? ""),
+        requestOrganizationId,
+        requestTeamId,
+      ),
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       refetchOnMount: true,
     },
+    request: getTenantRequestInit(
+      requestOrganizationId,
+      requestTeamId,
+      isRequestScopeReady,
+    ),
   });
 
   // When dry-run mode is toggled, discard the current session so the next
@@ -124,9 +154,19 @@ export function useChatSession({
     latestExpertSessionParams(expertId),
     {
       query: {
-        enabled: canAdoptExpertSession,
+        enabled: canAdoptExpertSession && isRequestScopeReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2ListSessionsQueryKey(latestExpertSessionParams(expertId)),
+          requestOrganizationId,
+          requestTeamId,
+        ),
         refetchOnWindowFocus: false,
       },
+      request: getTenantRequestInit(
+        requestOrganizationId,
+        requestTeamId,
+        isRequestScopeReady,
+      ),
     },
   );
 
@@ -363,12 +403,30 @@ export function useChatSession({
     sessionQuery.data?.status === 200
       ? (sessionQuery.data.data.expert_id ?? null)
       : null;
+  const sessionOrganizationId =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.organization_id ?? null)
+      : null;
+  const sessionTeamId =
+    sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.team_id ?? null)
+      : null;
+  const sessionTenantScope =
+    sessionQuery.data?.status === 200
+      ? {
+          organizationId: sessionQuery.data.data.organization_id ?? null,
+          teamId: sessionQuery.data.data.team_id ?? null,
+        }
+      : undefined;
 
   return {
     sessionId,
     setSessionId,
     sessionLlmAuthProvider,
     sessionExpertId,
+    sessionOrganizationId,
+    sessionTeamId,
+    sessionTenantScope,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
@@ -383,6 +441,7 @@ export function useChatSession({
     // fill+Enter race can trigger handleSend while ``disabled`` briefly
     // flips back to ``true`` mid-refetch, silently dropping the message.
     isLoadingSession: sessionQuery.isLoading,
+    isChatTransportPending: !sessionId && transportQuery.isPending,
     isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,

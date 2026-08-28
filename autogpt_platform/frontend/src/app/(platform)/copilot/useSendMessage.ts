@@ -24,6 +24,9 @@ type SendMessageFn = UseChatHelpers<UIMessage>["sendMessage"];
 
 interface Args {
   sessionId: string | null;
+  isSessionScopeReady: boolean;
+  sessionOrganizationId?: string | null;
+  sessionTeamId?: string | null;
   sendMessage: SendMessageFn;
   createSession: (options?: {
     expertKickoff?: boolean;
@@ -44,11 +47,15 @@ interface Args {
  */
 export function useSendMessage({
   sessionId,
+  isSessionScopeReady,
+  sessionOrganizationId,
+  sessionTeamId,
   sendMessage,
   createSession,
   isUserStoppingRef,
 }: Args) {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const mountedSessionIdRef = useRef(sessionId);
   // Synchronous concurrency guard for the "no session yet" path: rapid
   // double-press / double-Enter would otherwise overwrite `pendingFirstSend`
   // (losing the first message) AND fire two parallel `createSession`
@@ -64,7 +71,10 @@ export function useSendMessage({
     const results = await Promise.allSettled(
       files.map(async (file) => {
         try {
-          const data = await uploadFileDirect(file, sid);
+          const data = await uploadFileDirect(file, sid, {
+            organizationId: sessionOrganizationId ?? null,
+            teamId: sessionTeamId ?? null,
+          });
           if (!data.file_id) throw new Error("No file_id returned");
           return {
             file_id: data.file_id,
@@ -160,7 +170,12 @@ export function useSendMessage({
   dispatchRef.current = dispatchToSession;
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (
+      !sessionId ||
+      mountedSessionIdRef.current !== sessionId ||
+      !isSessionScopeReady
+    )
+      return;
     const { send, parts } = useCopilotStreamStore
       .getState()
       .takePendingFirstSend(sessionId);
@@ -172,7 +187,7 @@ export function useSendMessage({
       parts,
       send.metadata,
     );
-  }, [sessionId]);
+  }, [isSessionScopeReady, sessionId]);
 
   async function onSend(
     message: string,

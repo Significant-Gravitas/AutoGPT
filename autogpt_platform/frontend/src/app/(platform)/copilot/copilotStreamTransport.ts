@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
-import { getCopilotAuthHeaders } from "./helpers";
+import { getCopilotAuthHeaders, type CopilotTenantScope } from "./helpers";
 import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
 import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel, CopilotMode } from "./store";
@@ -25,6 +25,7 @@ interface CreateTransportArgs {
   copilotModeRef: MutableValue<CopilotMode | undefined>;
   /** Ref to the current model tier. See `copilotModeRef` for rationale. */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+  tenantScopeRef: MutableValue<CopilotTenantScope | undefined>;
 }
 
 /**
@@ -60,6 +61,7 @@ export function createCopilotTransport({
   sessionId,
   copilotModeRef,
   copilotModelRef,
+  tenantScopeRef,
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
@@ -112,7 +114,7 @@ export function createCopilotTransport({
           message_id: uuidv4({}),
           expert_kickoff: kickoffExpertId !== null,
         },
-        headers: await getCopilotAuthHeaders(),
+        headers: await getCopilotAuthHeaders(tenantScopeRef.current),
       };
     },
     prepareReconnectToStreamRequest: async () => {
@@ -127,7 +129,7 @@ export function createCopilotTransport({
       // consumer side.
       return {
         api: baseUrl,
-        headers: await getCopilotAuthHeaders(),
+        headers: await getCopilotAuthHeaders(tenantScopeRef.current),
       };
     },
   });

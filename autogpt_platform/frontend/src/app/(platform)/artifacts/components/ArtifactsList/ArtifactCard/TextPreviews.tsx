@@ -24,6 +24,7 @@ const CSV_PREVIEW_MAX_ROWS = 20;
 
 export function CsvPreview({ file, onError }: PreviewProps) {
   const text = useFileText(
+    file,
     getFilePreviewUrl(file.id, { bytes: CSV_PREVIEW_BYTES }),
     onError,
   );
@@ -86,6 +87,7 @@ const MARKDOWN_COMPONENTS: Components = {
 
 export function MarkdownPreview({ file, onError }: PreviewProps) {
   const text = useFileText(
+    file,
     getFilePreviewUrl(file.id, { bytes: 4096 }),
     onError,
   );

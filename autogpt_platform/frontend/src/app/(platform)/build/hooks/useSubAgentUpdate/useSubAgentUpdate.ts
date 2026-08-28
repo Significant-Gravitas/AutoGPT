@@ -4,7 +4,10 @@ import type {
   GraphOutputSchema,
 } from "@/lib/autogpt-server-api";
 import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1GetSpecificGraphQueryKey,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
 import { getEffectiveType } from "@/lib/utils";
 import { EdgeLike, getSchemaProperties, getSchemaRequired } from "./helpers";
@@ -13,6 +16,11 @@ import {
   IncompatibilityInfo,
   SubAgentUpdateInfo,
 } from "./types";
+import { useBuilderTenantScope } from "../useBuilderTenantScope";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 /**
  * Checks if a newer version of a sub-agent is available and determines compatibility
@@ -26,6 +34,7 @@ export function useSubAgentUpdate(
   connections: EdgeLike[],
   availableGraphs: GraphMetaLike[],
 ): SubAgentUpdateInfo<GraphModel> {
+  const tenantScope = useBuilderTenantScope();
   // Find the latest version of the same graph
   const latestGraphInfo = useMemo(() => {
     if (!graphID) return null;
@@ -44,9 +53,25 @@ export function useSubAgentUpdate(
     { version: latestGraphInfo?.version },
     {
       query: {
-        enabled: hasUpdate && !!graphID && !!latestGraphInfo?.version,
+        enabled:
+          hasUpdate &&
+          !!graphID &&
+          !!latestGraphInfo?.version &&
+          tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetSpecificGraphQueryKey(graphID ?? "", {
+            version: latestGraphInfo?.version,
+          }),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
         select: okData,
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 

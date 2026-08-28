@@ -9,6 +9,7 @@ import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getWorkspaceDownloadHref } from "@/services/org-team/workspace";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -38,9 +39,16 @@ const audioMimeTypes = [
   "audio/flac",
 ];
 
-function buildDownloadURL(fileID: string, shareToken?: string): string {
-  if (shareToken) {
-    return `/api/proxy/api/public/shared/${shareToken}/files/${fileID}/download`;
+function buildDownloadURL(fileID: string, metadata?: OutputMetadata): string {
+  if (metadata?.shareToken) {
+    return `/api/proxy/api/public/shared/${metadata.shareToken}/files/${fileID}/download`;
+  }
+  if (metadata && ("organizationId" in metadata || "teamId" in metadata)) {
+    return getWorkspaceDownloadHref(
+      fileID,
+      metadata.organizationId ?? null,
+      metadata.teamId ?? null,
+    );
   }
   return `/api/proxy/api/workspace/files/${fileID}/download`;
 }
@@ -128,7 +136,7 @@ function renderWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata);
   const mimeType = uri.mimeType || metadata?.mimeType || null;
 
   if (mimeType && imageMimeTypes.includes(mimeType)) {
@@ -182,7 +190,7 @@ function getCopyContentWorkspaceFile(
   const uri = parseWorkspaceURI(String(value));
   if (!uri) return null;
 
-  const downloadURL = buildDownloadURL(uri.fileID, metadata?.shareToken);
+  const downloadURL = buildDownloadURL(uri.fileID, metadata);
   const mimeType =
     uri.mimeType || metadata?.mimeType || "application/octet-stream";
 
@@ -213,7 +221,7 @@ function getDownloadContentWorkspaceFile(
   const filename = metadata?.filename || `file.${ext}`;
 
   return {
-    data: buildDownloadURL(uri.fileID, metadata?.shareToken),
+    data: buildDownloadURL(uri.fileID, metadata),
     filename,
     mimeType,
   };

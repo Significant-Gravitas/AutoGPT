@@ -154,7 +154,7 @@ describe("WorkOutputSheet helpers", () => {
 
   it("buildRunLink encodes ids and returns null without a library agent", () => {
     expect(buildRunLink("lib 1", "exec/2")).toBe(
-      "/library/agents/lib%201?activeTab=runs&activeItem=exec%2F2",
+      "/library/agents/lib%201?organizationId=__personal__&teamId=__org_home__&activeTab=runs&activeItem=exec%2F2",
     );
     expect(buildRunLink(null, "exec-1")).toBeNull();
   });

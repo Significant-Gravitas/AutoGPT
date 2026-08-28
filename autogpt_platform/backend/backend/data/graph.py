@@ -1095,9 +1095,9 @@ class GraphModel(Graph, GraphMeta):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node.id][
-                        field_name
-                    ] = f"Requires {', '.join(missing_deps)} to be set"
+                    node_errors[node.id][field_name] = (
+                        f"Requires {', '.join(missing_deps)} to be set"
+                    )
 
         return node_errors
 
@@ -1416,6 +1416,8 @@ async def get_graph(
             "agentGraphId": graph_id,
             "submissionStatus": SubmissionStatus.APPROVED,
             "isDeleted": False,
+            "isAvailable": True,
+            "StoreListing": {"is": {"isDeleted": False}},
         }
         if version is not None:
             store_where_clause["agentGraphVersion"] = version
@@ -1524,6 +1526,8 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
             "agentGraphId": {"in": list(graph_ids)},
             "submissionStatus": SubmissionStatus.APPROVED,
             "isDeleted": False,
+            "isAvailable": True,
+            "StoreListing": {"is": {"isDeleted": False}},
         },
         include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
         distinct=["agentGraphId"],
@@ -1615,7 +1619,9 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
                     {
                         "id": graph_id,
                         "version": graph_version,
-                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                        "userId": graph.userId,
+                        "organizationId": graph.organizationId,
+                        "teamId": graph.teamId,
                     }
                     for graph_id, graph_version in sub_graph_ids
                 ]
@@ -1744,15 +1750,23 @@ async def delete_graph(
     return entries_count
 
 
-async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
+async def get_graph_settings(
+    user_id: str,
+    graph_id: str,
+    graph_version: int,
+    organization_id: str | None,
+    team_id: str | None,
+) -> GraphSettings:
     lib = await LibraryAgent.prisma().find_first(
         where={
             "userId": user_id,
             "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+            "organizationId": organization_id,
+            "teamId": team_id,
             "isDeleted": False,
             "isArchived": False,
         },
-        order={"agentGraphVersion": "desc"},
     )
     if not lib or not lib.settings:
         return GraphSettings()
@@ -1761,7 +1775,8 @@ async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
         return GraphSettings.model_validate(lib.settings)
     except Exception:
         logger.warning(
-            f"Malformed settings for LibraryAgent user={user_id} graph={graph_id}"
+            f"Malformed settings for LibraryAgent user={user_id} graph={graph_id} "
+            f"version={graph_version} organization={organization_id} team={team_id}"
         )
         return GraphSettings()
 
@@ -1935,6 +1950,8 @@ async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -
             "agentGraphVersion": graph_version,
             "submissionStatus": SubmissionStatus.APPROVED,
             "isDeleted": False,
+            "isAvailable": True,
+            "StoreListing": {"is": {"isDeleted": False}},
         }
     )
     return marketplace_listing is not None
@@ -1967,11 +1984,20 @@ async def fork_graph(
     *,
     organization_id: str | None = None,
     team_id: str | None = None,
+    source_organization_id: str | None = None,
+    source_team_id: str | None = None,
 ) -> GraphModel:
     """
-    Forks a graph by copying it and all its nodes and links to a new graph.
+    Forks a graph into the target tenancy while resolving access in its source tenancy.
     """
-    graph = await get_graph(graph_id, graph_version, user_id=user_id, for_export=True)
+    graph = await get_graph(
+        graph_id,
+        graph_version,
+        user_id=user_id,
+        organization_id=source_organization_id,
+        team_id=source_team_id,
+        for_export=True,
+    )
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 

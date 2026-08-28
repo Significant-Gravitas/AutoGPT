@@ -6,6 +6,8 @@ import {
   extractToolOutputsFromRaw,
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
+import type { CopilotTenantScope } from "./helpers";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface UseLoadMoreMessagesArgs {
   sessionId: string | null;
@@ -13,6 +15,7 @@ interface UseLoadMoreMessagesArgs {
   initialHasMore: boolean;
   /** Raw messages from the initial page, used for cross-page tool output matching. */
   initialPageRawMessages: unknown[];
+  sessionTenantScope?: CopilotTenantScope;
 }
 
 const MAX_CONSECUTIVE_ERRORS = 3;
@@ -23,6 +26,7 @@ export function useLoadMoreMessages({
   initialOldestSequence,
   initialHasMore,
   initialPageRawMessages,
+  sessionTenantScope,
 }: UseLoadMoreMessagesArgs) {
   // Accumulated raw messages from all extra pages (ascending order).
   // Re-converting them all together ensures tool outputs are matched across
@@ -107,10 +111,18 @@ export function useLoadMoreMessages({
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
-      const response = await getV2GetSession(sessionId, {
-        limit: 50,
-        before_sequence: oldestSequence,
-      });
+      const response = await getV2GetSession(
+        sessionId,
+        {
+          limit: 50,
+          before_sequence: oldestSequence,
+        },
+        getTenantRequestInit(
+          sessionTenantScope?.organizationId,
+          sessionTenantScope?.teamId,
+          sessionTenantScope !== undefined,
+        ),
+      );
 
       // Discard response if session/pagination was reset while awaiting
       if (epochRef.current !== requestEpoch) return;

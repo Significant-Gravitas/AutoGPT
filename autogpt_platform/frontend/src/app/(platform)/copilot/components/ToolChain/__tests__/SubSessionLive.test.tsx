@@ -321,7 +321,9 @@ describe("SubSessionLive", () => {
       (
         await screen.findByRole("link", { name: "Open sub-session" })
       ).getAttribute("href"),
-    ).toBe("/copilot?sessionId=sub-live");
+    ).toBe(
+      "/copilot?sessionId=sub-live&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("stays quiet once the sub-session has finished", () => {
@@ -355,7 +357,9 @@ describe("SubSessionLive", () => {
       screen
         .getByRole("link", { name: "Open sub-session" })
         .getAttribute("href"),
-    ).toBe("/copilot?sessionId=sub-1");
+    ).toBe(
+      "/copilot?sessionId=sub-1&organizationId=__personal__&teamId=__org_home__",
+    );
   });
 
   it("drops the running pill on the pending card when the poll fails", async () => {

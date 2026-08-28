@@ -4,11 +4,21 @@ import {
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
 import Link from "next/link";
-import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2GetLibraryAgentByGraphIdQueryKey,
+  useGetV2GetLibraryAgentByGraphId,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryStates, parseAsString } from "nuqs";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 export const TriggerAgentBanner = () => {
+  const tenantScope = useBuilderTenantScope();
   const [{ flowID }] = useQueryStates({
     flowID: parseAsString,
   });
@@ -21,8 +31,18 @@ export const TriggerAgentBanner = () => {
         select: (x) => {
           return x.data as LibraryAgent;
         },
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetLibraryAgentByGraphIdQueryKey(flowID ?? "", {}),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 
@@ -36,7 +56,13 @@ export const TriggerAgentBanner = () => {
         You can view its activity in your{" "}
         <Link
           href={
-            libraryAgent ? `/library/agents/${libraryAgent.id}` : "/library"
+            libraryAgent
+              ? getLibraryAgentHref(
+                  libraryAgent.id,
+                  libraryAgent.organization_id ?? tenantScope.organizationId,
+                  libraryAgent.team_id ?? tenantScope.teamId,
+                )
+              : "/library"
           }
           className="underline"
         >

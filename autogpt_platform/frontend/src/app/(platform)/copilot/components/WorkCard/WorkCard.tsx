@@ -14,7 +14,12 @@ interface Props {
 
 export function WorkCard({ metadata, preview }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const runLink = buildRunLink(metadata.libraryAgentId, metadata.executionId);
+  const runLink = buildRunLink(
+    metadata.libraryAgentId,
+    metadata.executionId,
+    metadata.organizationId,
+    metadata.teamId,
+  );
 
   return (
     <div
@@ -50,6 +55,8 @@ export function WorkCard({ metadata, preview }: Props) {
         outputKey={metadata.outputKey}
         graphId={metadata.graphId}
         executionId={metadata.executionId}
+        organizationId={metadata.organizationId}
+        teamId={metadata.teamId}
         runLink={runLink}
       />
     </div>

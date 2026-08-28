@@ -1,15 +1,33 @@
 "use client";
 
 import { useMemo } from "react";
-import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+  useGetV1ListExecutionSchedulesForAGraph,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { okData } from "@/app/api/helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
-export function useSelectedScheduleView(graphId: string, scheduleId: string) {
+export function useSelectedScheduleView(
+  graphId: string,
+  scheduleId: string,
+  organizationId: string | null,
+  teamId: string | null,
+) {
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
+        organizationId,
+        teamId,
+      ),
       select: okData,
     },
+    request: getTenantRequestInit(organizationId, teamId),
   });
 
   const schedule = useMemo(

@@ -1,6 +1,8 @@
 "use client";
 import {
   getV2GetSession,
+  patchV2UpdateSessionPinned,
+  patchV2UpdateSessionTitle,
   usePatchV2UpdateSessionPinned,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -34,6 +36,7 @@ import { useSessionDeletion } from "../../useSessionDeletion";
 import { useExpertMap } from "../../useExpertMap";
 import {
   groupSessionsForSidebar,
+  getSessionListQueryKey,
   SESSION_LIST_QUERY_KEY,
   useSessionList,
 } from "../../useSessionList";
@@ -52,6 +55,8 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import { getCopilotHref } from "@/services/org-team/builder";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
@@ -90,7 +95,8 @@ export function ChatSidebar() {
   const [exportingSessionIds, setExportingSessionIds] = useState<Set<string>>(
     new Set(),
   );
-  const [sharingSessionId, setSharingSessionId] = useState<string | null>(null);
+  const [sharingSession, setSharingSession] =
+    useState<SessionSummaryResponse | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameCancelledRef = useRef(false);
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
@@ -99,12 +105,34 @@ export function ChatSidebar() {
   const { expertsById } = useExpertMap();
   const [, setExpertIdParam] = useQueryState("expertId", parseAsString);
 
+  function getSession(id: string) {
+    const session = sessions.find((candidate) => candidate.id === id);
+    if (!session) throw new Error(`Chat session ${id} is no longer available`);
+    return session;
+  }
+
+  function invalidateSessionList(id: string) {
+    const session = getSession(id);
+    return queryClient.invalidateQueries({
+      queryKey: getSessionListQueryKey(
+        session.organization_id,
+        session.team_id,
+      ),
+    });
+  }
+
   const { mutate: setSessionPinned } = usePatchV2UpdateSessionPinned({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: SESSION_LIST_QUERY_KEY,
-        });
+      mutationFn: ({ sessionId: targetSessionId, data }) => {
+        const session = getSession(targetSessionId);
+        return patchV2UpdateSessionPinned(
+          targetSessionId,
+          data,
+          getTenantRequestInit(session.organization_id, session.team_id),
+        );
+      },
+      onSuccess: (_response, variables) => {
+        invalidateSessionList(variables.sessionId);
       },
       onError: (error) => {
         const description =
@@ -125,10 +153,16 @@ export function ChatSidebar() {
 
   const { mutate: renameSession } = usePatchV2UpdateSessionTitle({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: SESSION_LIST_QUERY_KEY,
-        });
+      mutationFn: ({ sessionId: targetSessionId, data }) => {
+        const session = getSession(targetSessionId);
+        return patchV2UpdateSessionTitle(
+          targetSessionId,
+          data,
+          getTenantRequestInit(session.organization_id, session.team_id),
+        );
+      },
+      onSuccess: (_response, variables) => {
+        invalidateSessionList(variables.sessionId);
         setEditingSessionId(null);
       },
       onError: (error) => {
@@ -176,10 +210,16 @@ export function ChatSidebar() {
     }
   }
 
-  function handleSelectSession(id: string, expertId: string | null) {
-    setSessionId(id);
+  function handleSelectSession(session: SessionSummaryResponse) {
+    router.push(
+      getCopilotHref(
+        session.id,
+        session.organization_id ?? null,
+        session.team_id ?? null,
+      ),
+    );
     if (isExpertsEnabled) {
-      setExpertIdParam(expertId);
+      setExpertIdParam(session.expert_id ?? null);
     }
     closeSearch();
   }
@@ -206,11 +246,15 @@ export function ChatSidebar() {
 
   function handleDeleteClick(
     e: React.MouseEvent,
-    id: string,
-    title: string | null | undefined,
+    session: SessionSummaryResponse,
   ) {
     e.stopPropagation();
-    requestDelete(id, title);
+    requestDelete({
+      id: session.id,
+      title: session.title,
+      organizationId: session.organization_id ?? null,
+      teamId: session.team_id ?? null,
+    });
   }
 
   function handlePinClick(e: React.MouseEvent, id: string, isPinned: boolean) {
@@ -227,7 +271,13 @@ export function ChatSidebar() {
     if (exportingSessionIds.has(id)) return;
     setExportingSessionIds((prev) => new Set(prev).add(id));
     try {
-      await fetchAndExportChat(id, title, getV2GetSession);
+      const session = getSession(id);
+      await fetchAndExportChat(
+        id,
+        title,
+        getV2GetSession,
+        getTenantRequestInit(session.organization_id, session.team_id),
+      );
       toast({ title: "Chat exported" });
     } catch (error) {
       console.error("Failed to export chat:", { id, title, error });
@@ -285,9 +335,7 @@ export function ChatSidebar() {
         showCompleted={
           completedSessionIDs.has(session.id) && session.id !== sessionId
         }
-        onSelect={() =>
-          handleSelectSession(session.id, session.expert_id ?? null)
-        }
+        onSelect={() => handleSelectSession(session)}
         onEditingTitleChange={setEditingTitle}
         onRenameCancel={() => {
           renameCancelledRef.current = true;
@@ -305,9 +353,9 @@ export function ChatSidebar() {
         onExport={(e) => handleExportClick(e, session.id, session.title)}
         onShare={(e) => {
           e.stopPropagation();
-          setSharingSessionId(session.id);
+          setSharingSession(session);
         }}
-        onDelete={(e) => handleDeleteClick(e, session.id, session.title)}
+        onDelete={(e) => handleDeleteClick(e, session)}
       />
     );
   }
@@ -501,12 +549,14 @@ export function ChatSidebar() {
         onCancel={cancelDelete}
       />
 
-      {sharingSessionId && (
+      {sharingSession && (
         <ShareChatDialog
-          sessionId={sharingSessionId}
+          sessionId={sharingSession.id}
+          organizationId={sharingSession.organization_id ?? null}
+          teamId={sharingSession.team_id ?? null}
           open={true}
           onOpenChange={(next) => {
-            if (!next) setSharingSessionId(null);
+            if (!next) setSharingSession(null);
           }}
         />
       )}

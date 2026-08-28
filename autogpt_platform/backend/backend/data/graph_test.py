@@ -691,6 +691,49 @@ def test_reassign_ids_handles_no_credentials():
     assert graph.nodes[0].input_default["another_input"] == 42
 
 
+@pytest.mark.asyncio
+async def test_fork_graph_separates_source_and_target_tenancy(mocker):
+    import backend.data.graph as graph_db
+
+    source = MagicMock(id="g1", version=1, name="Shared agent")
+    source_get_mock = mocker.patch.object(
+        graph_db, "get_graph", new=AsyncMock(return_value=source)
+    )
+    create_mock = mocker.patch.object(
+        graph_db, "_create_graph_with_barriers", new=AsyncMock()
+    )
+
+    result = await graph_db.fork_graph(
+        "g1",
+        1,
+        "viewer",
+        organization_id="target-org",
+        team_id="target-team",
+        source_organization_id="source-org",
+        source_team_id=None,
+    )
+
+    assert result is source
+    source_get_mock.assert_awaited_once_with(
+        "g1",
+        1,
+        user_id="viewer",
+        organization_id="source-org",
+        team_id=None,
+        for_export=True,
+    )
+    source.reassign_ids.assert_called_once_with(
+        user_id="viewer", reassign_graph_id=True
+    )
+    source.validate_graph.assert_called_once_with(for_run=False)
+    create_mock.assert_awaited_once_with(
+        source,
+        "viewer",
+        organization_id="target-org",
+        team_id="target-team",
+    )
+
+
 def test_reassign_ids_handles_multiple_credential_fields():
     """
     [SECRT-1772] When a node has multiple dict fields with _credentials_id,
@@ -890,12 +933,12 @@ def test_mcp_credential_combine_different_servers():
 
     # Each entry should contain the server hostname in its key
     keys = list(combined.keys())
-    assert any(
-        "mcp.sentry.dev" in k for k in keys
-    ), f"Expected 'mcp.sentry.dev' in one key, got {keys}"
-    assert any(
-        "mcp.linear.app" in k for k in keys
-    ), f"Expected 'mcp.linear.app' in one key, got {keys}"
+    assert any("mcp.sentry.dev" in k for k in keys), (
+        f"Expected 'mcp.sentry.dev' in one key, got {keys}"
+    )
+    assert any("mcp.linear.app" in k for k in keys), (
+        f"Expected 'mcp.linear.app' in one key, got {keys}"
+    )
 
 
 def test_mcp_credential_combine_same_server():
@@ -1064,9 +1107,9 @@ async def test_get_graph_non_owner_pending_not_in_library_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "User without ownership, marketplace, or library access must be denied"
+    assert result is None, (
+        "User without ownership, marketplace, or library access must be denied"
+    )
 
 
 # --------------- Library membership grants graph access --------------- #
@@ -1182,9 +1225,9 @@ async def test_get_graph_anonymous_approved_marketplace_access() -> None:
             user_id=None,
         )
 
-    assert (
-        result is mock_graph_model
-    ), "Anonymous user should access APPROVED marketplace agent"
+    assert result is mock_graph_model, (
+        "Anonymous user should access APPROVED marketplace agent"
+    )
 
 
 @pytest.mark.asyncio
@@ -1390,9 +1433,9 @@ async def test_get_graph_library_with_null_agent_graph_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "Library agent with missing graph relation should not grant access"
+    assert result is None, (
+        "Library agent with missing graph relation should not grant access"
+    )
 
 
 @pytest.mark.asyncio
@@ -1420,9 +1463,9 @@ async def test_get_graph_library_wrong_version_denied() -> None:
             user_id=requester_id,
         )
 
-    assert (
-        result is None
-    ), "Library agent for version 1 must not grant access to version 2"
+    assert result is None, (
+        "Library agent for version 1 must not grant access to version 2"
+    )
     # Verify version was included in the library query
     lib_call = mock_lib_prisma.return_value.find_first
     lib_call.assert_called_once()
@@ -1487,9 +1530,9 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
             for_export=False,
         )
 
-    assert (
-        result is mock_graph_model
-    ), "Admin must access pending v2 via get_graph_as_admin"
+    assert result is mock_graph_model, (
+        "Admin must access pending v2 via get_graph_as_admin"
+    )
 
 
 # --------------- execution permission truth table --------------- #

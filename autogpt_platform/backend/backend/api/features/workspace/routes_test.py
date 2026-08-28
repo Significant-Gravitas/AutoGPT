@@ -105,7 +105,13 @@ def _make_file_mock(**overrides) -> MagicMock:
 def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_workspace):
     mock_get_workspace.return_value = _make_workspace()
     files = [
-        _make_file(id="f1", name="a.txt", metadata={"origin": "user-upload"}),
+        _make_file(
+            id="f1",
+            name="a.txt",
+            metadata={"origin": "user-upload"},
+            organization_id="org-1",
+            team_id="team-a",
+        ),
         _make_file(id="f2", name="b.csv", metadata={"origin": "agent-created"}),
     ]
     mock_instance = AsyncMock()
@@ -122,6 +128,8 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["id"] == "f1"
     assert data["files"][0]["metadata"] == {"origin": "user-upload"}
     assert data["files"][0]["origin"] == "uploaded"
+    assert data["files"][0]["organization_id"] == "org-1"
+    assert data["files"][0]["team_id"] == "team-a"
     assert data["files"][1]["id"] == "f2"
     assert data["files"][1]["origin"] == "generated"
     mock_instance.list_files.assert_called_once_with(

@@ -12,6 +12,7 @@ import os
 import uuid
 from collections.abc import Iterable
 from contextvars import ContextVar
+from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -97,9 +98,9 @@ _STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
 # Keyed by a (tool_name + canonical input) composite — see ``_output_key`` —
 # → FIFO of full output strings. Consumed (popped) by the response adapter
 # when it builds StreamToolOutputAvailable.
-_pending_tool_outputs: ContextVar[dict[str, list[str]]] = ContextVar(
+_pending_tool_outputs: ContextVar[dict[str, list[str]] | None] = ContextVar(
     "pending_tool_outputs",
-    default=None,  # type: ignore[arg-type]
+    default=None,
 )
 # Event signaled whenever stash_pending_tool_output() adds a new entry.
 # Used by the streaming loop to wait for PostToolUse hooks to complete
@@ -115,9 +116,9 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
 # this counter is incremented.  After _MAX_CONSECUTIVE_TOOL_FAILURES identical
 # failures the tool handler returns a hard-stop message instead of the raw error.
 _MAX_CONSECUTIVE_TOOL_FAILURES = 3
-_consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
+_consecutive_tool_failures: ContextVar[dict[str, int] | None] = ContextVar(
     "_consecutive_tool_failures",
-    default=None,  # type: ignore[arg-type]
+    default=None,
 )
 
 
@@ -149,6 +150,52 @@ def set_execution_context(
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
+
+
+def _bind_current_execution_context(fn):
+    """Bind the current turn context to an SDK MCP handler.
+
+    The Claude SDK dispatches in-process MCP requests from its own control
+    tasks. Context variables are task-local, so those tasks cannot be relied
+    on to retain the context set by the chat streaming task. Capture the
+    turn's values while the server is built, then install them in the task
+    that actually executes each tool call.
+    """
+    user_id = _current_user_id.get(None)
+    session = _current_session.get(None)
+    sandbox = _current_sandbox.get(None)
+    sdk_cwd = _current_sdk_cwd.get("")
+    project_dir = _current_project_dir.get("")
+    permissions = _current_permissions.get(None)
+    pending_tool_outputs = _pending_tool_outputs.get(None)
+    stash_event = _stash_event.get(None)
+    consecutive_tool_failures = _consecutive_tool_failures.get(None)
+
+    @wraps(fn)
+    async def bound_handler(args: dict[str, Any]) -> dict[str, Any]:
+        user_id_token = _current_user_id.set(user_id)
+        session_token = _current_session.set(session)
+        sandbox_token = _current_sandbox.set(sandbox)
+        sdk_cwd_token = _current_sdk_cwd.set(sdk_cwd)
+        project_dir_token = _current_project_dir.set(project_dir)
+        permissions_token = _current_permissions.set(permissions)
+        pending_outputs_token = _pending_tool_outputs.set(pending_tool_outputs)
+        stash_event_token = _stash_event.set(stash_event)
+        failure_token = _consecutive_tool_failures.set(consecutive_tool_failures)
+        try:
+            return await fn(args)
+        finally:
+            _consecutive_tool_failures.reset(failure_token)
+            _stash_event.reset(stash_event_token)
+            _pending_tool_outputs.reset(pending_outputs_token)
+            _current_permissions.reset(permissions_token)
+            _current_project_dir.reset(project_dir_token)
+            _current_sdk_cwd.reset(sdk_cwd_token)
+            _current_sandbox.reset(sandbox_token)
+            _current_session.reset(session_token)
+            _current_user_id.reset(user_id_token)
+
+    return bound_handler
 
 
 def reset_stash_event() -> None:
@@ -879,8 +926,10 @@ def create_copilot_mcp_server(
             schema,
             annotations=_PARALLEL_ANNOTATION,
         )(
-            _make_truncating_wrapper(
-                handler, tool_name, input_schema=schema, required_args=required
+            _bind_current_execution_context(
+                _make_truncating_wrapper(
+                    handler, tool_name, input_schema=schema, required_args=required
+                )
             )
         )
         sdk_tools.append(decorated)
@@ -904,7 +953,11 @@ def create_copilot_mcp_server(
                 desc,
                 schema,
                 annotations=ann,
-            )(_make_truncating_wrapper(handler, name, required_args=["path"]))
+            )(
+                _bind_current_execution_context(
+                    _make_truncating_wrapper(handler, name, required_args=["path"])
+                )
+            )
             sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
@@ -921,11 +974,13 @@ def create_copilot_mcp_server(
                 WRITE_TOOL_SCHEMA,
                 annotations=_MUTATING_ANNOTATION,
             )(
-                _make_truncating_wrapper(
-                    write_handler,
-                    WRITE_TOOL_NAME,
-                    input_schema=WRITE_TOOL_SCHEMA,
-                    required_args=["file_path", "content"],
+                _bind_current_execution_context(
+                    _make_truncating_wrapper(
+                        write_handler,
+                        WRITE_TOOL_NAME,
+                        input_schema=WRITE_TOOL_SCHEMA,
+                        required_args=["file_path", "content"],
+                    )
                 )
             )
             sdk_tools.append(write_tool)
@@ -938,11 +993,13 @@ def create_copilot_mcp_server(
                 READ_TOOL_SCHEMA,
                 annotations=_PARALLEL_ANNOTATION,
             )(
-                _make_truncating_wrapper(
-                    read_file_handler,
-                    READ_TOOL_NAME,
-                    input_schema=READ_TOOL_SCHEMA,
-                    required_args=["file_path"],
+                _bind_current_execution_context(
+                    _make_truncating_wrapper(
+                        read_file_handler,
+                        READ_TOOL_NAME,
+                        input_schema=READ_TOOL_SCHEMA,
+                        required_args=["file_path"],
+                    )
                 )
             )
             sdk_tools.append(read_file_tool)
@@ -955,11 +1012,13 @@ def create_copilot_mcp_server(
                 EDIT_TOOL_SCHEMA,
                 annotations=_MUTATING_ANNOTATION,
             )(
-                _make_truncating_wrapper(
-                    edit_handler,
-                    EDIT_TOOL_NAME,
-                    input_schema=EDIT_TOOL_SCHEMA,
-                    required_args=["file_path", "old_string", "new_string"],
+                _bind_current_execution_context(
+                    _make_truncating_wrapper(
+                        edit_handler,
+                        EDIT_TOOL_NAME,
+                        input_schema=EDIT_TOOL_SCHEMA,
+                        required_args=["file_path", "old_string", "new_string"],
+                    )
                 )
             )
             sdk_tools.append(edit_tool)
@@ -972,8 +1031,10 @@ def create_copilot_mcp_server(
             _READ_TOOL_SCHEMA,
             annotations=_PARALLEL_ANNOTATION,
         )(
-            _make_truncating_wrapper(
-                _read_file_handler, _READ_TOOL_NAME, required_args=["file_path"]
+            _bind_current_execution_context(
+                _make_truncating_wrapper(
+                    _read_file_handler, _READ_TOOL_NAME, required_args=["file_path"]
+                )
             )
         )
         sdk_tools.append(read_tool)

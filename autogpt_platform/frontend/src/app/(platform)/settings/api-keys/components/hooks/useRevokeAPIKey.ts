@@ -7,40 +7,58 @@ import { deleteV1RevokeApiKey } from "@/app/api/__generated__/endpoints/api-keys
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import { API_KEYS_QUERY_KEY } from "./useAPIKeysList";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
 
 export function useRevokeAPIKey() {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
-  async function revoke(keyIds: string[]): Promise<boolean> {
-    if (keyIds.length === 0) return true;
+  async function revoke(keys: APIKeyInfo[]): Promise<boolean> {
+    if (keys.length === 0) return true;
 
     setIsPending(true);
     try {
       const results = await Promise.allSettled(
-        keyIds.map((id) => deleteV1RevokeApiKey(id)),
+        keys.map((key) =>
+          deleteV1RevokeApiKey(
+            key.id,
+            getTenantRequestInit(key.organization_id, key.team_id_restriction),
+          ),
+        ),
       );
       const failures = results.filter((r) => r.status === "rejected");
 
       if (failures.length === 0) {
         toast({
           title:
-            keyIds.length === 1
+            keys.length === 1
               ? "API key revoked"
-              : `${keyIds.length} API keys revoked`,
+              : `${keys.length} API keys revoked`,
           variant: "success",
         });
       } else {
         toast({
           title: "Some API keys could not be revoked",
-          description: `${failures.length} of ${keyIds.length} failed.`,
+          description: `${failures.length} of ${keys.length} failed.`,
           variant: "destructive",
         });
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: API_KEYS_QUERY_KEY,
-      });
+      await Promise.all(
+        keys.map((key) =>
+          queryClient.invalidateQueries({
+            queryKey: getTeamScopedQueryKey(
+              API_KEYS_QUERY_KEY,
+              key.organization_id,
+              key.team_id_restriction,
+            ),
+          }),
+        ),
+      );
 
       return failures.length === 0;
     } finally {

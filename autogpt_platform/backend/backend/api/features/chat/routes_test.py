@@ -100,7 +100,12 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     async def allowed_lease(*_args, **_kwargs):
         yield True
 
+    @asynccontextmanager
+    async def allowed_scopes_lease(_user_id, scopes, _access):
+        yield scopes
+
     mocker.patch.object(chat_routes, "live_resource_lease", allowed_lease)
+    mocker.patch.object(chat_routes, "live_resource_scopes_lease", allowed_scopes_lease)
     mocker.patch(
         "backend.copilot.pending_message_helpers.live_resource_lease", allowed_lease
     )
@@ -407,6 +412,52 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_pins_turn_and_files_to_persisted_session_scope(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.organization_id = "org-1"
+    mocks.session.team_id = "team-a"
+    resolve_files = mocker.patch.object(
+        chat_routes,
+        "resolve_workspace_files",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    ctx = RequestContext(
+        user_id=TEST_USER_ID,
+        org_id="org-1",
+        team_id=None,
+        is_org_owner=True,
+        is_org_admin=False,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+    file_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    await chat_routes.stream_chat_post(
+        session_id="sess-1",
+        request=chat_routes.StreamChatRequest(
+            message="hello",
+            file_ids=[file_id],
+        ),
+        user_id=TEST_USER_ID,
+        ctx=ctx,
+    )
+
+    resolve_files.assert_awaited_once_with(
+        TEST_USER_ID,
+        [file_id],
+        "org-1",
+        "team-a",
+    )
+    assert mocks.enqueue.await_args.kwargs["organization_id"] == "org-1"
+    assert mocks.enqueue.await_args.kwargs["team_id"] == "team-a"
 
 
 def test_stream_chat_allows_an_active_expert_session(

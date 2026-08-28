@@ -32,6 +32,10 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({}),
 }));
 
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "user-1" } }),
+}));
+
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -148,7 +152,7 @@ describe("FollowupsPage", () => {
     const row = await screen.findByTestId("followup-row");
     const link = within(row).getByTestId("followup-open-session");
     expect(link.getAttribute("href")).toBe(
-      "/copilot?sessionId=session-abcdef0123",
+      "/copilot?sessionId=session-abcdef0123&organizationId=__personal__&teamId=__org_home__",
     );
   });
 
@@ -380,6 +384,58 @@ describe("FollowupsPage", () => {
         }),
       );
     });
+  });
+
+  test("only owners can delete graph schedules", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "owned", agent_name: "Owned agent" }),
+        makeGraphSchedule({
+          id: "team-visible",
+          user_id: "another-user",
+          agent_name: "Team agent",
+        }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const rows = await screen.findAllByTestId("schedule-row");
+    const ownedRow = rows.find((row) =>
+      row.textContent?.includes("Owned agent"),
+    );
+    const teamRow = rows.find((row) => row.textContent?.includes("Team agent"));
+
+    expect(
+      within(ownedRow!).getByTestId("schedule-delete-button"),
+    ).toBeDefined();
+    expect(within(teamRow!).queryByTestId("schedule-delete-button")).toBeNull();
+  });
+
+  test("does not render another user's copilot follow-up", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "owned", message: "Owned follow-up" }),
+        makeFollowup({
+          id: "team-visible",
+          user_id: "another-user",
+          message: "Team follow-up",
+        }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+
+    render(<FollowupsPage />);
+
+    const rows = await screen.findAllByTestId("followup-row");
+    const ownedRow = rows[0];
+
+    expect(rows).toHaveLength(1);
+    expect(screen.queryByText("Team follow-up")).toBeNull();
+    expect(
+      within(ownedRow).getByTestId("followup-delete-button"),
+    ).toBeDefined();
   });
 
   test("header shows New scheduled task button in empty state and starts the guided flow", async () => {

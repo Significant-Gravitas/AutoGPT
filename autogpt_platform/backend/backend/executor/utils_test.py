@@ -18,6 +18,7 @@ from backend.executor.utils import (
     add_graph_execution,
     is_credential_validation_error_message,
 )
+from backend.util.exceptions import GraphNotInLibraryError
 from backend.util.mock import MockObject
 
 
@@ -465,6 +466,13 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         team_id=None,
         expert_id=None,
     )
+    mock_gdb.get_graph_settings.assert_awaited_once_with(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph_version,
+        organization_id=None,
+        team_id=None,
+    )
 
     # Set up the graph execution mock to have properties we can extract
     mock_graph_exec.graph_id = graph_id
@@ -687,7 +695,9 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         return_value=mock_workspace
     )
     mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
-    mock_db_client.resolve_default_tenancy = mocker.AsyncMock(return_value=(None, None))
+    mock_db_client.resolve_unique_library_agent_scope = mocker.AsyncMock(
+        return_value=("org-rpc", "team-rpc")
+    )
 
     mocker.patch(
         "backend.executor.utils.get_database_manager_async_client",
@@ -710,7 +720,7 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
 
 
 @pytest.mark.asyncio
-async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnected(
+async def test_add_graph_execution_resolves_unique_scope_before_validation_via_rpc(
     mocker: MockerFixture,
 ):
     """In the scheduler/executor process (no direct prisma), the born-tenanted
@@ -731,7 +741,7 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph_exec.graph_version = 1
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
-    mocker.patch(
+    mock_validate = mocker.patch(
         "backend.executor.utils.validate_and_construct_node_execution_input",
         return_value=(mock_graph, [], {}, set()),
     )
@@ -770,7 +780,7 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     )
     # The RPC resolver (runs in the DB-manager process, which HAS prisma).
     mock_rpc_resolve = mocker.AsyncMock(return_value=("org-rpc", "team-rpc"))
-    mock_db_client.resolve_default_tenancy = mock_rpc_resolve
+    mock_db_client.resolve_unique_library_agent_scope = mock_rpc_resolve
 
     mocker.patch(
         "backend.executor.utils.get_database_manager_async_client",
@@ -787,10 +797,36 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
 
     await add_graph_execution(graph_id="g", user_id="sched-user")
 
-    mock_rpc_resolve.assert_awaited_once_with("sched-user")
+    mock_rpc_resolve.assert_awaited_once_with("sched-user", "g", None)
+    validate_kwargs = mock_validate.await_args.kwargs
+    assert validate_kwargs["organization_id"] == "org-rpc"
+    assert validate_kwargs["team_id_restriction"] == "team-rpc"
     create_kwargs = mock_db_client.create_graph_execution.call_args.kwargs
     assert create_kwargs["organization_id"] == "org-rpc"
     assert create_kwargs["team_id"] == "team-rpc"
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_ambiguous_legacy_scope_before_validation(
+    mocker: MockerFixture,
+):
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = False
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.resolve_unique_library_agent_scope = mocker.AsyncMock(
+        return_value=None
+    )
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+
+    with pytest.raises(GraphNotInLibraryError):
+        await add_graph_execution(graph_id="graph-in-team-a-and-b", user_id="user-1")
+
+    validate.assert_not_awaited()
 
 
 # ============================================================================
@@ -1104,9 +1140,9 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
-    mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
-        mocker.AsyncMock()
-    )
+    mocker.patch(
+        "backend.executor.utils.onboarding_db"
+    ).increment_onboarding_runs = mocker.AsyncMock()
     mock_get_queue.return_value = mocker.AsyncMock()
     mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
     mocker.patch(
@@ -1203,6 +1239,30 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     call_kwargs = mock_execution_db.update_graph_execution_stats.call_args[1]
     assert call_kwargs["graph_exec_id"] == graph_exec_id
     assert call_kwargs["status"] == ExecutionStatus.TERMINATED
+
+
+@pytest.mark.asyncio
+async def test_stop_graph_execution_rejects_before_any_cancel_side_effect(mocker):
+    from backend.executor.utils import stop_graph_execution
+    from backend.util.exceptions import NotFoundError
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = True
+    mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+    mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_children = mocker.patch("backend.executor.utils._get_child_executions")
+
+    with pytest.raises(NotFoundError, match="Graph execution #foreign-exec not found"):
+        await stop_graph_execution(
+            user_id="caller",
+            graph_exec_id="foreign-exec",
+            wait_timeout=0,
+            cascade=True,
+        )
+
+    mock_get_queue.assert_not_awaited()
+    mock_get_children.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2224,9 +2284,9 @@ def _mock_add_graph_execution_create_path(
     mock_odb = mocker.patch("backend.executor.utils.onboarding_db")
     mock_odb.increment_onboarding_runs = mocker.AsyncMock()
 
-    mocker.patch("backend.executor.utils.get_async_execution_queue").return_value = (
-        mocker.AsyncMock()
-    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue"
+    ).return_value = mocker.AsyncMock()
     mock_event_bus = mocker.MagicMock()
     mock_event_bus.publish = mocker.AsyncMock()
     mocker.patch(
@@ -2325,16 +2385,16 @@ def _mock_add_graph_execution_requeue_path(
         human_in_the_loop_safe_mode=True,
         sensitive_action_safe_mode=False,
     )
-    mocker.patch("backend.executor.utils.graph_db").get_graph_settings = (
-        mocker.AsyncMock(return_value=settings)
-    )
+    mocker.patch(
+        "backend.executor.utils.graph_db"
+    ).get_graph_settings = mocker.AsyncMock(return_value=settings)
     workspace = mocker.MagicMock(id="workspace-1")
-    mocker.patch("backend.executor.utils.workspace_db").get_or_create_workspace = (
-        mocker.AsyncMock(return_value=workspace)
-    )
-    mocker.patch("backend.executor.utils.onboarding_db").increment_onboarding_runs = (
-        mocker.AsyncMock()
-    )
+    mocker.patch(
+        "backend.executor.utils.workspace_db"
+    ).get_or_create_workspace = mocker.AsyncMock(return_value=workspace)
+    mocker.patch(
+        "backend.executor.utils.onboarding_db"
+    ).increment_onboarding_runs = mocker.AsyncMock()
     queue = mocker.AsyncMock()
     mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
     event_bus = mocker.MagicMock(publish=mocker.AsyncMock())

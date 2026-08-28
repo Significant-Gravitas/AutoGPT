@@ -4,7 +4,12 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .helpers import UNKNOWN_AGENT, AgentRef, parse_datetime, to_home_expert
+from .helpers import (
+    AgentScopeMap,
+    agent_ref_for_execution,
+    parse_datetime,
+    to_home_expert,
+)
 from .models import HomeActiveTask, HomeDailyActivity, HomeUpcomingTask, HomeWeekSummary
 
 _MAX_ACTIVE = 3
@@ -14,7 +19,7 @@ _MAX_UPCOMING = 4
 def compose_active_tasks(
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, AgentRef],
+    agent_by_graph: AgentScopeMap,
 ) -> list[HomeActiveTask]:
     active = [
         execution
@@ -30,9 +35,9 @@ def compose_active_tasks(
 def _active_task(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
-    agent_by_graph: dict[str, AgentRef],
+    agent_by_graph: AgentScopeMap,
 ) -> HomeActiveTask:
-    agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
+    agent = agent_ref_for_execution(agent_by_graph, execution)
     return HomeActiveTask(
         id=execution.id,
         title=agent.name,

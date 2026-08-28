@@ -258,6 +258,8 @@ async def post_user_review_for_agent(
 
     created_review = await store_db.create_store_review(
         user_id=user_id,
+        username=username,
+        agent_name=agent_name,
         store_listing_version_id=review.store_listing_version_id,
         score=review.score,
         comments=review.comments,
@@ -286,9 +288,12 @@ async def get_agent_by_listing_version(
 )
 async def get_graph_meta_by_store_listing_version_id(
     store_listing_version_id: str,
+    user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> backend.data.graph.GraphModelWithoutNodes:
     """Get outline of graph belonging to a specific marketplace listing version"""
-    graph = await store_db.get_available_graph(store_listing_version_id)
+    graph = await store_db.get_available_graph(
+        store_listing_version_id, user_id=user_id
+    )
     return graph
 
 
@@ -553,11 +558,70 @@ async def upload_submission_media(
         OrgAction.PUBLISH_TO_STORE, TeamAction.PUBLISH_AGENTS
     ),
 ) -> str:
-    """Upload media for a marketplace listing submission"""
+    """Upload media for a marketplace listing submission.
+
+    Personal requests are scoped to the personal organization resolved by
+    ``RequestContext``; the storage layer never accepts an unscoped owner.
+    """
     async with _live_store_media_action(user_id, ctx.org_id, ctx.team_id):
         return await store_media.upload_media(
-            user_id=user_id, file=file, organization_id=ctx.org_id
+            user_id=user_id,
+            file=file,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            local_store_media=True,
         )
+
+
+def _local_submission_media_response(
+    organization_id: str,
+    team_id: str | None,
+    media_type: str,
+    filename: str,
+) -> fastapi.responses.FileResponse:
+    try:
+        path = store_media.get_local_store_media_path(
+            organization_id, team_id, media_type, filename
+        )
+        content_type = store_media.get_local_store_media_type(filename)
+    except ValueError as error:
+        raise fastapi.HTTPException(404, detail="Media not found") from error
+    if content_type is None or not path.is_file():
+        raise fastapi.HTTPException(404, detail="Media not found")
+    return fastapi.responses.FileResponse(
+        path,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get(
+    "/media/orgs/{organization_id}/{media_type}/{filename}",
+    summary="Get local organization marketplace media",
+    tags=["store", "public"],
+)
+async def get_local_org_submission_media(
+    organization_id: str,
+    media_type: str,
+    filename: str,
+) -> fastapi.responses.FileResponse:
+    return _local_submission_media_response(organization_id, None, media_type, filename)
+
+
+@router.get(
+    "/media/orgs/{organization_id}/teams/{team_id}/{media_type}/{filename}",
+    summary="Get local workspace marketplace media",
+    tags=["store", "public"],
+)
+async def get_local_team_submission_media(
+    organization_id: str,
+    team_id: str,
+    media_type: str,
+    filename: str,
+) -> fastapi.responses.FileResponse:
+    return _local_submission_media_response(
+        organization_id, team_id, media_type, filename
+    )
 
 
 class ImageURLResponse(BaseModel):
@@ -595,7 +659,11 @@ async def generate_image(
         filename = f"agent_{graph_id}.jpeg"
 
         existing_url = await store_media.check_media_exists(
-            user_id, filename, organization_id=ctx.org_id
+            user_id,
+            filename,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            local_store_media=True,
         )
         if existing_url:
             logger.info(f"Using existing image for agent graph {graph_id}")
@@ -610,6 +678,8 @@ async def generate_image(
             file=image_file,
             use_file_name=True,
             organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            local_store_media=True,
         )
 
         return ImageURLResponse(image_url=image_url)

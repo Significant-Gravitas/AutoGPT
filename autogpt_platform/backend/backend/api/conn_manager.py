@@ -24,7 +24,6 @@ from backend.data.execution import (
     get_graph_execution_meta,
     graph_all_channel,
 )
-from backend.data.graph import get_graph, owned_graph_exists_exact_scope
 from backend.data.notification_bus import NotificationEvent
 from backend.data.tenancy import (
     agent_graph_attachment_barrier,
@@ -294,20 +293,28 @@ class ConnectionManager:
         return channel_key
 
     async def subscribe_graph_execs(
-        self, *, user_id: str, graph_id: str, websocket: WebSocket
+        self,
+        *,
+        user_id: str,
+        graph_id: str,
+        organization_id: str | None,
+        team_id: str | None,
+        websocket: WebSocket,
     ) -> str:
-        graph = await get_graph(graph_id, None, user_id)
-        if graph is None:
-            raise ValueError(f"graph #{graph_id} not found for user #{user_id}")
         scope = _ExecutionSubscriptionScope(
             user_id=user_id,
-            organization_id=graph.organization_id,
-            team_id=graph.team_id,
+            organization_id=organization_id,
+            team_id=team_id,
             graph_id=graph_id,
             execution_id=None,
             team_action=TeamAction.VIEW_AGENTS,
         )
-        channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
+        channel_key = _graph_execs_channel_key(
+            user_id,
+            graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
         full_channel = event_bus_channel(graph_all_channel(user_id, graph_id))
         if not await self._execution_scope_is_live(scope):
             raise ValueError("Access denied")
@@ -321,9 +328,20 @@ class ConnectionManager:
         return await self._close_subscription(websocket, channel_key)
 
     async def unsubscribe_graph_execs(
-        self, *, user_id: str, graph_id: str, websocket: WebSocket
+        self,
+        *,
+        user_id: str,
+        graph_id: str,
+        organization_id: str | None,
+        team_id: str | None,
+        websocket: WebSocket,
     ) -> str | None:
-        channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
+        channel_key = _graph_execs_channel_key(
+            user_id,
+            graph_id=graph_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
         return await self._close_subscription(websocket, channel_key)
 
     async def _open_subscription(
@@ -347,7 +365,12 @@ class ConnectionManager:
                 if not allowed:
                     await self._close_revoked_execution_websocket(websocket)
                     return
-                await self._forward_exec_event(websocket, channel_key, data)
+                await self._forward_exec_event(
+                    websocket,
+                    channel_key,
+                    data,
+                    required_scope=scope,
+                )
 
         await sub.start(on_message)
         per_ws[channel_key] = sub
@@ -399,12 +422,7 @@ class ConnectionManager:
                         execution is not None and execution.graph_id == scope.graph_id
                     )
                     return
-                yield await owned_graph_exists_exact_scope(
-                    scope.graph_id,
-                    scope.user_id,
-                    scope.organization_id,
-                    scope.team_id,
-                )
+                yield True
 
     async def _close_subscription(
         self, websocket: WebSocket, channel_key: str
@@ -426,6 +444,7 @@ class ConnectionManager:
         websocket: WebSocket,
         channel_key: str,
         raw_payload: Optional[bytes | str],
+        required_scope: _ExecutionSubscriptionScope | None = None,
     ) -> None:
         if raw_payload is None:
             return
@@ -451,6 +470,29 @@ class ConnectionManager:
             method = _EVENT_TYPE_TO_METHOD_MAP.get(ExecutionEventType(event_type))
             if method is None:
                 return
+            if required_scope is not None:
+                execution_id = (
+                    event_data.get("id")
+                    if method == WSMethod.GRAPH_EXECUTION_EVENT
+                    else event_data.get("graph_exec_id")
+                )
+                if not isinstance(execution_id, str):
+                    return
+                execution = await get_graph_execution_exact_scope(
+                    required_scope.user_id,
+                    execution_id,
+                    required_scope.organization_id,
+                    required_scope.team_id,
+                )
+                if (
+                    execution is None
+                    or execution.graph_id != required_scope.graph_id
+                    or (
+                        required_scope.execution_id is not None
+                        and execution.id != required_scope.execution_id
+                    )
+                ):
+                    return
             message = WSMessage(
                 method=method,
                 channel=channel_key,
@@ -531,5 +573,15 @@ def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
     return f"{user_id}|graph_exec#{graph_exec_id}"
 
 
-def _graph_execs_channel_key(user_id: str, *, graph_id: str) -> str:
-    return f"{user_id}|graph#{graph_id}|executions"
+def _graph_execs_channel_key(
+    user_id: str,
+    *,
+    graph_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+) -> str:
+    organization_key = organization_id or "__personal__"
+    team_key = team_id or "__org_home__"
+    return (
+        f"{user_id}|org#{organization_key}|team#{team_key}|graph#{graph_id}|executions"
+    )

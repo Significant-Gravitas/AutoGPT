@@ -143,6 +143,8 @@ describe("useRecentChats — pin", () => {
       wrapper: makeWrapper(),
     });
 
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
     act(() => result.current.togglePin("s1", false));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({ is_pinned: true });
@@ -185,6 +187,8 @@ describe("useRecentChats — export", () => {
     const { result } = renderHook(() => useRecentChats(), {
       wrapper: makeWrapper(),
     });
+
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
 
     await act(async () => {
       await result.current.exportChat("s1", "Chat one");

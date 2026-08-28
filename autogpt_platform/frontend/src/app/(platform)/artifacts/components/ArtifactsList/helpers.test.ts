@@ -19,7 +19,9 @@ describe("deriveFileOrigin", () => {
     expect(origin.kind).toBe("session");
     if (origin.kind === "session") {
       expect(origin.sessionId).toBe("abc-123");
-      expect(origin.href).toBe("/copilot?sessionId=abc-123");
+      expect(origin.href).toBe(
+        "/copilot?sessionId=abc-123&organizationId=__personal__&teamId=__org_home__",
+      );
     }
   });
 
@@ -27,28 +29,30 @@ describe("deriveFileOrigin", () => {
     const origin = deriveFileOrigin("/sessions/has space/x");
     expect(origin.kind).toBe("session");
     if (origin.kind === "session") {
-      expect(origin.href).toBe("/copilot?sessionId=has%20space");
+      expect(origin.href).toBe(
+        "/copilot?sessionId=has+space&organizationId=__personal__&teamId=__org_home__",
+      );
     }
   });
 
   test("falls back to builder for non-session paths", () => {
     expect(deriveFileOrigin("/uploads/file.txt")).toEqual({
       kind: "builder",
-      href: "/build",
+      href: "/build?organizationId=__personal__&teamId=__org_home__",
     });
   });
 
   test("handles undefined safely", () => {
     expect(deriveFileOrigin(undefined)).toEqual({
       kind: "builder",
-      href: "/build",
+      href: "/build?organizationId=__personal__&teamId=__org_home__",
     });
   });
 
   test("a literal /sessions path without a child segment is not a session", () => {
     expect(deriveFileOrigin("/sessions/")).toEqual({
       kind: "builder",
-      href: "/build",
+      href: "/build?organizationId=__personal__&teamId=__org_home__",
     });
   });
 });

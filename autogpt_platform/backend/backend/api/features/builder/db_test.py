@@ -8,12 +8,14 @@ real ~400-block registry; one test exercises the real index builder.
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import backend.api.features.builder.db as db
+from backend.api.features.builder.model import SearchEntry
 from backend.blocks._base import BlockInfo, BlockType
+from backend.util.exceptions import NotFoundError
 from backend.util.text import split_camelcase
 
 
@@ -375,3 +377,75 @@ def test_block_searchable_text_includes_field_descriptions():
         ),
     )
     assert db._block_searchable_text(block) == "my block keyword: a searchable keyword"
+
+
+@pytest.mark.asyncio
+async def test_update_search_requires_exact_owner_and_org(mocker) -> None:
+    client = MagicMock(update_many=AsyncMock(return_value=0))
+    mocker.patch("prisma.models.BuilderSearchHistory.prisma", return_value=client)
+
+    with pytest.raises(NotFoundError, match="Search #foreign-search not found"):
+        await db.update_search(
+            "user-1",
+            SearchEntry(search_query="agents", search_id="foreign-search"),
+            organization_id="org-1",
+            team_id_restriction="team-1",
+        )
+
+    client.update_many.assert_awaited_once_with(
+        where={
+            "id": "foreign-search",
+            "userId": "user-1",
+            "organizationId": "org-1",
+            "teamId": "team-1",
+        },
+        data={
+            "searchQuery": "agents",
+            "filter": [],
+            "byCreator": [],
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_recent_searches_org_home_uses_only_active_teams(mocker) -> None:
+    client = MagicMock(find_many=AsyncMock(return_value=[]))
+    mocker.patch("prisma.models.BuilderSearchHistory.prisma", return_value=client)
+    mocker.patch.object(
+        db,
+        "get_user_team_ids",
+        AsyncMock(return_value=["team-active"]),
+    )
+
+    await db.get_recent_searches("user-1", organization_id="org-1")
+
+    client.find_many.assert_awaited_once_with(
+        where={
+            "userId": "user-1",
+            "organizationId": "org-1",
+            "OR": [
+                {"teamId": None},
+                {"teamId": {"in": ["team-active"]}},
+            ],
+        },
+        order={"updatedAt": "desc"},
+        take=5,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_recent_searches_explicit_team_is_exact(mocker) -> None:
+    client = MagicMock(find_many=AsyncMock(return_value=[]))
+    mocker.patch("prisma.models.BuilderSearchHistory.prisma", return_value=client)
+
+    await db.get_recent_searches(
+        "user-1",
+        organization_id="org-1",
+        team_id_restriction="team-1",
+    )
+
+    assert client.find_many.await_args.kwargs["where"] == {
+        "userId": "user-1",
+        "organizationId": "org-1",
+        "teamId": "team-1",
+    }

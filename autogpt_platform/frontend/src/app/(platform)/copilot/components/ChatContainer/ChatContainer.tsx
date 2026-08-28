@@ -1,5 +1,6 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { CopilotTenantScopeProvider } from "../../CopilotTenantScopeContext";
 import {
   Tooltip,
   TooltipContent,
@@ -43,6 +44,8 @@ export interface ChatContainerProps {
   status: string;
   error: Error | undefined;
   sessionId: string | null;
+  sessionOrganizationId?: string | null;
+  sessionTeamId?: string | null;
   sessionChatStatus?: string;
   isLoadingSession: boolean;
   isSessionError?: boolean;
@@ -109,6 +112,8 @@ export const ChatContainer = ({
   status,
   error,
   sessionId,
+  sessionOrganizationId = null,
+  sessionTeamId = null,
   sessionChatStatus,
   isLoadingSession,
   isSessionError,
@@ -253,135 +258,144 @@ export const ChatContainer = ({
   }, [guardedOnSend, messages]);
 
   return (
-    <CopilotChatActionsProvider onSend={guardedOnSend}>
-      <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
-        <LayoutGroup id="copilot-2-chat-layout">
-          <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
-            {/* The chat column runs full width: the max-w-3xl cap lives on the
+    <CopilotTenantScopeProvider
+      organizationId={sessionOrganizationId}
+      teamId={sessionTeamId}
+    >
+      <CopilotChatActionsProvider onSend={guardedOnSend}>
+        <PendingQuestionsContext.Provider value={getPendingQuestions(messages)}>
+          <LayoutGroup id="copilot-2-chat-layout">
+            <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+              {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
-            {sessionId ? (
-              <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
-                {isArtifactsEnabled && (
-                  <>
-                    <div className="absolute right-0 top-0 z-30">
-                      <ContextPanelToggle sessionId={sessionId} />
-                    </div>
-                    <WorkspaceFileCards sessionId={sessionId} />
-                  </>
-                )}
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={isLoadingSession}
-                  isRestoringActiveSession={isRestoringActiveSession}
-                  restoreStatusMessage={restoreStatusMessage}
-                  activeStreamStartedAt={activeStreamStartedAt}
-                  sessionID={sessionId}
-                  sessionChatStatus={sessionChatStatus}
-                  hasMoreMessages={hasMoreMessages}
-                  isLoadingMore={isLoadingMore}
-                  onLoadMore={onLoadMore}
-                  onRetry={handleRetry}
-                  turnStats={turnStats}
-                  queuedMessages={queuedMessages}
-                  bottomContentPadding={usageCardHeight}
-                  expertIdentity={expertIdentity}
-                  hasFloatingControls={hasFloatingControls}
-                  areFilesOpen={areFilesOpen}
-                />
-                {archivedExpertIdentity ? (
-                  <ArchivedExpertNotice
-                    expertName={archivedExpertIdentity.name}
-                    reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
+              {sessionId ? (
+                <div className="relative flex h-full min-h-0 w-full flex-col bg-[#fafafa]">
+                  {isArtifactsEnabled && (
+                    <>
+                      <div className="absolute right-0 top-0 z-30">
+                        <ContextPanelToggle sessionId={sessionId} />
+                      </div>
+                      <WorkspaceFileCards sessionId={sessionId} />
+                    </>
+                  )}
+                  <ChatMessagesContainer
+                    messages={messages}
+                    status={status}
+                    error={error}
+                    isLoading={isLoadingSession}
+                    isRestoringActiveSession={isRestoringActiveSession}
+                    restoreStatusMessage={restoreStatusMessage}
+                    activeStreamStartedAt={activeStreamStartedAt}
+                    sessionID={sessionId}
+                    organizationId={sessionOrganizationId}
+                    teamId={sessionTeamId}
+                    sessionChatStatus={sessionChatStatus}
+                    hasMoreMessages={hasMoreMessages}
+                    isLoadingMore={isLoadingMore}
+                    onLoadMore={onLoadMore}
+                    onRetry={handleRetry}
+                    turnStats={turnStats}
+                    queuedMessages={queuedMessages}
+                    bottomContentPadding={usageCardHeight}
+                    expertIdentity={expertIdentity}
+                    hasFloatingControls={hasFloatingControls}
+                    areFilesOpen={areFilesOpen}
                   />
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                    className={cn(
-                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-                      areFilesOpen && "xl:-translate-x-40",
-                    )}
-                  >
-                    {isLimitReached && (
-                      <div
-                        ref={usageCardRef}
-                        className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
-                      >
+                  {archivedExpertIdentity ? (
+                    <ArchivedExpertNotice
+                      expertName={archivedExpertIdentity.name}
+                      reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
+                    />
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className={cn(
+                        "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+                        areFilesOpen && "xl:-translate-x-40",
+                      )}
+                    >
+                      {isLimitReached && (
                         <div
-                          aria-hidden="true"
-                          data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                          ref={usageCardRef}
+                          className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
                         >
-                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
-                          <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
+                          <div
+                            aria-hidden="true"
+                            data-testid="usage-limit-backdrop"
+                            className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(250,250,250,0.96)_0%,rgba(250,250,250,0.9)_42%,rgba(250,250,250,0.58)_68%,rgba(250,250,250,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
+                          >
+                            <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#fafafa]/80 blur-2xl" />
+                            <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
+                          </div>
+                          <div className="pointer-events-auto relative px-3">
+                            <UsageLimitReachedCard />
+                          </div>
                         </div>
-                        <div className="pointer-events-auto relative px-3">
-                          <UsageLimitReachedCard />
-                        </div>
-                      </div>
-                    )}
-                    <SharedChatNotice sessionId={sessionId} />
-                    {isTaskBarEnabled && (
-                      <div className="relative z-10">
-                        <TaskProgressBar
-                          todos={getLatestTaskList(messages) ?? []}
-                          isStreaming={isStreaming}
-                        />
-                      </div>
-                    )}
-                    <Tooltip open={isLimitReached ? undefined : false}>
-                      <TooltipTrigger asChild>
-                        <div>
-                          <ChatInput
-                            inputId="chat-input-session"
-                            onSend={guardedOnSend}
-                            disabled={isInputDisabled}
+                      )}
+                      <SharedChatNotice sessionId={sessionId} />
+                      {isTaskBarEnabled && (
+                        <div className="relative z-10">
+                          <TaskProgressBar
+                            todos={getLatestTaskList(messages) ?? []}
                             isStreaming={isStreaming}
-                            isUploadingFiles={isUploadingFiles}
-                            onStop={onStop}
-                            onEnqueue={onEnqueue}
-                            placeholder="What else can I help with?"
-                            droppedFiles={droppedFiles}
-                            onDroppedFilesConsumed={onDroppedFilesConsumed}
-                            hasSession={!!sessionId}
-                            sessionId={sessionId}
                           />
                         </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm">
-                        You&apos;ve reached your usage limit. Wait for it to
-                        refresh or upgrade your plan to continue sending
-                        messages.
-                      </TooltipContent>
-                    </Tooltip>
-                  </motion.div>
-                )}
-              </div>
-            ) : (
-              <EmptySession
-                inputLayoutId={inputLayoutId}
-                isCreatingSession={isCreatingSession}
-                onCreateSession={onCreateSession}
-                onSend={guardedOnSend}
-                isUploadingFiles={isUploadingFiles}
-                droppedFiles={droppedFiles}
-                onDroppedFilesConsumed={onDroppedFilesConsumed}
-                isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
-                isKickoffStarting={isKickoffStarting}
-                expertName={expertIdentity?.name}
-                createTeamId={createTeamId}
-                onCreateTeamChange={onCreateTeamChange}
-                isTeamContextReady={isTeamContextReady}
-                canSelectCreateTeam={canSelectCreateTeam}
-              />
-            )}
-          </div>
-        </LayoutGroup>
-      </PendingQuestionsContext.Provider>
-    </CopilotChatActionsProvider>
+                      )}
+                      <Tooltip open={isLimitReached ? undefined : false}>
+                        <TooltipTrigger asChild>
+                          <div>
+                            <ChatInput
+                              inputId="chat-input-session"
+                              onSend={guardedOnSend}
+                              disabled={isInputDisabled}
+                              isStreaming={isStreaming}
+                              isUploadingFiles={isUploadingFiles}
+                              onStop={onStop}
+                              onEnqueue={onEnqueue}
+                              placeholder="What else can I help with?"
+                              droppedFiles={droppedFiles}
+                              onDroppedFilesConsumed={onDroppedFilesConsumed}
+                              hasSession={!!sessionId}
+                              sessionId={sessionId}
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm">
+                          You&apos;ve reached your usage limit. Wait for it to
+                          refresh or upgrade your plan to continue sending
+                          messages.
+                        </TooltipContent>
+                      </Tooltip>
+                    </motion.div>
+                  )}
+                </div>
+              ) : (
+                <EmptySession
+                  inputLayoutId={inputLayoutId}
+                  isCreatingSession={isCreatingSession}
+                  onCreateSession={onCreateSession}
+                  onSend={guardedOnSend}
+                  isUploadingFiles={isUploadingFiles}
+                  droppedFiles={droppedFiles}
+                  onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  isInteractionLocked={
+                    isSendLocked || !!isAdoptingExpertSession
+                  }
+                  isKickoffStarting={isKickoffStarting}
+                  expertName={expertIdentity?.name}
+                  createTeamId={createTeamId}
+                  onCreateTeamChange={onCreateTeamChange}
+                  isTeamContextReady={isTeamContextReady}
+                  canSelectCreateTeam={canSelectCreateTeam}
+                />
+              )}
+            </div>
+          </LayoutGroup>
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>
+    </CopilotTenantScopeProvider>
   );
 };

@@ -8,6 +8,8 @@ import { okData } from "@/app/api/helpers";
 
 interface Props {
   graphExecId: string;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 /**
@@ -15,10 +17,16 @@ interface Props {
  * reviews in a session — mirrors the non-copilot review page behavior.
  * Works for both run_block (synthetic copilot-session-*) and run_agent (real graph exec) reviews.
  */
-export function CopilotPendingReviews({ graphExecId }: Props) {
+export function CopilotPendingReviews({
+  graphExecId,
+  organizationId,
+  teamId,
+}: Props) {
   const { onSend } = useCopilotChatActions();
   const { pendingReviews, refetch } = usePendingReviewsForExecution(
     graphExecId,
+    organizationId,
+    teamId,
     { enabled: !!graphExecId, refetchInterval: 2000 },
   );
 

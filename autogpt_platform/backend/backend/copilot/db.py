@@ -6,7 +6,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import sentry_sdk
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
@@ -23,7 +22,11 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.tenancy import live_resource_access_barrier
-from backend.util.exceptions import ExpertNotFoundError, NotAuthorizedError
+from backend.util.exceptions import (
+    ExpertNotFoundError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
@@ -998,7 +1001,8 @@ async def get_sessions_with_pending_question(
     params.append(limit)
     sessions = await db.query_raw_with_schema(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
-        'FROM {schema_prefix}"ChatSession" WHERE ' + " AND ".join(conditions)
+        'FROM {schema_prefix}"ChatSession" WHERE '
+        + " AND ".join(conditions)
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).
@@ -1054,26 +1058,12 @@ async def delete_chat_session(
             if existing and existing.isShared:
                 from backend.copilot.sharing.db import disable_chat_session_share
 
-                try:
-                    await disable_chat_session_share(
-                        session_id=session_id,
-                        user_id=user_id,
-                        organization_id=existing.organizationId,
-                        team_id=existing.teamId,
-                    )
-                except Exception as cascade_exc:
-                    # Cascade failure must not block the deletion path —
-                    # log + Sentry so an operator can manually clean up
-                    # the per-execution shares.  Better to delete the
-                    # chat (the user's clear intent) and leave a known
-                    # orphan to chase than to refuse the delete.
-                    logger.error(
-                        "Share cascade failed during chat delete for "
-                        "session=%s; deletion will proceed",
-                        session_id,
-                        exc_info=True,
-                    )
-                    sentry_sdk.capture_exception(cascade_exc)
+                await disable_chat_session_share(
+                    session_id=session_id,
+                    user_id=user_id,
+                    organization_id=existing.organizationId,
+                    team_id=existing.teamId,
+                )
 
         # Build typed where clause with optional user_id validation
         where_clause: ChatSessionWhereInput = {"id": session_id}
@@ -1345,6 +1335,19 @@ async def get_chat_session_status(session_id: str) -> str | None:
     return row.chatStatus if row else None
 
 
+async def claim_chat_session(session_id: str, user_id: str) -> ChatSessionInfo:
+    await PrismaChatSession.prisma().update_many(
+        where={"id": session_id, "userId": None},
+        data={"userId": user_id, "updatedAt": datetime.now(UTC)},
+    )
+    row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
+    if row is None:
+        raise NotFoundError(f"Session {session_id} not found")
+    if row.userId != user_id:
+        raise NotAuthorizedError(f"Not authorized to claim session {session_id}")
+    return ChatSessionInfo.from_db(row)
+
+
 async def update_chat_session_status(
     *,
     session_id: str,
@@ -1376,6 +1379,8 @@ async def append_expert_run_message(
     expert_id: str,
     content: str,
     message_id: str,
+    organization_id: str,
+    team_id: str | None,
     metadata: dict[str, Any] | None = None,
 ) -> str | None:
     """Post an assistant message into the expert's latest thread, creating a
@@ -1387,19 +1392,31 @@ async def append_expert_run_message(
     structured work card; ``None`` keeps legacy posts rendering as plain text.
     Returns the session id the message landed in, or None when deduped.
     """
+    if not organization_id:
+        raise NotAuthorizedError("Expert messages require an organization scope")
+
     existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
     if existing is not None:
         return None
 
     session = await PrismaChatSession.prisma().find_first(
-        where={"userId": user_id, "expertId": expert_id},
+        where={
+            "userId": user_id,
+            "expertId": expert_id,
+            "organizationId": organization_id,
+            "teamId": team_id,
+        },
         order={"updatedAt": "desc"},
     )
     if session is not None:
         session_id = session.id
     else:
         created = await create_chat_session(
-            session_id=str(uuid.uuid4()), user_id=user_id, expert_id=expert_id
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            expert_id=expert_id,
+            organization_id=organization_id,
+            team_id=team_id,
         )
         session_id = created.session_id
 

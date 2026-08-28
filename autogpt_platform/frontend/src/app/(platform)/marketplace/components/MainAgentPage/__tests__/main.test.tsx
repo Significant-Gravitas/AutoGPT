@@ -4,7 +4,15 @@ import {
   getGetV2ListStoreAgentsMockHandler,
   getGetV2ListStoreAgentsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
+import {
+  getGetV2GetAgentByStoreIdMockHandler,
+  getGetV2GetAgentByStoreIdResponseMock,
+  getGetV2ListLibraryAgentsMockHandler,
+  getGetV2ListLibraryAgentsResponseMock,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { MainAgentPage } from "../MainAgentPage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -19,6 +27,13 @@ describe("MainAgentPage", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({
       user: null,
+    });
+    useOrgTeamStore.setState({
+      activeOrgID: null,
+      activeTeamID: null,
+      orgs: [],
+      teams: [],
+      isLoaded: false,
     });
   });
 
@@ -92,5 +107,82 @@ describe("MainAgentPage", () => {
     );
     expect(screen.getByText("Other AI workflows by AutoGPT")).toBeDefined();
     expect(screen.getByText("Similar AI workflows")).toBeDefined();
+  });
+
+  test("keeps uninstalled tenant targets available when the active team has a copy", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "user-1" },
+      isLoggedIn: true,
+      isUserLoading: false,
+    });
+    useOrgTeamStore.setState({
+      activeOrgID: "org-1",
+      activeTeamID: "team-a",
+      orgs: [],
+      teams: [
+        {
+          id: "team-a",
+          name: "Growth",
+          slug: "growth",
+          isDefault: false,
+          joinPolicy: "closed",
+          orgId: "org-1",
+        },
+        {
+          id: "team-b",
+          name: "Design",
+          slug: "design",
+          isDefault: false,
+          joinPolicy: "closed",
+          orgId: "org-1",
+        },
+      ],
+      isLoaded: true,
+    });
+    const agentDetails = getGetV2GetSpecificAgentResponseMock({
+      agent_name: "Target-aware Agent",
+      creator: "AutoGPT",
+      graph_id: "graph-1",
+      active_version_id: "store-version-1",
+      store_listing_version_id: "listing-1",
+    });
+    const libraryAgent = {
+      ...getGetV2GetAgentByStoreIdResponseMock()!,
+      id: "lib-a",
+      name: "Target-aware Agent",
+      graph_id: "graph-1",
+      organization_id: "org-1",
+      team_id: "team-a",
+    } satisfies LibraryAgent;
+    server.use(
+      getGetV2GetSpecificAgentMockHandler(agentDetails),
+      getGetV2ListStoreAgentsMockHandler(
+        getGetV2ListStoreAgentsResponseMock({ agents: [] }),
+      ),
+      getGetV2GetAgentByStoreIdMockHandler(libraryAgent),
+      getGetV2ListLibraryAgentsMockHandler(
+        getGetV2ListLibraryAgentsResponseMock({
+          agents: [
+            { ...libraryAgent, id: "lib-home", team_id: null },
+            libraryAgent,
+          ],
+        }),
+      ),
+    );
+
+    render(
+      <MainAgentPage
+        params={{ creator: "autogpt", slug: "target-aware-agent" }}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "See runs" }),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole("button", {
+        name: "Add Target-aware Agent to Design",
+      }),
+    ).toBeDefined();
   });
 });

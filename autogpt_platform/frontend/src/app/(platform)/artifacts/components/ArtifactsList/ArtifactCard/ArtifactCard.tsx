@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -21,6 +22,8 @@ import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog"
 import {
   createFileDragImage,
   FILE_DRAG_MIME,
+  FILE_TENANT_MIME,
+  serializeDraggedFileTenant,
 } from "../../WorkspaceFolders/drag";
 import {
   deriveFileOrigin,
@@ -63,7 +66,11 @@ const REDUCED_CARD_VARIANTS: Variants = {
 };
 
 export function ArtifactCard({ file, onOpen }: Props) {
-  const origin = deriveFileOrigin(file.path);
+  const origin = deriveFileOrigin(
+    file.path,
+    file.organization_id ?? null,
+    file.team_id ?? null,
+  );
   const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
   const typeIcon = getFileTypeIcon(file.mime_type, file.name);
   const reduceMotion = useReducedMotion();
@@ -82,6 +89,13 @@ export function ArtifactCard({ file, onOpen }: Props) {
   function handleDragStart(e: React.DragEvent<HTMLLIElement>) {
     dragImageRef.current?.remove();
     e.dataTransfer.setData(FILE_DRAG_MIME, file.id);
+    e.dataTransfer.setData(
+      FILE_TENANT_MIME,
+      serializeDraggedFileTenant({
+        organizationId: file.organization_id ?? null,
+        teamId: file.team_id ?? null,
+      }),
+    );
     e.dataTransfer.effectAllowed = "move";
     const dragImage = createFileDragImage(file.name);
     document.body.appendChild(dragImage);
@@ -147,6 +161,8 @@ export function ArtifactCard({ file, onOpen }: Props) {
           fileId={file.id}
           fileName={file.name}
           currentFolderId={file.folder_id}
+          organizationId={file.organization_id ?? null}
+          teamId={file.team_id ?? null}
           isOpen={isMoveOpen}
           setIsOpen={setIsMoveOpen}
         />
@@ -187,13 +203,22 @@ function CardMenu({
           });
         },
       },
+      request: getTenantRequestInit(
+        file.organization_id ?? null,
+        file.team_id ?? null,
+      ),
     });
 
   async function handleDownload() {
     if (isDownloading) return;
     setIsDownloading(true);
     try {
-      await downloadFileBlob(file.id, file.name);
+      await downloadFileBlob(
+        file.id,
+        file.name,
+        file.organization_id ?? null,
+        file.team_id ?? null,
+      );
     } catch (error) {
       toast({
         title: "Failed to download file",

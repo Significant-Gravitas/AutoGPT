@@ -27,15 +27,10 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getCopilotHref } from "@/services/org-team/builder";
+import type { RecentChatSession } from "../../useRecentChats";
 
-interface Session {
-  id: string;
-  title?: string | null;
-  source_platform?: string | null;
-  is_processing?: boolean | null;
-  is_pinned?: boolean | null;
-  updated_at: string;
-}
+type Session = RecentChatSession;
 
 interface Props {
   session: Session;
@@ -52,8 +47,8 @@ interface Props {
   onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
-  onShare: (id: string) => void;
-  onDelete: (id: string, title: string | null | undefined) => void;
+  onShare: (session: Session) => void;
+  onDelete: (session: Session) => void;
 }
 
 // Rendered inside the <Link>, so useLinkStatus reports that link's pending
@@ -139,7 +134,13 @@ export function RecentChatItem({
         tooltip={title}
         className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
       >
-        <Link href={`/copilot?sessionId=${session.id}`}>
+        <Link
+          href={getCopilotHref(
+            session.id,
+            session.organization_id ?? null,
+            session.team_id ?? null,
+          )}
+        >
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
@@ -201,13 +202,13 @@ export function RecentChatItem({
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
           {chatSharingEnabled && (
-            <DropdownMenuItem onClick={() => onShare(session.id)}>
+            <DropdownMenuItem onClick={() => onShare(session)}>
               <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
               Share chat
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onClick={() => onDelete(session.id, session.title)}
+            onClick={() => onDelete(session)}
             disabled={isDeleting}
             className="text-red-600 focus:bg-red-50 focus:text-red-600"
           >

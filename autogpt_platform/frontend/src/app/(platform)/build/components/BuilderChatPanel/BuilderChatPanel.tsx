@@ -33,6 +33,7 @@ export function BuilderChatPanel({ className }: Props) {
     bootstrapError,
     retryBind,
     retryBootstrap,
+    tenantScope,
   } = useBuilderChatPanel({ panelRef });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -99,6 +100,8 @@ export function BuilderChatPanel({ className }: Props) {
                       isLoading={false}
                       sessionID={sessionId}
                       queuedMessages={queuedMessages}
+                      organizationId={tenantScope.organizationId}
+                      teamId={tenantScope.teamId}
                     />
                   </div>
                   <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">

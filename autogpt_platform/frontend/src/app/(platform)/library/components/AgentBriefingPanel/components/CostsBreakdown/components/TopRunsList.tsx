@@ -7,6 +7,8 @@ import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
 import Link from "next/link";
 import { useState } from "react";
 import { formatRelativeDate, type AgentLookupEntry } from "../helpers";
+import { getTenantEntityKey } from "@/services/org-team/identity";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 interface Props {
   runs: UserTopRun[];
@@ -29,10 +31,16 @@ export function TopRunsList({ runs, agentLookup }: Props) {
       </Text>
       <ul className="flex flex-col divide-y divide-zinc-100 rounded-medium border border-zinc-100 bg-white">
         {visible.map((run) => {
-          const agent = agentLookup.get(run.graph_id);
+          const agent = agentLookup.get(
+            getTenantEntityKey(run.graph_id, run.organization_id, run.team_id),
+          );
           const label = agent?.name ?? `Agent ${run.graph_id.slice(0, 8)}`;
           const href = agent
-            ? `/library/agents/${agent.libraryAgentId}?activeItem=${run.execution_id}`
+            ? `${getLibraryAgentHref(
+                agent.libraryAgentId,
+                agent.organizationId,
+                agent.teamId,
+              )}&activeItem=${run.execution_id}`
             : null;
 
           const row = (

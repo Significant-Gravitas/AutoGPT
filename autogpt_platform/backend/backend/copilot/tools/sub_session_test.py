@@ -412,7 +412,9 @@ class TestRunSubSession:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "running"
         assert r.sub_session_id == r.sub_autopilot_session_id == "inner-1"
-        assert r.sub_autopilot_session_link == "/copilot?sessionId=inner-1"
+        assert r.sub_autopilot_session_link == (
+            "/copilot?organizationId=__personal__&teamId=__org_home__&sessionId=inner-1"
+        )
         mock_waiter.assert_awaited_once()
         assert mock_waiter.await_args.kwargs["timeout"] == 0
 

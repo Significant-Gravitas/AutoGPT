@@ -1,10 +1,18 @@
 import * as React from "react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
+import {
+  getGetV2GetMyAgentsQueryKey,
+  useGetV2GetMyAgents,
+} from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { MyAgentsSortBy } from "@/app/api/__generated__/models/myAgentsSortBy";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 export interface Agent {
   name: string;
@@ -14,6 +22,8 @@ export interface Agent {
   imageSrc: string;
   description: string;
   recommendedScheduleCron: string | null;
+  organizationId: string | null;
+  teamId: string | null;
 }
 
 interface UseAgentSelectStepProps {
@@ -27,6 +37,8 @@ interface UseAgentSelectStepProps {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
+    organizationId: string | null,
+    teamId: string | null,
   ) => void;
 }
 
@@ -58,6 +70,9 @@ export function useAgentSelectStep({
   const isDebouncingSearch = searchInput.trim() !== debouncedSearch;
   const queryPage = searchResetPending ? 1 : page;
   const { isLoggedIn } = useAuth();
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
 
   React.useEffect(() => {
     setPage(1);
@@ -84,15 +99,25 @@ export function useAgentSelectStep({
     isFetching,
     error,
   } = useGetV2GetMyAgents(
-    {
+    (() => ({
       page: queryPage,
       page_size: PAGE_SIZE,
       sort_by: sortBy,
       search_query: debouncedSearch || undefined,
-    },
+    }))(),
     {
       query: {
-        enabled: isLoggedIn && !isDebouncingSearch,
+        enabled: isLoggedIn && isTenantReady && !isDebouncingSearch,
+        queryKey: getTeamScopedQueryKey(
+          getGetV2GetMyAgentsQueryKey({
+            page: queryPage,
+            page_size: PAGE_SIZE,
+            sort_by: sortBy,
+            search_query: debouncedSearch || undefined,
+          }),
+          activeOrgID,
+          activeTeamID,
+        ),
         refetchOnMount: "always",
         staleTime: 0,
         placeholderData: keepPreviousData,
@@ -108,11 +133,14 @@ export function useAgentSelectStep({
               imageSrc: agent.agent_image || "",
               description: agent.description || "",
               recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
+              organizationId: agent.organization_id ?? null,
+              teamId: agent.team_id ?? null,
             }),
           );
           return { agents, pagination: payload.pagination };
         },
       },
+      request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
     },
   );
 
@@ -133,12 +161,18 @@ export function useAgentSelectStep({
     const selectedAgent =
       myAgents.find((a) => a.id === selectedAgentId) ?? selectedAgentSnapshot;
     if (!selectedAgent) return;
-    onNext(selectedAgentId, selectedAgentVersion, {
-      name: selectedAgent.name,
-      description: selectedAgent.description,
-      imageSrc: selectedAgent.imageSrc,
-      recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
-    });
+    onNext(
+      selectedAgentId,
+      selectedAgentVersion,
+      {
+        name: selectedAgent.name,
+        description: selectedAgent.description,
+        imageSrc: selectedAgent.imageSrc,
+        recommendedScheduleCron: selectedAgent.recommendedScheduleCron,
+      },
+      selectedAgent.organizationId,
+      selectedAgent.teamId,
+    );
   }
 
   function handleSortChange(value: string) {

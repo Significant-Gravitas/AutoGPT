@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
+  getGetV1GetExecutionDetailsQueryKey,
+  getGetV1GetSpecificGraphQueryKey,
+  getGetV1ListUserGraphsQueryKey,
   useGetV1GetExecutionDetails,
   useGetV1GetSpecificGraph,
   useGetV1ListUserGraphs,
@@ -20,9 +23,15 @@ import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
 import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
+import { useBuilderTenantScope } from "../../../hooks/useBuilderTenantScope";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
+  const tenantScope = useBuilderTenantScope();
   const [isLockedState, setIsLockedState] = useState(false);
   const [hasAutoFramed, setHasAutoFramed] = useState(false);
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
@@ -68,19 +77,45 @@ export const useFlow = () => {
     {
       query: {
         select: (res) => res.data as GetV1GetExecutionDetails200,
-        enabled: !!flowID && !!flowExecutionID,
+        enabled: !!flowID && !!flowExecutionID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetExecutionDetailsQueryKey(
+            flowID || "",
+            flowExecutionID || "",
+          ),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
         // Poll while the graph is running to catch updates that arrive before
         // the WebSocket subscription is established (race condition on fast
         // executions like dry-runs).  Stops once the execution reaches a
         // terminal state and isGraphRunning becomes false.
         refetchInterval: isGraphRunning ? 1000 : false,
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 
   // Fetch all available graphs for sub-agent update detection
   const { data: availableGraphs } = useGetV1ListUserGraphs({
-    query: { select: okData },
+    query: {
+      enabled: tenantScope.isReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListUserGraphsQueryKey(),
+        tenantScope.organizationId,
+        tenantScope.teamId,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(
+      tenantScope.organizationId,
+      tenantScope.teamId,
+      tenantScope.isReady,
+    ),
   });
 
   const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
@@ -89,8 +124,21 @@ export const useFlow = () => {
     {
       query: {
         select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
+        enabled: !!flowID && tenantScope.isReady,
+        queryKey: getTeamScopedQueryKey(
+          getGetV1GetSpecificGraphQueryKey(
+            flowID ?? "",
+            flowVersion !== null ? { version: flowVersion } : {},
+          ),
+          tenantScope.organizationId,
+          tenantScope.teamId,
+        ),
       },
+      request: getTenantRequestInit(
+        tenantScope.organizationId,
+        tenantScope.teamId,
+        tenantScope.isReady,
+      ),
     },
   );
 

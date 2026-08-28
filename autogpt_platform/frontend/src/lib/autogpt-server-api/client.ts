@@ -4,6 +4,10 @@ import { ImpersonationState } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
+import {
+  ORG_HEADER_NAME,
+  TEAM_HEADER_NAME,
+} from "@/services/org-team/header-names";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -58,6 +62,11 @@ import type {
 
 const isClient = environment.isClientSide();
 
+export interface BackendAPITenantScope {
+  organizationId: string | null;
+  teamId: string | null;
+}
+
 /**
  * Thrown when a request fails because the user is logging out.
  * Callers can catch this specifically to silently ignore logout-related failures,
@@ -97,6 +106,7 @@ export default class BackendAPI {
   private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
   private isIntentionallyDisconnected: boolean = false;
+  private tenantScope?: BackendAPITenantScope;
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
@@ -106,9 +116,34 @@ export default class BackendAPI {
   constructor(
     baseUrl: string = environment.getAGPTServerApiUrl(),
     wsUrl: string = environment.getAGPTWsServerUrl(),
+    tenantScope?: BackendAPITenantScope,
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
+    this.tenantScope = tenantScope;
+  }
+
+  withTenantScope(tenantScope: BackendAPITenantScope): BackendAPI {
+    return new BackendAPI(this.baseUrl, this.wsUrl, tenantScope);
+  }
+
+  private getTenantHeaders(): Record<string, string> {
+    if (!this.tenantScope) return {};
+    const headers: Record<string, string> = {};
+    if (this.tenantScope.organizationId) {
+      headers[ORG_HEADER_NAME] = this.tenantScope.organizationId;
+    }
+    if (this.tenantScope.teamId) {
+      headers[TEAM_HEADER_NAME] = this.tenantScope.teamId;
+    }
+    return headers;
+  }
+
+  private getTenantRequest(url: string): Request | undefined {
+    const headers = this.getTenantHeaders();
+    return Object.keys(headers).length > 0
+      ? new Request(url, { headers })
+      : undefined;
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -734,6 +769,7 @@ export default class BackendAPI {
 
     const response = await fetch(uploadUrl, {
       method: "POST",
+      headers: this.getTenantHeaders(),
       body: formData,
       credentials: "include",
     });
@@ -753,7 +789,11 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
-    return await makeAuthenticatedFileUpload(url, formData);
+    return await makeAuthenticatedFileUpload(
+      url,
+      formData,
+      this.getTenantRequest(url),
+    );
   }
 
   private async _makeClientFileUploadWithProgress(
@@ -829,6 +869,9 @@ export default class BackendAPI {
       });
 
       xhr.open("POST", url);
+      for (const [name, value] of Object.entries(this.getTenantHeaders())) {
+        xhr.setRequestHeader(name, value);
+      }
       xhr.withCredentials = true;
       xhr.send(formData);
     });
@@ -847,7 +890,11 @@ export default class BackendAPI {
       url = buildUrlWithQuery(url, params);
     }
 
-    return await makeAuthenticatedFileUpload(url, formData);
+    return await makeAuthenticatedFileUpload(
+      url,
+      formData,
+      this.getTenantRequest(url),
+    );
   }
 
   private async _request(
@@ -892,6 +939,7 @@ export default class BackendAPI {
     // Prepare headers with admin impersonation support
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      ...this.getTenantHeaders(),
     };
 
     const impersonatedUserId = ImpersonationState.get();
@@ -944,11 +992,15 @@ export default class BackendAPI {
 
     // For server-side requests, try to read impersonation from cookies
     const impersonationUserId = await ImpersonationState.getServerSide();
-    const fakeRequest = impersonationUserId
-      ? new Request(url, {
-          headers: { "X-Act-As-User-Id": impersonationUserId },
-        })
-      : undefined;
+    const tenantHeaders = this.getTenantHeaders();
+    const forwardedHeaders = new Headers(tenantHeaders);
+    if (impersonationUserId) {
+      forwardedHeaders.set("X-Act-As-User-Id", impersonationUserId);
+    }
+    const fakeRequest =
+      impersonationUserId || Object.keys(tenantHeaders).length > 0
+        ? new Request(url, { headers: forwardedHeaders })
+        : undefined;
 
     return await makeAuthenticatedRequest(
       method,
@@ -969,9 +1021,15 @@ export default class BackendAPI {
     });
   }
 
-  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
+  subscribeToGraphExecutions(
+    graphID: GraphID,
+    organizationID: string | null,
+    teamID: string | null,
+  ): Promise<void> {
     return this.sendWebSocketMessage("subscribe_graph_executions", {
       graph_id: graphID,
+      organization_id: organizationID,
+      team_id: teamID,
     });
   }
 
@@ -1248,7 +1306,11 @@ type GraphExecuteRequestBody = {
 
 type WebsocketMessageTypeMap = {
   subscribe_graph_execution: { graph_exec_id: GraphExecutionID };
-  subscribe_graph_executions: { graph_id: GraphID };
+  subscribe_graph_executions: {
+    graph_id: GraphID;
+    organization_id: string | null;
+    team_id: string | null;
+  };
   graph_execution_event: GraphExecution;
   node_execution_event: NodeExecutionResult;
   notification: WebSocketNotification;

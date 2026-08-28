@@ -18,6 +18,7 @@ import {
   StopCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 function ActivityNavIndicator() {
   const { pending } = useLinkStatus();
@@ -143,11 +144,16 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
   }
 
   // Determine the tab based on execution status
-  const searchParams = new URLSearchParams();
   const isReview = execution.status === AgentExecutionStatus.REVIEW;
-  searchParams.set("activeTab", isReview ? "reviews" : "runs");
-  searchParams.set("activeItem", execution.id);
-  const linkUrl = `/library/agents/${execution.library_agent_id}?${searchParams.toString()}`;
+  const linkUrl = execution.library_agent_id
+    ? getLibraryAgentHref(
+        execution.library_agent_id,
+        execution.organization_id ?? null,
+        execution.team_id ?? null,
+        execution.id,
+        isReview ? "reviews" : "runs",
+      )
+    : "/library";
   const withExecutionLink = execution.library_agent_id && execution.id;
 
   const content = (

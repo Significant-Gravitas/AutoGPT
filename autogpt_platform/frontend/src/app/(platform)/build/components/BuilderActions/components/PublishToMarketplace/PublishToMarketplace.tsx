@@ -8,6 +8,7 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { usePublishToMarketplace } from "./usePublishToMarketplace";
 import { Share01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 interface Props {
   flowID: string | null;
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function PublishToMarketplace({ flowID, flowVersion }: Props) {
+  const tenantScope = useBuilderTenantScope();
   const { handlePublishToMarketplace, publishState, handleStateChange } =
     usePublishToMarketplace({ flowID, flowVersion });
 
@@ -41,6 +43,8 @@ export function PublishToMarketplace({ flowID, flowVersion }: Props) {
         onStateChange={handleStateChange}
         preSelectedAgentId={flowID || undefined}
         preSelectedAgentVersion={flowVersion ?? undefined}
+        preSelectedOrganizationId={tenantScope.organizationId}
+        preSelectedTeamId={tenantScope.teamId}
         showTrigger={false}
       />
     </>

@@ -209,6 +209,8 @@ class HandoffToExpertTool(BaseTool):
                 inner_session_id=inner.session_id,
                 parent_session_id=session.session_id,
                 target_name=target.name,
+                organization_id=target.organization_id,
+                team_id=target.team_id,
             ),
             # Identity for the ToolChain card, so it names the new owner.
             DelegatedExpertInfo(
@@ -331,6 +333,8 @@ def _transferred_response(
     inner_session_id: str,
     parent_session_id: str | None,
     target_name: str,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> SubSessionStatusResponse:
     """The terminal handoff contract: ownership moved, nothing to poll.
 
@@ -340,7 +344,7 @@ def _transferred_response(
     and the user never learns the receiving thread exists. ``elapsed_seconds``
     stays unset for the same reason: this tool waits for nothing.
     """
-    link = _sub_session_link(inner_session_id)
+    link = _sub_session_link(inner_session_id, organization_id, team_id)
     return SubSessionStatusResponse(
         message=(
             f"{target_name} owns this now and will report to the user "

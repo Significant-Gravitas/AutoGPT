@@ -9,11 +9,13 @@ import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/store
 export interface AgentTableProps {
   storeAgentSubmissions: StoreSubmission[];
   onViewSubmission: (submission: StoreSubmission) => void;
-  onDeleteSubmission: (submission_id: string) => void;
+  onDeleteSubmission: (submission: StoreSubmission) => void;
   onEditSubmission: (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
       graph_id: string;
+      organization_id: string | null;
+      team_id: string | null;
     },
   ) => void;
 }

@@ -7,7 +7,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
 import { useCreateTeamSelection } from "@/components/contextual/TeamPicker/useCreateTeamSelection";
-import { CreateSurface } from "@/components/contextual/TeamPicker/helpers";
+import {
+  CreateSurface,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useBuilderTenantScope } from "@/app/(platform)/build/hooks/useBuilderTenantScope";
 
 export const useCronSchedulerDialog = ({
   open,
@@ -26,6 +30,7 @@ export const useCronSchedulerDialog = ({
   const queryClient = useQueryClient();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
+  const tenantScope = useBuilderTenantScope();
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
@@ -40,7 +45,13 @@ export const useCronSchedulerDialog = ({
 
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
     usePostV1CreateExecutionSchedule({
-      request: teamRequestInit,
+      request: flowID
+        ? getTenantRequestInit(
+            tenantScope.organizationId,
+            tenantScope.teamId,
+            tenantScope.isReady,
+          )
+        : teamRequestInit,
       mutation: {
         onSuccess: (response) => {
           if (response.status === 200) {
@@ -70,7 +81,7 @@ export const useCronSchedulerDialog = ({
   }, [open, defaultCronExpression]);
 
   const handleCreateSchedule = async () => {
-    if (!isReady) return;
+    if (!(flowID ? tenantScope.isReady : isReady)) return;
     if (!cronExpression || cronExpression.trim() === "") {
       toast({
         variant: "destructive",
@@ -104,7 +115,7 @@ export const useCronSchedulerDialog = ({
     isCreatingSchedule,
     teamId,
     setTeamId,
-    hasTeams,
-    isReady,
+    hasTeams: !flowID && hasTeams,
+    isReady: flowID ? tenantScope.isReady : isReady,
   };
 };

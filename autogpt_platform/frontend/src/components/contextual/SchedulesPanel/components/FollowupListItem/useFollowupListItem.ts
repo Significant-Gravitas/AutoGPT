@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { describeFollowup, formatNextRunTitle } from "./helpers";
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
 
 interface Args {
   followup: CopilotTurnJobInfo;
@@ -19,7 +20,9 @@ export function useFollowupListItem({ followup }: Args) {
   const [isViewOpen, setIsViewOpen] = useState(false);
 
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
-    useDeleteV1DeleteExecutionSchedule();
+    useDeleteV1DeleteExecutionSchedule({
+      request: getTenantRequestInit(followup.organization_id, followup.team_id),
+    });
 
   const { messagePreview, sessionHref } = describeFollowup(followup);
 

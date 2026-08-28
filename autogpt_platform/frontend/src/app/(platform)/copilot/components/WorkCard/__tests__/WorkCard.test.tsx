@@ -11,6 +11,8 @@ const baseMeta: WorkRunMetadata = {
   status: "completed",
   outputType: "unknown",
   outputKey: null,
+  organizationId: "org-1",
+  teamId: "team-1",
 };
 
 describe("WorkCard", () => {

@@ -78,7 +78,9 @@ export function TeamMembersPreview({
           data-testid="team-members-hint"
         >
           {isPrivate
-            ? "Private — join this team to see its members."
+            ? team.join_policy === "PRIVATE"
+              ? "Private — ask a team admin to add you to see its members."
+              : "Join this team to see its members."
             : "Couldn't load members."}
         </Text>
       ) : members.length === 0 ? (

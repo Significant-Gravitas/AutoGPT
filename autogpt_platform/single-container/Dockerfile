@@ -69,6 +69,7 @@ FROM autogpt-backend AS single-container
 
 ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
+ARG NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING=false
 
 # The normal backend image stores generated Prisma engines under root's cache.
 # Appliance services run unprivileged, so relocate those inherited engines to a
@@ -254,6 +255,7 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PYTHONUNBUFFERED=1 \
     FORCE_FLAG_GRAPHITI_MEMORY=true \
     FORCE_FLAG_HIRE_EXPERTS=true \
+    FORCE_FLAG_CHAT_SHARING=${NEXT_PUBLIC_FORCE_FLAG_CHAT_SHARING} \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
 WORKDIR /app/autogpt_platform/backend

@@ -85,6 +85,7 @@ export async function fetchAndExportChat(
   id: string,
   title: string | null | undefined,
   fetchSession: typeof import("@/app/api/__generated__/endpoints/chat/chat").getV2GetSession,
+  request?: RequestInit,
 ): Promise<void> {
   const allMessages: SessionChatMessage[] = [];
   let beforeSequence: number | undefined = undefined;
@@ -96,7 +97,7 @@ export async function fetchAndExportChat(
     };
     if (beforeSequence !== undefined) opts.before_sequence = beforeSequence;
 
-    const response = await fetchSession(id, opts);
+    const response = await fetchSession(id, opts, request);
     if (response.status !== 200) {
       throw new Error(`Failed to fetch session (status: ${response.status})`);
     }

@@ -11,6 +11,8 @@ function makeChip(overrides: Partial<PulseChipData> = {}): PulseChipData {
     status: "running",
     priority: "running",
     shortMessage: "Doing work…",
+    organizationId: null,
+    teamId: null,
     ...overrides,
   };
 }
@@ -100,6 +102,8 @@ describe("PulseChips", () => {
     render(<PulseChips chips={[makeChip({ agentID: "agent-xyz" })]} />);
 
     const seeLink = screen.getByText("See").closest("a");
-    expect(seeLink?.getAttribute("href")).toBe("/library/agents/agent-xyz");
+    expect(seeLink?.getAttribute("href")).toBe(
+      "/library/agents/agent-xyz?organizationId=__personal__&teamId=__org_home__",
+    );
   });
 });

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
+import { shouldBypassImageOptimization } from "@/lib/utils/image";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Status } from "@/components/__legacy__/Status";
@@ -22,11 +23,13 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 export type AgentTableRowProps = {
   storeAgentSubmission: StoreSubmission;
   onViewSubmission: (submission: StoreSubmission) => void;
-  onDeleteSubmission: (submission_id: string) => void;
+  onDeleteSubmission: (submission: StoreSubmission) => void;
   onEditSubmission: (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
       graph_id: string;
+      organization_id: string | null;
+      team_id: string | null;
     },
   ) => void;
 };
@@ -75,6 +78,7 @@ export const AgentTableRow = ({
                 src={image_urls?.[0] ?? ""}
                 alt={agentName}
                 fill
+                unoptimized={shouldBypassImageOptimization(image_urls[0])}
                 style={{ objectFit: "cover" }}
               />
             </div>

@@ -271,12 +271,17 @@ describe("useCopilotUIStore", () => {
     });
 
     it("sets and clears a delete target", () => {
-      useCopilotUIStore
-        .getState()
-        .setSessionToDelete({ id: "abc", title: "Test" });
+      useCopilotUIStore.getState().setSessionToDelete({
+        id: "abc",
+        title: "Test",
+        organizationId: "org-a",
+        teamId: "team-a",
+      });
       expect(useCopilotUIStore.getState().sessionToDelete).toEqual({
         id: "abc",
         title: "Test",
+        organizationId: "org-a",
+        teamId: "team-a",
       });
 
       useCopilotUIStore.getState().setSessionToDelete(null);

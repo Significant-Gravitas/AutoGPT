@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { FILE_DRAG_MIME } from "./drag";
+import {
+  FILE_DRAG_MIME,
+  FILE_TENANT_MIME,
+  parseDraggedFileTenant,
+  type DraggedFileTenant,
+} from "./drag";
 import { FOLDER_STYLE } from "./folder-constants";
 import {
   Delete02Icon,
@@ -19,7 +24,7 @@ interface Props {
   onEdit: () => void;
   onDelete: () => void;
   onClick: () => void;
-  onFileDrop: (fileId: string, folderId: string) => void;
+  onFileDrop: (fileId: string, sourceScope: DraggedFileTenant) => void;
 }
 
 export function WorkspaceFolder({
@@ -53,7 +58,10 @@ export function WorkspaceFolder({
     e.preventDefault();
     setIsDragOver(false);
     const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-    if (fileId) onFileDrop(fileId, id);
+    const sourceScope = parseDraggedFileTenant(
+      e.dataTransfer.getData(FILE_TENANT_MIME),
+    );
+    if (fileId && sourceScope) onFileDrop(fileId, sourceScope);
   }
 
   return (

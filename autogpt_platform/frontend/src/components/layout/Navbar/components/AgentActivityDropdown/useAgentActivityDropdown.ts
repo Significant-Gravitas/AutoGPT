@@ -1,4 +1,7 @@
-import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  useGetV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 
 import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
@@ -10,10 +13,18 @@ import {
   categorizeExecutions,
   handleExecutionUpdate,
 } from "./helpers";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-  const { agentInfoMap } = useLibraryAgents();
+  const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
+  const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
+  const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
+  const { agents, agentInfoMap } = useLibraryAgents();
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -27,13 +38,26 @@ export function useAgentActivityDropdown() {
     isSuccess: executionsSuccess,
     error: executionsError,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: {
+      enabled: isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListAllExecutionsQueryKey(),
+        activeOrgID,
+        activeTeamID,
+      ),
+      select: okData,
+    },
+    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
   });
 
-  // Get all graph IDs from agentInfoMap
-  const graphIds = useMemo(
-    () => Array.from(agentInfoMap.keys()),
-    [agentInfoMap],
+  const graphScopes = useMemo(
+    () =>
+      agents.map((agent) => ({
+        graphId: agent.graph_id,
+        organizationId: agent.organization_id ?? null,
+        teamId: agent.team_id ?? null,
+      })),
+    [agents],
   );
 
   // Handle real-time execution updates
@@ -68,8 +92,8 @@ export function useAgentActivityDropdown() {
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
-    graphIds: graphIds.length > 0 ? graphIds : undefined,
-    enabled: graphIds.length > 0,
+    graphScopes: graphScopes.length > 0 ? graphScopes : undefined,
+    enabled: graphScopes.length > 0,
     onExecutionUpdate: handleExecutionEvent,
   });
 

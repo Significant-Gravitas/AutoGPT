@@ -29,6 +29,7 @@ from backend.util.exceptions import (
     NotFoundError,
     WebhookRegistrationError,
 )
+from backend.util.tenancy_urls import library_agent_path
 
 from .base import BaseTool
 from .models import (
@@ -247,7 +248,12 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             )
 
         return self._build_success_response(
-            preset, trigger_node, library_agent.id, session_id
+            preset,
+            trigger_node,
+            library_agent.id,
+            library_agent.organization_id,
+            library_agent.team_id,
+            session_id,
         )
 
     async def _resolve_graph(
@@ -307,6 +313,7 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 graph_version,
                 organization_id=session.organization_id,
                 team_id_restriction=session.team_id,
+                exact_scope=True,
             )
             if scoped_library_agent and (
                 scoped_library_agent.organization_id,
@@ -492,6 +499,8 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         preset: LibraryAgentPreset,
         trigger_node: Node,
         library_agent_id: str,
+        organization_id: str | None,
+        team_id: str | None,
         session_id: str | None,
     ) -> TriggerSetupResponse:
         """Build the success response, surfacing the ingress URL when manual."""
@@ -517,7 +526,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             session_id=session_id,
             preset_id=preset.id,
             library_agent_id=library_agent_id,
-            library_agent_link=f"/library/agents/{library_agent_id}",
+            library_agent_link=library_agent_path(
+                library_agent_id,
+                organization_id,
+                team_id,
+            ),
             name=preset.name,
             is_active=preset.is_active,
             provider=provider or "",

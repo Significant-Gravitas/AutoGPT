@@ -4,6 +4,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { getCopilotExpertHref } from "@/services/org-team/builder";
 import {
   failedAttachmentMessage,
   toRaiseAttachments,
@@ -56,7 +57,12 @@ export function useRaiseSubmission() {
       // kickoff=1 has the expert open the thread itself: introduce who it is,
       // say what it can take on, and start or ask for its first job.
       router.push(
-        `/copilot?expertId=${encodeURIComponent(result.expert.id)}&kickoff=1`,
+        getCopilotExpertHref(
+          result.expert.id,
+          result.expert.organization_id ?? null,
+          result.expert.team_id ?? null,
+          true,
+        ),
       );
     } catch (error) {
       submitLatch.current = false;

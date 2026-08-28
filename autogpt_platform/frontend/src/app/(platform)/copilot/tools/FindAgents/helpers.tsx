@@ -11,6 +11,7 @@ import {
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getLibraryAgentHref } from "@/services/org-team/builder";
 
 export interface FindAgentInput {
   query: string;
@@ -143,9 +144,13 @@ export function getAnimationText(part: {
   }
 }
 
-export function getAgentHref(agent: AgentInfo): string | null {
+export function getAgentHref(
+  agent: AgentInfo,
+  organizationId: string | null = null,
+  teamId: string | null = null,
+): string | null {
   if (agent.source === "library") {
-    return `/library/agents/${encodeURIComponent(agent.id)}`;
+    return getLibraryAgentHref(agent.id, organizationId, teamId);
   }
 
   const [creator, slug, ...rest] = agent.id.split("/");

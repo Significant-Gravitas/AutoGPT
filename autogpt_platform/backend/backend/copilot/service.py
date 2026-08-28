@@ -40,10 +40,10 @@ from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .model import (
     ChatMessage,
     ChatSessionInfo,
+    cache_chat_session,
     get_chat_session,
     get_chat_session_metadata,
     update_session_title,
-    upsert_chat_session,
 )
 from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
@@ -1158,6 +1158,10 @@ async def assign_user_to_session(
             f"but it already belongs to user {session.user_id}"
         )
         raise NotAuthorizedError(f"Not authorized to claim session {session_id}")
+    await chat_db().claim_chat_session(session_id, user_id)
     session.user_id = user_id
-    session = await upsert_chat_session(session)
+    try:
+        await cache_chat_session(session)
+    except Exception as e:
+        logger.warning("Failed to refresh claimed session cache %s: %s", session_id, e)
     return session

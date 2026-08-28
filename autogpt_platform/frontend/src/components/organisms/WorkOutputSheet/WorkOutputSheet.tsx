@@ -1,6 +1,9 @@
 "use client";
 
-import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1GetExecutionDetailsQueryKey,
+  useGetV1GetExecutionDetails,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
@@ -26,6 +29,11 @@ import {
   toCsv,
   type OutputType,
 } from "./helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
 
 interface Props {
   open: boolean;
@@ -35,6 +43,8 @@ interface Props {
   outputKey?: string | null;
   graphId: string;
   executionId: string;
+  organizationId?: string | null;
+  teamId?: string | null;
   runLink?: string | null;
 }
 
@@ -46,14 +56,30 @@ export function WorkOutputSheet({
   outputKey,
   graphId,
   executionId,
+  organizationId: requestedOrganizationId,
+  teamId: requestedTeamId,
   runLink,
 }: Props) {
   const shouldFetch = open && outputType !== "unknown";
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const activeTeamID = useOrgTeamStore((state) => state.activeTeamID);
+  const isTenantReady = useOrgTeamStore((state) => state.isLoaded);
+  const organizationId =
+    requestedOrganizationId !== undefined
+      ? requestedOrganizationId
+      : activeOrgID;
+  const teamId = requestedTeamId !== undefined ? requestedTeamId : activeTeamID;
   const detailsQuery = useGetV1GetExecutionDetails(graphId, executionId, {
     query: {
       select: (res) => okData(res) ?? null,
-      enabled: shouldFetch,
+      enabled: shouldFetch && isTenantReady,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1GetExecutionDetailsQueryKey(graphId, executionId),
+        organizationId,
+        teamId,
+      ),
     },
+    request: getTenantRequestInit(organizationId, teamId, isTenantReady),
   });
 
   const outputs = detailsQuery.data?.outputs ?? null;
