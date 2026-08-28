@@ -160,6 +160,16 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Reporting to AutoPilot",
     done: "Reported to AutoPilot",
   },
+  request_manager_handoff: {
+    category: "team",
+    running: "Asking AutoPilot to route this",
+    done: "AutoPilot owns the routing",
+  },
+  update_project_context: {
+    category: "team",
+    running: "Updating the project brief",
+    done: "Project brief updated",
+  },
   install_expert_workflow: {
     category: "agent-build",
     running: "Installing expert workflow",

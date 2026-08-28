@@ -101,6 +101,7 @@ class TestFlaggedExpertOperatingPolicies:
         assert "own the founder's overall outcome" in result
         assert "Delegate independent work concurrently" in result
         assert "founder must never have to coordinate, poll, or nudge" in result
+        assert "`update_project_context`" in result
         assert "Expert employee operating policy" not in result
 
     def test_expert_receives_employee_policy_without_staffing_permission(self):
@@ -112,6 +113,7 @@ class TestFlaggedExpertOperatingPolicies:
         assert "Expert employee operating policy" in result
         assert "report to AutoPilot" in result
         assert "Do not hire, raise, edit, or otherwise staff teammates" in result
+        assert "`request_manager_handoff`" in result
         assert "Head of AI operating policy" not in result
 
     def test_manager_policy_limits_questions_and_keeps_other_work_moving(self):

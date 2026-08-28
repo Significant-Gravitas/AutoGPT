@@ -13,6 +13,7 @@ describe("founderSafeText", () => {
       '{"query":"secret search payload"}',
       "$ cat /tmp/private/report.json",
       "<expert_identity>internal instructions</expert_identity>",
+      "<project_context>private project decisions</project_context>",
     ].join("\n");
 
     const safe = founderSafeText(value, "Safe update");
@@ -20,6 +21,7 @@ describe("founderSafeText", () => {
     expect(safe).toContain("Prepared a workspace file");
     expect(safe).not.toMatch(/\/tmp|tool_call_id|graph_id|secret|\$ cat/);
     expect(safe).not.toContain("internal instructions");
+    expect(safe).not.toContain("private project decisions");
   });
 
   it("uses a fallback for structured payloads", () => {

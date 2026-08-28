@@ -131,6 +131,8 @@ class ResponseType(str, Enum):
     EXPERT_CHANGE_BATCH_APPLIED = "expert_change_batch_applied"
     EXPERT_WORKFLOW_INSTALLED = "expert_workflow_installed"
     TEAM_ROSTER = "team_roster"
+    PROJECT_CONTEXT_UPDATED = "project_context_updated"
+    MANAGER_HANDOFF_REQUESTED = "manager_handoff_requested"
 
 
 # Base response model
@@ -696,6 +698,21 @@ class ExpertWorkflowInstalledResponse(ToolResponseBase):
     schedule_status: Literal["not_requested", "scheduled", "needs_setup"] = (
         "not_requested"
     )
+
+
+class ProjectContextUpdatedResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.PROJECT_CONTEXT_UPDATED
+    title: str
+    phase: str
+    artifact_names: list[str] = Field(default_factory=list)
+    decision_count: int = 0
+
+
+class ManagerHandoffRequestedResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.MANAGER_HANDOFF_REQUESTED
+    status: Literal["queued", "running", "completed"]
+    manager_session_id: str
+    manager_session_link: str | None = None
 
 
 # Agent generation models

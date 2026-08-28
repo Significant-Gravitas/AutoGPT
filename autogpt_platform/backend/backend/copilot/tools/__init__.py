@@ -56,6 +56,7 @@ from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
 from .report_delegated_result import ReportDelegatedResultTool
+from .request_manager_handoff import RequestManagerHandoffTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -66,6 +67,7 @@ from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .todo_write import TodoWriteTool
 from .update_expert import UpdateExpertTool
+from .update_project_context import UpdateProjectContextTool
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -178,6 +180,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "update_expert": UpdateExpertTool(),
     "confirm_expert_change": ConfirmExpertChangeTool(),
     "handoff_to_expert": HandoffToExpertTool(),
+    "request_manager_handoff": RequestManagerHandoffTool(),
+    "update_project_context": UpdateProjectContextTool(),
 }
 
 # Export individual tool instances for backwards compatibility
@@ -206,6 +210,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # an expert identity to hand it off from.
     "handoff_to_expert": "experts",
     "report_delegated_result": "experts",
+    "request_manager_handoff": "experts",
     # Staffing the team is the user's call, made in the Autopilot chat — an
     # expert must not hire its own teammates.  The engines disable this
     # group whenever the session HAS an expert_id (the opposite gate to
@@ -214,6 +219,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "raise_expert": "expert_admin",
     "update_expert": "expert_admin",
     "confirm_expert_change": "expert_admin",
+    "update_project_context": "expert_admin",
     # Delegation works from either side of ``session.expert_id`` (AutoPilot
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.

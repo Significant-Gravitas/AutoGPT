@@ -250,5 +250,11 @@ describe("getCatalogLabel", () => {
     expect(
       getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
     ).toBe('Handed over: "own it"');
+    expect(
+      getCatalogLabel("request_manager_handoff", {}, "running")?.text,
+    ).toBe("Asking AutoPilot to route this…");
+    expect(getCatalogLabel("update_project_context", {}, "done")?.text).toBe(
+      "Project brief updated",
+    );
   });
 });

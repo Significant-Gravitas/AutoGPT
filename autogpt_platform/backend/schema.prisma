@@ -147,6 +147,7 @@ model User {
   OwnedExperts              Expert[]
   ExpertPods                ExpertPod[]
   ExpertWorkItems           ExpertWorkItem[]
+  ProjectContexts           ProjectContext[]
   ExpertLearnedNotes        ExpertLearnedNote[]
   ExpertWorkflowValidations ExpertWorkflowValidation[]
   ExpertWorkflowRunStates   ExpertWorkflowRunState[]
@@ -526,10 +527,11 @@ model ChatSession {
   // "execution not shared" state).
   autoShareExecutions Boolean @default(false)
 
-  SharedChatFiles     SharedChatFile[]
-  ChatLinkedShares    ChatLinkedShare[]
-  ManagedExpertWork   ExpertWorkItem[]  @relation("ManagedExpertWork")
-  DelegatedExpertWork ExpertWorkItem[]  @relation("DelegatedExpertWork")
+  SharedChatFiles       SharedChatFile[]
+  ChatLinkedShares      ChatLinkedShare[]
+  ManagedExpertWork     ExpertWorkItem[]  @relation("ManagedExpertWork")
+  DelegatedExpertWork   ExpertWorkItem[]  @relation("DelegatedExpertWork")
+  ManagedProjectContext ProjectContext?   @relation("ManagedProjectContext")
 
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
@@ -1226,6 +1228,28 @@ model ExpertWorkItem {
   @@index([expertId, status, updatedAt])
   @@index([managerSessionId, updatedAt])
   @@index([delegatedSessionId, updatedAt])
+}
+
+model ProjectContext {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  ownerUserId String
+  OwnerUser   User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  managerSessionId String      @unique
+  ManagerSession   ChatSession @relation("ManagedProjectContext", fields: [managerSessionId], references: [id], onDelete: Cascade)
+
+  title       String
+  summary     String   @default("")
+  phase       String   @default("")
+  decisions   String[] @default([])
+  constraints String[] @default([])
+  artifacts   Json     @default("[]")
+  active      Boolean  @default(true)
+
+  @@index([ownerUserId, active, updatedAt])
 }
 
 // Audit log for expert schedule pauses (budget breach, archive). "All

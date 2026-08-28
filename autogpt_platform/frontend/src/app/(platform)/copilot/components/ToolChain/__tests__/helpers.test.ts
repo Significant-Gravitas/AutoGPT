@@ -270,6 +270,30 @@ describe("toFounderRow", () => {
     expect(row?.text).not.toContain("/tmp");
     expect(row?.text).not.toContain("raw instructions");
   });
+
+  it("shows project and manager routing as semantic activity", () => {
+    const project = toFounderRow({
+      key: "project",
+      category: "team",
+      text: "update_project_context raw payload",
+      tool: "update_project_context",
+      input: { decisions: ["private raw field"] },
+      state: "done",
+    });
+    const routing = toFounderRow({
+      key: "routing",
+      category: "team",
+      text: "request_manager_handoff raw payload",
+      tool: "request_manager_handoff",
+      input: { reason: "private raw reason" },
+      state: "running",
+    });
+
+    expect(project?.text).toBe("Project brief updated");
+    expect(project?.text).not.toContain("private raw field");
+    expect(routing?.text).toBe("Asking AutoPilot to route this");
+    expect(routing?.text).not.toContain("private raw reason");
+  });
 });
 
 describe("isLiftedSetupRow", () => {

@@ -23,6 +23,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   get_sub_session_result: "Sub-AutoPilot result",
   delegate_to_expert: "Teammate delegation",
   handoff_to_expert: "Teammate hand-off",
+  request_manager_handoff: "AutoPilot routing",
+  update_project_context: "Project brief",
   hire_expert: "Expert hire preview",
   raise_expert: "Expert raise preview",
   update_expert: "Expert update",

@@ -355,6 +355,12 @@ export function toFounderRow(row: ChainRow): ChainRow | null {
         : "Workflow installed";
   } else if (row.tool === "report_delegated_result") {
     text = running ? "Reporting progress to AutoPilot" : "Progress reported";
+  } else if (row.tool === "request_manager_handoff") {
+    text = running
+      ? "Asking AutoPilot to route this"
+      : "AutoPilot owns routing";
+  } else if (row.tool === "update_project_context") {
+    text = running ? "Updating the project brief" : "Project brief updated";
   } else {
     const labels = FOUNDER_ACTIVITY[row.category];
     text = running ? labels[0] : labels[1];

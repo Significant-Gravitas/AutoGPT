@@ -27,9 +27,9 @@ _MAX_MIME_TYPE_CHARS = 100
 _INTERNAL_CONTEXT_BLOCK = re.compile(
     r"<(?:user_context|memory_context|env_context|budget_context|"
     r"session_context|available_skills|expert_identity|expert_workflows|"
-    r"team_context)\b[^>]*>[\s\S]*?</(?:user_context|memory_context|"
+    r"team_context|project_context)\b[^>]*>[\s\S]*?</(?:user_context|memory_context|"
     r"env_context|budget_context|session_context|available_skills|"
-    r"expert_identity|expert_workflows|team_context)>",
+    r"expert_identity|expert_workflows|team_context|project_context)>",
     re.IGNORECASE,
 )
 _ABSOLUTE_PATH = re.compile(
@@ -189,6 +189,7 @@ def delegated_response_from_work_item(
                 DelegatedArtifact(
                     name=_clip(artifact.name, _MAX_ARTIFACT_NAME_CHARS),
                     read_path=_clip(artifact.uri, _MAX_ARTIFACT_PATH_CHARS),
+                    uri=_clip(artifact.uri, _MAX_ARTIFACT_PATH_CHARS),
                     mime_type=_clip(
                         artifact.mime_type or "application/octet-stream",
                         _MAX_MIME_TYPE_CHARS,

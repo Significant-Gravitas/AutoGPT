@@ -341,6 +341,13 @@ _TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
 _TEAM_CONTEXT_PREFIX_RE = re.compile(
     r"^<team_context>.*?</team_context>\n\n", re.DOTALL
 )
+_PROJECT_CONTEXT_ANYWHERE_RE = re.compile(
+    r"<project_context>.*</project_context>\s*", re.DOTALL
+)
+_PROJECT_CONTEXT_LONE_TAG_RE = re.compile(r"</?project_context>", re.IGNORECASE)
+_PROJECT_CONTEXT_PREFIX_RE = re.compile(
+    r"^<project_context>.*?</project_context>\n\n", re.DOTALL
+)
 
 
 def _sanitize_user_context_field(value: str) -> str:
@@ -422,7 +429,9 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
-    return _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _PROJECT_CONTEXT_ANYWHERE_RE.sub("", without_expert)
+    return _PROJECT_CONTEXT_LONE_TAG_RE.sub("", without_expert)
 
 
 def sanitize_user_supplied_context(message: str) -> str:
@@ -478,6 +487,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
         result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
         result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
+        result = _PROJECT_CONTEXT_PREFIX_RE.sub("", result)
     return result
 
 
@@ -710,7 +720,7 @@ async def inject_user_context(
     # like the other trusted blocks; degrades to "" on any lookup failure so
     # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
     # below the cached <available_skills> prefix.
-    expert_ctx = await build_expert_context(user_id, expert_id)
+    expert_ctx = await build_expert_context(user_id, expert_id, session_id=session_id)
     if expert_ctx:
         final_message = expert_ctx + final_message
     # Prepend Graphiti warm context as a <memory_context> block AFTER

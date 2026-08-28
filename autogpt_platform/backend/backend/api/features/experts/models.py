@@ -28,6 +28,9 @@ ExpertWorkStatus = Literal[
     "failed",
 ]
 ExpertWorkConfidence = Literal["verified", "likely", "unknown", "disqualified"]
+ProjectArtifactVerification = Literal[
+    "verified", "likely", "unknown", "disqualified"
+]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
@@ -256,6 +259,37 @@ class ExpertWorkItem(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     link: str
+
+
+class ProjectContextArtifact(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    uri: str = Field(min_length=1, max_length=2_000)
+    path: str = Field(min_length=1, max_length=2_000)
+    mime_type: str | None = Field(default=None, max_length=255)
+    purpose: str = Field(default="", max_length=500)
+    verification: ProjectArtifactVerification = "unknown"
+
+
+class ProjectWorkOwner(BaseModel):
+    expert_name: str
+    expert_role: str
+    task_title: str
+    project_phase: str
+    status: ExpertWorkStatus
+
+
+class ProjectContext(BaseModel):
+    id: str
+    manager_session_id: str
+    title: str
+    summary: str
+    phase: str
+    decisions: list[str]
+    constraints: list[str]
+    artifacts: list[ProjectContextArtifact]
+    active: bool
+    updated_at: datetime
+    current_work: list[ProjectWorkOwner] = Field(default_factory=list)
 
 
 class ExpertDetachPreview(BaseModel):

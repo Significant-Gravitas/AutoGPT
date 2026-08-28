@@ -1,5 +1,5 @@
 const INTERNAL_BLOCK =
-  /<(?:user_context|memory_context|env_context|budget_context|session_context|available_skills|expert_identity|expert_workflows|team_context)\b[^>]*>[\s\S]*?<\/(?:user_context|memory_context|env_context|budget_context|session_context|available_skills|expert_identity|expert_workflows|team_context)>/gi;
+  /<(?:user_context|memory_context|env_context|budget_context|session_context|available_skills|expert_identity|expert_workflows|team_context|project_context)\b[^>]*>[\s\S]*?<\/(?:user_context|memory_context|env_context|budget_context|session_context|available_skills|expert_identity|expert_workflows|team_context|project_context)>/gi;
 const CODE_FENCE = /```[\s\S]*?```/g;
 const ABSOLUTE_PATH =
   /(?:[a-z]:\\(?:users|temp|windows|workspace)\\|\/(?:Users|home|tmp|private|var|opt|workspace|mnt)\/)[^\s,;)]+/gi;
