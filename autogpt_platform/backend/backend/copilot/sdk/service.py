@@ -1387,11 +1387,18 @@ _COMPACTION_HEADROOM_TOKENS: int = 20_000
 def _compaction_target_tokens(model: str) -> int:
     """Compaction target consistent with the CLI's autocompact threshold.
 
-    Mirrors the bundled CLI's ``i6_()`` formula for autocompact:
+    Mirrors the bundled CLI's formula for autocompact:
     ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
     so post-compaction context sits comfortably below the CLI's trigger and
     a follow-up assistant message doesn't immediately re-trigger.
     Floors at 10K to preserve at least some history budget.
+
+    Deliberately a *different* window from the one the CLI subprocess is
+    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
+    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
+    this path feeds our own estimate-based compressor, which needs that
+    margin.  The 20K headroom absorbs the max-output reserve the CLI also
+    subtracts and this formula does not.
     """
     from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
 
@@ -2348,8 +2355,8 @@ def _build_system_prompt_value(
     prompt cache.  Our custom *system_prompt* is appended after the preset.
 
     Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
-    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.248 at
+    ``claude-agent-sdk >= 0.2.146``, so the pin in ``pyproject.toml`` is
     the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
@@ -4874,8 +4881,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # same static prefix and hit the cross-user prompt cache.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
-        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
-        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # is combined with --resume).  claude-agent-sdk >= 0.2.146 bundles
+        # CLI 2.1.248, so the pin in pyproject.toml is sufficient — no
         # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,

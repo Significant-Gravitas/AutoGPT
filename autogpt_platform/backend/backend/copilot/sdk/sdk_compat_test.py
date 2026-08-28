@@ -271,6 +271,14 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           cache reads on every resumed SDK turn.  Still requires
         #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.  Verified
         #           OpenRouter-safe via cli_openrouter_compat_test.py.
+        "2.1.248",  # claude-agent-sdk 0.2.146 -- context-management is still
+        #           an experimental beta here, still stripped by
+        #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.  The autocompact
+        #           threshold formula is unchanged from 2.1.116, but window
+        #           *resolution* gained model-table / clientdata / experiment
+        #           branches, so ``build_sdk_env`` now pins the window
+        #           explicitly rather than inheriting the CLI's guess — see
+        #           ``TestContextWindowPin`` in ``env_test.py``.
     }
 )
 

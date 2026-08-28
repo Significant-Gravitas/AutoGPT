@@ -435,6 +435,27 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="The context window the SDK subprocess is held to, in "
+        "tokens — the single place that decides it, for every model. Sets "
+        "``CLAUDE_CODE_AUTO_COMPACT_WINDOW``, which is the highest-precedence "
+        "input to the CLI's window resolution, so the compaction trigger stops "
+        "depending on which model table, beta, or server-side experiment the "
+        "bundled CLI happens to ship with. The trigger lands at "
+        "``min(effective * pct/100, effective - 13K)`` where ``effective`` is "
+        "this value minus a ≤20K max-output reserve; at the 200K default and "
+        "``claude_agent_autocompact_pct_override=50`` that is ~90K. "
+        "100K/1M are the CLI's own clamps. Raising this above 200,000 also "
+        "drops ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` (which would otherwise cap "
+        "the model window at 200K and silently swallow the raise) — and only "
+        "pays off where the route actually serves 1M: direct Anthropic on a "
+        "native-1M model, or a ``[1m]``-suffixed slug. OpenRouter routes stay "
+        "at the provider's own ceiling regardless.",
+    )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
         ge=0,

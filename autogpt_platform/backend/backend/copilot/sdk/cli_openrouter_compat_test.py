@@ -458,18 +458,21 @@ def _assert_no_forbidden_patterns(
 @pytest.mark.asyncio
 @pytest.mark.xfail(
     reason="CLI 2.1.97 (SDK 0.1.58) sends context-management beta without "
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1. This is expected — the env "
-    "var guard in test_disable_experimental_betas_env_var_strips_headers "
-    "is the real regression test.",
-    strict=True,
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1; CLI 2.1.248 additionally "
+    "gates experimental betas on the provider, so a non-Anthropic base URL "
+    "may suppress them on its own. Non-strict because either outcome is "
+    "informational — the env var guard in "
+    "test_disable_experimental_betas_env_var_strips_headers is the real "
+    "regression test.",
+    strict=False,
 )
 async def test_bare_cli_does_not_send_openrouter_incompatible_features():
     """Bare CLI reproduction (no env var workaround).
 
     Documents whether the bundled CLI sends OpenRouter-incompatible
     features without the CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS env var.
-    On SDK 0.1.58 (CLI 2.1.97) this is expected to fail — the env var
-    test above is the actual regression guard.
+    The env var test below is the actual regression guard; this one only
+    records what the current bundled CLI does on its own.
     """
     returncode, _stdout, stderr, captured = await _run_reproduction()
     _assert_no_forbidden_patterns(captured, returncode, stderr)

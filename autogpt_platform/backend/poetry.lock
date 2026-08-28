@@ -983,27 +983,29 @@ files = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.1.64"
+version = "0.2.146"
 description = "Python SDK for Claude Code"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "claude_agent_sdk-0.1.64-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4cf47a9e40c0a683a05afff4fac1e3d5ea7965b1e9f72a8e266c8d2efbf65904"},
-    {file = "claude_agent_sdk-0.1.64-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:7fe765c6482c74bc6b0b4491ad3bddd1349c25f4cdf4483191c68ea9c1336825"},
-    {file = "claude_agent_sdk-0.1.64-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:605eebf46e7590e4f878572c2743954fba3f3530dfd99e10ff3b8b41a9fee757"},
-    {file = "claude_agent_sdk-0.1.64-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:bbb1373ee0b4494e2db24aa10d312d22b86895b4b8f18eb5b58f99f14d827237"},
-    {file = "claude_agent_sdk-0.1.64-py3-none-win_amd64.whl", hash = "sha256:453fa251e2a4aeed580c72d4c7b2cb98fc8d8d26012798126f5cb11a9829cd71"},
-    {file = "claude_agent_sdk-0.1.64.tar.gz", hash = "sha256:147e513cb45095b57c37d74b8d01dd41b5f3ec7f70e408edce43a6590159c27d"},
+    {file = "claude_agent_sdk-0.2.146-py3-none-macosx_11_0_arm64.whl", hash = "sha256:7bcb91dd34c2e0e5b4f006648d457bbfba9aa1e44cf2e5d02abb441dcbbaff98"},
+    {file = "claude_agent_sdk-0.2.146-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:9285b3dd900376b045a06d2d6f5e19bfd96a3f6cb88d21166bb840aff14ee505"},
+    {file = "claude_agent_sdk-0.2.146-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:ad536806e6c6fc1972ae3950b1bb171f1494e6f47002c24dbc68f19af1c34997"},
+    {file = "claude_agent_sdk-0.2.146-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:1f2bae0759f3962be2714c786c1a6961824c5ce3d4b7f44f0828191bd44ccebe"},
+    {file = "claude_agent_sdk-0.2.146-py3-none-win_amd64.whl", hash = "sha256:dc2c4773dc02492b52c74f957a059ecbc0aec7063bd1a16c039b78613194b3cf"},
+    {file = "claude_agent_sdk-0.2.146.tar.gz", hash = "sha256:9e402548466018421cfd0725a7601e14d9e3e879276a6a4a877c5a2ff6633546"},
 ]
 
 [package.dependencies]
 anyio = ">=4.0.0"
-mcp = ">=0.1.0"
+jsonschema = ">=4.20.0"
+mcp = ">=1.23.0,<3.0.0"
+sniffio = ">=1.0.0"
 typing-extensions = {version = ">=4.0.0", markers = "python_version < \"3.11\""}
 
 [package.extras]
-dev = ["anyio[trio] (>=4.0.0)", "mypy (>=1.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.20.0)", "pytest-cov (>=4.0.0)", "ruff (>=0.1.0)"]
+dev = ["anyio[trio] (>=4.0.0)", "mypy (>=1.0.0)", "pytest (>=7.0.0)", "pytest-cov (>=4.0.0)", "ruff (>=0.1.0)"]
 examples = ["asyncpg (>=0.27.0)", "boto3 (>=1.28.0)", "fakeredis (>=2.20.0)", "moto[s3] (>=5.0.0)", "redis (>=4.2.0)"]
 otel = ["opentelemetry-api (>=1.20.0)"]
 
@@ -8659,4 +8661,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "e8bab234faec1b6b792df40152f60681295cdfaa7aed30344a4b94b4df7775c9"
+content-hash = "d3cd47169512d58b1c655129b6fb557bffab3837499c3c87a646c68b63660e0a"
