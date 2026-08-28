@@ -80,6 +80,23 @@ test("every queued review is visible without expanding anything", () => {
   expect(values.join("\n")).toContain("second@y.com");
 });
 
+test("rejecting a single-review group submits only that review as rejected", async () => {
+  const captured = captureReviewAction();
+
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ node_exec_id: "ne-1", node_id: "n-1" })]}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+  await waitFor(() => expect(captured.body).toBeDefined());
+  expect(captured.body.reviews).toEqual([
+    expect.objectContaining({ node_exec_id: "ne-1", approved: false }),
+  ]);
+});
+
 test("a collapsed group offers no way to decide it", async () => {
   render(
     <PendingReviewsList

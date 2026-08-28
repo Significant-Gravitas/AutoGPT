@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { fireEvent } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { PendingReviewCard } from "../PendingReviewCard";
@@ -50,6 +51,32 @@ test("renders a bare payload unchanged", () => {
   const value = (screen.getByRole("textbox") as HTMLTextAreaElement).value;
   expect(value).toContain("x@y.com");
   expect(value).toContain("Invoice");
+});
+
+test("editing the payload reports the full edited object back, not just one key", () => {
+  const onReviewDataChange = vi.fn();
+
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: { to: "x@y.com", subject: "Invoice" } })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+  fireEvent.change(textarea, {
+    target: {
+      value: JSON.stringify({ to: "x@y.com", subject: "Updated invoice" }),
+    },
+  });
+
+  expect(onReviewDataChange).toHaveBeenCalledTimes(1);
+  const [nodeExecId, data] = onReviewDataChange.mock.calls[0];
+  expect(nodeExecId).toBe("ne-1");
+  expect(JSON.parse(data)).toEqual({
+    to: "x@y.com",
+    subject: "Updated invoice",
+  });
 });
 
 test("a non-editable payload is displayed in full", () => {
