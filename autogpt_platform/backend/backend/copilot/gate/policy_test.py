@@ -7,7 +7,6 @@ reads as "would this still be safe if the classifier always said allow".
 from backend.copilot.gate.policy import (
     ALWAYS_ASK_TOOLS,
     DEFER_TOOLS,
-    EFFECTFUL_TOOLS,
     MCP_FILE_READ_TOOLS,
     MCP_FILE_WRITE_TOOLS,
     READ_TOOLS,
@@ -117,8 +116,38 @@ def test_taint_sources_cover_every_ingestion_path():
         assert tool in TAINT_SOURCES
 
 
-def test_effectful_tools_all_escalate_or_are_gated_another_way():
-    for tool in EFFECTFUL_TOOLS:
+# Hand-kept ledger of tools whose effects outlive the conversation. Listed
+# here rather than in policy.py because its only job is the completeness
+# check below — a new effectful tool left at plain JUDGED should fail.
+_EFFECTFUL = frozenset(
+    {
+        "bash_exec",
+        "browser_act",
+        "continue_run_block",
+        "create_agent",
+        "customize_agent",
+        "delete_workspace_file",
+        "edit_agent",
+        "move_agents_to_folder",
+        "post_to_chat_platform",
+        "run_agent",
+        "run_block",
+        "run_mcp_tool",
+        "run_sub_session",
+        "schedule_followup",
+        "setup_agent_webhook_trigger",
+        "store_skill",
+        "update_preset",
+        "write_workspace_file",
+    }
+)
+
+
+def test_every_effectful_tool_is_escalated_or_gated_another_way():
+    """Plain JUDGED is not enough for a tool whose effects outlive the chat:
+    it must escalate once the session has read untrusted content, be
+    always-ask, or defer to a gate that sees more than a classifier can."""
+    for tool in _EFFECTFUL:
         assert (
             tool in TAINT_ESCALATES
             or tier_for(tool) is Tier.ALWAYS_ASK
@@ -127,4 +156,4 @@ def test_effectful_tools_all_escalate_or_are_gated_another_way():
 
 
 def test_read_tier_has_no_effectful_members():
-    assert not READ_TOOLS & EFFECTFUL_TOOLS
+    assert not READ_TOOLS & _EFFECTFUL
