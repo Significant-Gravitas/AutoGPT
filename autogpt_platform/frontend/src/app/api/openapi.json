@@ -20758,7 +20758,8 @@
             "type": "array",
             "title": "Agents"
           },
-          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" },
+          "recent_work": { "$ref": "#/components/schemas/HomeRecentWork" }
         },
         "type": "object",
         "required": [
@@ -20787,6 +20788,146 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeRecentWork": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/HomeRecentWorkGroup"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "HomeRecentWork"
+      },
+      "HomeRecentWorkGroup": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/HomeWorkActor"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "latest_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HomeRecentWorkItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "more_count": {
+            "type": "integer",
+            "title": "More Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["actor", "latest_at", "items"],
+        "title": "HomeRecentWorkGroup"
+      },
+      "HomeRecentWorkItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["file", "integration", "schedule"],
+            "title": "Category"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          }
+        },
+        "type": "object",
+        "required": ["id", "category", "event_type", "title", "occurred_at"],
+        "title": "HomeRecentWorkItem"
       },
       "HomeTeamSummary": {
         "properties": {
@@ -20867,6 +21008,32 @@
           "daily"
         ],
         "title": "HomeWeekSummary"
+      },
+      "HomeWorkActor": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["expert", "autopilot", "agent"],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "expert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HomeExpert"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["kind", "name"],
+        "title": "HomeWorkActor"
       },
       "HostScopedCredentials": {
         "properties": {

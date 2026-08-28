@@ -11,6 +11,7 @@ import { HomeHeader } from "./components/HomeHeader/HomeHeader";
 import { MorningBriefing } from "./components/MorningBriefing/MorningBriefing";
 import { NeedsYou } from "./components/NeedsYou/NeedsYou";
 import { NowNext } from "./components/NowNext/NowNext";
+import { RecentWork } from "./components/RecentWork/RecentWork";
 import { getTimeOfDayGreeting } from "./helpers";
 import { useHomePage } from "./useHomePage";
 
@@ -57,6 +58,7 @@ export default function HomePage() {
           <div className="flex min-w-0 flex-col gap-7 xl:col-span-8">
             <NeedsYou dashboard={dashboard} />
             <MorningBriefing dashboard={dashboard} />
+            <RecentWork dashboard={dashboard} />
           </div>
           <div className="flex min-w-0 flex-col gap-7 xl:col-span-4">
             <AgentTeam dashboard={dashboard} />
