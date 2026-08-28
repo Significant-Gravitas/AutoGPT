@@ -28,9 +28,7 @@ ExpertWorkStatus = Literal[
     "failed",
 ]
 ExpertWorkConfidence = Literal["verified", "likely", "unknown", "disqualified"]
-ProjectArtifactVerification = Literal[
-    "verified", "likely", "unknown", "disqualified"
-]
+ProjectArtifactVerification = Literal["verified", "likely", "unknown", "disqualified"]
 
 AI_DISCLOSURE_RULE = "The expert discloses that it is AI when acting externally."
 EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."

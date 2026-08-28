@@ -33,6 +33,7 @@ from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
 )
+from backend.copilot.autonomy_budget import bounded_agent_rounds
 from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     anthropic_thinking_extra_body,
@@ -2135,6 +2136,7 @@ async def stream_chat_completion_baseline(
         sandbox=e2b_sandbox,
         sdk_cwd=working_dir,
         permissions=permissions,
+        autonomy_enabled=experts_enabled,
     )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
@@ -2203,6 +2205,9 @@ async def stream_chat_completion_baseline(
     # turn. Without this, earlier-round chatter would suppress a fallback
     # that should fire.
     text_len_before_final_round: list[int] = [0]
+    max_tool_rounds = bounded_agent_rounds(
+        config.agent_max_turns, enabled=experts_enabled
+    )
 
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
@@ -2211,7 +2216,6 @@ async def stream_chat_completion_baseline(
         # but the holder is typed non-optional after the preflight guard
         # above.
         try:
-            max_tool_rounds = config.agent_max_turns
             async for loop_result in tool_call_loop(
                 messages=openai_messages,
                 tools=tools,
@@ -2394,9 +2398,7 @@ async def stream_chat_completion_baseline(
         # Either way, we check the terminal round's text contribution — an
         # empty one means the user got no explanation and we need to emit
         # the fallback notice.
-        budget_reached = bool(
-            loop_result and loop_result.iterations >= config.agent_max_turns
-        )
+        budget_reached = bool(loop_result and loop_result.iterations >= max_tool_rounds)
         if budget_reached:
             if loop_result and not loop_result.finished_naturally:
                 logger.warning(

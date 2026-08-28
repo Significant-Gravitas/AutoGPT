@@ -5,6 +5,8 @@ import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
+import { LiveUpdatesStatus } from "@/components/molecules/LiveUpdatesStatus/LiveUpdatesStatus";
+import { useExpertLiveStateHealth } from "@/hooks/useExpertLiveStateHealth";
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound } from "next/navigation";
@@ -51,6 +53,11 @@ export default function TeamPage() {
     isCreatingPod,
     assignPod,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
+  const liveStateHealth = useExpertLiveStateHealth({
+    surface: "team",
+    hireExpertsEnabled: Boolean(enabled) && ready,
+    onFallbackRefresh: refetch,
+  });
 
   if (!ready) {
     return (
@@ -104,6 +111,7 @@ export default function TeamPage() {
         </div>
         <CreateMenu onNewPod={openNewPod} />
       </div>
+      <LiveUpdatesStatus health={liveStateHealth} />
       <TeamRoster
         isLoading={isLoading}
         podGroups={podGroups}

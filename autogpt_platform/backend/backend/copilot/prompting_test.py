@@ -134,6 +134,24 @@ class TestFlaggedExpertOperatingPolicies:
         assert "create a new task phase" in result
         assert "fresh criteria, owners, and estimates" in result
 
+    def test_manager_treats_autonomy_guard_as_terminal(self):
+        result = " ".join(prompting.get_delegation_supplement().split())
+
+        assert "autonomy guard as terminal for the current path" in result
+        assert "do not retry or paraphrase the same call" in result
+        assert "Delivered, Blocked, the safest degraded fallback, and Next" in result
+
+    def test_expert_reports_autonomy_guard_to_manager(self):
+        result = " ".join(
+            prompting.get_expert_team_supplement(
+                experts_enabled=True,
+                expert_id="expert-1",
+            ).split()
+        )
+
+        assert "Treat an autonomy-guard stop as a manager blocker" in result
+        assert "report the useful partial result and fallback" in result
+
     def test_work_item_wake_replaces_long_polling(self):
         result = prompting.get_delegation_supplement()
 

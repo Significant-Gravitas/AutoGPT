@@ -12,7 +12,11 @@ from typing import Any, cast
 
 import pytest
 
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import (
+    TOOL_REGISTRY,
+    expert_tool_disabled_groups,
+    tool_names_in_groups,
+)
 
 # Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
 # Bumped 32000 -> 32500 on PR #12699 to fit two pieces of load-bearing
@@ -113,9 +117,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
 # Bumped 61_000 -> 64_000 for persisted delegated-work fields and the compact
-# report_delegated_result handoff tool. These fields replace unstructured
-# manager/expert polling with one bounded lifecycle packet.
-_CHAR_BUDGET = 64_000
+# report_delegated_result handoff tool. The limit applies to a real session,
+# not the registry inventory: AutoPilot and expert-only tools are mutually
+# exclusive, and flag-off sessions receive neither group.
+_SESSION_CHAR_BUDGET = 64_000
 
 
 @pytest.fixture(scope="module")
@@ -209,22 +214,42 @@ def test_browser_act_action_enum_complete() -> None:
     )
 
 
-def test_total_schema_char_budget() -> None:
-    """Assert total tool schema size stays under the character budget.
+@pytest.mark.parametrize(
+    "mode,experts_enabled,expert_id",
+    [
+        ("flag-off", False, None),
+        ("autopilot", True, None),
+        ("expert", True, "expert-1"),
+    ],
+)
+def test_session_schema_char_budget(
+    mode: str, experts_enabled: bool, expert_id: str | None
+) -> None:
+    """Assert every real session schema stays under the character budget.
 
     This locks in the 34% token reduction from #12398 and prevents future
     description bloat from eroding the gains. Uses character count with a
-    ~4 chars/token heuristic; see ``_CHAR_BUDGET`` above for the current
-    value and its change history.  Character count is tokenizer-agnostic
-    — no dependency on GPT or Claude tokenizers — while still providing a
-    stable regression gate.
+    ~4 chars/token heuristic. The registry contains mutually exclusive
+    AutoPilot and expert tools, so measuring all entries together overstates
+    every prompt. This mirrors the shared engine gate without depending on
+    environment-specific tool availability.
     """
-    schemas = [tool.as_openai_tool() for tool in TOOL_REGISTRY.values()]
+    disabled = expert_tool_disabled_groups(
+        experts_enabled=experts_enabled,
+        expert_id=expert_id,
+    )
+    hidden = tool_names_in_groups(disabled)
+    schemas = [
+        tool.as_openai_tool()
+        for name, tool in TOOL_REGISTRY.items()
+        if name not in hidden
+    ]
     serialized = json.dumps(schemas)
     total_chars = len(serialized)
-    assert total_chars < _CHAR_BUDGET, (
-        f"Tool schemas use {total_chars} chars (~{total_chars // 4} tokens), "
-        f"exceeding budget of {_CHAR_BUDGET} chars (~{_CHAR_BUDGET // 4} tokens). "
+    assert total_chars < _SESSION_CHAR_BUDGET, (
+        f"{mode} tool schemas use {total_chars} chars (~{total_chars // 4} tokens), "
+        f"exceeding budget of {_SESSION_CHAR_BUDGET} chars "
+        f"(~{_SESSION_CHAR_BUDGET // 4} tokens). "
         f"Description bloat detected — trim descriptions or raise the budget intentionally."
     )
 

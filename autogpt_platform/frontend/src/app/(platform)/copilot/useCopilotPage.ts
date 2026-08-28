@@ -1,5 +1,6 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useExpertLiveStateHealth } from "@/hooks/useExpertLiveStateHealth";
 import { isValidUUID } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
@@ -66,6 +67,10 @@ export function useCopilotPage() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  useExpertLiveStateHealth({
+    surface: "copilot",
+    hireExpertsEnabled: isExpertsEnabled,
+  });
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;

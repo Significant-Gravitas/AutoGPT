@@ -10,6 +10,7 @@ import re
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
+from backend.copilot.autonomy_budget import start_autonomy_budget
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
 from backend.util.workspace import WorkspaceManager
@@ -73,6 +74,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    autonomy_enabled: bool = False,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -81,6 +83,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    start_autonomy_budget(enabled=autonomy_enabled)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:

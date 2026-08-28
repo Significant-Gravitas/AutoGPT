@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.autonomy_budget import after_tool, before_tool
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -322,6 +323,26 @@ async def execute_tool(
             success=False,
         )
 
+    autonomy = before_tool(tool_name, parameters)
+    if not autonomy.allowed:
+        logger.warning(
+            "Expert autonomy guard stopped tool: tool=%s user=%s session=%s reason=%s",
+            tool_name,
+            user_id,
+            session.session_id,
+            autonomy.reason,
+        )
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            output=ErrorResponse(
+                message=autonomy.message or "This work path has stopped.",
+                error="autonomy_guard",
+                session_id=session.session_id,
+            ).model_dump_json(),
+            success=False,
+        )
+
     # Track tool call in PostHog
     logger.info(
         f"Tracking tool call: tool={tool_name}, user={user_id}, "
@@ -334,4 +355,14 @@ async def execute_tool(
         tool_call_id=tool_call_id,
     )
 
-    return await tool.execute(user_id, session, tool_call_id, **parameters)
+    try:
+        result = await tool.execute(user_id, session, tool_call_id, **parameters)
+    except Exception as error:
+        after_tool(
+            tool_name,
+            {"isError": True, "error": type(error).__name__, "message": str(error)},
+            parameters,
+        )
+        raise
+    after_tool(tool_name, result, parameters)
+    return result

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getGreetingName } from "@/app/(platform)/copilot/components/EmptySession/helpers";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { LiveUpdatesStatus } from "@/components/molecules/LiveUpdatesStatus/LiveUpdatesStatus";
+import { useExpertLiveStateHealth } from "@/hooks/useExpertLiveStateHealth";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
@@ -25,6 +27,11 @@ export default function HomePage() {
   const { user } = useAuth();
   const { dashboard, isLoading, isError, refetch } = useHomePage({
     enabled: Boolean(enabled) && ready,
+  });
+  const liveStateHealth = useExpertLiveStateHealth({
+    surface: "home",
+    hireExpertsEnabled: Boolean(enabled) && ready,
+    onFallbackRefresh: refetch,
   });
 
   if (!ready || isLoading) {
@@ -55,6 +62,7 @@ export default function HomePage() {
           name={getGreetingName(user)}
           dashboard={dashboard}
         />
+        <LiveUpdatesStatus health={liveStateHealth} />
         {dashboard.team.total === 0 ? (
           <BuildFirstTeam />
         ) : (

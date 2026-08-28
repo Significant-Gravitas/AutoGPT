@@ -65,6 +65,7 @@ from backend.util.prompt import (
 )
 from backend.util.settings import Settings
 
+from ..autonomy_budget import bounded_agent_rounds
 from ..config import ChatConfig, CopilotLLMModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
@@ -4743,6 +4744,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sandbox=e2b_sandbox,
             sdk_cwd=sdk_cwd,
             permissions=permissions,
+            autonomy_enabled=experts_enabled,
         )
 
         if (
@@ -4904,7 +4906,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             stderr=_on_stderr,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
-            max_turns=config.agent_max_turns,
+            max_turns=bounded_agent_rounds(
+                config.agent_max_turns, enabled=experts_enabled
+            ),
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).

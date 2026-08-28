@@ -17,6 +17,11 @@ from typing import TYPE_CHECKING, Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 from mcp.types import ToolAnnotations
 
+from backend.copilot.autonomy_budget import (
+    after_tool,
+    before_tool,
+    start_autonomy_budget,
+)
 from backend.copilot.context import (
     _current_permissions,
     _current_project_dir,
@@ -127,6 +132,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    autonomy_enabled: bool = False,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -149,6 +155,7 @@ def set_execution_context(
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _consecutive_tool_failures.set({})
+    start_autonomy_budget(enabled=autonomy_enabled)
 
 
 def reset_stash_event() -> None:
@@ -742,6 +749,14 @@ def _make_truncating_wrapper(
     """
 
     async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        autonomy = before_tool(tool_name, args)
+        if not autonomy.allowed:
+            logger.warning(
+                "Expert autonomy guard stopped SDK tool: tool=%s reason=%s",
+                tool_name,
+                autonomy.reason,
+            )
+            return _mcp_error(autonomy.message or "This work path has stopped.")
         # Detect empty-args truncation: args is empty AND the original tool
         # declared at least one *required* property. Tools whose params are all
         # optional (filters-only tools like list_schedules) legitimately accept
@@ -758,8 +773,10 @@ def _make_truncating_wrapper(
             stop_msg = _check_circuit_breaker(tool_name, args)
             _record_tool_failure(tool_name, args)
             if stop_msg:
-                return _mcp_error(stop_msg)
-            return _mcp_error(
+                error = _mcp_error(stop_msg)
+                after_tool(tool_name, error, args)
+                return error
+            error = _mcp_error(
                 f"Your call to {tool_name} arrived with empty arguments. "
                 f"This means the arguments were dropped in transit: either "
                 f"your response hit the output-token limit mid-call, or an "
@@ -772,11 +789,15 @@ def _make_truncating_wrapper(
                 f"as that argument's value. Object parameters such as "
                 f"agent_json accept this file-reference string directly."
             )
+            after_tool(tool_name, error, args)
+            return error
 
         original_args = args
         stop_msg = _check_circuit_breaker(tool_name, original_args)
         if stop_msg:
-            return _mcp_error(stop_msg)
+            error = _mcp_error(stop_msg)
+            after_tool(tool_name, error, original_args)
+            return error
 
         user_id, session = get_execution_context()
         if session is not None:
@@ -786,13 +807,24 @@ def _make_truncating_wrapper(
                 )
             except FileRefExpansionError as exc:
                 _record_tool_failure(tool_name, original_args)
-                return _mcp_error(
+                error = _mcp_error(
                     f"@@agptfile: reference could not be resolved: {exc}. "
                     "Ensure the file exists before referencing it. "
                     "For sandbox paths use bash_exec to verify the file exists first; "
                     "for workspace files use a workspace:// URI."
                 )
-        result = await fn(args)
+                after_tool(tool_name, error, original_args)
+                return error
+        try:
+            result = await fn(args)
+        except Exception as error:
+            after_tool(
+                tool_name,
+                {"isError": True, "error": type(error).__name__, "message": str(error)},
+                original_args,
+            )
+            raise
+        after_tool(tool_name, result, original_args)
         truncated = truncate(result, _MCP_MAX_CHARS)
 
         if truncated.get("isError"):
