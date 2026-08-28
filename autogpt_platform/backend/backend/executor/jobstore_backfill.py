@@ -85,13 +85,15 @@ def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int
                 unreadable += 1
                 continue
 
-            new_state = dict(state)
-            new_state["args"] = _strip_enums(state.get("args", ()))
-            new_state["kwargs"] = _strip_enums(state.get("kwargs", {}))
-            if new_state["args"] == state.get("args", ()) and new_state[
-                "kwargs"
-            ] == state.get("kwargs", {}):
+            args, kwargs = state.get("args", ()), state.get("kwargs", {})
+            # Not an equality check: a str-based Enum compares equal to its own
+            # value, so the stripped copy would look unchanged and be skipped.
+            if not (_has_enum(args) or _has_enum(kwargs)):
                 continue
+
+            new_state = dict(state)
+            new_state["args"] = _strip_enums(args)
+            new_state["kwargs"] = _strip_enums(kwargs)
 
             changed += 1
             logger.info(f"{tablename}: {row.id} carries pickled enum(s)")
@@ -104,6 +106,17 @@ def _normalize_table(engine, metadata, tablename: str, apply: bool) -> tuple[int
 
     logger.info(f"{tablename}: {len(rows)} row(s) scanned, {changed} to rewrite")
     return changed, unreadable
+
+
+def _has_enum(value: Any) -> bool:
+    """Whether an Enum member is hiding anywhere in *value*."""
+    if isinstance(value, Enum):
+        return True
+    if isinstance(value, dict):
+        return any(_has_enum(k) or _has_enum(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(_has_enum(v) for v in value)
+    return False
 
 
 def _strip_enums(value: Any) -> Any:
