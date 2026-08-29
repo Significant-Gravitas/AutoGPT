@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import fastapi
 from autogpt_libs.auth import get_user_id
 
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import TRANSIENT_REDIS_ERRORS, get_redis_async
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,19 @@ logger = logging.getLogger(__name__)
 # Query entry plus 60s staleTime keep steady-state use near ~1/min per tab.
 SUBSCRIPTION_STATUS_WINDOW_SECONDS = 60
 SUBSCRIPTION_STATUS_MAX_REQUESTS = 60
+
+# Atomic fixed-window counter: INCR the key, and set the TTL only on the INCR
+# that opened the window (count == 1). Doing both in one server-side script
+# means a freshly-created key always gets its expiry — the key can never linger
+# without a TTL if it happened to be recreated by INCR, and the window stays
+# fixed (the TTL is not refreshed on later hits).
+_INCR_OPEN_WINDOW = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+"""
 
 
 def _window_key(user_id: str, *, now: datetime) -> str:
@@ -48,19 +62,29 @@ async def enforce_subscription_status_rate_limit(
     returning fresh state) never trip it — FastAPI dependencies run for HTTP
     requests, not for direct function calls.
 
-    On Redis brown-out this fails *open* (logs and lets the call through): a
-    Redis blip must never block the billing status read for every user, which
-    would be far worse than one client briefly exceeding its cap.
+    On a *transient* Redis failure (connection/timeout/cluster-down) this fails
+    *open* (logs and lets the call through): a Redis blip must never block the
+    billing status read for every user, which would be far worse than one
+    client briefly exceeding its cap. Non-transient errors are left to
+    propagate rather than silently disabling the limiter.
     """
     now = datetime.now(UTC)
     key = _window_key(user_id, now=now)
     try:
         redis = await get_redis_async()
-        # Atomic create-with-TTL, then INCR. SET NX EX makes the TTL part of
-        # the same write that creates the key; later INCRs preserve it.
-        await redis.set(key, 0, ex=SUBSCRIPTION_STATUS_WINDOW_SECONDS, nx=True)
-        count = await redis.incr(key)
-    except Exception as e:
+        # Lua ARGV values are strings; EXPIRE coerces "60" back to an int. The
+        # cast mirrors the other eval() call sites (e.g. copilot/dream/locks):
+        # the cluster client types eval()'s return as str, so cast before await.
+        count = await cast(
+            Any,
+            redis.eval(
+                _INCR_OPEN_WINDOW,
+                1,
+                key,
+                str(SUBSCRIPTION_STATUS_WINDOW_SECONDS),
+            ),
+        )
+    except TRANSIENT_REDIS_ERRORS as e:
         logger.warning(
             "Subscription-status rate-limit check failed open for user %s: %s",
             user_id,
