@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   useToast,
@@ -67,6 +68,8 @@ function CoPilotUsageSection() {
 }
 
 export default function CreditsPage() {
+  const { user, isLoggedIn } = useAuth();
+  const identityKey = user?.id ?? null;
   const api = useBackendAPI();
   const {
     requestTopUp,
@@ -78,9 +81,10 @@ export default function CreditsPage() {
     refundTopUp,
     refundRequests,
   } = useCredits({
-    fetchInitialAutoTopUpConfig: true,
-    fetchInitialRefundRequests: true,
-    fetchInitialTransactionHistory: true,
+    identityKey,
+    fetchInitialAutoTopUpConfig: isLoggedIn,
+    fetchInitialRefundRequests: isLoggedIn,
+    fetchInitialTransactionHistory: isLoggedIn,
   });
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -93,6 +97,7 @@ export default function CreditsPage() {
     CreditTransaction[]
   >([]);
   const openRefundModal = () => {
+    if (!identityKey) return;
     api.getTransactionHistory(null, 20, "TOP_UP").then((history) => {
       setTopUpTransactions(history.transactions);
       setIsRefundModalOpen(true);

@@ -7,16 +7,20 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { getTaskGroups } from "./helpers";
 
 export function useWallet() {
+  const { user, isLoggedIn } = useAuth();
+  const identityKey = user?.id ?? null;
   const { state, updateState } = useOnboarding();
   const api = useBackendAPI();
   const { credits, formatCredits, fetchCredits } = useCredits({
-    fetchInitialCredits: true,
+    identityKey,
+    fetchInitialCredits: isLoggedIn,
   });
 
   const groups = getTaskGroups(state);

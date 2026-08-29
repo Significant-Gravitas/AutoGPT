@@ -13,6 +13,7 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 import { TopUpForm } from "@/components/layout/TopUpPrompt/TopUpForm/TopUpForm";
 import useCredits from "@/hooks/useCredits";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -38,11 +39,14 @@ const autoRefillSchema = z
   });
 
 export function WalletRefill() {
+  const { user, isLoggedIn } = useAuth();
+  const identityKey = user?.id ?? null;
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
 
   const { autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
-    fetchInitialAutoTopUpConfig: true,
+    identityKey,
+    fetchInitialAutoTopUpConfig: isLoggedIn,
   });
 
   const [isLoading, setIsLoading] = useState(false);
