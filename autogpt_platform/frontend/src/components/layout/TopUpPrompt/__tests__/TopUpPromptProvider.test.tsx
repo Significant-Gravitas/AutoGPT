@@ -12,6 +12,7 @@ import {
   getGetV1GetAutoTopUpMockHandler,
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { Key } from "@/services/storage/local-storage";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
@@ -26,7 +27,7 @@ let authenticatedUserId: string | null = "user-a";
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
     user: authenticatedUserId ? { id: authenticatedUserId } : null,
-    isLoggedIn: authenticatedUserId !== null,
+    isLoggedIn: Boolean(authenticatedUserId),
   }),
 }));
 
@@ -89,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("TopUpPromptProvider daily auto-opener", () => {
@@ -172,6 +174,21 @@ describe("useTopUpPrompt without a provider", () => {
 });
 
 describe("TopUpPromptProvider out-of-credits suppression", () => {
+  test("does not fetch billing data when logged out", () => {
+    authenticatedUserId = null;
+    const getCredits = vi
+      .spyOn(AutoGPTServerAPI.prototype, "getUserCredit")
+      .mockResolvedValue({ credits: 0 });
+    const getAutoTopUp = vi
+      .spyOn(AutoGPTServerAPI.prototype, "getAutoTopUpConfig")
+      .mockResolvedValue({ amount: 0, threshold: 0 });
+
+    renderProvider();
+
+    expect(getCredits).not.toHaveBeenCalled();
+    expect(getAutoTopUp).not.toHaveBeenCalled();
+  });
+
   test("resets and refetches billing state when the authenticated user changes", async () => {
     let credits = 0;
     let creditRequests = 0;
@@ -185,7 +202,8 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
 
     const view = renderProvider();
 
-    expect(await screen.findByText(/out of automation credits/i)).toBeDefined();
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toMatch(/out of automation credits/i);
     expect(creditRequests).toBe(1);
 
     credits = 500;
