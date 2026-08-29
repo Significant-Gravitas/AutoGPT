@@ -8,11 +8,12 @@ would drift the ledgers: a paying user's runs would fail on a stale org
 balance no payment can replenish.
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.data import org_credit
+from backend.data import credit, org_credit
 from backend.data.org_credit import (
     get_org_credits,
     spend_org_credits,
@@ -25,10 +26,9 @@ OWNER = "owner-user"
 
 
 @pytest.fixture(autouse=True)
-def clear_owner_cache():
-    org_credit._personal_org_owner.cache_clear()
-    yield
-    org_credit._personal_org_owner.cache_clear()
+def uncached_owner_lookup(mocker):
+    lookup = org_credit._personal_org_owner.__wrapped__
+    mocker.patch.object(org_credit, "_personal_org_owner", side_effect=lookup)
 
 
 @pytest.fixture
@@ -138,3 +138,15 @@ async def test_personal_org_missing_owner_falls_back_to_org_ledger(
     assert remaining == 400
     mock_user_credit.spend_credits.assert_not_called()
     mock_prisma.query_raw.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_personal_org_credit_model_binds_member_calls_to_owner(
+    mocker, mock_prisma
+):
+    mocker.patch.object(credit.settings.config, "enable_credit", True)
+    model = await credit.get_credit_model("member-user", ORG_PERSONAL)
+    model._get_credits = AsyncMock(return_value=(321, datetime.now(timezone.utc)))
+
+    assert await model.get_credits("member-user") == 321
+    model._get_credits.assert_awaited_once_with(OWNER)

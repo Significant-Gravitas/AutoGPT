@@ -1043,6 +1043,11 @@ async def transfer_ownership(
             org_id,
             client=tx,
         )
+        org = await tx.organization.find_unique(where={"id": org_id})
+        if org is None or org.deletedAt is not None:
+            raise NotFoundError(f"Organization {org_id} not found")
+        if org.isPersonal:
+            raise ValueError("Cannot transfer ownership of a personal organization")
         current = await tx.orgmember.find_unique(
             where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}}
         )

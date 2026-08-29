@@ -799,6 +799,9 @@ class TestOrgDbTransferOwnership:
             new_callable=AsyncMock,
             return_value=2,
         )
+        self.prisma.organization.find_unique = AsyncMock(
+            return_value=_make_org(isPersonal=False)
+        )
 
     @pytest.mark.asyncio
     async def test_transfer_ownership_atomic(self):
@@ -850,6 +853,19 @@ class TestOrgDbTransferOwnership:
 
         with pytest.raises(ValueError, match="not the org owner"):
             await transfer_ownership(ORG_ID, "no-one", OTHER_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_personal_org_ownership_cannot_be_transferred(self):
+        from backend.api.features.orgs.db import transfer_ownership
+
+        self.prisma.organization.find_unique = AsyncMock(
+            return_value=_make_org(isPersonal=True)
+        )
+
+        with pytest.raises(ValueError, match="personal organization"):
+            await transfer_ownership(ORG_ID, USER_ID, OTHER_USER_ID)
+
+        self.prisma.orgmember.find_unique.assert_not_called()
 
 
 class TestOrgDbAliases:

@@ -50,7 +50,11 @@ export function DangerZoneSection({
         Danger zone
       </Text>
 
-      {transferableMembers.length > 0 ? (
+      {org.is_personal ? (
+        <Text variant="body" className="text-zinc-500">
+          This is your home organization. It cannot be deleted or transferred.
+        </Text>
+      ) : transferableMembers.length > 0 ? (
         <div className="flex items-center gap-3">
           <div className="flex flex-1 flex-col">
             <Text variant="body">Transfer ownership</Text>
@@ -83,17 +87,19 @@ export function DangerZoneSection({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-3">
-        <div className="flex flex-1 flex-col">
-          <Text variant="body">Delete this organization</Text>
-          <Text variant="small" className="text-zinc-500">
-            Members lose access; financial records are retained.
-          </Text>
+      {!org.is_personal ? (
+        <div className="flex items-center gap-3">
+          <div className="flex flex-1 flex-col">
+            <Text variant="body">Delete this organization</Text>
+            <Text variant="small" className="text-zinc-500">
+              Members lose access; financial records are retained.
+            </Text>
+          </div>
+          <Button variant="destructive" onClick={() => setIsDeleteOpen(true)}>
+            Delete organization
+          </Button>
         </div>
-        <Button variant="destructive" onClick={() => setIsDeleteOpen(true)}>
-          Delete organization
-        </Button>
-      </div>
+      ) : null}
 
       <Dialog
         title={`Transfer ownership of ${org.name}?`}
