@@ -4,8 +4,9 @@ import hashlib
 import json
 import time
 from contextvars import ContextVar
-from dataclasses import dataclass, field
 from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 FLAGGED_AUTONOMY_MAX_TOOL_CALLS = 36
 FLAGGED_AUTONOMY_MAX_ELAPSED_SECONDS = 8 * 60
@@ -33,19 +34,17 @@ _NON_PROGRESS_STATUSES = {
 }
 
 
-@dataclass
-class AutonomyDecision:
+class AutonomyDecision(BaseModel):
     allowed: bool
     reason: Literal["elapsed", "tool_calls", "unchanged"] | None = None
     message: str | None = None
 
 
-@dataclass
-class _AutonomyState:
+class _AutonomyState(BaseModel):
     started_at: float
     tool_calls: int = 0
-    last_non_progress: dict[str, str] = field(default_factory=dict)
-    unchanged_counts: dict[str, int] = field(default_factory=dict)
+    last_non_progress: dict[str, str] = Field(default_factory=dict)
+    unchanged_counts: dict[str, int] = Field(default_factory=dict)
 
 
 _state: ContextVar[_AutonomyState | None] = ContextVar(

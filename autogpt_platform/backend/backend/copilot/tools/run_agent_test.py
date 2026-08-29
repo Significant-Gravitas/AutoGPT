@@ -1623,10 +1623,13 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 async def test_dry_run_persists_node_failures_as_validation_evidence(mocker):
     session = make_session(user_id="user-1")
     graph = MagicMock(id="graph-1", version=3)
-    record = mocker.patch(
-        "backend.copilot.tools.run_agent.workflow_state.record_workflow_validation",
-        AsyncMock(return_value=False),
+    db = MagicMock()
+    db.record_workflow_validation = AsyncMock(return_value=False)
+    mocker.patch(
+        "backend.copilot.tools.run_agent.experts_db",
+        return_value=db,
     )
+    record = db.record_workflow_validation
     mocker.patch(
         "backend.copilot.tools.run_agent._expert_workflow_state_enabled",
         AsyncMock(return_value=True),

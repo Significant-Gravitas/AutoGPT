@@ -110,6 +110,7 @@ def _session(expert_id: str | None = None, *, tested: bool = False) -> MagicMock
 def _db(expert: Expert | None = None, workflow: ExpertWorkflowRef | None = None):
     db = MagicMock()
     db.get_expert = AsyncMock(return_value=expert or _expert())
+    db.get_passed_workflow_validation = AsyncMock()
     db.install_workflow = AsyncMock(return_value=workflow or _workflow(None))
     db.install_library_workflow = AsyncMock(return_value=workflow or _workflow())
     db.claim_workflow_schedule = AsyncMock(return_value=True)
@@ -121,20 +122,15 @@ def _wire(monkeypatch, db, *, enabled: bool = True, validated: bool = True) -> N
     monkeypatch.setattr(
         f"{_MODULE}.is_feature_enabled", AsyncMock(return_value=enabled)
     )
-    monkeypatch.setattr(
-        f"{_MODULE}.workflow_state.get_passed_workflow_validation",
-        AsyncMock(
-            return_value=(
-                WorkflowValidationEvidence(
-                    id="validation-1",
-                    graph_version=3,
-                    test_execution_id="dry-run-1",
-                    artifacts=[],
-                )
-                if validated
-                else None
-            )
-        ),
+    db.get_passed_workflow_validation.return_value = (
+        WorkflowValidationEvidence(
+            id="validation-1",
+            graph_version=3,
+            test_execution_id="dry-run-1",
+            artifacts=[],
+        )
+        if validated
+        else None
     )
 
 
