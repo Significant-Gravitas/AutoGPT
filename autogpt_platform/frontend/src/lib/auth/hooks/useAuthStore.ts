@@ -1,6 +1,7 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { resetQueryClientForIdentityChange } from "@/lib/react-query/queryClient";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
@@ -145,13 +146,6 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     broadcastLogout();
 
-    // Clear React Query cache to prevent stale data from old user
-    if (typeof window !== "undefined") {
-      const { getQueryClient } = await import("@/lib/react-query/queryClient");
-      const queryClient = getQueryClient();
-      queryClient.clear();
-    }
-
     set({
       user: null,
       hasLoadedUser: false,
@@ -292,3 +286,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     cleanup,
   };
 });
+
+if (typeof window !== "undefined") {
+  useAuthStore.subscribe((state, previousState) => {
+    const previousIdentityKey = previousState.user?.id ?? null;
+    const identityKey = state.user?.id ?? null;
+    if (previousIdentityKey === identityKey) return;
+    void resetQueryClientForIdentityChange(identityKey);
+  });
+}

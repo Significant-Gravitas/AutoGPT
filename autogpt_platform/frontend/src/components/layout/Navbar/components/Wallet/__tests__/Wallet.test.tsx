@@ -1,16 +1,19 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import {
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import userEvent from "@testing-library/user-event";
 import { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Wallet } from "../Wallet";
 
 const confettiMock = vi.hoisted(() => vi.fn());
 const fetchCreditsMock = vi.hoisted(() => vi.fn());
+const creditsOptionsMock = vi.hoisted(() => vi.fn());
 const updateStateMock = vi.hoisted(() => vi.fn());
 const connectWebSocketMock = vi.hoisted(() => vi.fn());
 const detachMessageMock = vi.hoisted(() => vi.fn());
@@ -24,21 +27,24 @@ const onboardingState = vi.hoisted(() => ({
 vi.mock("canvas-confetti", () => ({ default: confettiMock }));
 
 vi.mock("@/hooks/useCredits", () => ({
-  default: () => ({
-    credits: creditsState.credits,
-    fetchCredits: fetchCreditsMock,
-    formatCredits: (credit: number | null) =>
-      credit === null ? "-" : `$${(credit / 100).toFixed(2)}`,
-    requestTopUp: vi.fn(),
-    refundTopUp: vi.fn(),
-    autoTopUpConfig: null,
-    fetchAutoTopUpConfig: vi.fn(),
-    updateAutoTopUpConfig: vi.fn(),
-    transactionHistory: { transactions: [], next_transaction_time: null },
-    fetchTransactionHistory: vi.fn(),
-    refundRequests: [],
-    fetchRefundRequests: vi.fn(),
-  }),
+  default: (options: unknown) => {
+    creditsOptionsMock(options);
+    return {
+      credits: creditsState.credits,
+      fetchCredits: fetchCreditsMock,
+      formatCredits: (credit: number | null) =>
+        credit === null ? "-" : `$${(credit / 100).toFixed(2)}`,
+      requestTopUp: vi.fn(),
+      refundTopUp: vi.fn(),
+      autoTopUpConfig: null,
+      fetchAutoTopUpConfig: vi.fn(),
+      updateAutoTopUpConfig: vi.fn(),
+      transactionHistory: { transactions: [], next_transaction_time: null },
+      fetchTransactionHistory: vi.fn(),
+      refundRequests: [],
+      fetchRefundRequests: vi.fn(),
+    };
+  },
 }));
 
 // The real provider opens its own "notification" subscription and drives
@@ -95,6 +101,7 @@ function buildOnboarding(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useAuthStore.setState({ user: { id: "user-a" } as User });
   onWebSocketMessageMock.mockReturnValue(detachMessageMock);
   backendAPI.onWebSocketMessage = onWebSocketMessageMock;
   backendAPI.connectWebSocket = connectWebSocketMock;
@@ -110,6 +117,10 @@ beforeEach(() => {
     width: 100,
     height: 40,
   });
+});
+
+afterEach(() => {
+  useAuthStore.setState({ user: null });
 });
 
 describe("Wallet", () => {
@@ -162,6 +173,40 @@ describe("Wallet", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Add automation credits")).toBeNull();
+    });
+  });
+
+  it("closes open wallet UI when the authenticated identity changes", async () => {
+    render(<Wallet compact />);
+
+    expect(creditsOptionsMock).toHaveBeenLastCalledWith({
+      identityKey: "user-a",
+      fetchInitialCredits: true,
+    });
+
+    await userEvent.click(screen.getByRole("button"));
+    expect(await screen.findByText("Automation credits")).toBeDefined();
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-b" } as User });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Automation credits")).toBeNull();
+      expect(creditsOptionsMock).toHaveBeenLastCalledWith({
+        identityKey: "user-b",
+        fetchInitialCredits: true,
+      });
+    });
+
+    act(() => {
+      useAuthStore.setState({ user: null });
+    });
+    await waitFor(() => {
+      expect(creditsOptionsMock).toHaveBeenLastCalledWith({
+        identityKey: null,
+        fetchInitialCredits: false,
+      });
     });
   });
 

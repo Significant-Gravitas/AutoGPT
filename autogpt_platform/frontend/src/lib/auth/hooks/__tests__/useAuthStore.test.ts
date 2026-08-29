@@ -2,6 +2,8 @@ import type BackendAPI from "@/lib/autogpt-server-api/client";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const resetQueryCache = vi.hoisted(() => vi.fn());
+
 // The store imports a chain of modules (server actions, auth helpers,
 // react-query). Stub them so we can exercise `setCurrentRequestContext`
 // in isolation, without pulling in next/headers or the Better Auth server
@@ -19,6 +21,9 @@ vi.mock("../helpers", () => ({
   handleStorageEvent: vi.fn(),
   refreshSession: vi.fn(),
   validateSession: vi.fn(),
+}));
+vi.mock("@/lib/react-query/queryClient", () => ({
+  resetQueryClientForIdentityChange: resetQueryCache,
 }));
 
 import type { User } from "../../types";
@@ -176,5 +181,24 @@ describe("useAuthStore.validateSession", () => {
     expect(stillValid).toBe(true);
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuthStore identity cache isolation", () => {
+  afterEach(() => {
+    useAuthStore.setState({ user: null });
+    vi.clearAllMocks();
+  });
+
+  it("clears cached queries when an authenticated identity changes", () => {
+    useAuthStore.setState({ user: { id: "user-a" } as User });
+    expect(resetQueryCache).toHaveBeenLastCalledWith("user-a");
+
+    useAuthStore.setState({ user: { id: "user-b" } as User });
+    expect(resetQueryCache).toHaveBeenLastCalledWith("user-b");
+
+    useAuthStore.setState({ user: null });
+    expect(resetQueryCache).toHaveBeenLastCalledWith(null);
+    expect(resetQueryCache).toHaveBeenCalledTimes(3);
   });
 });
