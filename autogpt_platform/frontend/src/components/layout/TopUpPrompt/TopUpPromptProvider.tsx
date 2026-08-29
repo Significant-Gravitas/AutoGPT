@@ -15,8 +15,23 @@ interface Props {
 }
 
 export function TopUpPromptProvider({ children }: Props) {
+  const { user, isLoggedIn } = useAuth();
+
+  return (
+    <TopUpPromptStateProvider
+      key={user?.id ?? "logged-out"}
+      isLoggedIn={isLoggedIn}
+    >
+      {children}
+    </TopUpPromptStateProvider>
+  );
+}
+
+function TopUpPromptStateProvider({
+  children,
+  isLoggedIn,
+}: Props & { isLoggedIn: boolean }) {
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { isLoggedIn } = useAuth();
   const { credits, autoTopUpConfig } = useCredits({
     fetchInitialCredits: isLoggedIn,
     fetchInitialAutoTopUpConfig: isLoggedIn,

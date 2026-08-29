@@ -19,11 +19,15 @@ import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
 // `Flag` enum and let each test toggle whether the flag resolves true.
 let isBillingEnabled = true;
+let authenticatedUserId: string | null = "user-a";
 
 // Simulate an authenticated user so that fetchInitialCredits and
 // fetchInitialAutoTopUpConfig are enabled (they gate on isLoggedIn).
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isLoggedIn: true }),
+  useAuth: () => ({
+    user: authenticatedUserId ? { id: authenticatedUserId } : null,
+    isLoggedIn: authenticatedUserId !== null,
+  }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -64,17 +68,22 @@ function setupCredits(args: {
   };
 }
 
-function renderProvider() {
-  return render(
+function providerTree() {
+  return (
     <TopUpPromptProvider>
       <div>ready</div>
       <LowCreditBanner />
-    </TopUpPromptProvider>,
+    </TopUpPromptProvider>
   );
+}
+
+function renderProvider() {
+  return render(providerTree());
 }
 
 beforeEach(() => {
   localStorage.clear();
+  authenticatedUserId = "user-a";
   isBillingEnabled = true;
 });
 
@@ -163,6 +172,32 @@ describe("useTopUpPrompt without a provider", () => {
 });
 
 describe("TopUpPromptProvider out-of-credits suppression", () => {
+  test("resets and refetches billing state when the authenticated user changes", async () => {
+    let credits = 0;
+    let creditRequests = 0;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        creditRequests += 1;
+        return { credits };
+      }),
+      getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
+    );
+
+    const view = renderProvider();
+
+    expect(await screen.findByText(/out of automation credits/i)).toBeDefined();
+    expect(creditRequests).toBe(1);
+
+    credits = 500;
+    authenticatedUserId = "user-b";
+    view.rerender(providerTree());
+
+    await waitFor(() => expect(creditRequests).toBe(2));
+    await waitFor(() =>
+      expect(screen.queryByText(/out of automation credits/i)).toBeNull(),
+    );
+  });
+
   test("suppresses dialog and banner when auto-refill is enabled", async () => {
     const { waitForCreditsFetch } = setupCredits({
       credits: 0,
