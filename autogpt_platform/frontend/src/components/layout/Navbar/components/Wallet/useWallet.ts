@@ -31,6 +31,7 @@ export function useWallet() {
   const [stateIdentityKey, setStateIdentityKey] = useState(identityKey);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setStateIdentityKey(identityKey);
@@ -155,12 +156,25 @@ export function useWallet() {
       return;
     }
     setFlash(true);
-    setTimeout(() => {
+    if (flashTimer.current !== null) {
+      clearTimeout(flashTimer.current);
+    }
+    flashTimer.current = setTimeout(() => {
+      flashTimer.current = null;
       setFlash(false);
     }, 300);
   }, [credits, identityKey, prevCredits, stateIdentityKey]);
 
   const isCurrentIdentity = stateIdentityKey === identityKey;
+
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current !== null) {
+        clearTimeout(flashTimer.current);
+        flashTimer.current = null;
+      }
+    };
+  }, []);
 
   return {
     state,
