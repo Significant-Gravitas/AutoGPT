@@ -1702,13 +1702,12 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
     if not user.stripe_customer_id:
         return 0
     try:
-        customer_id = user.stripe_customer_id
-        subscriptions = await run_in_threadpool(
-            stripe.Subscription.list, customer=customer_id, status="active", limit=1
-        )
-        if not subscriptions.data:
+        sub = await _get_active_subscription_cached(user.stripe_customer_id)
+        # Proration only applies to a paid, active subscription — a trialing
+        # sub has no paid time to prorate. Matches the previous active-only
+        # query (status="active") while sharing the cached lookup.
+        if sub is None or sub.get("status") != "active":
             return 0
-        sub = subscriptions.data[0]
         period_start: int = sub["current_period_start"]
         period_end: int = sub["current_period_end"]
         now = int(time.time())
@@ -1767,6 +1766,30 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
+@cached(ttl_seconds=15, maxsize=2048, cache_none=True)
+async def _get_active_subscription_cached(
+    customer_id: str,
+) -> stripe.Subscription | None:
+    """Short-TTL per-customer cache over :func:`_get_active_subscription`.
+
+    ``get_subscription_status`` resolves the active subscription up to three
+    times in a single request (billing cycle, period end, proration), and the
+    endpoint is hit on essentially every authenticated page load (PaywallGate
+    wraps the app shell). Without a cache each of those repeats a Stripe
+    ``Subscription.list`` — the same customer's live sub fetched several times
+    per request, and again on every page view. A brief cache collapses them
+    into one lookup per customer per window.
+
+    Read-only display helpers use this. Subscription mutation flows keep calling
+    :func:`_get_active_subscription` directly so they always act on fresh Stripe
+    state; the 15-second window here only affects display fields (billing cycle,
+    next-invoice date, proration estimate), which the frontend re-fetches and
+    which self-correct well inside the tolerances already used elsewhere (the
+    pending-change lookup is cached for 30s).
+    """
+    return await _get_active_subscription(customer_id)
+
+
 async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
 
@@ -1781,7 +1804,7 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
     if not user.stripe_customer_id:
         return None
     try:
-        sub = await _get_active_subscription(user.stripe_customer_id)
+        sub = await _get_active_subscription_cached(user.stripe_customer_id)
     except stripe.StripeError:
         logger.warning(
             "get_user_billing_cycle: Stripe lookup failed for user %s", user_id
@@ -1828,7 +1851,7 @@ async def get_active_subscription_period_end(user_id: str) -> int | None:
     if not user.stripe_customer_id:
         return None
     try:
-        sub = await _get_active_subscription(user.stripe_customer_id)
+        sub = await _get_active_subscription_cached(user.stripe_customer_id)
     except stripe.StripeError:
         logger.warning(
             "get_active_subscription_period_end: Stripe lookup failed for user %s",
