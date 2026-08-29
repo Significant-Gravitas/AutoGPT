@@ -327,6 +327,112 @@ describe("useCredits identity scope", () => {
     expect(configReads).toBe(0);
   });
 
+  test("completes billing mutations for the current identity", async () => {
+    routerPush.mockClear();
+    server.use(
+      http.post("/api/proxy/api/credits/auto-top-up", () =>
+        HttpResponse.json({ amount: 1000, threshold: 500 }),
+      ),
+      http.get("/api/proxy/api/credits/auto-top-up", () =>
+        HttpResponse.json({ amount: 1000, threshold: 500 }),
+      ),
+      http.post("/api/proxy/api/credits", () =>
+        HttpResponse.json({ checkout_url: "https://checkout.example/current" }),
+      ),
+      http.get("/api/proxy/api/credits/manage", () =>
+        HttpResponse.json({ url: "https://billing.example/current" }),
+      ),
+      http.post("/api/proxy/api/credits/:transactionKey/refund", () =>
+        HttpResponse.json(250),
+      ),
+      http.get("/api/proxy/api/credits", () =>
+        HttpResponse.json({ credits: 750 }),
+      ),
+      http.get("/api/proxy/api/credits/transactions", () =>
+        HttpResponse.json({
+          transactions: [],
+          next_transaction_time: null,
+        }),
+      ),
+    );
+
+    const view = renderHook(() => useCredits({ identityKey: "user-a" }));
+    let updated = false;
+    await act(async () => {
+      updated = await view.result.current.updateAutoTopUpConfig(1000, 500);
+    });
+    expect(updated).toBe(true);
+
+    await act(async () => {
+      await view.result.current.requestTopUp(500);
+      await view.result.current.openBillingPortal();
+    });
+    expect(routerPush).toHaveBeenNthCalledWith(
+      1,
+      "https://checkout.example/current",
+    );
+    expect(routerPush).toHaveBeenNthCalledWith(
+      2,
+      "https://billing.example/current",
+    );
+
+    let refundedAmount: number | null = null;
+    await act(async () => {
+      refundedAmount = await view.result.current.refundTopUp(
+        "transaction-a",
+        "test",
+      );
+    });
+    expect(refundedAmount).toBe(250);
+    expect(view.result.current.credits).toBe(750);
+    expect(view.result.current.transactionHistory.transactions).toEqual([]);
+  });
+
+  test("rejects billing mutations without an authenticated identity", async () => {
+    const view = renderHook(() => useCredits({ identityKey: null }));
+
+    await expect(
+      view.result.current.updateAutoTopUpConfig(1000, 500),
+    ).rejects.toThrow("Authentication required");
+    await expect(view.result.current.requestTopUp(500)).rejects.toThrow(
+      "Authentication required",
+    );
+    await expect(view.result.current.openBillingPortal()).rejects.toThrow(
+      "Authentication required",
+    );
+    await expect(
+      view.result.current.refundTopUp("transaction-a", "test"),
+    ).rejects.toThrow("Authentication required");
+  });
+
+  test("propagates current-identity billing mutation failures", async () => {
+    server.use(
+      http.post("/api/proxy/api/credits/auto-top-up", () =>
+        HttpResponse.json({ detail: "failed" }, { status: 500 }),
+      ),
+      http.post("/api/proxy/api/credits", () =>
+        HttpResponse.json({ detail: "failed" }, { status: 500 }),
+      ),
+      http.get("/api/proxy/api/credits/manage", () =>
+        HttpResponse.json({ detail: "failed" }, { status: 500 }),
+      ),
+      http.post("/api/proxy/api/credits/:transactionKey/refund", () =>
+        HttpResponse.json({ detail: "failed" }, { status: 500 }),
+      ),
+    );
+
+    const view = renderHook(() => useCredits({ identityKey: "user-a" }));
+
+    await expect(
+      view.result.current.updateAutoTopUpConfig(1000, 500),
+    ).rejects.toThrow();
+    await expect(view.result.current.requestTopUp(500)).rejects.toThrow();
+    await expect(view.result.current.openBillingPortal()).rejects.toThrow();
+    await expect(
+      view.result.current.refundTopUp("transaction-a", "test"),
+    ).rejects.toThrow();
+  });
+
   test("does not return a previous identity's refund amount", async () => {
     let releaseRequest: (() => void) | undefined;
     let followUpReads = 0;

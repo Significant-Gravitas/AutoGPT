@@ -27,7 +27,10 @@ vi.mock("@/lib/react-query/queryClient", () => ({
 }));
 
 import type { User } from "../../types";
-import { validateSession as validateSessionHelper } from "../helpers";
+import {
+  fetchUser,
+  validateSession as validateSessionHelper,
+} from "../helpers";
 import { useAuthStore } from "../useAuthStore";
 
 function makeRouter() {
@@ -131,7 +134,9 @@ describe("useAuthStore.validateSession", () => {
     useAuthStore.setState({
       user: null,
       hasLoadedUser: false,
+      hasCompletedInitialAuthHydration: false,
       isUserLoading: false,
+      initializationPromise: null,
       isValidating: false,
       lastValidation: 0,
     });
@@ -186,12 +191,52 @@ describe("useAuthStore.validateSession", () => {
 
 describe("useAuthStore identity cache isolation", () => {
   afterEach(() => {
-    useAuthStore.setState({ user: null });
+    useAuthStore.getState().cleanup();
+    useAuthStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      hasCompletedInitialAuthHydration: false,
+      isUserLoading: false,
+      initializationPromise: null,
+      routerRef: null,
+      apiRef: null,
+      currentPath: "",
+    });
     vi.clearAllMocks();
   });
 
+  it("preserves hydrated queries when loading the first identity", async () => {
+    useAuthStore.setState({
+      user: null,
+      hasLoadedUser: false,
+      hasCompletedInitialAuthHydration: false,
+      isUserLoading: true,
+      initializationPromise: null,
+    });
+    vi.mocked(fetchUser).mockResolvedValue({
+      user: { id: "user-a" } as User,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    resetQueryCache.mockClear();
+
+    await useAuthStore.getState().initialize({
+      router: makeRouter(),
+      api: makeApi(),
+      path: "/library",
+    });
+
+    expect(resetQueryCache).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().hasCompletedInitialAuthHydration).toBe(true);
+  });
+
   it("clears cached queries when an authenticated identity changes", () => {
-    useAuthStore.setState({ user: { id: "user-a" } as User });
+    useAuthStore.setState({ hasCompletedInitialAuthHydration: true });
+    resetQueryCache.mockClear();
+    useAuthStore.setState({
+      user: { id: "user-a" } as User,
+      hasLoadedUser: true,
+    });
     expect(resetQueryCache).toHaveBeenLastCalledWith("user-a");
 
     useAuthStore.setState({ user: { id: "user-b" } as User });
@@ -200,5 +245,18 @@ describe("useAuthStore identity cache isolation", () => {
     useAuthStore.setState({ user: null });
     expect(resetQueryCache).toHaveBeenLastCalledWith(null);
     expect(resetQueryCache).toHaveBeenCalledTimes(3);
+  });
+
+  it("refetches when an identity arrives after initial anonymous hydration", () => {
+    useAuthStore.setState({
+      user: null,
+      hasCompletedInitialAuthHydration: true,
+    });
+    resetQueryCache.mockClear();
+
+    useAuthStore.setState({ user: { id: "user-b" } as User });
+
+    expect(resetQueryCache).toHaveBeenCalledOnce();
+    expect(resetQueryCache).toHaveBeenCalledWith("user-b");
   });
 });

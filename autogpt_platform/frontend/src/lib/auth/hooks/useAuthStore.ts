@@ -41,6 +41,7 @@ interface AuthStoreState {
   isUserLoading: boolean;
   isValidating: boolean;
   hasLoadedUser: boolean;
+  hasCompletedInitialAuthHydration: boolean;
   lastValidation: number;
   initializationPromise: Promise<void> | null;
   listenersCleanup: (() => void) | null;
@@ -124,7 +125,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     try {
       await initializationPromise;
     } finally {
-      set({ initializationPromise: null });
+      set({
+        initializationPromise: null,
+        hasCompletedInitialAuthHydration: true,
+      });
     }
   }
 
@@ -272,6 +276,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     isUserLoading: true,
     isValidating: false,
     hasLoadedUser: false,
+    hasCompletedInitialAuthHydration: false,
     lastValidation: 0,
     initializationPromise: null,
     listenersCleanup: null,
@@ -292,6 +297,7 @@ if (typeof window !== "undefined") {
     const previousIdentityKey = previousState.user?.id ?? null;
     const identityKey = state.user?.id ?? null;
     if (previousIdentityKey === identityKey) return;
+    if (!previousState.hasCompletedInitialAuthHydration) return;
     void resetQueryClientForIdentityChange(identityKey);
   });
 }
