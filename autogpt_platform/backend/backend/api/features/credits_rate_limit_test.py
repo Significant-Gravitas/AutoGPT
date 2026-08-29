@@ -183,7 +183,10 @@ async def test_fails_open_and_fast_when_redis_hangs(mocker):
     loop = asyncio.get_running_loop()
     started = loop.time()
     await rate_limit.enforce_subscription_status_rate_limit("u1")
-    assert loop.time() - started < 5
+    # Tight bound: the patched deadline is 50ms, so anything approaching a
+    # second means the timeout was not honoured. Generous enough to absorb CI
+    # scheduling jitter, strict enough to fail if the deadline is dropped.
+    assert loop.time() - started < 1
 
 
 @pytest.mark.asyncio
