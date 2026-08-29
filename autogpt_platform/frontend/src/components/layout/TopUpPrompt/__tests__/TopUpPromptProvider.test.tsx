@@ -16,6 +16,7 @@ import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
+import { useState } from "react";
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
 // `Flag` enum and let each test toggle whether the flag resolves true.
@@ -73,8 +74,16 @@ function providerTree() {
   return (
     <TopUpPromptProvider>
       <div>ready</div>
+      <StatefulChild />
       <LowCreditBanner />
     </TopUpPromptProvider>
+  );
+}
+
+function StatefulChild() {
+  const [value, setValue] = useState(0);
+  return (
+    <button onClick={() => setValue(value + 1)}>page state {value}</button>
   );
 }
 
@@ -205,12 +214,14 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     const banner = await screen.findByRole("alert");
     expect(banner.textContent).toMatch(/out of automation credits/i);
     expect(creditRequests).toBe(1);
+    fireEvent.click(screen.getByText("page state 0"));
 
     credits = 500;
     authenticatedUserId = "user-b";
     view.rerender(providerTree());
 
     await waitFor(() => expect(creditRequests).toBe(2));
+    expect(screen.getByText("page state 1")).toBeDefined();
     await waitFor(() =>
       expect(screen.queryByText(/out of automation credits/i)).toBeNull(),
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -16,23 +16,10 @@ interface Props {
 
 export function TopUpPromptProvider({ children }: Props) {
   const { user, isLoggedIn } = useAuth();
-
-  return (
-    <TopUpPromptStateProvider
-      key={user?.id ?? "logged-out"}
-      isLoggedIn={isLoggedIn}
-    >
-      {children}
-    </TopUpPromptStateProvider>
-  );
-}
-
-function TopUpPromptStateProvider({
-  children,
-  isLoggedIn,
-}: Props & { isLoggedIn: boolean }) {
+  const identityKey = user?.id ?? null;
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { credits, autoTopUpConfig } = useCredits({
+    identityKey,
     fetchInitialCredits: isLoggedIn,
     fetchInitialAutoTopUpConfig: isLoggedIn,
   });
@@ -54,6 +41,10 @@ function TopUpPromptStateProvider({
     !autoRefillEnabled;
 
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [identityKey]);
 
   function openTopUp() {
     setIsOpen(true);
