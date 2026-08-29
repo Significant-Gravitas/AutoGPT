@@ -52,7 +52,9 @@ async def test_over_limit_raises_429(fake_redis):
     with pytest.raises(fastapi.HTTPException) as exc_info:
         await rate_limit.enforce_subscription_status_rate_limit("u1")
     assert exc_info.value.status_code == 429
-    assert str(rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS) in str(exc_info.value.detail)
+    assert str(rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS) in str(
+        exc_info.value.detail
+    )
 
 
 @pytest.mark.asyncio
