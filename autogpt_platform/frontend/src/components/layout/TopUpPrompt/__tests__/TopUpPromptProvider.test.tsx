@@ -22,8 +22,8 @@ let isBillingEnabled = true;
 
 // Simulate an authenticated user so that fetchInitialCredits and
 // fetchInitialAutoTopUpConfig are enabled (they gate on isLoggedIn).
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isLoggedIn: true }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: true }),
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {

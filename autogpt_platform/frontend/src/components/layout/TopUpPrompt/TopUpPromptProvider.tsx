@@ -3,7 +3,7 @@
 import { ReactNode, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
@@ -16,7 +16,7 @@ interface Props {
 
 export function TopUpPromptProvider({ children }: Props) {
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const { credits, autoTopUpConfig } = useCredits({
     fetchInitialCredits: isLoggedIn,
     fetchInitialAutoTopUpConfig: isLoggedIn,
