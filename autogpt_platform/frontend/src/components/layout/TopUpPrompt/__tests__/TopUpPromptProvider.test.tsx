@@ -12,7 +12,6 @@ import {
   getGetV1GetAutoTopUpMockHandler,
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { Key } from "@/services/storage/local-storage";
-import AutoGPTServerAPI from "@/lib/autogpt-server-api";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
@@ -183,19 +182,26 @@ describe("useTopUpPrompt without a provider", () => {
 });
 
 describe("TopUpPromptProvider out-of-credits suppression", () => {
-  test("does not fetch billing data when logged out", () => {
+  test("does not fetch billing data when logged out", async () => {
     authenticatedUserId = null;
-    const getCredits = vi
-      .spyOn(AutoGPTServerAPI.prototype, "getUserCredit")
-      .mockResolvedValue({ credits: 0 });
-    const getAutoTopUp = vi
-      .spyOn(AutoGPTServerAPI.prototype, "getAutoTopUpConfig")
-      .mockResolvedValue({ amount: 0, threshold: 0 });
+    let creditsRequested = false;
+    let autoTopUpRequested = false;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        creditsRequested = true;
+        return { credits: 0 };
+      }),
+      getGetV1GetAutoTopUpMockHandler(() => {
+        autoTopUpRequested = true;
+        return { amount: 0, threshold: 0 };
+      }),
+    );
 
     renderProvider();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(getCredits).not.toHaveBeenCalled();
-    expect(getAutoTopUp).not.toHaveBeenCalled();
+    expect(creditsRequested).toBe(false);
+    expect(autoTopUpRequested).toBe(false);
   });
 
   test("resets and refetches billing state when the authenticated user changes", async () => {
