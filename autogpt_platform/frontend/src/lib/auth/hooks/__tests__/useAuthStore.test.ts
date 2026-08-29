@@ -402,6 +402,64 @@ describe("useAuthStore identity cache isolation", () => {
     expect(useAuthStore.getState().user?.id).toBe("user-b");
   });
 
+  it("stops loading when a pending logout fails before initialization", async () => {
+    let rejectLogout: ((reason?: unknown) => void) | undefined;
+    vi.mocked(serverLogout).mockReturnValueOnce(
+      new Promise<{ success: boolean }>((_resolve, reject) => {
+        rejectLogout = reject;
+      }),
+    );
+    const api = makeApi();
+
+    const logout = useAuthStore.getState().logOut({ api });
+    const initialization = useAuthStore.getState().initialize({
+      api,
+      router: makeRouter(),
+      path: "/library",
+    });
+    await Promise.resolve();
+
+    expect(useAuthStore.getState().isUserLoading).toBe(true);
+    const logoutAssertion = expect(logout).rejects.toThrow("logout failed");
+    rejectLogout?.(new Error("logout failed"));
+    await logoutAssertion;
+    await initialization;
+
+    expect(fetchUser).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().isUserLoading).toBe(false);
+    expect(useAuthStore.getState().initializationPromise).toBeNull();
+  });
+
+  it("stops loading when refresh supersedes initialization and logout fails", async () => {
+    let rejectLogout: ((reason?: unknown) => void) | undefined;
+    vi.mocked(serverLogout).mockReturnValueOnce(
+      new Promise<{ success: boolean }>((_resolve, reject) => {
+        rejectLogout = reject;
+      }),
+    );
+    const api = makeApi();
+    const router = makeRouter();
+
+    const logout = useAuthStore.getState().logOut({ api });
+    const initialization = useAuthStore
+      .getState()
+      .initialize({ api, router, path: "/library" });
+    const refresh = useAuthStore.getState().refreshSession();
+    await Promise.resolve();
+
+    const logoutAssertion = expect(logout).rejects.toThrow("logout failed");
+    rejectLogout?.(new Error("logout failed"));
+    await logoutAssertion;
+    await initialization;
+    await refresh;
+
+    expect(fetchUser).not.toHaveBeenCalled();
+    expect(refreshSessionHelper).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().isUserLoading).toBe(false);
+  });
+
   it("keeps listeners when refresh supersedes initialization during logout", async () => {
     let resolveLogout: ((value: { success: boolean }) => void) | undefined;
     vi.mocked(serverLogout).mockReturnValueOnce(

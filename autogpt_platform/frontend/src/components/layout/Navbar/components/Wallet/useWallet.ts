@@ -34,6 +34,10 @@ export function useWallet() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (flashTimer.current !== null) {
+      clearTimeout(flashTimer.current);
+      flashTimer.current = null;
+    }
     setStateIdentityKey(identityKey);
     setPrevCredits(null);
     setFlash(false);

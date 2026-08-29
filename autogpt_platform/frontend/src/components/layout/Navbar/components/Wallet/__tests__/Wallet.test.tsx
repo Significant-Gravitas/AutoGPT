@@ -268,6 +268,24 @@ describe("Wallet timer cleanup", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("cancels the pending balance flash when the identity changes", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<Wallet compact />);
+
+    creditsState.credits = 1479;
+    rerender(<Wallet compact />);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-b" } as User });
+    });
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(container.querySelector(".bg-violet-400")?.className).toContain(
+      "opacity-0",
+    );
+  });
+
   it("resets the balance flash after credits briefly become unavailable", () => {
     vi.useFakeTimers();
     const { container, rerender } = render(<Wallet compact />);

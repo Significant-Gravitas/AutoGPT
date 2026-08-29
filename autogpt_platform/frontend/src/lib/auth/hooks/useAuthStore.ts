@@ -87,6 +87,12 @@ async function waitForPendingLogout(): Promise<boolean> {
 }
 
 export const useAuthStore = create<AuthStoreState>((set, get) => {
+  function stopLoadingIfCurrent(requestGeneration: number): void {
+    if (requestGeneration === authRequestGeneration) {
+      set({ isUserLoading: false });
+    }
+  }
+
   function clearAuthenticatedState(): void {
     const state = get();
     const identityChangeWillResetQueries =
@@ -146,6 +152,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         const requestGeneration = beginNonValidationAuthRequest();
         set({ isUserLoading: true, isValidating: false });
         if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+          stopLoadingIfCurrent(requestGeneration);
           return;
         }
         if (requestGeneration !== authRequestGeneration) return;
@@ -244,6 +251,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     try {
       if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+        stopLoadingIfCurrent(requestGeneration);
         return false;
       }
       if (requestGeneration !== authRequestGeneration) return false;
@@ -314,6 +322,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const requestGeneration = beginNonValidationAuthRequest();
     set({ isValidating: false });
     if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+      stopLoadingIfCurrent(requestGeneration);
       return {};
     }
     if (requestGeneration !== authRequestGeneration) return {};
