@@ -1,0 +1,23 @@
+import { Dialog } from "../molecules/Dialog/Dialog";
+import { WaitlistErrorContent } from "./WaitlistErrorContent";
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
+  return (
+    <Dialog
+      title="Email Not Allowed"
+      controlled={{ isOpen, set: onClose }}
+      styling={{ maxWidth: "35rem" }}
+    >
+      <Dialog.Content>
+        <div className="py-4">
+          <WaitlistErrorContent />
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}

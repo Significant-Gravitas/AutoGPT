@@ -1,0 +1,48 @@
+{
+  "id": "0f919347-86ce-4218-8d80-617dc6e57cc7",
+  "version": 1,
+  "is_active": true,
+  "name": "Testing agent",
+  "description": "We use this agent for test purpose only",
+  "nodes": [
+    {
+      "id": "c5e2d556-80e7-4fa6-841f-fe6cdfc75004",
+      "block_id": "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      "input_default": {
+        "round_result": false
+      },
+      "metadata": {
+        "position": {
+          "x": 804.8000000000001,
+          "y": 539.6
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "0f919347-86ce-4218-8d80-617dc6e57cc7",
+      "graph_version": 1,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "credentials_input_schema": {
+    "properties": {},
+    "title": "TestingagentCredentialsInputSchema",
+    "type": "object"
+  },
+  "has_webhook_trigger": false
+}

@@ -1,0 +1,170 @@
+name: Classic - Direct Benchmark CI
+
+on:
+  push:
+    branches: [ master, dev, ci-test* ]
+    paths:
+      - 'classic/direct_benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - .github/workflows/classic-benchmark-ci.yml
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
+  pull_request:
+    branches: [ master, dev, release-* ]
+    paths:
+      - 'classic/direct_benchmark/**'
+      - 'classic/original_autogpt/**'
+      - 'classic/forge/**'
+      - .github/workflows/classic-benchmark-ci.yml
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
+
+concurrency:
+  group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  min-python-version: '3.12'
+
+jobs:
+  benchmark-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: classic
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run basic benchmark tests
+        run: |
+          echo "Testing ReadFile challenge with one_shot strategy..."
+          poetry run direct-benchmark run \
+            --fresh \
+            --strategies one_shot \
+            --models claude \
+            --tests ReadFile \
+            --json
+
+          echo "Testing WriteFile challenge..."
+          poetry run direct-benchmark run \
+            --fresh \
+            --strategies one_shot \
+            --models claude \
+            --tests WriteFile \
+            --json
+        env:
+          CI: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NONINTERACTIVE_MODE: "true"
+
+      - name: Test category filtering
+        run: |
+          echo "Testing coding category..."
+          poetry run direct-benchmark run \
+            --fresh \
+            --strategies one_shot \
+            --models claude \
+            --categories coding \
+            --tests ReadFile,WriteFile \
+            --json
+        env:
+          CI: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NONINTERACTIVE_MODE: "true"
+
+      - name: Test multiple strategies
+        run: |
+          echo "Testing multiple strategies..."
+          poetry run direct-benchmark run \
+            --fresh \
+            --strategies one_shot,plan_execute \
+            --models claude \
+            --tests ReadFile \
+            --parallel 2 \
+            --json
+        env:
+          CI: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NONINTERACTIVE_MODE: "true"
+
+  # Run regression tests on maintain challenges
+  regression-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev'
+    defaults:
+      run:
+        shell: bash
+        working-directory: classic
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('classic/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run regression tests
+        run: |
+          echo "Running regression tests (previously beaten challenges)..."
+          poetry run direct-benchmark run \
+            --fresh \
+            --strategies one_shot \
+            --models claude \
+            --maintain \
+            --parallel 4 \
+            --json
+        env:
+          CI: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NONINTERACTIVE_MODE: "true"

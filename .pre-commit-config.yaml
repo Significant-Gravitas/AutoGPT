@@ -1,0 +1,291 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+  - post-checkout
+
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: fix-byte-order-marker
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: debug-statements
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect secrets
+        description: Detects high entropy strings that are likely to be passwords.
+        args: ["--baseline", ".secrets.baseline"]
+        files: ^autogpt_platform/
+        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template))$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
+
+  - repo: local
+    # For proper type checking, all dependencies need to be up-to-date.
+    # It's also a good idea to check that poetry.lock is consistent with pyproject.toml.
+    hooks:
+      - id: poetry-install
+        name: Check & Install dependencies - AutoGPT Platform - Backend
+        alias: poetry-install-platform-backend
+        # include autogpt_libs source (since it's a path dependency)
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$" || exit 0;
+          poetry -C autogpt_platform/backend install
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: poetry-install
+        name: Check & Install dependencies - AutoGPT Platform - Libs
+        alias: poetry-install-platform-libs
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/autogpt_libs/poetry\.lock$" || exit 0;
+          poetry -C autogpt_platform/autogpt_libs install
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: pnpm-install
+        name: Check & Install dependencies - AutoGPT Platform - Frontend
+        alias: pnpm-install-platform-frontend
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/frontend/pnpm-lock\.yaml$" || exit 0;
+          pnpm --prefix autogpt_platform/frontend install
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: poetry-install
+        name: Check & Install dependencies - Classic
+        alias: poetry-install-classic
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^classic/poetry\.lock$" || exit 0;
+          poetry -C classic install
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+  - repo: local
+    # For proper type checking, Prisma client must be up-to-date.
+    hooks:
+      - id: prisma-generate
+        name: Prisma Generate - AutoGPT Platform - Backend
+        alias: prisma-generate-platform-backend
+        entry: >
+          bash -c '
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
+          else
+            git diff --cached --name-only
+          fi | grep -qE "^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema\.prisma)$" || exit 0;
+          cd autogpt_platform/backend
+          && poetry run prisma generate
+          && poetry run gen-prisma-stub
+          '
+        # include everything that triggers poetry install + the prisma schema
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+      - id: export-api-schema
+        name: Export API schema - AutoGPT Platform - Backend -> Frontend
+        alias: export-api-schema-platform
+        entry: >
+          bash -c '
+          cd autogpt_platform/backend
+          && poetry run export-api-schema --output ../frontend/src/app/api/openapi.json
+          && cd ../frontend
+          && pnpm prettier --write ./src/app/api/openapi.json
+          '
+        files: ^autogpt_platform/backend/
+        language: system
+        pass_filenames: false
+
+      - id: generate-api-client
+        name: Generate API client - AutoGPT Platform - Frontend
+        alias: generate-api-client-platform-frontend
+        entry: >
+          bash -c '
+          SCHEMA=autogpt_platform/frontend/src/app/api/openapi.json;
+          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
+            git diff --quiet "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF" -- "$SCHEMA" && exit 0
+          else
+            git diff --quiet HEAD -- "$SCHEMA" && exit 0
+          fi;
+          cd autogpt_platform/frontend && pnpm generate:api
+          '
+        always_run: true
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, post-checkout]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.2
+    hooks:
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Backend
+        alias: ruff-lint-platform-backend
+        files: ^autogpt_platform/backend/
+        args: [--fix]
+
+      - id: ruff
+        name: Lint (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+        args: [--fix]
+
+      - id: ruff-format
+        name: Format (Ruff) - AutoGPT Platform - Libs
+        alias: ruff-lint-platform-libs
+        files: ^autogpt_platform/autogpt_libs/
+
+  - repo: local
+    # isort needs the context of which packages are installed to function, so we
+    # can't use a vendored isort pre-commit hook (which runs in its own isolated venv).
+    hooks:
+      - id: isort
+        name: Lint (isort) - AutoGPT Platform - Backend
+        alias: isort-platform-backend
+        entry: poetry -P autogpt_platform/backend run isort -p backend
+        files: ^autogpt_platform/backend/
+        types: [file, python]
+        language: system
+
+      - id: isort
+        name: Lint (isort) - Classic
+        alias: isort-classic
+        entry: bash -c 'cd classic && poetry run isort $(echo "$@" | sed "s|classic/||g")' --
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/
+        types: [file, python]
+        language: system
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    # Black has sensible defaults, doesn't need package context, and ignores
+    # everything in .gitignore, so it works fine without any config or arguments.
+    hooks:
+      - id: black
+        name: Format (Black)
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    # Use consolidated flake8 config at classic/.flake8
+    hooks:
+      - id: flake8
+        name: Lint (Flake8) - Classic
+        alias: flake8-classic
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/
+        args: [--config=classic/.flake8]
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Format (Prettier) - AutoGPT Platform - Frontend
+        alias: format-platform-frontend
+        entry: bash -c 'cd autogpt_platform/frontend && npx prettier --write $(echo "$@" | sed "s|autogpt_platform/frontend/||g")' --
+        files: ^autogpt_platform/frontend/
+        types: [file]
+        language: system
+
+  - repo: local
+    # To have watertight type checking, we check *all* the files in an affected
+    # project. To trigger on poetry.lock we also reset the file `types` filter.
+    hooks:
+      - id: pyright
+        name: Typecheck - AutoGPT Platform - Backend
+        alias: pyright-platform-backend
+        entry: poetry -C autogpt_platform/backend run pyright
+        # include forge source (since it's a path dependency) but exclude *_test.py files:
+        files: ^autogpt_platform/(backend/((backend|test)/|(\w+\.py|poetry\.lock)$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck - AutoGPT Platform - Libs
+        alias: pyright-platform-libs
+        entry: poetry -C autogpt_platform/autogpt_libs run pyright
+        files: ^autogpt_platform/autogpt_libs/(autogpt_libs/|poetry\.lock$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+      - id: pyright
+        name: Typecheck - Classic
+        alias: pyright-classic
+        entry: poetry -C classic run pyright
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/.*\.py$|^classic/poetry\.lock$
+        types: [file]
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: tsc
+        name: Typecheck - AutoGPT Platform - Frontend
+        entry: bash -c 'cd autogpt_platform/frontend && pnpm types'
+        files: ^autogpt_platform/frontend/
+        types: [file]
+        language: system
+        pass_filenames: false
+
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: Run tests - AutoGPT Platform - Backend
+  #       alias: pytest-platform-backend
+  #       entry: bash -c 'cd autogpt_platform/backend && poetry run pytest'
+  #       # include autogpt_libs source (since it's a path dependency) but exclude *_test.py files:
+  #       files: ^autogpt_platform/(backend/((backend|test)/|poetry\.lock$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+  #       language: system
+  #       pass_filenames: false
+
+  #     - id: pytest
+  #       name: Run tests - Classic (excl. slow tests)
+  #       alias: pytest-classic
+  #       entry: bash -c 'cd classic && poetry run pytest -m "not slow"'
+  #       files: ^classic/(original_autogpt|forge|direct_benchmark)/
+  #       language: system
+  #       pass_filenames: false

@@ -1,0 +1,39 @@
+/* Custom toast styling. It's here to override the Sonner default styles via CSS specificity */
+html body .toastDefault {
+  padding: 0.8rem 1rem !important;
+}
+
+html body .toastDefault,
+html body .toastInfo {
+  background: #2c2c30 !important;
+  border-color: #2c2c30 !important;
+}
+
+html body .toastSuccess {
+  background: #45b56e !important;
+  border-color: #45b56e !important;
+}
+
+html body .toastWarning {
+  background: #e77b00 !important;
+  border-color: #e77b00 !important;
+}
+
+html body .toastError {
+  background: #f26969 !important;
+  border-color: #f26969 !important;
+}
+
+html body .toastTitle {
+  color: #fefefe !important;
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+  line-height: 1.375rem !important;
+  margin-bottom: -0.15rem !important;
+}
+
+html body .toastDescription {
+  color: #f4f4f5 !important;
+  font-size: 0.75rem !important;
+  line-height: 1.25rem !important;
+}

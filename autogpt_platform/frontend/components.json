@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "tailwind.config.ts",
+    "css": "src/app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": false,
+    "prefix": ""
+  },
+  "iconLibrary": "radix",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils"
+  },
+  "registries": {
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json"
+  }
+}

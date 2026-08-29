@@ -1,0 +1,46 @@
+{
+  "history": [
+    {
+      "admin_email": null,
+      "amount": 1000,
+      "current_balance": 0,
+      "description": null,
+      "extra_data": null,
+      "reason": "Initial grant",
+      "running_balance": 0,
+      "transaction_key": "",
+      "transaction_time": "0001-01-01T00:00:00Z",
+      "transaction_type": "GRANT",
+      "usage_execution_id": null,
+      "usage_graph_id": null,
+      "usage_node_count": 0,
+      "usage_start_time": "9999-12-31T23:59:59.999999Z",
+      "user_email": "user1@example.com",
+      "user_id": "user-1"
+    },
+    {
+      "admin_email": null,
+      "amount": -50,
+      "current_balance": 0,
+      "description": null,
+      "extra_data": null,
+      "reason": "Usage",
+      "running_balance": 0,
+      "transaction_key": "",
+      "transaction_time": "0001-01-01T00:00:00Z",
+      "transaction_type": "USAGE",
+      "usage_execution_id": null,
+      "usage_graph_id": null,
+      "usage_node_count": 0,
+      "usage_start_time": "9999-12-31T23:59:59.999999Z",
+      "user_email": "user2@example.com",
+      "user_id": "user-2"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "page_size": 20,
+    "total_items": 2,
+    "total_pages": 1
+  }
+}

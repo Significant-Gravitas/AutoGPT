@@ -1,0 +1,32 @@
+{
+    "category": [
+        "ethereum"
+    ],
+    "cutoff": 75,
+    "dependencies": [
+        "TestWriteFile"
+    ],
+    "eval_id": "d14d6a59-a355-424c-a24b-a8aca580e32c",
+    "ground": {
+        "answer": "Should be a number within a 50 USD range of the actual price according to coingecko.",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "Matches"
+        ],
+        "should_not_contain": [
+            "Text or letters"
+        ]
+    },
+    "info": {
+        "description": "Getting the price of Ethereum Gas in gwei and saving it as a file",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "GetEthereumGasPrice",
+    "task": "Get the price of Ethereum in usd and save its digits to a file named 'output.txt'"
+}

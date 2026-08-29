@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: AutoGPT
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: Significant Gravitas
+    website: 'https://agpt.co'
+repository-code: 'https://github.com/Significant-Gravitas/AutoGPT'
+url: 'https://agpt.co'
+abstract: >-
+  AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters.
+keywords:
+  - AI
+  - Agent
+  - LLM
+license-url: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE

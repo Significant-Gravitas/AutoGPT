@@ -1,0 +1,1676 @@
+{
+  "id": "f410b776-3603-4f84-8348-e5db9c551322",
+  "version": 31,
+  "is_active": true,
+  "name": "Domain Name Finder",
+  "description": "Overview:\nFinding a domain name that fits your brand shouldn\u2019t take hours of searching and failed checks. The Domain Name Finder Agent turns your pitch into hundreds of creative, brand-ready domain ideas\u2014filtered by live availability so every result is actionable.\n\nHow It Works\n1. Input your product pitch, company name, or core keywords.\n2. The agent analyzes brand tone, audience, and industry context.\n3. It generates a list of unique, memorable domains that match your criteria.\n4. All names are pre-filtered for real-time availability, so you can register immediately.\n\n\nBusiness Value\nSave hours of guesswork and eliminate dead ends. Accelerate brand launches, startup naming, and campaign creation with ready-to-claim domains.\n\n\nKey Use Cases\n\u2022 Startup Founders: Quickly find brand-ready domains for MVP launches or rebrands.\n\u2022 Marketers: Test name options across campaigns with instant availability data.\n\u2022 Entrepreneurs: Validate ideas faster with instant domain options.",
+  "instructions": "Pitch your website idea, run the agent, then check back in 10 mins for your bespoke set of unregistered domain names - ranked by estimated valuation and relevance to your pitch.",
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "570c679c-676d-448f-bb1c-b347f36970aa",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "domains"
+      },
+      "metadata": {
+        "position": {
+          "x": 1923.7273090275667,
+          "y": 465.50008994458585
+        }
+      },
+      "input_links": [
+        {
+          "id": "4e403abc-3a34-414c-9240-7a30b6f22ac5",
+          "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "sink_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "486aae4d-b3db-4008-842c-05f966f00b5b",
+          "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "c70b4120-64a3-44d0-a960-3674735314ff",
+          "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "sink_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+          "source_name": "output",
+          "sink_name": "values_#_DOMAINS",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2105e9c1-0698-4a01-9d02-02d791364498",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "Generate a creative and relevant list of possible domain names that could be available (unregistered) for the product described by the given product pitch. Prioritize short, single-word English .com domains that closely relate to the product or its key features, as these are the most valuable. Only suggest .com domains. Avoid suggesting long or awkward names; names that sound like real English words but may be invented are acceptable if memorable and brandable. Do not include off-topic, or low-value gibberish names.\n\nBefore listing any domains, internally consider:\n- What words or ideas are most core to the product pitch?\n- Which synonyms, metaphors, or conceptual connections would make good brands?\n- What domains are likely to realistically be available and not already taken?\n- Are there any exceptional reasons to consider a non-.com extension?\n- Whether the domains are concise, attractive, and easy to remember/pronounce.\n\nOutput only the domains in a comma-separated list, enclosed in <domains> XML tags, with no additional commentary or explanation.\n\nFormat:\n<domains>example1.com,example2.com,example3.com</domains>\n\nExample Input:\n \"A voice-based fitness app\"\n\nExample Output:\n<domains>votone.com,soundgym.com,voicetrain.com,fitchant.com</domains>\n(Realistic use cases may generate ~500k high-quality domains per prompt.)\n\nEdge Cases & Special Considerations:\n- Never generate multi-word domains with dashes or excessive length.\n- If a non-.com TLD is used, justify internally that it is a natural fit (e.g., \".ai\" for an artificial intelligence SaaS).\n- Exclude domains that are likely to be heavily trademarked or existing brands.\n- The output must always be ONLY the XML tag with comma-separated domains.\n- Aim to write at least 500 domains\n- NEVER comment inside the <domains> csv, otherwise the csv will be corrupted and the workflow will completely break. If you want to make a comment, leave a <comment> xml set OUTSIDE the </domains> xml set with your comments. No matter what do not break this rule.\n\nHere is the product pitch you will be working with:\n<product_pitch>\n{{product_pitch | safe}}\n</product_pitch>\n\n\nREMINDER: Focus on creative, concise, high value .com domains aligned with the product pitch; output only as <domains>example.com,example2.com</domains>",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 803.72695210037,
+          "y": 465.5000381469727
+        }
+      },
+      "input_links": [
+        {
+          "id": "6097cc32-f6e1-4311-8804-e99af44201f4",
+          "source_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "sink_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_product_pitch",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ddbcf470-de3a-4955-89aa-12291f26a059",
+          "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "source_name": "error",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "7427c0ae-ec91-4bd5-9a72-1ef24fc11430",
+          "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "sink_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1363.7269529646674,
+          "y": 465.5000376599629
+        }
+      },
+      "input_links": [
+        {
+          "id": "7427c0ae-ec91-4bd5-9a72-1ef24fc11430",
+          "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "sink_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2430664a-6580-428b-a317-36c7675539c1",
+          "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "4e403abc-3a34-414c-9240-7a30b6f22ac5",
+          "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "sink_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Product Pitch",
+        "secret": false,
+        "advanced": false,
+        "description": "Pitch your product!",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -534.5334675859784,
+          "y": 458.4006590838727
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "e53ea15b-4d84-494d-9867-71e454f7c867",
+          "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+          "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_product_pitch",
+          "is_static": true
+        },
+        {
+          "id": "34ba9aec-eb91-4760-bde7-c98685b95f5a",
+          "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+          "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "source_name": "result",
+          "sink_name": "input",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "block_id": "0b02b072-abe7-11ef-8372-fb5d162dd712",
+      "input_default": {
+        "timeout": 300,
+        "language": "python",
+        "setup_commands": [],
+        "dispose_sandbox": true
+      },
+      "metadata": {
+        "position": {
+          "x": 3084.835212232708,
+          "y": 469.16536240312246
+        }
+      },
+      "input_links": [
+        {
+          "id": "9f73853c-27bc-40c0-ac1b-b6aee896c92c",
+          "source_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+          "sink_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "source_name": "output",
+          "sink_name": "code",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "c9ab9fb0-391c-46bc-b6e7-13fe3125a5f1",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "stderr_logs",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "5f5dba52-1c34-4621-9047-94185ed471f6",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "0b604734-0417-4a56-b3c3-6c841ee764df",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "source_name": "stdout_logs",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "ab8d3920-8582-426d-92a1-0cf3bdd31efe",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "You are a domain valuation expert tasked with ranking a list of domain names based on their value and relevance to a specific product. You will be provided with two key pieces of information:\n\n1. A product pitch:\n<product_pitch>\n{{product_pitch | safe}}\n</product_pitch>\n\n2. A list of domain names to rank:\n<domain_list>\n{{domains | safe}}\n</domain_list>\n\nYour task is to analyze these domains and rank them based on two primary factors:\n1. The inherent value of the domain name (most important)\n2. The relevance and potential value of the domain for the specific product described in the product pitch\n\nPlease follow these steps:\n\n1. Read the product pitch carefully and extract key product features and target audience information. List these in <product_analysis> tags.\n\n2. Identify relevant keywords for the product based on the pitch. List these in <keywords> tags.\n\n3. For each domain in the provided list - carefully consider it, then pick your top 10 domains from the list for the following analysis:\n   a. Evaluate the domain based on the following factors:\n      - Length (number of characters)\n      - Memorability\n      - Brandability\n      - Keyword relevance\n      - TLD (Top-Level Domain)\n      - Potential commercial value\n\n   b. Calculate a Domain Quality Score (1-10) using the following method:\n      - Length Score (LS):\n        10: 1\u20134 chars\n        9: 5\n        8: 6\n        7: 7\n        6: 8\n        5: 9\n        4: 10\n        3: 11\u201312\n        2: 13\u201314\n        1: 15+\n\n      - Word Score (WS):\n        * Base (BWC): 1 word =5, 2 words =4, 3w=3, 4w=2, 5+ words =1\n        * Quality Modifier (WQM): +1 English dictionary word, 0 common/brandable, \u20131 meh brand/obscure foreign, \u20132 unpronounceable\n        * Word Score (WS) = clamp(BWC + WQM, 1\u20135)\u00d72\n\n      - Penalties: \u20131 hyphen, \u20131 number, \u20130.5 triple letter\n\n      - Final Score = clamp(round(0.6\u00d7WS + 0.4\u00d7LS + penalties), 1\u201310)\n\n   c. Consider how the domain relates to the product described in the product pitch.\n\nWrap your analysis in a single set of <domain_analysis> tags. \nInclude the following for each domain:\n1. Verify that the domain is present in the original list provided.\n2. A table with the following columns: Factor, Calculated Score, Justification.\n3. The calculated Domain Quality Score, showing each step of the calculation.\n4. An explanation of how the domain relates to the product pitch.\n\nAfter evaluating your potential top 10 domains, present your final ranking as a newline-separated list of domains inside a single complete set of <domains> XML tags. Ensure that only domains from the original list are included in your ranking.\n\nIf there are more than 30 domains in the list, just list your top 30.\n\nExample output format:\n\n<domains>\ndomain1.com\ndomain2.net\ndomain3.org\n</domains>\n\nPlease proceed with your evaluation and ranking of the provided domain list.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 6417.294788842872,
+          "y": 443.3113161801738
+        }
+      },
+      "input_links": [
+        {
+          "id": "e53ea15b-4d84-494d-9867-71e454f7c867",
+          "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+          "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_product_pitch",
+          "is_static": true
+        },
+        {
+          "id": "4260a459-1cda-411e-9c32-1e886d49f444",
+          "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "source_name": "no_output",
+          "sink_name": "prompt_values_#_domains",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "781b8b03-e645-42f6-b9ee-18727a04bb42",
+          "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "sink_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "6b8523b5-ce6e-4cd4-80a6-6be54b9be4ab",
+          "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 6977.294417024638,
+          "y": 458.46844766434674
+        }
+      },
+      "input_links": [
+        {
+          "id": "781b8b03-e645-42f6-b9ee-18727a04bb42",
+          "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "sink_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d28783ab-8818-4f28-ae66-d9a04ad33455",
+          "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "sink_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "cf5cd1d2-24ac-4126-ad0f-d934b7862e3a",
+          "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "domains"
+      },
+      "metadata": {
+        "position": {
+          "x": 7537.294428844076,
+          "y": 458.46840935125437
+        }
+      },
+      "input_links": [
+        {
+          "id": "d28783ab-8818-4f28-ae66-d9a04ad33455",
+          "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "sink_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d6bd5988-cee8-4ac9-873f-a5dbd3bc8da5",
+          "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "output",
+          "sink_name": "values_#_ranked_domains_block",
+          "is_static": false
+        },
+        {
+          "id": "99886544-d322-4179-838f-a5b01292fcdb",
+          "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ea561c3b-3d18-4b8e-8842-065d06309502",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Domain Suggestions",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 9300.394546088242,
+          "y": 452.78448671411047
+        }
+      },
+      "input_links": [
+        {
+          "id": "d3c06626-b5b0-4660-8733-b5167cbdd26c",
+          "source_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "sink_id": "ea561c3b-3d18-4b8e-8842-065d06309502",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "#!/usr/bin/env python3\n\"\"\"\ncheck_domains_simple_com.py \u2014 Check .com domain availability via RDAP.\n\nHow to use:\n1) Put comma-separated .com domains into DOMAINS_TEXT below.\n   - Each comma-delimited token must be an exact .com domain (e.g., \"foo.com\").\n   - Anything that is not a valid .com domain counts as an input error.\n2) Run: python3 check_domains_simple_com.py\n3) Output summary sections and lists of available/unavailable/error tokens.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport re\nfrom concurrent.futures import ThreadPoolExecutor, as_completed\nfrom typing import Dict, List, Tuple\n\nimport requests\nfrom requests.adapters import HTTPAdapter\n\ntry:\n    from urllib3.util.retry import Retry  # type: ignore\nexcept Exception:  # Retry optional\n    Retry = None  # type: ignore\n\n# ---------------------------------------------------------------------\n# \ud83d\udcdd Paste your names/domains here (commas and/or newlines are fine).\nDOMAINS_TEXT = \"\"\"{{DOMAINS | safe}}\"\"\"\n# ---------------------------------------------------------------------\n\n# Concurrency / networking\nWORKERS = 80\nTIMEOUT = 12.0\n\nHEADERS = {\n    \"Accept\": \"application/rdap+json, application/json;q=0.9, */*;q=0.1\",\n    \"User-Agent\": \"domain-checker/1.0 (+https://example.com)\",\n}\n\n# Verisign RDAP for .com\nCOM_ENDPOINT = \"https://rdap.verisign.com/com/v1/domain/{}\"\n\n\ndef normalize_label(s: str) -> str:\n    \"\"\"Lowercase and keep only a\u2013z and 0\u20139.\"\"\"\n    return re.sub(r\"[^a-z0-9]\", \"\", s.lower())\n\nCOM_DOMAIN_RE = re.compile(r\"^(?=.{1,253}$)(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.com$\")\n\n\ndef domains_from_text(text: str) -> Tuple[List[str], List[str]]:\n    \"\"\"Parse comma-separated tokens; accept only exact .com domains.\n\n    Returns (valid_domains, invalid_tokens).\n    \"\"\"\n    tokens: List[str] = []\n    for part in (text or \"\").split(\",\"):\n        val = part.strip()\n        if val:\n            tokens.append(val)\n\n    valid_domains: List[str] = []\n    invalid_tokens: List[str] = []\n    for token in tokens:\n        s = token.strip().lower()\n        if COM_DOMAIN_RE.match(s):\n            # De-dup preserving order for domains only\n            if s not in valid_domains:\n                valid_domains.append(s)\n        else:\n            invalid_tokens.append(token)\n\n    return valid_domains, invalid_tokens\n\n\ndef build_session(pool_size: int) -> requests.Session:\n    session = requests.Session()\n    session.headers.update(HEADERS)\n    adapter_kwargs = {\"pool_connections\": pool_size, \"pool_maxsize\": pool_size}\n    if Retry is not None:\n        retry = Retry(\n            total=3,\n            backoff_factor=0.3,\n            status_forcelist=(429, 500, 502, 503, 504),\n            allowed_methods=(\"GET\",),\n            raise_on_status=False,\n        )\n        adapter = HTTPAdapter(max_retries=retry, **adapter_kwargs)\n    else:\n        adapter = HTTPAdapter(**adapter_kwargs)\n    session.mount(\"https://\", adapter)\n    session.mount(\"http://\", adapter)\n    return session\n\n\ndef rdap_lookup_com(domain: str, session: requests.Session) -> Dict[str, str]:\n    \"\"\"Return {'domain': str, 'status': 'AVAILABLE'|'REGISTERED'|'ERROR'|'UNKNOWN_xx'}.\"\"\"\n    url = COM_ENDPOINT.format(domain)\n    try:\n        r = session.get(url, timeout=TIMEOUT)\n    except requests.RequestException as e:\n        return {\"domain\": domain, \"status\": \"ERROR\", \"error\": str(e)}\n    if r.status_code == 404:\n        return {\"domain\": domain, \"status\": \"AVAILABLE\"}\n    if r.status_code == 200:\n        return {\"domain\": domain, \"status\": \"REGISTERED\"}\n    return {\"domain\": domain, \"status\": f\"UNKNOWN_{r.status_code}\", \"error\": r.text[:200].replace(\"\\n\", \" \")}\n\n\ndef main() -> int:\n    domains, invalid_tokens = domains_from_text(DOMAINS_TEXT)\n    if not domains and not invalid_tokens:\n        return 0\n\n    # Preserve input order\n    domain_to_index: Dict[str, int] = {d: i for i, d in enumerate(domains)}\n\n    # Connection pool\n    pool_size = max(1, min(WORKERS, len(domains)))\n    session = build_session(pool_size)\n\n    rows = []\n    with ThreadPoolExecutor(max_workers=pool_size) as executor:\n        futs = {executor.submit(rdap_lookup_com, d, session): d for d in domains}\n        for fut in as_completed(futs):\n            rows.append(fut.result())\n\n    # Restore input order\n    rows.sort(key=lambda r: domain_to_index.get(r.get(\"domain\", \"\"), 10**9))\n\n    # Group domains by availability\n    available = []\n    unavailable = []\n    errors = []\n    for r in rows:\n        if r.get(\"status\") == \"AVAILABLE\" and r.get(\"domain\"):\n            available.append(r[\"domain\"])\n        elif r.get(\"status\") == \"REGISTERED\" and r.get(\"domain\"):\n            unavailable.append(r[\"domain\"])\n        elif r.get(\"domain\"):\n            errors.append(r[\"domain\"])\n\n    # Include input parsing errors (non-.com tokens)\n    errors.extend(invalid_tokens)\n\n    # Print in requested format\n    print(\"<results_summary>\")\n    total = len(available) + len(unavailable)\n    print(f\" I checked {total} domains for you.\")\n    print(f\"Domains available to register now: {len(available)}\")\n    print(f\"Domains already registered: {len(unavailable)}\")\n    print(\"</results_summary>\")\n    print(\"<available>\")\n    for domain in available:\n        print(domain)\n    print(\"</available>\")\n    print(\"<unavailable>\")\n    for domain in unavailable:\n        print(domain)\n    print(\"</unavailable>\")\n    print(\"<error>\")\n    for domain in errors:\n        print(domain)\n    print(\"</error>\")\n\n    return 0\n\n\nif __name__ == \"__main__\":\n    _ = main()\n",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 2490.3486926884043,
+          "y": 464.1087684425463
+        }
+      },
+      "input_links": [
+        {
+          "id": "c70b4120-64a3-44d0-a960-3674735314ff",
+          "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "sink_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+          "source_name": "output",
+          "sink_name": "values_#_DOMAINS",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9f73853c-27bc-40c0-ac1b-b6aee896c92c",
+          "source_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+          "sink_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "source_name": "output",
+          "sink_name": "code",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 2215.3143256007343,
+          "y": 3870.960518458868
+        }
+      },
+      "input_links": [
+        {
+          "id": "2430664a-6580-428b-a317-36c7675539c1",
+          "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "c49011f5-3dd8-416a-9604-be450f0f465f",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "c9ab9fb0-391c-46bc-b6e7-13fe3125a5f1",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "stderr_logs",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "2607c55b-1f24-47f8-acd4-4df5a51171b6",
+          "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "486aae4d-b3db-4008-842c-05f966f00b5b",
+          "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "27dd643a-09e8-4d49-814d-f8015c7a7f6f",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "ab8d3920-8582-426d-92a1-0cf3bdd31efe",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d3f1d3e7-36e5-450a-a810-9f534a12adac",
+          "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "no_output",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "99886544-d322-4179-838f-a5b01292fcdb",
+          "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "cf5cd1d2-24ac-4126-ad0f-d934b7862e3a",
+          "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "6b8523b5-ce6e-4cd4-80a6-6be54b9be4ab",
+          "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 3636.000439211476,
+          "y": 457.0000605027634
+        }
+      },
+      "input_links": [
+        {
+          "id": "5f5dba52-1c34-4621-9047-94185ed471f6",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "0b604734-0417-4a56-b3c3-6c841ee764df",
+          "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+          "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "source_name": "stdout_logs",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "73c613c5-92c5-4a72-a610-6f45a43212a4",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "c49011f5-3dd8-416a-9604-be450f0f465f",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b77b60d6-23b9-4700-ade8-7afa1f4ee3d0",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "available"
+      },
+      "metadata": {
+        "position": {
+          "x": 4338.8348745433095,
+          "y": 451.31610498162377
+        }
+      },
+      "input_links": [
+        {
+          "id": "b77b60d6-23b9-4700-ade8-7afa1f4ee3d0",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "b00144a7-177c-46a1-aa25-c2be45823fc1",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "source_name": "output",
+          "sink_name": "no_value",
+          "is_static": false
+        },
+        {
+          "id": "87c5dbb4-6741-4c86-beca-f40e0dd79995",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+          "source_name": "output",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "27dd643a-09e8-4d49-814d-f8015c7a7f6f",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "results_summary"
+      },
+      "metadata": {
+        "position": {
+          "x": 4211.577175606866,
+          "y": -649.3408490608967
+        }
+      },
+      "input_links": [
+        {
+          "id": "73c613c5-92c5-4a72-a610-6f45a43212a4",
+          "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+          "sink_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f7307ebc-189f-4554-ba9a-29b66f11fd6d",
+          "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "output",
+          "sink_name": "values_#_summary",
+          "is_static": false
+        },
+        {
+          "id": "2607c55b-1f24-47f8-acd4-4df5a51171b6",
+          "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 136.30286534603857,
+          "y": 457.04507015080037
+        }
+      },
+      "input_links": [
+        {
+          "id": "de188d9a-a33f-4790-9891-914046e255b7",
+          "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "34ba9aec-eb91-4760-bde7-c98685b95f5a",
+          "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+          "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "source_name": "result",
+          "sink_name": "input",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6097cc32-f6e1-4311-8804-e99af44201f4",
+          "source_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "sink_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_product_pitch",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "3",
+        "no_value": "The AI failed to successfully come up with domain names to check.\n\nThis could either be due to the input you provided, or an error in the system.\n\nPlease try again, but if this keeps happening please report it!",
+        "operator": "<"
+      },
+      "metadata": {
+        "position": {
+          "x": 660.6968537410919,
+          "y": 2498.7048054763927
+        }
+      },
+      "input_links": [
+        {
+          "id": "02f129e4-bd3b-4969-aceb-21ea389572e2",
+          "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "sink_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "source_name": "result",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "de188d9a-a33f-4790-9891-914046e255b7",
+          "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "d3f1d3e7-36e5-450a-a810-9f534a12adac",
+          "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+          "source_name": "no_output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "block_id": "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      "input_default": {
+        "a": 0,
+        "b": 1,
+        "operation": "Add",
+        "round_result": false
+      },
+      "metadata": {
+        "position": {
+          "x": 13.885754497174958,
+          "y": 2477.6485504601296
+        }
+      },
+      "input_links": [
+        {
+          "id": "de32fe82-38e2-40cc-9308-810ceb3e382c",
+          "source_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "output",
+          "sink_name": "b",
+          "is_static": true
+        },
+        {
+          "id": "caeaf988-2aac-46a3-b396-f14f4d61b4c7",
+          "source_id": "694737bd-4ca2-4927-9e3a-62d32e2bfcb3",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "value",
+          "sink_name": "a",
+          "is_static": false
+        },
+        {
+          "id": "8766de74-96ab-4607-8994-4f7b333a59d7",
+          "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "result",
+          "sink_name": "a",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "02f129e4-bd3b-4969-aceb-21ea389572e2",
+          "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "sink_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+          "source_name": "result",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "8766de74-96ab-4607-8994-4f7b333a59d7",
+          "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "result",
+          "sink_name": "a",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "694737bd-4ca2-4927-9e3a-62d32e2bfcb3",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "number",
+        "value": "0"
+      },
+      "metadata": {
+        "position": {
+          "x": -752.5331319770655,
+          "y": 2129.182323495746
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "caeaf988-2aac-46a3-b396-f14f4d61b4c7",
+          "source_id": "694737bd-4ca2-4927-9e3a-62d32e2bfcb3",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "value",
+          "sink_name": "a",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -739.4623196973166,
+          "y": 2733.163868913187
+        }
+      },
+      "input_links": [
+        {
+          "id": "ddbcf470-de3a-4955-89aa-12291f26a059",
+          "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+          "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "source_name": "error",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "7939e7f5-d0b4-4d3d-b622-ab1edaf18bd5",
+          "source_id": "6214aa85-548d-4c78-a298-0499a4f1c7ad",
+          "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "de32fe82-38e2-40cc-9308-810ceb3e382c",
+          "source_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+          "source_name": "output",
+          "sink_name": "b",
+          "is_static": true
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6214aa85-548d-4c78-a298-0499a4f1c7ad",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "number",
+        "value": "1"
+      },
+      "metadata": {
+        "position": {
+          "x": -1397.8285977211458,
+          "y": 2726.508771135722
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "7939e7f5-d0b4-4d3d-b622-ab1edaf18bd5",
+          "source_id": "6214aa85-548d-4c78-a298-0499a4f1c7ad",
+          "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "### Summary\n\n{{ summary \n   | replace('\\r\\n', '\\n')\n   | replace('\\n', '  \\n') }}\n\n### How This List Is Ranked\n\nThe suggestions are **ranked from best fit to broader options** based on:\n- **Fit with your pitch** (topic match, tone, audience)\n- **Brandability** (memorability, uniqueness, ease to say/spell)\n- **Clarity & length** (short, unambiguous, no filler)\n- **Domain quality** (clean .com bias; no hyphens/numbers)\n- **Noise penalties** (awkward word combos or ambiguity)\n\n> Tip: The top 5 are usually the \u201cbuy now\u201d candidates. If you love a lower-ranked name, go for it\u2014the ranking is guidance, not a rule.\n\n### Domain Suggestions (Ranked)\n\n{{ ranked_domains_block\n   | replace('\\r\\n', '\\n')\n   | replace('\\n', '  \\n') }}\n\n\n### What to Do Next\n\nThe domain names listed above are still available for registration. To claim one, purchase it from a domain registrar (a company that sells and manages domain names). Availability can change quickly, so check out promptly.\n\n**Popular registrars:**\n- [GoDaddy](https://www.godaddy.com/) \u2014 one of the largest registrars.  \n- [Namecheap](https://www.namecheap.com/) \u2014 transparent pricing and easy UI.  \n- [Domain.com](https://www.domain.com/) \u2014 long-standing, straightforward.  \n- [Dynadot](https://www.dynadot.com/) \u2014 clean, low-friction checkout.  \n- [IONOS](https://www.ionos.com/domains) \u2014 competitive first-year pricing.\n\n**Steps:**\n1. Pick your favourite from the top of the list.  \n2. Add to cart and check out \u2014 confirm the price \u2014 usually **$10\u201315 per year** \n3. In your registrar dashboard, set up **DNS / name servers** to point the domain to your website or email.  \n4. (Optional) Consider grabbing close variants or common misspellings for brand protection.\n",
+        "values": {},
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 8442.06365615613,
+          "y": 448.9943472999386
+        }
+      },
+      "input_links": [
+        {
+          "id": "d2586c8d-edc6-4c00-afad-1815986aaf4d",
+          "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "yes_output",
+          "sink_name": "values_#_ranked_domains_block",
+          "is_static": false
+        },
+        {
+          "id": "f7307ebc-189f-4554-ba9a-29b66f11fd6d",
+          "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "output",
+          "sink_name": "values_#_summary",
+          "is_static": false
+        },
+        {
+          "id": "d6bd5988-cee8-4ac9-873f-a5dbd3bc8da5",
+          "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "output",
+          "sink_name": "values_#_ranked_domains_block",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d3c06626-b5b0-4660-8733-b5167cbdd26c",
+          "source_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "sink_id": "ea561c3b-3d18-4b8e-8842-065d06309502",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 4936.321448143547,
+          "y": 450.50529440807475
+        }
+      },
+      "input_links": [
+        {
+          "id": "87c5dbb4-6741-4c86-beca-f40e0dd79995",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+          "source_name": "output",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f2696b8f-75f7-472e-92a5-d33fcd77a779",
+          "source_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+          "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "1",
+        "operator": "<",
+        "yes_value": "Unfortunately, every single domain I checked was already registered by someone else. \n\nPlease try again with a slightly different idea, and hopefully I'll be able to find something that's available!"
+      },
+      "metadata": {
+        "position": {
+          "x": 5513.162415604335,
+          "y": 445.1137642882928
+        }
+      },
+      "input_links": [
+        {
+          "id": "b00144a7-177c-46a1-aa25-c2be45823fc1",
+          "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+          "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "source_name": "output",
+          "sink_name": "no_value",
+          "is_static": false
+        },
+        {
+          "id": "f2696b8f-75f7-472e-92a5-d33fcd77a779",
+          "source_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+          "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d2586c8d-edc6-4c00-afad-1815986aaf4d",
+          "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+          "source_name": "yes_output",
+          "sink_name": "values_#_ranked_domains_block",
+          "is_static": false
+        },
+        {
+          "id": "4260a459-1cda-411e-9c32-1e886d49f444",
+          "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+          "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+          "source_name": "no_output",
+          "sink_name": "prompt_values_#_domains",
+          "is_static": false
+        }
+      ],
+      "graph_id": "f410b776-3603-4f84-8348-e5db9c551322",
+      "graph_version": 31,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "f7307ebc-189f-4554-ba9a-29b66f11fd6d",
+      "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+      "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+      "source_name": "output",
+      "sink_name": "values_#_summary",
+      "is_static": false
+    },
+    {
+      "id": "486aae4d-b3db-4008-842c-05f966f00b5b",
+      "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "caeaf988-2aac-46a3-b396-f14f4d61b4c7",
+      "source_id": "694737bd-4ca2-4927-9e3a-62d32e2bfcb3",
+      "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "source_name": "value",
+      "sink_name": "a",
+      "is_static": false
+    },
+    {
+      "id": "34ba9aec-eb91-4760-bde7-c98685b95f5a",
+      "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+      "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+      "source_name": "result",
+      "sink_name": "input",
+      "is_static": true
+    },
+    {
+      "id": "9f73853c-27bc-40c0-ac1b-b6aee896c92c",
+      "source_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+      "sink_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "source_name": "output",
+      "sink_name": "code",
+      "is_static": false
+    },
+    {
+      "id": "d6bd5988-cee8-4ac9-873f-a5dbd3bc8da5",
+      "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+      "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+      "source_name": "output",
+      "sink_name": "values_#_ranked_domains_block",
+      "is_static": false
+    },
+    {
+      "id": "87c5dbb4-6741-4c86-beca-f40e0dd79995",
+      "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+      "sink_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+      "source_name": "output",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "4e403abc-3a34-414c-9240-7a30b6f22ac5",
+      "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+      "sink_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "d28783ab-8818-4f28-ae66-d9a04ad33455",
+      "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+      "sink_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "8766de74-96ab-4607-8994-4f7b333a59d7",
+      "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "source_name": "result",
+      "sink_name": "a",
+      "is_static": false
+    },
+    {
+      "id": "2430664a-6580-428b-a317-36c7675539c1",
+      "source_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "0b604734-0417-4a56-b3c3-6c841ee764df",
+      "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "source_name": "stdout_logs",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "de188d9a-a33f-4790-9891-914046e255b7",
+      "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+      "sink_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+      "source_name": "yes_output",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ddbcf470-de3a-4955-89aa-12291f26a059",
+      "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+      "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+      "source_name": "error",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "7939e7f5-d0b4-4d3d-b622-ab1edaf18bd5",
+      "source_id": "6214aa85-548d-4c78-a298-0499a4f1c7ad",
+      "sink_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+      "source_name": "value",
+      "sink_name": "data",
+      "is_static": false
+    },
+    {
+      "id": "73c613c5-92c5-4a72-a610-6f45a43212a4",
+      "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "sink_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "c70b4120-64a3-44d0-a960-3674735314ff",
+      "source_id": "570c679c-676d-448f-bb1c-b347f36970aa",
+      "sink_id": "f3feafe5-4971-4604-9cfa-caf8e0cf60d8",
+      "source_name": "output",
+      "sink_name": "values_#_DOMAINS",
+      "is_static": false
+    },
+    {
+      "id": "d3c06626-b5b0-4660-8733-b5167cbdd26c",
+      "source_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+      "sink_id": "ea561c3b-3d18-4b8e-8842-065d06309502",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c49011f5-3dd8-416a-9604-be450f0f465f",
+      "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "b77b60d6-23b9-4700-ade8-7afa1f4ee3d0",
+      "source_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "sink_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "02f129e4-bd3b-4969-aceb-21ea389572e2",
+      "source_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "sink_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+      "source_name": "result",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "99886544-d322-4179-838f-a5b01292fcdb",
+      "source_id": "63df7668-8ada-4525-a1a1-7baae5efc103",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "6097cc32-f6e1-4311-8804-e99af44201f4",
+      "source_id": "ed14af2c-2251-4cef-8a70-2337251c64c0",
+      "sink_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+      "source_name": "output",
+      "sink_name": "prompt_values_#_product_pitch",
+      "is_static": true
+    },
+    {
+      "id": "27dd643a-09e8-4d49-814d-f8015c7a7f6f",
+      "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "b00144a7-177c-46a1-aa25-c2be45823fc1",
+      "source_id": "64bc1c5d-720c-4ac4-ae0f-1c20a9d41ad9",
+      "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+      "source_name": "output",
+      "sink_name": "no_value",
+      "is_static": false
+    },
+    {
+      "id": "ab8d3920-8582-426d-92a1-0cf3bdd31efe",
+      "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "d2586c8d-edc6-4c00-afad-1815986aaf4d",
+      "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+      "sink_id": "32f86709-810b-4f20-a2f7-a4027ff05094",
+      "source_name": "yes_output",
+      "sink_name": "values_#_ranked_domains_block",
+      "is_static": false
+    },
+    {
+      "id": "d3f1d3e7-36e5-450a-a810-9f534a12adac",
+      "source_id": "81a851af-8465-4154-83f5-36aad0ad2ba5",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "no_output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "cf5cd1d2-24ac-4126-ad0f-d934b7862e3a",
+      "source_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "781b8b03-e645-42f6-b9ee-18727a04bb42",
+      "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+      "sink_id": "aa67b2a4-e886-4381-9bea-65fe4d6e0a07",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "e53ea15b-4d84-494d-9867-71e454f7c867",
+      "source_id": "524bd1e9-17c2-4b11-ab3e-2f1809823c7e",
+      "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_product_pitch",
+      "is_static": true
+    },
+    {
+      "id": "6b8523b5-ce6e-4cd4-80a6-6be54b9be4ab",
+      "source_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c9ab9fb0-391c-46bc-b6e7-13fe3125a5f1",
+      "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "stderr_logs",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "7427c0ae-ec91-4bd5-9a72-1ef24fc11430",
+      "source_id": "2105e9c1-0698-4a01-9d02-02d791364498",
+      "sink_id": "63c243b9-7c2d-4d55-9693-7eca2e66fb67",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "de32fe82-38e2-40cc-9308-810ceb3e382c",
+      "source_id": "74ae8dfb-4ec3-442d-a965-9fcc95fc8a48",
+      "sink_id": "0963256f-3d16-47b2-808c-91b6b2f88aee",
+      "source_name": "output",
+      "sink_name": "b",
+      "is_static": true
+    },
+    {
+      "id": "4260a459-1cda-411e-9c32-1e886d49f444",
+      "source_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+      "sink_id": "55b1f3b7-9b38-45dd-8fb7-c4c7f0037c04",
+      "source_name": "no_output",
+      "sink_name": "prompt_values_#_domains",
+      "is_static": false
+    },
+    {
+      "id": "2607c55b-1f24-47f8-acd4-4df5a51171b6",
+      "source_id": "aaff98f5-ebea-4dbb-b927-35e2fb20be3c",
+      "sink_id": "7e00122a-ad6b-4e0f-92e4-d079a2173fae",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "f2696b8f-75f7-472e-92a5-d33fcd77a779",
+      "source_id": "84659cbb-1184-4040-a1af-2f2d785cac3e",
+      "sink_id": "187169c5-388f-4be3-ae67-ff46fb091ba3",
+      "source_name": "count",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "5f5dba52-1c34-4621-9047-94185ed471f6",
+      "source_id": "1177aa11-112e-4644-996c-cb9bab6e03ba",
+      "sink_id": "52555e06-ac46-4ed2-97dd-c2e46c0985f4",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2025-10-22T20:56:19.630Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Product Pitch": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Product Pitch",
+        "description": "Pitch your product!"
+      }
+    },
+    "required": [
+      "Product Pitch"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Domain Suggestions": {
+        "advanced": false,
+        "secret": false,
+        "title": "Domain Suggestions"
+      },
+      "Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error"
+      }
+    },
+    "required": [
+      "Domain Suggestions",
+      "Error"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-5-2025-08-07"
+        ]
+      },
+      "e2b_api_key_credentials": {
+        "credentials_provider": [
+          "e2b"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "e2b",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.E2B: 'e2b'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      }
+    },
+    "required": [
+      "openai_api_key_credentials",
+      "e2b_api_key_credentials"
+    ],
+    "title": "DomainNameFinderCredentialsInputSchema",
+    "type": "object"
+  }
+}

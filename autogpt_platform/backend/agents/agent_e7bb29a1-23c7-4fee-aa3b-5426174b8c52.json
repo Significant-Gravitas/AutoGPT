@@ -1,0 +1,1094 @@
+{
+  "id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+  "version": 51,
+  "is_active": true,
+  "name": "YouTube to LinkedIn Post Converter",
+  "description": "Seamlessly convert YouTube videos into compelling LinkedIn posts with this innovative AI-powered tool. Perfect for content creators, marketers, and professionals looking to repurpose video content for their LinkedIn network. Simply input a YouTube URL, select your preferred post structure, content focus, and tone, and let the AI work its magic. This versatile converter analyses video transcripts, extracts key insights, and crafts tailored LinkedIn posts that resonate with your professional audience. Choose from various post styles like personal achievements, lessons learned, thought leadership, or curated content. Customize your message with options for inspirational, conversational, or analytical tones. The tool ensures your post captures the essence of the video while optimizing for LinkedIn's format and engagement best practices. Elevate your LinkedIn presence, share valuable insights, and boost your professional brand by transforming video content into strategically crafted posts with the YouTube to LinkedIn Post Converter.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "41fea0d5-2cb8-4149-93d6-488ceb673cb1",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Structure: How do you want to present your LinkedIn Post?",
+        "title": null,
+        "value": "Curated Content",
+        "secret": false,
+        "advanced": false,
+        "description": "The *format or structure* in which you present your content. It's about *how* you package your message to make it engaging and accessible.",
+        "placeholder_values": [
+          "Personal Achievement Story",
+          "Lesson Learned",
+          "Thought Leadership",
+          "Question or Poll",
+          "Curated Content"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 742.2727851273153,
+          "y": -162.73965069729454
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "c6f52852-fc1a-42c0-bc56-e20e69ecac41",
+          "source_id": "41fea0d5-2cb8-4149-93d6-488ceb673cb1",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_linkedin_post_style",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Content: What is the main idea or message you want to convey.",
+        "title": null,
+        "value": "Recommendation",
+        "secret": false,
+        "advanced": false,
+        "description": "The main message or purpose of your post\u2014the core idea or topic you want to convey to your audience.",
+        "placeholder_values": [
+          "Hot Take",
+          "Key Takeaways",
+          "Thought Leadership",
+          "Discussion Starter",
+          "Recommendation",
+          "Controversial Opinion"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -975.4693913493425,
+          "y": 1265.6679205588327
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "817be9fc-3ba9-48f0-8e95-43243bf659d1",
+          "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+          "sink_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+          "source_name": "result",
+          "sink_name": "values_#_post_type",
+          "is_static": true
+        },
+        {
+          "id": "5d35de06-be69-4f22-9696-9db0cb94e02d",
+          "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_post_type",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+      "block_id": "f3a8f7e1-4b1d-4e5f-9f2a-7c3d5a2e6b4c",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -366.84945248598535,
+          "y": -174.34246704308515
+        }
+      },
+      "input_links": [
+        {
+          "id": "d7311030-3b77-424e-9b84-a2faa53cdc1e",
+          "source_id": "865d00df-c739-4e7f-a1dd-a9028a8565f0",
+          "sink_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "source_name": "result",
+          "sink_name": "youtube_url",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6e5a3deb-2d67-4eed-93a7-bb2ab105a0de",
+          "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "sink_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+          "source_name": "transcript",
+          "sink_name": "prompt",
+          "is_static": false
+        },
+        {
+          "id": "50771fc3-c5d0-4b9c-8ed1-7fb2d098b665",
+          "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "transcript",
+          "sink_name": "values_#_upload_transcript",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Tone: How do you want to express yourself in your post?",
+        "title": null,
+        "value": "Inspirational",
+        "secret": false,
+        "advanced": false,
+        "description": "Focuses on the tone, voice, and language used in your post\u2014the manner in which you express your ideas. It's about the way you communicate.",
+        "placeholder_values": [
+          "Conversational",
+          "Storytelling",
+          "Analytical",
+          "Inspirational",
+          "Direct and No-Nonsense"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": -964.4798031030377,
+          "y": 2676.6786854942006
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "681a0afa-854d-4cfa-b0b6-ef8faceeda95",
+          "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+          "sink_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+          "source_name": "result",
+          "sink_name": "values_#_writing_style",
+          "is_static": true
+        },
+        {
+          "id": "dc77df0f-23db-4ea5-a2c4-ede925057953",
+          "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_writing_style",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "retry": 3,
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 202.0733827539823,
+          "y": 2671.747616069122
+        }
+      },
+      "input_links": [
+        {
+          "id": "50edde5d-e0f7-4daf-b7b0-ffa68837a253",
+          "source_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+          "sink_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f2bf9eb0-815b-4dc3-b498-9a0f9f2c27ba",
+          "source_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_writing_style_description",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "retry": 3,
+        "sys_prompt": "You're a seasoned content analyst with expertise in creating engaging short-form content. Your task is to analyze the given transcript and extract key insights, memorable quotes, and main points that would be suitable for a LinkedIn post.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 173.53779914382744,
+          "y": -164.85629259652507
+        }
+      },
+      "input_links": [
+        {
+          "id": "6e5a3deb-2d67-4eed-93a7-bb2ab105a0de",
+          "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "sink_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+          "source_name": "transcript",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "7d8cb205-8c1b-4d07-827d-801da8ef7ffc",
+          "source_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_content_analysis",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "retry": 3,
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 181.98730870654288,
+          "y": 1274.0823202416145
+        }
+      },
+      "input_links": [
+        {
+          "id": "38f6a641-4619-4115-99be-0efca1fa0070",
+          "source_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+          "sink_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "da96e08e-e297-42e9-a0f7-7a386746bff9",
+          "source_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_linkedin_post_style_guide",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4d4971f7-5ff0-4695-a4e8-a048e4b38a0e",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "LinkedIn Post",
+        "title": null,
+        "value": null,
+        "format": "",
+        "secret": false,
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 2758.2750890246175,
+          "y": 1011.5042359300692
+        }
+      },
+      "input_links": [
+        {
+          "id": "bd89a482-38e4-44b7-b783-009e8d10b287",
+          "source_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+          "sink_id": "4d4971f7-5ff0-4695-a4e8-a048e4b38a0e",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "I want to create a LinkedIn post using the writing style {{writing_style}}. Please provide a detailed description of this writing style, including its key characteristics, tone, typical sentence structures, and any specific language patterns or techniques associated with this style.",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -346.42784978402483,
+          "y": 2672.3771034612896
+        }
+      },
+      "input_links": [
+        {
+          "id": "681a0afa-854d-4cfa-b0b6-ef8faceeda95",
+          "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+          "sink_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+          "source_name": "result",
+          "sink_name": "values_#_writing_style",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "50edde5d-e0f7-4daf-b7b0-ffa68837a253",
+          "source_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+          "sink_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "I want to create a specific type of LinkedIn post. The post type is {{post_type}}. Please provide a detailed description of this post type, including its key characteristics, typical structure, and best practices for creating an engaging post in this style.",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -356.7832100774149,
+          "y": 1274.7151696370713
+        }
+      },
+      "input_links": [
+        {
+          "id": "817be9fc-3ba9-48f0-8e95-43243bf659d1",
+          "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+          "sink_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+          "source_name": "result",
+          "sink_name": "values_#_post_type",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "38f6a641-4619-4115-99be-0efca1fa0070",
+          "source_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+          "sink_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "<video_transcript>\n{{upload_transcript}}\n</video_transcript>\n\n\nFrom the above video transcript, take the best {{post_type}} content and create a LinkedIn post in the {{linkedin_post_style}} style, written in the {{writing_style}} voice. \nUse the insights and guidelines provided in the following Video Content Analysis, LinkedIn Post Style Guide, and Writing Style Description to craft an engaging and effective post.\n\n### Video Content Analysis:\n<content_analysis>\n{{content_analysis}}\n</content_analysis>\n\n### LinkedIn Post Style Guide:\n<linkedin_post_style_guide>\n{{linkedin_post_style_guide}}\n</linkedin_post_style_guide>\n\n### {{writing_style}} style description:\n<writing_style_description>\n{{writing_style_description}}\n</writing_style_description>",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 1536.312780421781,
+          "y": 1009.7455928932694
+        }
+      },
+      "input_links": [
+        {
+          "id": "5d35de06-be69-4f22-9696-9db0cb94e02d",
+          "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_post_type",
+          "is_static": true
+        },
+        {
+          "id": "f2bf9eb0-815b-4dc3-b498-9a0f9f2c27ba",
+          "source_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_writing_style_description",
+          "is_static": false
+        },
+        {
+          "id": "dc77df0f-23db-4ea5-a2c4-ede925057953",
+          "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_writing_style",
+          "is_static": true
+        },
+        {
+          "id": "50771fc3-c5d0-4b9c-8ed1-7fb2d098b665",
+          "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "transcript",
+          "sink_name": "values_#_upload_transcript",
+          "is_static": false
+        },
+        {
+          "id": "7d8cb205-8c1b-4d07-827d-801da8ef7ffc",
+          "source_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_content_analysis",
+          "is_static": false
+        },
+        {
+          "id": "c6f52852-fc1a-42c0-bc56-e20e69ecac41",
+          "source_id": "41fea0d5-2cb8-4149-93d6-488ceb673cb1",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "result",
+          "sink_name": "values_#_linkedin_post_style",
+          "is_static": true
+        },
+        {
+          "id": "da96e08e-e297-42e9-a0f7-7a386746bff9",
+          "source_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+          "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "source_name": "response",
+          "sink_name": "values_#_linkedin_post_style_guide",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2274a7dc-ff54-4de7-aae0-409cb54d88da",
+          "source_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "sink_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "865d00df-c739-4e7f-a1dd-a9028a8565f0",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Source YouTube Video",
+        "title": null,
+        "value": "https://www.youtube.com/watch?v=KWonAsyKF3g",
+        "secret": false,
+        "advanced": false,
+        "description": "Add the URL of the YouTube video you want to write a LinkedIn Post about.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -966.1451592697463,
+          "y": -174.75074398841113
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "d7311030-3b77-424e-9b84-a2faa53cdc1e",
+          "source_id": "865d00df-c739-4e7f-a1dd-a9028a8565f0",
+          "sink_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+          "source_name": "result",
+          "sink_name": "youtube_url",
+          "is_static": true
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "claude-sonnet-4-5-20250929",
+        "retry": 3,
+        "sys_prompt": "Output only the LinkedIn post with no additional commentary or parenthesis.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 2141.310928112576,
+          "y": 1011.6502333729907
+        }
+      },
+      "input_links": [
+        {
+          "id": "2274a7dc-ff54-4de7-aae0-409cb54d88da",
+          "source_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+          "sink_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "bd89a482-38e4-44b7-b783-009e8d10b287",
+          "source_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+          "sink_id": "4d4971f7-5ff0-4695-a4e8-a048e4b38a0e",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "1d79c52b-0daa-4bc9-9de1-08d9986db033",
+      "graph_version": 51,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "5d35de06-be69-4f22-9696-9db0cb94e02d",
+      "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "result",
+      "sink_name": "values_#_post_type",
+      "is_static": true
+    },
+    {
+      "id": "38f6a641-4619-4115-99be-0efca1fa0070",
+      "source_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+      "sink_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "681a0afa-854d-4cfa-b0b6-ef8faceeda95",
+      "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+      "sink_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+      "source_name": "result",
+      "sink_name": "values_#_writing_style",
+      "is_static": true
+    },
+    {
+      "id": "d7311030-3b77-424e-9b84-a2faa53cdc1e",
+      "source_id": "865d00df-c739-4e7f-a1dd-a9028a8565f0",
+      "sink_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+      "source_name": "result",
+      "sink_name": "youtube_url",
+      "is_static": true
+    },
+    {
+      "id": "2274a7dc-ff54-4de7-aae0-409cb54d88da",
+      "source_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "sink_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "50edde5d-e0f7-4daf-b7b0-ffa68837a253",
+      "source_id": "19d45e40-f7d6-48e8-a740-cc832dd1d330",
+      "sink_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "6e5a3deb-2d67-4eed-93a7-bb2ab105a0de",
+      "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+      "sink_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+      "source_name": "transcript",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "50771fc3-c5d0-4b9c-8ed1-7fb2d098b665",
+      "source_id": "343cce54-6cb6-49e0-847d-a5e664ba91b2",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "transcript",
+      "sink_name": "values_#_upload_transcript",
+      "is_static": false
+    },
+    {
+      "id": "817be9fc-3ba9-48f0-8e95-43243bf659d1",
+      "source_id": "e236e485-3488-46d2-b2fd-b7d6453c7000",
+      "sink_id": "1400eee9-a2d9-420a-ab66-9470e1b76470",
+      "source_name": "result",
+      "sink_name": "values_#_post_type",
+      "is_static": true
+    },
+    {
+      "id": "f2bf9eb0-815b-4dc3-b498-9a0f9f2c27ba",
+      "source_id": "804f744e-b2ca-4730-9ed4-0a63a59eb809",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "response",
+      "sink_name": "values_#_writing_style_description",
+      "is_static": false
+    },
+    {
+      "id": "bd89a482-38e4-44b7-b783-009e8d10b287",
+      "source_id": "04eab06b-dfa6-4ae3-bff3-dfd956537239",
+      "sink_id": "4d4971f7-5ff0-4695-a4e8-a048e4b38a0e",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c6f52852-fc1a-42c0-bc56-e20e69ecac41",
+      "source_id": "41fea0d5-2cb8-4149-93d6-488ceb673cb1",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "result",
+      "sink_name": "values_#_linkedin_post_style",
+      "is_static": true
+    },
+    {
+      "id": "7d8cb205-8c1b-4d07-827d-801da8ef7ffc",
+      "source_id": "36dc1854-65f5-4b28-8146-ede4ffc6f0c0",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "response",
+      "sink_name": "values_#_content_analysis",
+      "is_static": false
+    },
+    {
+      "id": "dc77df0f-23db-4ea5-a2c4-ede925057953",
+      "source_id": "54b1767c-e70f-4130-8e1b-682ac9f0b50e",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "result",
+      "sink_name": "values_#_writing_style",
+      "is_static": true
+    },
+    {
+      "id": "da96e08e-e297-42e9-a0f7-7a386746bff9",
+      "source_id": "0424732b-b2e9-48a0-bd0d-a4a8c1704c5c",
+      "sink_id": "5b5fbcbc-c3c9-405a-88d2-5af6f0572f0f",
+      "source_name": "response",
+      "sink_name": "values_#_linkedin_post_style_guide",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2025-04-25T04:55:41.897Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Structure: How do you want to present your LinkedIn Post?": {
+        "advanced": false,
+        "secret": false,
+        "title": "Structure: How do you want to present your LinkedIn Post?",
+        "enum": [
+          "Personal Achievement Story",
+          "Lesson Learned",
+          "Thought Leadership",
+          "Question or Poll",
+          "Curated Content"
+        ],
+        "description": "The *format or structure* in which you present your content. It's about *how* you package your message to make it engaging and accessible.",
+        "default": "Curated Content"
+      },
+      "Content: What is the main idea or message you want to convey.": {
+        "advanced": false,
+        "secret": false,
+        "title": "Content: What is the main idea or message you want to convey.",
+        "enum": [
+          "Hot Take",
+          "Key Takeaways",
+          "Thought Leadership",
+          "Discussion Starter",
+          "Recommendation",
+          "Controversial Opinion"
+        ],
+        "description": "The main message or purpose of your post\u2014the core idea or topic you want to convey to your audience.",
+        "default": "Recommendation"
+      },
+      "Tone: How do you want to express yourself in your post?": {
+        "advanced": false,
+        "secret": false,
+        "title": "Tone: How do you want to express yourself in your post?",
+        "enum": [
+          "Conversational",
+          "Storytelling",
+          "Analytical",
+          "Inspirational",
+          "Direct and No-Nonsense"
+        ],
+        "description": "Focuses on the tone, voice, and language used in your post\u2014the manner in which you express your ideas. It's about the way you communicate.",
+        "default": "Inspirational"
+      },
+      "Source YouTube Video": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Source YouTube Video",
+        "description": "Add the URL of the YouTube video you want to write a LinkedIn Post about.",
+        "default": "https://www.youtube.com/watch?v=KWonAsyKF3g"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "LinkedIn Post": {
+        "advanced": false,
+        "secret": false,
+        "title": "LinkedIn Post"
+      }
+    },
+    "required": [
+      "LinkedIn Post"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "webshare_proxy_user_password_credentials": {
+        "credentials_provider": [
+          "webshare_proxy"
+        ],
+        "credentials_types": [
+          "user_password"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "webshare_proxy",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "user_password",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.WEBSHARE_PROXY: 'webshare_proxy'>], Literal['user_password']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-4o"
+        ]
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-5-20250929"
+        ]
+      }
+    },
+    "required": [
+      "webshare_proxy_user_password_credentials",
+      "openai_api_key_credentials",
+      "anthropic_api_key_credentials"
+    ],
+    "title": "YouTubetoLinkedInPostConverterCredentialsInputSchema",
+    "type": "object"
+  }
+}

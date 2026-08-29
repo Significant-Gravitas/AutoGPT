@@ -1,0 +1,381 @@
+"""Graphiti client management with per-group_id isolation and LRU caching."""
+
+import asyncio
+import hashlib
+import logging
+import re
+import weakref
+
+from cachetools import TTLCache
+
+from .config import graphiti_config
+
+logger = logging.getLogger(__name__)
+
+_GROUP_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+_MAX_GROUP_ID_LEN = 128
+
+
+# Graphiti clients wrap redis.asyncio connections whose internal Futures are
+# pinned to the event loop they were first used on. The CoPilot executor runs
+# one asyncio loop per worker thread, so a process-wide client cache would
+# hand a loop-1-bound connection to a task running on loop 2 → RuntimeError
+# "got Future attached to a different loop". Scope the cache (and its lock)
+# per running loop so each loop gets its own clients.
+class _LoopState:
+    __slots__ = ("cache", "lock", "indexed")
+
+    def __init__(self) -> None:
+        self.cache: TTLCache = _EvictingTTLCache(
+            maxsize=graphiti_config.client_cache_maxsize,
+            ttl=graphiti_config.client_cache_ttl,
+        )
+        self.lock = asyncio.Lock()
+        # group_ids whose indices this loop has already ensured. Unbounded
+        # but one short string per group actually *written* to, which is a
+        # far smaller set than the user base — see ``ensure_indices_once``.
+        self.indexed: set[str] = set()
+
+
+_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _get_loop_state() -> _LoopState:
+    loop = asyncio.get_running_loop()
+    state = _loop_state.get(loop)
+    if state is None:
+        state = _LoopState()
+        _loop_state[loop] = state
+    return state
+
+
+def derive_group_id(user_id: str) -> str:
+    """Derive a deterministic, injection-safe group_id from a user_id.
+
+    Strips to ``[a-zA-Z0-9_-]``, enforces max length, and prefixes with
+    ``user_``.  Raises if sanitization changed the input.
+    """
+    if not user_id:
+        raise ValueError("user_id must be non-empty to derive group_id")
+
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", user_id)[:_MAX_GROUP_ID_LEN]
+    if not safe_id:
+        raise ValueError(
+            f"user_id '{user_id[:32]}...' yields empty group_id after sanitization"
+        )
+
+    if safe_id != user_id:
+        raise ValueError(
+            f"user_id contains invalid characters for group_id derivation "
+            f"(original length={len(user_id)}, sanitized='{safe_id[:32]}'). "
+            f"Only [a-zA-Z0-9_-] are allowed."
+        )
+
+    group_id = f"user_{safe_id}"
+    if not _GROUP_ID_PATTERN.match(group_id):
+        raise ValueError(f"Generated group_id '{group_id}' fails validation")
+
+    return group_id
+
+
+def derive_memory_group_id(user_id: str, expert_id: str | None = None) -> str:
+    """Derive the Graphiti namespace for an AutoPilot or expert session.
+
+    Plain AutoPilot sessions retain the exact legacy ``user_<user_id>``
+    namespace so all existing user memories remain available. Expert sessions
+    use a fixed-length digest of the globally unique Expert ID, so memory stays
+    with the expert if authorized ownership changes later. Access remains a
+    separate server-side authorization concern; experts are owner-only today.
+    """
+    user_group_id = derive_group_id(user_id)
+    if expert_id is None:
+        return user_group_id
+    if not expert_id:
+        raise ValueError("expert_id must be non-empty to derive memory group_id")
+
+    safe_expert_id = re.sub(r"[^a-zA-Z0-9_-]", "", expert_id)
+    if not safe_expert_id:
+        raise ValueError(
+            f"expert_id '{expert_id[:32]}...' yields empty group_id after sanitization"
+        )
+    if safe_expert_id != expert_id:
+        raise ValueError(
+            "expert_id contains invalid characters for group_id derivation "
+            f"(original length={len(expert_id)}, "
+            f"sanitized='{safe_expert_id[:32]}'). "
+            "Only [a-zA-Z0-9_-] are allowed."
+        )
+
+    scope_digest = hashlib.sha256(expert_id.encode()).hexdigest()
+    return f"expert_{scope_digest}"
+
+
+def derive_memory_scope_key(user_id: str, expert_id: str | None = None) -> str:
+    """Stable internal key for queues, locks, and background markers.
+
+    AutoPilot keeps the legacy raw user key where existing Redis contracts use
+    it. Expert scopes use the same opaque ID as their Graphiti namespace.
+    """
+    if expert_id is None:
+        # Validate the opaque user ID while preserving the legacy raw Redis key.
+        derive_group_id(user_id)
+        return user_id
+    return derive_memory_group_id(user_id, expert_id)
+
+
+def _close_client_driver(client) -> None:
+    """Best-effort close of a Graphiti client's graph driver.
+
+    Called on cache eviction (TTL expiry or manual pop) to prevent
+    leaked FalkorDB connections.  Runs the async ``driver.close()``
+    in a fire-and-forget task if an event loop is running, otherwise
+    logs and moves on.
+    """
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver is None or not hasattr(driver, "close"):
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(driver.close())
+    except RuntimeError:
+        logger.debug("No running event loop — skipping driver.close() on eviction")
+
+
+class _EvictingTTLCache(TTLCache):
+    """TTLCache that closes Graphiti drivers on TTL expiry and capacity eviction.
+
+    Overrides ``expire()`` (not ``__delitem__``) per cachetools maintainer
+    guidance — ``expire()`` is the only hook that fires for TTL-expired items
+    since the internal expiry path uses ``Cache.__delitem__`` directly,
+    bypassing subclass overrides.  ``popitem()`` handles capacity eviction.
+    See https://github.com/tkem/cachetools/issues/205.
+    """
+
+    def expire(self, time=None):
+        expired = super().expire(time)
+        for _key, client in expired:
+            _close_client_driver(client)
+        return expired
+
+    def popitem(self):
+        key, client = super().popitem()
+        _close_client_driver(client)
+        return key, client
+
+
+def _get_cache() -> TTLCache:
+    """Return the client cache for the current running event loop."""
+    return _get_loop_state().cache
+
+
+def _build_llm_config():
+    """Shared ``LLMConfig`` for graphiti's LLM + cross-encoder paths."""
+    from graphiti_core.llm_client import LLMConfig
+
+    return LLMConfig(
+        api_key=graphiti_config.resolve_llm_api_key(),
+        model=graphiti_config.llm_model,
+        small_model=graphiti_config.llm_model,  # avoid gpt-4.1-nano dedup hallucination (#760)
+        base_url=graphiti_config.resolve_llm_base_url(),
+    )
+
+
+def _build_graphiti(
+    group_id: str,
+    llm_client,
+    *,
+    embedder=None,
+    cross_encoder=None,
+    graph_driver=None,
+):
+    """Construct a ``Graphiti`` instance bound to a per-group FalkorDB.
+
+    Pure factory: no caching. Callers decide whether to memoize.
+    ``llm_client`` lets the caller pick the LLM-tier behavior (sync vs
+    flex) without disturbing the embedder + cross-encoder defaults.
+
+    The keyword overrides exist so integration tests can substitute
+    individual boundaries (a stub embedder / cross-encoder, a driver bound
+    to a scratch database) while still building the client through THIS
+    function. One construction site means a kwarg added here reaches the
+    tests too, instead of silently drifting from a hand-mirrored copy.
+    Production passes none of them; each defaults to the real component.
+    ``group_id`` is only consulted when ``graph_driver`` is not supplied.
+    """
+    from graphiti_core import Graphiti
+    from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
+    from graphiti_core.llm_client import LLMConfig
+
+    from .falkordb_driver import AutoGPTFalkorDriver
+    from .reranker import CompatOpenAIRerankerClient
+
+    if embedder is None:
+        embedder_config = OpenAIEmbedderConfig(
+            api_key=graphiti_config.resolve_embedder_api_key(),
+            embedding_model=graphiti_config.embedder_model,
+            base_url=graphiti_config.resolve_embedder_base_url(),
+        )
+        embedder = OpenAIEmbedder(config=embedder_config)
+
+    # P-1.4: cross-encoder reranker for warm-context retrieval.
+    # Runs concurrent boolean-classifier prompts (one per candidate
+    # edge) and uses log-probabilities to rank. Cheap because the
+    # reranker model defaults to gpt-4.1-nano — the cost is one batch
+    # of small calls per session-start search. The Compat subclass
+    # fixes the stock client's max_tokens=1, which OpenAI-compatible
+    # upstreams now reject with a 400 (minimum is 16).
+    if cross_encoder is None:
+        reranker_config = LLMConfig(
+            api_key=graphiti_config.resolve_llm_api_key(),
+            model=graphiti_config.reranker_model,
+            base_url=graphiti_config.resolve_llm_base_url(),
+        )
+        cross_encoder = CompatOpenAIRerankerClient(config=reranker_config)
+
+    if graph_driver is None:
+        graph_driver = AutoGPTFalkorDriver(
+            host=graphiti_config.falkordb_host,
+            port=graphiti_config.falkordb_port,
+            password=graphiti_config.falkordb_password or None,
+            database=group_id,
+        )
+    return Graphiti(
+        llm_client=llm_client,
+        embedder=embedder,
+        cross_encoder=cross_encoder,
+        graph_driver=graph_driver,
+        max_coroutines=graphiti_config.semaphore_limit,
+    )
+
+
+async def get_graphiti_client(group_id: str):
+    """Return a Graphiti client scoped to the given group_id.
+
+    Each group_id gets its own ``Graphiti`` instance to prevent the
+    ``self.driver`` mutation race condition when different groups are
+    accessed concurrently.  Instances are cached with a TTL to bound
+    memory usage.
+
+    Returns a ``graphiti_core.Graphiti`` instance.
+    """
+    from graphiti_core.llm_client import OpenAIClient
+
+    state = _get_loop_state()
+    cache = state.cache
+
+    async with state.lock:
+        if group_id in cache:
+            return cache[group_id]
+
+        llm_client = OpenAIClient(config=_build_llm_config())
+        client = _build_graphiti(group_id, llm_client)
+        cache[group_id] = client
+        return client
+
+
+async def ensure_indices_once(group_id: str, client) -> None:
+    """Build a graph's indices the first time this loop writes to it.
+
+    ``AutoGPTFalkorDriver`` defaults to ``build_indices=False`` so that
+    constructing a driver can never materialize a graph (see its docstring —
+    an init-time ``CREATE INDEX`` is what produced ~13.7k empty graphs in
+    prod). Write paths call this instead: the graph is about to exist
+    anyway, so indexing it is free of that hazard.
+
+    Idempotent and best-effort. Memoized per event loop, so a graph is
+    indexed once per worker rather than on every episode. A failure here
+    must not fail the write, so it is logged and swallowed — the next
+    write for this group retries.
+    """
+    state = _get_loop_state()
+    if group_id in state.indexed:
+        return
+
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver is None:
+        return
+
+    try:
+        await driver.ensure_indices()
+    except Exception:
+        logger.warning(
+            "Index creation failed for group %s — memory writes continue "
+            "unindexed; will retry on next write",
+            group_id[:16],
+            exc_info=True,
+        )
+        return
+
+    state.indexed.add(group_id)
+
+
+async def make_flex_graphiti_client(group_id: str):
+    """Return a fresh Graphiti client whose LLM calls run on the flex tier.
+
+    NOT cached: nightly community rebuild is the only caller today and
+    runs once a week per user. The returned client owns its own
+    FalkorDB driver — the caller is responsible for closing it via
+    ``close_graphiti_client(...)`` when the rebuild finishes, otherwise
+    the connection lingers until the process exits.
+
+    Transport veto: the OpenAI ``service_tier="flex"`` parameter only
+    delivers the ~50% discount through OpenRouter's pass-through to
+    OpenAI / Google upstreams. Other transports (Anthropic direct,
+    Claude Code subscription, local Ollama / vLLM) either ignore the
+    extra_body kwarg silently or — in the local case — would dispatch
+    via the OpenAI Responses API endpoint (`responses.parse`) which
+    the backend doesn't speak, returning a 404 mid-rebuild. When the
+    active ``TransportProfile.supports_flex_tier`` is ``False`` we
+    swap in the regular cached ``OpenAIClient`` so the rebuild still
+    runs — at full sync price, but it runs.
+    """
+    from backend.copilot.sdk.env import config as chat_cfg
+
+    from .flex_client import FlexOpenAIClient
+
+    if not chat_cfg.transport.supports_flex_tier:
+        from graphiti_core.llm_client import OpenAIClient
+
+        logger.info(
+            "Graphiti community rebuild: flex tier not available on "
+            "transport=%s; falling back to sync OpenAIClient.",
+            chat_cfg.transport.name,
+        )
+        llm_client = OpenAIClient(config=_build_llm_config())
+    else:
+        llm_client = FlexOpenAIClient(config=_build_llm_config())
+    return _build_graphiti(group_id, llm_client)
+
+
+async def close_graphiti_client(client) -> None:
+    """Close a Graphiti client's graph driver (best-effort).
+
+    Safe to call on cached or uncached clients. Use after
+    ``make_flex_graphiti_client`` to release the FalkorDB connection.
+    """
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver and hasattr(driver, "close"):
+        try:
+            await driver.close()
+        except Exception:
+            logger.debug("Failed to close graphiti driver", exc_info=True)
+
+
+async def evict_client(group_id: str) -> None:
+    """Remove a cached client and close its driver connection."""
+    cache = _get_cache()
+    # pop() may return None for expired or missing keys.
+    # _EvictingTTLCache.expire() handles TTL-expired cleanup separately.
+    client = cache.pop(group_id, None)
+    if client is not None:
+        driver = getattr(client, "graph_driver", None) or getattr(
+            client, "driver", None
+        )
+        if driver and hasattr(driver, "close"):
+            try:
+                await driver.close()
+            except Exception:
+                logger.debug("Failed to close driver for %s", group_id, exc_info=True)

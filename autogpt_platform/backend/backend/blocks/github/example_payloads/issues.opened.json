@@ -1,0 +1,112 @@
+{
+  "action": "opened",
+  "issue": {
+    "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345",
+    "repository_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT",
+    "labels_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345/labels{/name}",
+    "comments_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345/comments",
+    "events_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345/events",
+    "html_url": "https://github.com/Significant-Gravitas/AutoGPT/issues/12345",
+    "id": 2000000001,
+    "node_id": "I_kwDOJKSTjM5wXXXX",
+    "number": 12345,
+    "title": "Bug: Application crashes when processing large files",
+    "user": {
+      "login": "bug-reporter",
+      "id": 11111111,
+      "node_id": "MDQ6VXNlcjExMTExMTEx",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11111111?v=4",
+      "url": "https://api.github.com/users/bug-reporter",
+      "html_url": "https://github.com/bug-reporter",
+      "type": "User",
+      "site_admin": false
+    },
+    "labels": [
+      {
+        "id": 5272676214,
+        "node_id": "LA_kwDOJKSTjM8AAAABOkandg",
+        "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/labels/bug",
+        "name": "bug",
+        "color": "d73a4a",
+        "default": true,
+        "description": "Something isn't working"
+      }
+    ],
+    "state": "open",
+    "locked": false,
+    "assignee": null,
+    "assignees": [],
+    "milestone": null,
+    "comments": 0,
+    "created_at": "2024-12-01T16:00:00Z",
+    "updated_at": "2024-12-01T16:00:00Z",
+    "closed_at": null,
+    "author_association": "NONE",
+    "active_lock_reason": null,
+    "body": "## Description\n\nWhen I try to process a file larger than 100MB, the application crashes with an out of memory error.\n\n## Steps to Reproduce\n\n1. Open the application\n2. Select a file larger than 100MB\n3. Click 'Process'\n4. Application crashes\n\n## Expected Behavior\n\nThe application should handle large files gracefully.\n\n## Environment\n\n- OS: Ubuntu 22.04\n- Python: 3.11\n- AutoGPT Version: 1.0.0",
+    "reactions": {
+      "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/issues/12345/timeline",
+    "state_reason": null
+  },
+  "repository": {
+    "id": 614765452,
+    "node_id": "R_kgDOJKSTjA",
+    "name": "AutoGPT",
+    "full_name": "Significant-Gravitas/AutoGPT",
+    "private": false,
+    "owner": {
+      "login": "Significant-Gravitas",
+      "id": 130738209,
+      "node_id": "O_kgDOB8roIQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+      "url": "https://api.github.com/users/Significant-Gravitas",
+      "html_url": "https://github.com/Significant-Gravitas",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/Significant-Gravitas/AutoGPT",
+    "description": "AutoGPT is the vision of accessible AI for everyone, to use and to build on.",
+    "fork": false,
+    "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT",
+    "created_at": "2023-03-16T09:21:07Z",
+    "updated_at": "2024-12-01T16:00:00Z",
+    "pushed_at": "2024-12-01T12:00:00Z",
+    "stargazers_count": 170000,
+    "watchers_count": 170000,
+    "language": "Python",
+    "forks_count": 45000,
+    "open_issues_count": 190,
+    "visibility": "public",
+    "default_branch": "master"
+  },
+  "organization": {
+    "login": "Significant-Gravitas",
+    "id": 130738209,
+    "node_id": "O_kgDOB8roIQ",
+    "url": "https://api.github.com/orgs/Significant-Gravitas",
+    "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+    "description": ""
+  },
+  "sender": {
+    "login": "bug-reporter",
+    "id": 11111111,
+    "node_id": "MDQ6VXNlcjExMTExMTEx",
+    "avatar_url": "https://avatars.githubusercontent.com/u/11111111?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/bug-reporter",
+    "html_url": "https://github.com/bug-reporter",
+    "type": "User",
+    "site_admin": false
+  }
+}

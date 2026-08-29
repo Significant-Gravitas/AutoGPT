@@ -1,0 +1,1 @@
+export const INITIAL_CREATORS_TO_SHOW = 5;

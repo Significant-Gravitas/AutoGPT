@@ -1,0 +1,312 @@
+import { describe, expect, test } from "vitest";
+
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import {
+  getDeletePlatformLinkingUnlinkADmUserLinkMockHandler401,
+  getDeletePlatformLinkingUnlinkAPlatformServerMockHandler,
+  getListBotPlatformsMockHandler,
+  getListBotPlatformsMockHandler401,
+} from "@/app/api/__generated__/endpoints/platform-linking/platform-linking.msw";
+import type { BotPlatformInfo } from "@/app/api/__generated__/models/botPlatformInfo";
+
+import SettingsBotsPage from "../page";
+
+function discordPlatform(
+  overrides: Partial<BotPlatformInfo> = {},
+): BotPlatformInfo {
+  return {
+    platform: "DISCORD",
+    display_name: "Discord",
+    icon: "discord.png",
+    add_bot_url: "https://discord.com/oauth2/authorize?client_id=123",
+    dm_link: undefined,
+    server_links: [],
+    ...overrides,
+  };
+}
+
+function slackPlatform(
+  overrides: Partial<BotPlatformInfo> = {},
+): BotPlatformInfo {
+  return {
+    platform: "SLACK",
+    display_name: "Slack",
+    icon: "slack.png",
+    add_bot_url: null, // Slack has no one-click invite for a self-hosted app
+    dm_link: undefined,
+    server_links: [],
+    ...overrides,
+  };
+}
+
+describe("SettingsBotsPage", () => {
+  test("renders the header and the Discord card with an Add bot button", async () => {
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: /^bots$/i }),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole("heading", { name: /discord/i }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /add bot to discord/i }),
+    ).toBeDefined();
+  });
+
+  test("renders the Slack card without an Add bot button (no invite URL)", async () => {
+    server.use(getListBotPlatformsMockHandler([slackPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: /slack/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: /add bot to slack/i }),
+    ).toBeNull();
+  });
+
+  test("renders an Add to Slack button when an install URL is provided", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const button = await screen.findByRole("link", {
+      name: /add bot to slack/i,
+    });
+    expect(button.getAttribute("href")).toBe(
+      "https://backend.example/api/copilot-webhooks/slack/install",
+    );
+  });
+
+  test("takes over the card with a finish-in-Slack prompt while an install is pending", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({
+          add_bot_url:
+            "https://backend.example/api/copilot-webhooks/slack/install",
+          pending_install: {
+            server_name: "Acme",
+            open_bot_url: "https://slack.com/app_redirect?app=A1&team=T1",
+          },
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/pending — finish in slack/i)).toBeDefined();
+    const open = screen.getByRole("link", { name: /open autogpt in slack/i });
+    expect(open.getAttribute("href")).toBe(
+      "https://slack.com/app_redirect?app=A1&team=T1",
+    );
+    // Alongside, not instead of: a pending marker lasts up to 7 days and must
+    // not lock someone out of installing to a second workspace.
+    expect(
+      screen.getByRole("link", { name: /add bot to slack/i }),
+    ).toBeDefined();
+  });
+
+  test("refetches when the user comes back to the tab", async () => {
+    let calls = 0;
+    server.use(
+      getListBotPlatformsMockHandler(() => {
+        calls += 1;
+        return [slackPlatform()];
+      }),
+    );
+
+    render(<SettingsBotsPage />);
+    await screen.findByRole("heading", { name: /slack/i });
+    const afterMount = calls;
+
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(calls).toBeGreaterThan(afterMount));
+
+    // Hidden tabs are not a return: the install round-trip ends with the user
+    // looking at this page, not at a background one.
+    const settled = calls;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toBe(settled);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+  });
+
+  test("names Slack's server type a workspace", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        slackPlatform({ server_noun: "workspace" }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/linked workspaces/i)).toBeDefined();
+  });
+
+  test("shows the 'no bots enabled' empty state when no platforms are configured", async () => {
+    server.use(getListBotPlatformsMockHandler([]));
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/no bots enabled/i)).toBeDefined();
+  });
+
+  test("renders an error card on 401 instead of the platform list", async () => {
+    server.use(getListBotPlatformsMockHandler401());
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText(/something went wrong/i)).toBeDefined();
+  });
+
+  test("shows the DM-not-linked tile and an unlinked indicator when no DM link", async () => {
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByText(/dm the bot on discord to link/i),
+    ).toBeDefined();
+    expect(screen.getByText(/not linked/i)).toBeDefined();
+  });
+
+  test("shows the DM username and an Unlink button when DM link exists", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        discordPlatform({
+          dm_link: {
+            id: "dm-1",
+            platform: "DISCORD",
+            platform_user_id: "u-1",
+            platform_username: "bently",
+            linked_at: new Date("2024-01-01T00:00:00Z"),
+          },
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText("bently")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /unlink dm on discord/i }),
+    ).toBeDefined();
+  });
+
+  test("flags a link whose name we don't have, without claiming the bot is gone", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        discordPlatform({
+          server_links: [
+            {
+              id: "srv-orphan",
+              platform: "DISCORD",
+              platform_server_id: "1126875755960336515",
+              owner_platform_user_id: "u-1",
+              server_name: null,
+              linked_at: new Date("2024-01-01T00:00:00Z"),
+            },
+          ],
+        }),
+      ]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    expect(await screen.findByText("1126875755960336515")).toBeDefined();
+    // A missing name means exactly that — it is not evidence the bot was
+    // removed, so the row must not say so.
+    expect(screen.getByText(/name unavailable/i)).toBeDefined();
+    expect(screen.queryByText(/not in server/i)).toBeNull();
+  });
+
+  test("clicking unlink on a linked server fires the API and the row is gone after refetch", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        discordPlatform({
+          server_links: [
+            {
+              id: "srv-1",
+              platform: "DISCORD",
+              platform_server_id: "111",
+              owner_platform_user_id: "u-1",
+              server_name: "AutoGPT HQ",
+              linked_at: new Date("2024-01-01T00:00:00Z"),
+            },
+          ],
+        }),
+      ]),
+      getDeletePlatformLinkingUnlinkAPlatformServerMockHandler({
+        success: true,
+      }),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const unlinkBtn = await screen.findByRole("button", {
+      name: /unlink autogpt hq/i,
+    });
+
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+    fireEvent.click(unlinkBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("AutoGPT HQ")).toBeNull();
+    });
+  });
+
+  test("a 401 on DM unlink keeps the row in place", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([
+        discordPlatform({
+          dm_link: {
+            id: "dm-1",
+            platform: "DISCORD",
+            platform_user_id: "u-1",
+            platform_username: "bently",
+            linked_at: new Date("2024-01-01T00:00:00Z"),
+          },
+        }),
+      ]),
+      getDeletePlatformLinkingUnlinkADmUserLinkMockHandler401(),
+    );
+
+    render(<SettingsBotsPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /unlink dm on discord/i }),
+    );
+
+    // Swap the GET handler so a refetch would drop the DM row. If the failed
+    // mutation wrongly invalidated platforms, "bently" would vanish. Asserting
+    // it stays proves no refetch fired.
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+    await waitFor(() => {
+      expect(screen.getByText("bently")).toBeDefined();
+    });
+  });
+});

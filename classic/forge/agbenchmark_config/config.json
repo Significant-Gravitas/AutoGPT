@@ -1,0 +1,4 @@
+{
+  "workspace": {"input":  "agbenchmark_config/workspace", "output": "agbenchmark_config/workspace"},
+  "host": "http://localhost:8000"
+}

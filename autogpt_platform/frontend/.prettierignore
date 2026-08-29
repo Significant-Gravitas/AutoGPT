@@ -1,0 +1,7 @@
+node_modules
+pnpm-lock.yaml
+.next
+.auth
+public
+Dockerfile
+.prettierignore

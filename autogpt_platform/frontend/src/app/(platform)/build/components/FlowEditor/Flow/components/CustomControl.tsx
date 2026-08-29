@@ -1,0 +1,137 @@
+import { useReactFlow } from "@xyflow/react";
+import { Button } from "@/components/atoms/Button/Button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { LockIcon, LockOpenIcon } from "lucide-react";
+import { memo, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
+import { startTutorial, setTutorialLoadingCallback } from "../../tutorial";
+import {
+  FullScreenIcon,
+  Loading03Icon,
+  MinusSignIcon,
+  PlusSignIcon,
+  Presentation01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+export const CustomControls = memo(
+  ({
+    setIsLocked,
+    isLocked,
+    isReadOnly = false,
+  }: {
+    isLocked: boolean;
+    setIsLocked: (isLocked: boolean) => void;
+    isReadOnly?: boolean;
+  }) => {
+    const { zoomIn, zoomOut, fitView } = useReactFlow();
+    const { isTutorialRunning, setIsTutorialRunning } = useTutorialStore();
+    const [isTutorialLoading, setIsTutorialLoading] = useState(false);
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    useEffect(() => {
+      setTutorialLoadingCallback(setIsTutorialLoading);
+      return () => setTutorialLoadingCallback(() => {});
+    }, []);
+
+    const handleTutorialClick = () => {
+      if (isTutorialLoading) return;
+
+      const flowId = searchParams.get("flowID");
+      if (flowId) {
+        router.push("/build?view=new");
+        return;
+      }
+
+      startTutorial();
+      setIsTutorialRunning(true);
+    };
+
+    const controls = [
+      {
+        id: "zoom-in-button",
+        icon: <Icon icon={PlusSignIcon} className="size-3.5 text-zinc-600" />,
+        label: "Zoom In",
+        onClick: () => zoomIn(),
+        className: "h-10 w-10 border-none",
+      },
+      {
+        id: "zoom-out-button",
+        icon: <Icon icon={MinusSignIcon} className="size-3.5 text-zinc-600" />,
+        label: "Zoom Out",
+        onClick: () => zoomOut(),
+        className: "h-10 w-10 border-none",
+      },
+      {
+        id: "tutorial-button",
+        icon: isTutorialLoading ? (
+          <Icon
+            icon={Loading03Icon}
+            className="size-3.5 animate-spin text-zinc-600"
+          />
+        ) : (
+          <Icon icon={Presentation01Icon} className="size-3.5 text-zinc-600" />
+        ),
+        label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
+        onClick: handleTutorialClick,
+        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-zinc-100" : "bg-white"}`,
+        disabled: isTutorialLoading,
+      },
+      {
+        id: "fit-view-button",
+        icon: <Icon icon={FullScreenIcon} className="size-3.5 text-zinc-600" />,
+        label: "Fit View",
+        onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
+        className: "h-10 w-10 border-none",
+      },
+      {
+        id: "lock-button",
+        icon: !isLocked ? (
+          <LockOpenIcon className="size-3.5 text-zinc-600" />
+        ) : (
+          <LockIcon className="size-3.5 text-zinc-600" />
+        ),
+        label: isReadOnly
+          ? "Canvas is locked because this is a read-only graph"
+          : "Toggle Lock",
+        onClick: () => setIsLocked(!isLocked),
+        className: `h-10 w-10 border-none ${isLocked ? "bg-zinc-100" : "bg-white"}`,
+        disabled: isReadOnly,
+      },
+    ];
+
+    return (
+      <div
+        data-id="custom-controls"
+        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-white px-1 py-2 shadow-lg"
+      >
+        {controls.map((control) => (
+          <Tooltip key={control.id} delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="icon"
+                size={"small"}
+                onClick={control.onClick}
+                className={control.className}
+                data-id={control.id}
+                disabled={"disabled" in control ? control.disabled : false}
+              >
+                {control.icon}
+                <span className="sr-only">{control.label}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{control.label}</TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    );
+  },
+);
+
+CustomControls.displayName = "CustomControls";

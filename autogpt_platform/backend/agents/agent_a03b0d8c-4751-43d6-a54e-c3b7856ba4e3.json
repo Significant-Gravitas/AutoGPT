@@ -1,0 +1,1656 @@
+{
+  "id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+  "version": 57,
+  "is_active": true,
+  "name": "AI Video Generator: Create Viral-Ready Content in Seconds",
+  "description": "AI Shortform Video Generator: Create Viral-Ready Content in Seconds\n\nTransform trending topics into engaging shortform videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to capitalize on the latest news and viral trends. Simply input your desired video count and source website, and watch as the AI scours the internet for the hottest stories, crafting them into attention-grabbing scripts optimized for platforms like TikTok, Instagram Reels, and YouTube Shorts.\n\nKey features include:\n- Customizable video count (1-5 per generation)\n- Flexible source selection for trending topics\n- AI-driven script writing following best practices for shortform content\n- Hooks that capture attention in the first 3 seconds\n- Dual narrative storytelling for maximum engagement\n- SEO-optimized content to boost discoverability\n- Integration with video generation tools for seamless production\n\nFrom hook to conclusion, each script is meticulously crafted to maintain viewer interest, incorporating proven techniques like \"but so\" storytelling, visual metaphors, and strategically placed calls-to-action. The AI Shortform Video Generator streamlines your content creation process, allowing you to stay ahead of trends and consistently produce viral-worthy videos that resonate with your audience.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "ca4397f3-3146-4721-8d45-027581169210",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "group": 1,
+        "dot_all": true,
+        "pattern": "<title>(.*?)<\\/title>",
+        "find_all": false,
+        "case_sensitive": true
+      },
+      "metadata": {
+        "position": {
+          "x": 4943.271705805728,
+          "y": 2591.4971054942084
+        }
+      },
+      "input_links": [
+        {
+          "id": "dd046be2-e8a3-461b-9ca9-ff60d00c89e6",
+          "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "sink_id": "ca4397f3-3146-4721-8d45-027581169210",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "0c3311b3-fbcc-45db-bf90-f4ca892bdfbf",
+          "source_id": "ca4397f3-3146-4721-8d45-027581169210",
+          "sink_id": "98d315de-2f53-4f28-aec1-d254c307b86b",
+          "source_name": "positive",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "682e6436-c45e-44e4-a643-1562564302a2",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "group": 1,
+        "dot_all": true,
+        "pattern": "<news_story>(.*?)<\\/news_story>",
+        "find_all": false,
+        "case_sensitive": true
+      },
+      "metadata": {
+        "position": {
+          "x": -1143.6210607383573,
+          "y": -10.931733959013457
+        }
+      },
+      "input_links": [
+        {
+          "id": "fef2729e-95cc-4963-a956-95d33aa3bbc4",
+          "source_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+          "sink_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "58c628e0-c1bb-4f7c-bcaa-a7cac3c53c4c",
+          "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "positive",
+          "sink_name": "prompt_values_#_FULL_STORY",
+          "is_static": false
+        },
+        {
+          "id": "f7fd1362-8653-4283-a39c-201d177bc80e",
+          "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "sink_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "source_name": "positive",
+          "sink_name": "prompt_values_#_STORY",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "bb38c5ab-916d-439a-b566-7a51a5fd8433",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "You can customise many of the properties of the video before generation, such as whether it should use AI generated video, which voices it should use, and the style of the video."
+      },
+      "metadata": {
+        "position": {
+          "x": 5053.550340120883,
+          "y": 803.8832822791481
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e14feaac-ab83-4708-9783-73c45b9c6fa8",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Press \"Advanced\" on this block and input your revid.ai API key.\n\nYou can get an API key by signing up and going to this page: https://www.revid.ai/account"
+      },
+      "metadata": {
+        "position": {
+          "x": 5055.294942637052,
+          "y": 187.83618794207337
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "75d91ec6-e3ff-4013-9a6d-43ea023e4989",
+      "block_id": "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1",
+      "input_default": {
+        "format": "%Y-%m-%d",
+        "offset": 0,
+        "trigger": "go"
+      },
+      "metadata": {
+        "position": {
+          "x": 2195.9745600248634,
+          "y": 522.0698096335659
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "2f6c6627-e243-47b0-a78a-f65a4b0ba665",
+          "source_id": "75d91ec6-e3ff-4013-9a6d-43ea023e4989",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_DATE",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "98d315de-2f53-4f28-aec1-d254c307b86b",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Short-Form Video Title",
+        "secret": false,
+        "advanced": false,
+        "description": "Hook-driven title optimised for TikTok, Instagram Reels & YouTube Shorts."
+      },
+      "metadata": {
+        "position": {
+          "x": 5559.918574664145,
+          "y": 2596.448241637105
+        }
+      },
+      "input_links": [
+        {
+          "id": "0c3311b3-fbcc-45db-bf90-f4ca892bdfbf",
+          "source_id": "ca4397f3-3146-4721-8d45-027581169210",
+          "sink_id": "98d315de-2f53-4f28-aec1-d254c307b86b",
+          "source_name": "positive",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d9e779dc-8f71-4234-b91b-7e1c041e89a4",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Video Script (+Visual Cues)",
+        "secret": false,
+        "advanced": false,
+        "description": "Complete spoken script with [visual directions] for your short-form video."
+      },
+      "metadata": {
+        "position": {
+          "x": 6250.997197019673,
+          "y": 2619.623453448885
+        }
+      },
+      "input_links": [
+        {
+          "id": "c4a903cd-1d79-4ff8-b0f1-a112ec11a714",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "d9e779dc-8f71-4234-b91b-7e1c041e89a4",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+      "block_id": "361697fb-0c4f-4feb-aed3-8320c88c771b",
+      "input_default": {
+        "ratio": "9 / 16",
+        "voice": "Brian",
+        "frame_rate": 30,
+        "resolution": "720p",
+        "video_style": "movingImage",
+        "background_music": "Bladerunner 2049",
+        "generation_preset": "Default"
+      },
+      "metadata": {
+        "position": {
+          "x": 4502.256834355213,
+          "y": -151.96056183992042
+        }
+      },
+      "input_links": [
+        {
+          "id": "e2a7904d-fe01-49b4-bd10-e1fd23a31678",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "source_name": "response",
+          "sink_name": "script",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "8e93cfb8-5338-475c-8bab-4b4d3912a913",
+          "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+          "source_name": "video_url",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b751321b-4688-4ab7-af14-e8d15ae8e786",
+          "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "retry": 3,
+        "prompt": "You are a search term generator. Your task is to take an input story and turn it into a concise Google search term that can be used for further research on the topic. Here is the input story:\n\n<story>\n{{STORY}}\n</story>\n\nTo create an effective search term:\n1. Identify the main topic or key elements of the story\n2. Choose 2-5 words or short phrases that best represent these elements\n3. Arrange these words in a logical order\n4. Avoid unnecessary words like articles (a, an, the) or conjunctions (and, or, but)\n\nYour output should be only the search term, without any additional explanation or commentary. The search term should be concise enough to be used in a Google search bar but descriptive enough to yield relevant results for further research on the story's topic.\n\nRespond with just your generated search term with no additional commentary or text.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 18.004348090716576,
+          "y": -32.85966357648664
+        }
+      },
+      "input_links": [
+        {
+          "id": "f7fd1362-8653-4283-a39c-201d177bc80e",
+          "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "sink_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "source_name": "positive",
+          "sink_name": "prompt_values_#_STORY",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "287bc030-1ce3-433a-bef7-5936eff22f62",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_TOPIC",
+          "is_static": false
+        },
+        {
+          "id": "336cf54b-f639-4ff0-bafd-fce3328d2046",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+          "source_name": "response",
+          "sink_name": "query",
+          "is_static": false
+        },
+        {
+          "id": "ea10a20b-f133-44fb-aa9d-e4cffd7d96c7",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "source_name": "response",
+          "sink_name": "focus",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "What is the latest news related to the following topic:\n\n<topic>\n{{TOPIC | safe}}\n</topic>\n\nTypically, you must return a list of the top 5-10 story headlines. \nIf however, if the user provided topic is clearly the headline of a very specific news story, just return just the most widely used headline of that story.",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -3240.1630809703283,
+          "y": -26.788488530455936
+        }
+      },
+      "input_links": [
+        {
+          "id": "9164e2ea-7207-4c1d-88ea-32ae8bf0a429",
+          "source_id": "7168de4f-206f-43bc-8e36-55df20656b84",
+          "sink_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+          "source_name": "result",
+          "sink_name": "values_#_TOPIC",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9c1fdb9d-a860-4645-8e78-13b1c6a961e9",
+          "source_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+          "sink_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7168de4f-206f-43bc-8e36-55df20656b84",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Video Topic / Headline",
+        "value": "AutoGPT",
+        "secret": false,
+        "advanced": false,
+        "description": "Type a broad topic (e.g. \u2018Climate Tech\u2019) or paste an exact headline (e.g. \u2018IBM unveils quantum roadmap\u2019) to generate a short-form video about it.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -4180.031840506213,
+          "y": -26.11710632181729
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "9164e2ea-7207-4c1d-88ea-32ae8bf0a429",
+          "source_id": "7168de4f-206f-43bc-8e36-55df20656b84",
+          "sink_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+          "source_name": "result",
+          "sink_name": "values_#_TOPIC",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+      "block_id": "a0a69be1-4528-491c-a85a-a4ab6873e3f0",
+      "input_default": {
+        "focus": "general information",
+        "model": "gpt-4.1-2025-04-14",
+        "style": "detailed",
+        "ollama_host": "localhost:11434",
+        "chunk_overlap": 300
+      },
+      "metadata": {
+        "position": {
+          "x": 1155.0727064918613,
+          "y": -31.31013909615018
+        }
+      },
+      "input_links": [
+        {
+          "id": "3a679d8a-c62d-498b-a83d-8b7241449526",
+          "source_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+          "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "source_name": "results",
+          "sink_name": "text",
+          "is_static": false
+        },
+        {
+          "id": "ea10a20b-f133-44fb-aa9d-e4cffd7d96c7",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "source_name": "response",
+          "sink_name": "focus",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "476a4503-87f1-40a4-8dd7-c188061a4870",
+          "source_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "summary",
+          "sink_name": "prompt_values_#_RESEARCH",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6d53ddf1-b39d-4dbc-931a-aeae658f9edd",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Optimised Hashtags",
+        "secret": false,
+        "advanced": false,
+        "description": "One or two high-reach hashtags to boost discoverability."
+      },
+      "metadata": {
+        "position": {
+          "x": 5546.663436566226,
+          "y": 4294.468802152407
+        }
+      },
+      "input_links": [
+        {
+          "id": "ff3d2c2d-d0c4-48ac-a147-09518f3c920b",
+          "source_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+          "sink_id": "6d53ddf1-b39d-4dbc-931a-aeae658f9edd",
+          "source_name": "positive",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+      "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+      "input_default": {
+        "group": 1,
+        "dot_all": true,
+        "pattern": "<hashtags>(.*?)<\\/hashtags>",
+        "find_all": false,
+        "case_sensitive": true
+      },
+      "metadata": {
+        "position": {
+          "x": 4989.880194526019,
+          "y": 4288.181263622385
+        }
+      },
+      "input_links": [
+        {
+          "id": "348a7031-04b5-43c8-b20a-560772b6f8b4",
+          "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "sink_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ff3d2c2d-d0c4-48ac-a147-09518f3c920b",
+          "source_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+          "sink_id": "6d53ddf1-b39d-4dbc-931a-aeae658f9edd",
+          "source_name": "positive",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "681a5773-4e22-4ba7-b972-8864110ee106",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Video",
+        "secret": false,
+        "advanced": false,
+        "description": "The finished video created by the Agent"
+      },
+      "metadata": {
+        "position": {
+          "x": 5416.720683710664,
+          "y": -176.92102066765722
+        }
+      },
+      "input_links": [
+        {
+          "id": "8e93cfb8-5338-475c-8bab-4b4d3912a913",
+          "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+          "source_name": "video_url",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b751321b-4688-4ab7-af14-e8d15ae8e786",
+          "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+      "block_id": "87840993-2053-44b7-8da4-187ad4ee518c",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 594.3494633641187,
+          "y": -26.67385432381235
+        }
+      },
+      "input_links": [
+        {
+          "id": "336cf54b-f639-4ff0-bafd-fce3328d2046",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+          "source_name": "response",
+          "sink_name": "query",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "3a679d8a-c62d-498b-a83d-8b7241449526",
+          "source_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+          "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "source_name": "results",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d7591a9b-daa7-4f03-852f-fb8d26fab57e",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "WARNING: Depending on the settings you select and the length of the script, video generation can take a long time. In Extreme cases 10 minutes.\n\nSettings such as AI video take longer than stock footage."
+      },
+      "metadata": {
+        "position": {
+          "x": 5055.294942637052,
+          "y": 495.83618794207337
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a6eb119e-833c-4702-b0d1-c6e01fa79df5",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Ask Perplexity (live web-searching answer AI)"
+      },
+      "metadata": {
+        "position": {
+          "x": -2825.229479767265,
+          "y": -428.19471165159075
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c6d73929-e112-4c02-8d49-686ceda1fabd",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Select the news Story to make a video about"
+      },
+      "metadata": {
+        "position": {
+          "x": -1394.0304079884431,
+          "y": -437.4027905400797
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fadf0fcc-6506-4423-8f0b-e8bb606524e2",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Conduct background research on the chosen news story"
+      },
+      "metadata": {
+        "position": {
+          "x": 670.5595728367297,
+          "y": -440.5403142618513
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d38b848f-e8ed-40ed-ad89-31664875373d",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Write a highly virality optimised script using proven methods. \n\nThis step also directs the visuals."
+      },
+      "metadata": {
+        "position": {
+          "x": 2798.2437838618944,
+          "y": -446.598452987355
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "08db983c-3312-4a79-b195-9207a27f44f9",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Create the video!"
+      },
+      "metadata": {
+        "position": {
+          "x": 4579.82086567059,
+          "y": -517.3760892955992
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7dc90a26-3094-472f-9441-f0a8eb5e4ac8",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Generate metadata  for the video such as the title and hashtags."
+      },
+      "metadata": {
+        "position": {
+          "x": 4239.2662913385075,
+          "y": 2486.858941366123
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "perplexity/sonar-pro",
+        "retry": 3,
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -2670.231626894567,
+          "y": -42.249645219997035
+        }
+      },
+      "input_links": [
+        {
+          "id": "9c1fdb9d-a860-4645-8e78-13b1c6a961e9",
+          "source_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+          "sink_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "afb2edf8-8f05-4a6c-af7d-86c9ae0009b6",
+          "source_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+          "sink_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_RESULTS",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "claude-sonnet-4-5-20250929",
+        "retry": 3,
+        "prompt": "Write a shortform video script about this news story\n<story>\n{{TOPIC}}\n---\n{{FULL_STORY}}\n</story>\n\nUsing this in depth research:\n<research>\n{{RESEARCH}}\n</research>\n\nWhen writing your script, remember that today's date is {{DATE}}. Don't mention this, but take it into account when positioning events related to the story in time.\nEnsure what you write about is true and does not include any assumptions to avoid creating fake news.\nYour video should be from the perspective of reporting on the story.",
+        "sys_prompt": "You are a shortform video script writer. Write a short form video script based on the user's topic that exactly complies with the following guide, and uses the example script below for reference on format, detail level and quality. \n\nKey shortform video guide:\n```\nWriting:\n\n1. Hooks:\n   - Keep hooks under 3 seconds, absolutely no longer\n   - Make them visually pleasing and understandable without sound - test by watching on mute\n   - Use foreshadowing to tease the video's conclusion, but don't reveal everything\n   - Example: Start with a reaction to a $5 gift, but don't show the gift itself until the end\n   - Ensure the hook is so visually strong it could be used as a thumbnail for a long-form video\n\n2. Storytelling:\n   - \"But so\" storytelling: Constantly set up and resolve conflicts\n     Example: \"I was at home but I got bored, so I ended up going for a walk, but it started raining, so I ended up trying to figure out what to do.\"\n   - Dual narrative storytelling:\n     - Voice: Focus on the main action or process\n     - Visuals: Add emotional depth or context without explicitly stating it\n     Example: Talking about making a $5 Valentine's gift while showing photos of grandma with late grandpa\n   - Create multiple \"but\" moments to repeatedly grab attention\n\n3. Language:\n   - Be ruthlessly concise - cut any word that doesn't add value\n   - Use \"but\" and \"so\" frequently to create micro-cliffhangers\n   - Avoid explaining what's visually obvious\n\n4. Content:\n   - Address 2-3 potential viewer questions in each video\n   - Provide multiple reasons for viewers to care (e.g., health benefits AND weight loss for a diet video)\n   - Use numbered lists (e.g., \"3 reasons why\") to create clear structure and expectation\n\nDirecting:\n\n1. Visual Composition:\n   - Center all important elements in the frame\n   - Limit to 2-3 objects max in any given shot\n   - First frame must be thumbnail-worthy - test this specifically\n\n2. Pacing:\n   - Hook: 1-3 seconds, ultra-fast\n   - Middle: Medium pace, but with micro-variations to maintain interest\n   - Peak: Place a clear high point (joke, reveal, etc.) around 60-70% through\n   - Quick ending: Last 2-3 seconds should wrap up decisively\n\n3. Emotional Journey:\n   - Plan 3-4 distinct emotional beats in each video\n   - Ensure the peak emotion (whether humor, surprise, etc.) is crystal clear\n   - End on the second-strongest emotional beat\n\n4. Speaking:\n   - Speak at a normal pace, but cut out all filler words\n   - After every dense information bit, pause for 0.5-1 second\n   - Vary tone to emphasize key points - don't be monotonous\n\n5. Visuals:\n   - Every 2-3 seconds should have a visual change (new shot, text overlay, etc.)\n   - Use visual metaphors to explain complex ideas quickly\n   - Incorporate progress indicators (e.g., step counters) to maintain viewer orientation\n\nStructure:\n\n1. Overall Structure:\n   - Hook (1-3 seconds): Instantly grab attention\n   - Context (2-4 seconds): Quickly establish what's happening\n   - Main content (20-25 seconds): Deliver value in bite-sized chunks\n   - Peak (3-5 seconds): Clear climax or punchline\n   - Ending (1-2 seconds): Swift wrap-up\n\n2. Retention Tactics:\n   - Every single line must progress the story - ruthlessly cut any that don't\n   - Place \"but\" moments every 5-7 seconds to maintain tension\n   - Use visual progress indicators that are always on screen (e.g., step counter in corner)\n\n3. Length:\n   - Aim for 30-35 seconds initially (Jenny's sweet spot is 34 seconds)\n   - Test variations of +/- 5 seconds to find your ideal length\n\n4. Call-to-Action (CTA):\n   - Place CTA at 50-60% mark in the video\n   - Integrate CTA into the story (e.g., \"Subscribe to see what happened next\")\n   - Keep CTA under 2 seconds\n\n5. Ending:\n   - Last 1-2 seconds should be quick and decisive\n   - Consider a cliffhanger ending to encourage rewatches\n   - If part of a series, tease the next video in the last second\n\n6. Content Buckets:\n   - Develop 2-4 distinct series with near-identical structures\n   - Use exact same title format for each video in a series\n   - Example bucket: \"$1 [food item] vs Restaurant version\"\n\n7. Testing and Iteration:\n   - Create at least 3 versions of each video, changing only one element\n   - Analyze first 24-48 hours of performance rigorously\n   - Look for patterns in top 10% of videos and double down on those elements\n```\n\nExample Script:\nHere's an example Full Script with Visual Direction (full_script) for a video titled \"How many flavors can I get for $1\":\n```\n[close-up of ice cream machine with multiple flavors visible] How many flavors can you get with a dollar?  \n[pan to show a full ice cream cup, price tag visible] That's going to be $20, and it's just vanilla.  \n[Jenny holding a tiny cup, moving towards ice cream machine] So I brought a tiny cup to get every flavor without spending more than a dollar.  \n[close-up of tiny cup under ice cream dispenser] What do these levers do?  \n[Jenny's mom entering frame, looking concerned] Jenny, they're gonna kick you out!  \n[cup filling with multiple colors of ice cream] I'm more concerned that the more flavors I added, the less space I had in my cup.  \n[Jenny eating some ice cream from the cup] Oh my goodness, I put the same flavor twice on accident.  \n[Jenny looking around furtively] Testing to make extra room.  \n[store employee walking by in background] They're gonna kick us out. Look, I called the cops!  \n[text overlay \"Subscribe for more challenges!\"] All this for one subscriber.  \n[close-up of ice cream machine with multiple levers] So I hurry through the final flavors by pressing a special button that adds two flavors at once.  \n[cup overflowing slightly, Jenny looking panicked] That's more than a dollar! Hurry up!  \n[Jenny holding the overfilled cup, moving to cashier] 14 ice cream flavors... is it gonna be a dollar?  \n[cash register display showing price] $2.48  \n[Jenny's disappointed face, quick cut to black] No ice cream for you... again.  \n```\n\nThis script follows the key principles of:\n- A quick, visually appealing hook\n- Constant progression and conflict\n- Dual narrative storytelling (spoken story about getting flavors, visual story about potentially getting in trouble)\n- Foreshadowing the ending (mentioning \"again\" to hint at a previous video)\n- Quick, impactful ending\nRemember, every single second and line serves a purpose in moving the story forward and maintaining viewer engagement.\n\n- [text between brackets] will be used to guide the the visuals and ignored by the speaker\n- Breaking lines to force clip separation and media change\n\nEverything written outside of [ ] will be spoken aloud, so never include non-spoken words like \"*sigh*\" and just leave empty lines rather than marking sections as \"None\".\n\nOutput only the full script with no commentary or additional text, titles or parenthesis.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 2757.2350969970985,
+          "y": -47.24840953640182
+        }
+      },
+      "input_links": [
+        {
+          "id": "2f6c6627-e243-47b0-a78a-f65a4b0ba665",
+          "source_id": "75d91ec6-e3ff-4013-9a6d-43ea023e4989",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_DATE",
+          "is_static": false
+        },
+        {
+          "id": "287bc030-1ce3-433a-bef7-5936eff22f62",
+          "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_TOPIC",
+          "is_static": false
+        },
+        {
+          "id": "58c628e0-c1bb-4f7c-bcaa-a7cac3c53c4c",
+          "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "positive",
+          "sink_name": "prompt_values_#_FULL_STORY",
+          "is_static": false
+        },
+        {
+          "id": "476a4503-87f1-40a4-8dd7-c188061a4870",
+          "source_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+          "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "source_name": "summary",
+          "sink_name": "prompt_values_#_RESEARCH",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e2a7904d-fe01-49b4-bd10-e1fd23a31678",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+          "source_name": "response",
+          "sink_name": "script",
+          "is_static": false
+        },
+        {
+          "id": "a11e06c0-5592-41c1-97c8-6fb12ff29164",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_SCRIPT",
+          "is_static": false
+        },
+        {
+          "id": "c4a903cd-1d79-4ff8-b0f1-a112ec11a714",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "d9e779dc-8f71-4234-b91b-7e1c041e89a4",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "claude-sonnet-4-5-20250929",
+        "retry": 3,
+        "prompt": "Extract the News Story from the search results that people would find most engaging and interesting. The story you select must be related to the topic {{TOPIC}}.\n\n <search_results>\n{{RESULTS}}\n</search_results> \n\nOutput your concise analysis inside <analysis> tags, then output your final unambiguous choice of news story inside <news_story> tags in the following format:\n\n<news_story>\nTitle: [TITLE]\nDate of event: [Date/N/A]\nStory: [Story Text]\n</news_story>",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -1726.816139381607,
+          "y": -19.133506652531025
+        }
+      },
+      "input_links": [
+        {
+          "id": "afb2edf8-8f05-4a6c-af7d-86c9ae0009b6",
+          "source_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+          "sink_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_RESULTS",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fef2729e-95cc-4963-a956-95d33aa3bbc4",
+          "source_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+          "sink_id": "682e6436-c45e-44e4-a643-1562564302a2",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "claude-sonnet-4-5-20250929",
+        "retry": 3,
+        "prompt": "You are an expert in creating engaging, viral shortform content. Your task is to analyze a given video script and generate an interesting title and relevant hashtags for it.\n\nHere is the video script you will be working with:\n\n<video_script>\n{{SCRIPT}}\n</video_script>\n\nCarefully read and analyze the script, paying attention to:\n- The main topic or theme\n- Key points or messages\n- Unique or attention-grabbing elements\n- The overall tone or style\n- The target audience\n\nAfter analyzing the script, follow these steps:\n\n1. Generate your thoughts on the script and potential titles/hashtags. Consider what would make the video stand out and appeal to the target audience. Write your thoughts inside <thoughts> tags.\n\n2. Create an unambiguous, interesting, and engaging title for the video. The title should:\n   - Accurately reflect the content of the video\n   - Be concise and attention-grabbing\n   - Use language that resonates with the target audience\n   - Potentially include a hook or create curiosity\n\n3. Generate 1-2 relevant hashtags for the video. The hashtags should:\n   - Be closely related to the video's content\n   - Be popular or trending (if applicable)\n   - Help increase the video's discoverability\n\nProvide your output in the following format:\n<thoughts>\nYour analysis and thoughts on the script, potential titles, and hashtags\n</thoughts>\n\n<title>Your final, unambiguous, interesting, and engaging title for the video</title>\n\n<hashtags>Your 1-2 most relevant hashtags, separated by a single space if using multiple</hashtags>",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 4160.482363056444,
+          "y": 2861.811609434119
+        }
+      },
+      "input_links": [
+        {
+          "id": "a11e06c0-5592-41c1-97c8-6fb12ff29164",
+          "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+          "sink_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_SCRIPT",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "348a7031-04b5-43c8-b20a-560772b6f8b4",
+          "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "sink_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        },
+        {
+          "id": "dd046be2-e8a3-461b-9ca9-ff60d00c89e6",
+          "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+          "sink_id": "ca4397f3-3146-4721-8d45-027581169210",
+          "source_name": "response",
+          "sink_name": "text",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6a6f8fcd-857d-469c-a98b-e90950a7851b",
+      "graph_version": 57,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "c4a903cd-1d79-4ff8-b0f1-a112ec11a714",
+      "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "sink_id": "d9e779dc-8f71-4234-b91b-7e1c041e89a4",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "b751321b-4688-4ab7-af14-e8d15ae8e786",
+      "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+      "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e2a7904d-fe01-49b4-bd10-e1fd23a31678",
+      "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "sink_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+      "source_name": "response",
+      "sink_name": "script",
+      "is_static": false
+    },
+    {
+      "id": "287bc030-1ce3-433a-bef7-5936eff22f62",
+      "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+      "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_TOPIC",
+      "is_static": false
+    },
+    {
+      "id": "476a4503-87f1-40a4-8dd7-c188061a4870",
+      "source_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+      "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "source_name": "summary",
+      "sink_name": "prompt_values_#_RESEARCH",
+      "is_static": false
+    },
+    {
+      "id": "dd046be2-e8a3-461b-9ca9-ff60d00c89e6",
+      "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+      "sink_id": "ca4397f3-3146-4721-8d45-027581169210",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "0c3311b3-fbcc-45db-bf90-f4ca892bdfbf",
+      "source_id": "ca4397f3-3146-4721-8d45-027581169210",
+      "sink_id": "98d315de-2f53-4f28-aec1-d254c307b86b",
+      "source_name": "positive",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "9c1fdb9d-a860-4645-8e78-13b1c6a961e9",
+      "source_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+      "sink_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+      "source_name": "output",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "a11e06c0-5592-41c1-97c8-6fb12ff29164",
+      "source_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "sink_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_SCRIPT",
+      "is_static": false
+    },
+    {
+      "id": "336cf54b-f639-4ff0-bafd-fce3328d2046",
+      "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+      "sink_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+      "source_name": "response",
+      "sink_name": "query",
+      "is_static": false
+    },
+    {
+      "id": "ff3d2c2d-d0c4-48ac-a147-09518f3c920b",
+      "source_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+      "sink_id": "6d53ddf1-b39d-4dbc-931a-aeae658f9edd",
+      "source_name": "positive",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "8e93cfb8-5338-475c-8bab-4b4d3912a913",
+      "source_id": "6dbef347-9a49-4f24-9d1c-3d39c384f354",
+      "sink_id": "681a5773-4e22-4ba7-b972-8864110ee106",
+      "source_name": "video_url",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "9164e2ea-7207-4c1d-88ea-32ae8bf0a429",
+      "source_id": "7168de4f-206f-43bc-8e36-55df20656b84",
+      "sink_id": "06ff48a2-101e-4e20-ae92-b8ab94ad9df9",
+      "source_name": "result",
+      "sink_name": "values_#_TOPIC",
+      "is_static": true
+    },
+    {
+      "id": "ea10a20b-f133-44fb-aa9d-e4cffd7d96c7",
+      "source_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+      "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+      "source_name": "response",
+      "sink_name": "focus",
+      "is_static": false
+    },
+    {
+      "id": "afb2edf8-8f05-4a6c-af7d-86c9ae0009b6",
+      "source_id": "cab3dbde-1473-465a-8bf4-71ba69e5a5de",
+      "sink_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_RESULTS",
+      "is_static": false
+    },
+    {
+      "id": "3a679d8a-c62d-498b-a83d-8b7241449526",
+      "source_id": "bcc0c964-c614-4ce4-977e-36eff68a82a9",
+      "sink_id": "46cca925-1e4a-47ca-b2d3-ff2ef07ee917",
+      "source_name": "results",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "fef2729e-95cc-4963-a956-95d33aa3bbc4",
+      "source_id": "6f373ad2-ff4f-44be-9328-27519f47afe3",
+      "sink_id": "682e6436-c45e-44e4-a643-1562564302a2",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "2f6c6627-e243-47b0-a78a-f65a4b0ba665",
+      "source_id": "75d91ec6-e3ff-4013-9a6d-43ea023e4989",
+      "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "source_name": "date",
+      "sink_name": "prompt_values_#_DATE",
+      "is_static": false
+    },
+    {
+      "id": "348a7031-04b5-43c8-b20a-560772b6f8b4",
+      "source_id": "f7c30e6b-4b42-4fa4-8c31-32475db03833",
+      "sink_id": "c1edbb59-d97d-4f13-aaaf-9f089280e6d6",
+      "source_name": "response",
+      "sink_name": "text",
+      "is_static": false
+    },
+    {
+      "id": "58c628e0-c1bb-4f7c-bcaa-a7cac3c53c4c",
+      "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+      "sink_id": "6ffba701-9296-4203-bbde-3c2c1a1247dd",
+      "source_name": "positive",
+      "sink_name": "prompt_values_#_FULL_STORY",
+      "is_static": false
+    },
+    {
+      "id": "f7fd1362-8653-4283-a39c-201d177bc80e",
+      "source_id": "682e6436-c45e-44e4-a643-1562564302a2",
+      "sink_id": "d5ec4382-2bca-4655-bf38-5c6f65010b75",
+      "source_name": "positive",
+      "sink_name": "prompt_values_#_STORY",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2025-04-28T13:04:18.367Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Video Topic / Headline": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Video Topic / Headline",
+        "description": "Type a broad topic (e.g. \u2018Climate Tech\u2019) or paste an exact headline (e.g. \u2018IBM unveils quantum roadmap\u2019) to generate a short-form video about it.",
+        "default": "AutoGPT"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Short-Form Video Title": {
+        "advanced": false,
+        "secret": false,
+        "title": "Short-Form Video Title",
+        "description": "Hook-driven title optimised for TikTok, Instagram Reels & YouTube Shorts."
+      },
+      "Video Script (+Visual Cues)": {
+        "advanced": false,
+        "secret": false,
+        "title": "Video Script (+Visual Cues)",
+        "description": "Complete spoken script with [visual directions] for your short-form video."
+      },
+      "Optimised Hashtags": {
+        "advanced": false,
+        "secret": false,
+        "title": "Optimised Hashtags",
+        "description": "One or two high-reach hashtags to boost discoverability."
+      },
+      "Video": {
+        "advanced": false,
+        "secret": false,
+        "title": "Video",
+        "description": "The finished video created by the Agent"
+      }
+    },
+    "required": [
+      "Short-Form Video Title",
+      "Video Script (+Visual Cues)",
+      "Optimised Hashtags",
+      "Video"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "revid_api_key_credentials": {
+        "credentials_provider": [
+          "revid"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "revid",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.REVID: 'revid'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-4.1-2025-04-14",
+          "gpt-4o"
+        ]
+      },
+      "jina_api_key_credentials": {
+        "credentials_provider": [
+          "jina"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "jina",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.JINA: 'jina'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "open_router_api_key_credentials": {
+        "credentials_provider": [
+          "open_router"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "open_router",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPEN_ROUTER: 'open_router'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "perplexity/sonar-pro"
+        ]
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-5-20250929"
+        ]
+      }
+    },
+    "required": [
+      "revid_api_key_credentials",
+      "openai_api_key_credentials",
+      "jina_api_key_credentials",
+      "open_router_api_key_credentials",
+      "anthropic_api_key_credentials"
+    ],
+    "title": "AIVideoGenerator:CreateViral-ReadyContentinSecondsCredentialsInputSchema",
+    "type": "object"
+  }
+}

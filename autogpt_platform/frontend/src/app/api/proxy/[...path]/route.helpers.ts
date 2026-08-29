@@ -1,0 +1,213 @@
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isWorkspaceDownloadRequest(path: string[]): boolean {
+  // api/workspace/files/{id}/download
+  if (
+    path.length === 5 &&
+    path[0] === "api" &&
+    path[1] === "workspace" &&
+    path[2] === "files" &&
+    UUID_RE.test(path[3]) &&
+    path[4] === "download"
+  ) {
+    return true;
+  }
+
+  // api/public/shared/{token}/files/{id}/download
+  if (
+    path.length === 7 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    UUID_RE.test(path[3]) &&
+    path[4] === "files" &&
+    UUID_RE.test(path[5]) &&
+    path[6] === "download"
+  ) {
+    return true;
+  }
+
+  // api/public/shared/chats/{token}/files/{id}/download
+  if (
+    path.length === 8 &&
+    path[0] === "api" &&
+    path[1] === "public" &&
+    path[2] === "shared" &&
+    path[3] === "chats" &&
+    UUID_RE.test(path[4]) &&
+    path[5] === "files" &&
+    UUID_RE.test(path[6]) &&
+    path[7] === "download"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isRedirectStatus(status: number): boolean {
+  return [301, 302, 303, 307, 308].includes(status);
+}
+
+export function isTransientWorkspaceDownloadStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchWorkspaceDownloadOnce(
+  backendUrl: string,
+  headers: Record<string, string>,
+): Promise<Response> {
+  const backendResponse = await fetch(backendUrl, {
+    method: "GET",
+    headers,
+    redirect: "manual",
+  });
+
+  if (!isRedirectStatus(backendResponse.status)) {
+    return backendResponse;
+  }
+
+  const location = backendResponse.headers.get("Location");
+  if (!location) return backendResponse;
+
+  return await fetch(location, {
+    method: "GET",
+    redirect: "follow",
+  });
+}
+
+export async function fetchWorkspaceDownloadWithRetry(
+  backendUrl: string,
+  headers: Record<string, string>,
+  maxRetries: number,
+  retryDelayMs: number,
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetchWorkspaceDownloadOnce(backendUrl, headers);
+      if (
+        response.ok ||
+        !isTransientWorkspaceDownloadStatus(response.status) ||
+        attempt === maxRetries
+      ) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+    }
+
+    await sleep(retryDelayMs);
+  }
+
+  throw new Error("Workspace download failed after retries");
+}
+
+export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
+  if (typeof body === "string") {
+    const trimmed = body.trim();
+    return trimmed || null;
+  }
+
+  if (!body || typeof body !== "object") return null;
+
+  if (
+    "detail" in body &&
+    typeof body.detail === "string" &&
+    body.detail.trim().length > 0
+  ) {
+    return body.detail.trim();
+  }
+
+  if (
+    "error" in body &&
+    typeof body.error === "string" &&
+    body.error.trim().length > 0
+  ) {
+    return body.error.trim();
+  }
+
+  if (
+    "detail" in body &&
+    body.detail &&
+    typeof body.detail === "object" &&
+    "message" in body.detail &&
+    typeof body.detail.message === "string" &&
+    body.detail.message.trim().length > 0
+  ) {
+    return body.detail.message.trim();
+  }
+
+  return null;
+}
+
+// A backend that stays silent this long AFTER receiving the full request is
+// stalled — legitimate work answers with headers well within this, while
+// legitimately slow transfers (big uploads) spend their time in the upload
+// phase, which this timeout deliberately excludes.
+export const RESPONSE_START_TIMEOUT_MS = 30_000;
+export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
+
+export function getResponseStartTimeoutMs(
+  path: string[],
+  method: string,
+): number {
+  const isCodexCredentialControl =
+    path.length >= 5 &&
+    path.slice(0, 4).join("/") === "api/integrations/codex/credentials" &&
+    ((method === "DELETE" && path.length === 5) ||
+      (method === "GET" &&
+        path.length === 6 &&
+        (path[5] === "account" || path[5] === "rate-limits")));
+  if (
+    (method === "GET" && path.join("/") === "api/integrations/codex/login") ||
+    isCodexCredentialControl
+  ) {
+    return CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS;
+  }
+  return RESPONSE_START_TIMEOUT_MS;
+}
+
+export function watchResponseStart(
+  requestBody: ReadableStream | null,
+  timeoutMs: number = RESPONSE_START_TIMEOUT_MS,
+) {
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  function arm() {
+    timer = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException(
+            "Backend sent no response within " +
+              `${timeoutMs}ms of receiving the request`,
+            "TimeoutError",
+          ),
+        ),
+      timeoutMs,
+    );
+  }
+
+  // With a body, the clock starts only once the upload has been fully read
+  // (TransformStream flush); without one there is no upload phase, so it
+  // starts immediately.
+  let body: ReadableStream | undefined;
+  if (requestBody) {
+    body = requestBody.pipeThrough(new TransformStream({ flush: arm }));
+  } else {
+    arm();
+  }
+
+  return {
+    body,
+    signal: abort.signal,
+    // Call when the backend starts responding (or errors): from that point
+    // only the overall fetch ceiling applies.
+    clear: () => clearTimeout(timer),
+  };
+}

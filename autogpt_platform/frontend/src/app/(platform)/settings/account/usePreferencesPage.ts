@@ -1,0 +1,307 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+
+import {
+  getGetV1GetNotificationPreferencesQueryKey,
+  getGetV1GetUserTimezoneQueryKey,
+  useGetV1GetNotificationPreferences,
+  useGetV1GetUserTimezone,
+  usePostV1UpdateNotificationPreferences,
+  usePostV1UpdateUserTimezone,
+} from "@/app/api/__generated__/endpoints/auth/auth";
+import type { UpdateTimezoneRequestTimezone } from "@/app/api/__generated__/models/updateTimezoneRequestTimezone";
+import { okData } from "@/app/api/helpers";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+
+import {
+  detectBrowserTimezone,
+  dirtyKinds,
+  isFormDirty,
+  preferencesToSettings,
+  describeFooterChoice,
+  settingsFromFooterLink,
+  type BriefingFrequency,
+  type NotificationSettings,
+  type PreferencesFormState,
+} from "./helpers";
+
+const DEFAULT_SETTINGS: NotificationSettings = {
+  briefingFrequency: "WEEKLY",
+  alertsEnabled: true,
+  storeVerdictsEnabled: true,
+};
+
+export function usePreferencesPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  // The Briefing footer's volume knob links here with
+  // ?f=daily|weekly|monthly|alerts|off. The design calls these "live one-click
+  // links — a volume knob instead of a trapdoor", so the choice is saved on
+  // arrival rather than pre-filling a form the reader still has to submit.
+  //
+  // The choice is only honoured with the signed token the email carried. The
+  // session is the wrong authority here: applying on arrival off a bare ?f=
+  // would let a third party change a signed-in reader's preferences just by
+  // getting them to follow a link. The backend verifies an HMAC that binds the
+  // choice to the recipient, so an unsigned or tampered link does nothing.
+  const searchParams = useSearchParams();
+  const footerChoice = searchParams.get("f");
+  const footerToken = searchParams.get("t");
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const preferencesQuery = useGetV1GetNotificationPreferences({
+    query: {
+      enabled: !!user,
+      select: okData,
+    },
+  });
+
+  const timezoneQuery = useGetV1GetUserTimezone({
+    query: {
+      enabled: !!user,
+      select: (res) => okData(res)?.timezone ?? "not-set",
+    },
+  });
+
+  const isLoading =
+    !user ||
+    preferencesQuery.isLoading ||
+    timezoneQuery.isLoading ||
+    !preferencesQuery.data;
+
+  const serverTimezone = timezoneQuery.data ?? "not-set";
+  const formTimezone =
+    serverTimezone !== "not-set" ? serverTimezone : detectBrowserTimezone();
+  const initialSettings = preferencesQuery.data
+    ? preferencesToSettings(preferencesQuery.data)
+    : DEFAULT_SETTINGS;
+  const initialFormState: PreferencesFormState = {
+    timezone: formTimezone,
+    notifications:
+      settingsFromFooterLink(footerChoice, initialSettings) ?? initialSettings,
+  };
+  const initialSavedState: PreferencesFormState = {
+    timezone: serverTimezone,
+    notifications: initialSettings,
+  };
+
+  const [formState, setFormState] = useState<PreferencesFormState>({
+    timezone: detectBrowserTimezone(),
+    notifications: DEFAULT_SETTINGS,
+  });
+  const [savedState, setSavedState] = useState<PreferencesFormState>({
+    timezone: detectBrowserTimezone(),
+    notifications: DEFAULT_SETTINGS,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const hasInitializedFormState = useRef(false);
+  const hasAppliedFooterChoice = useRef(false);
+
+  const updateTimezone = usePostV1UpdateUserTimezone();
+  const updateNotifications = usePostV1UpdateNotificationPreferences();
+
+  async function applyFooterChoice(
+    choice: string,
+    token: string,
+    next: NotificationSettings,
+  ) {
+    // Token-authenticated, not session-authenticated — see the note on
+    // footerChoice above.
+    const res = await fetch(
+      `/api/auth/user/preferences/from-email?choice=${encodeURIComponent(choice)}&token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    );
+    if (!res.ok) throw new Error(`Preference link rejected (${res.status})`);
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
+
+  async function applyNotificationSettings(next: NotificationSettings) {
+    await updateNotifications.mutateAsync({
+      data: {
+        email: user?.email ?? "",
+        briefing_frequency: next.briefingFrequency,
+        alerts_enabled: next.alertsEnabled,
+        store_verdicts_enabled: next.storeVerdictsEnabled,
+      },
+    });
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
+
+  useEffect(
+    function syncFormStateOnce() {
+      if (hasInitializedFormState.current) return;
+      if (!preferencesQuery.isSuccess) return;
+      if (!timezoneQuery.isSuccess) return;
+      setFormState(initialFormState);
+      setSavedState(initialSavedState);
+      hasInitializedFormState.current = true;
+    },
+    [
+      initialFormState,
+      initialSavedState,
+      preferencesQuery.isSuccess,
+      timezoneQuery.isSuccess,
+    ],
+  );
+
+  useEffect(
+    function applyFooterChoiceOnArrival() {
+      if (hasAppliedFooterChoice.current) return;
+      if (!hasInitializedFormState.current) return;
+      if (!footerChoice || !footerToken) return;
+
+      const chosen = settingsFromFooterLink(footerChoice, initialSettings);
+      hasAppliedFooterChoice.current = true;
+      router.replace(pathname);
+
+      if (!chosen) return;
+
+      applyFooterChoice(footerChoice, footerToken, chosen)
+        .then(() => {
+          toast({
+            title: describeFooterChoice(footerChoice),
+            variant: "success",
+          });
+        })
+        .catch(() => {
+          // Leave the choice in the form so the reader can still hit Save.
+          toast({
+            title: "Couldn't update your email frequency",
+            description: "Your choice is selected below — press Save to retry.",
+            variant: "destructive",
+          });
+        });
+    },
+    [footerChoice, footerToken, initialSettings, pathname, router],
+  );
+
+  const dirty = isFormDirty(savedState, formState);
+  const dirtyParts = dirtyKinds(savedState, formState);
+
+  function setTimezone(value: string) {
+    setFormState((prev) => ({ ...prev, timezone: value }));
+  }
+
+  function setBriefingFrequency(value: BriefingFrequency) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, briefingFrequency: value },
+    }));
+  }
+
+  function setAlertsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, alertsEnabled: value },
+    }));
+  }
+
+  function setStoreVerdictsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, storeVerdictsEnabled: value },
+    }));
+  }
+
+  function discardChanges() {
+    setFormState(savedState);
+  }
+
+  async function savePreferences() {
+    if (!dirty || isSaving || !user) return;
+
+    const snapshot = formState;
+    const partsAtSubmit = dirtyParts;
+
+    setIsSaving(true);
+
+    let timezoneSaved = !partsAtSubmit.timezone;
+    let notificationsSaved = !partsAtSubmit.notifications;
+    const failures: string[] = [];
+
+    if (partsAtSubmit.timezone) {
+      try {
+        const result = await updateTimezone.mutateAsync({
+          data: {
+            timezone: snapshot.timezone as UpdateTimezoneRequestTimezone,
+          },
+        });
+        await queryClient.invalidateQueries({
+          queryKey: getGetV1GetUserTimezoneQueryKey(),
+        });
+        const persistedTimezone =
+          (result.status === 200 && result.data?.timezone) || snapshot.timezone;
+        setSavedState((prev) => ({ ...prev, timezone: persistedTimezone }));
+        timezoneSaved = true;
+      } catch (err) {
+        failures.push(
+          `Time zone: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      }
+    }
+
+    if (partsAtSubmit.notifications) {
+      try {
+        await applyNotificationSettings(snapshot.notifications);
+        notificationsSaved = true;
+      } catch (err) {
+        failures.push(
+          `Notifications: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      }
+    }
+
+    setIsSaving(false);
+
+    if (failures.length === 0) {
+      toast({ title: "Preferences saved", variant: "success" });
+    } else if (timezoneSaved || notificationsSaved) {
+      toast({
+        title: "Preferences partially saved",
+        description: failures.join("; "),
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Couldn't save preferences",
+        description: failures.join("; "),
+        variant: "destructive",
+      });
+    }
+  }
+
+  return {
+    user,
+    isLoading,
+    isError: preferencesQuery.isError || timezoneQuery.isError,
+    error: preferencesQuery.error ?? timezoneQuery.error,
+    refetch: () => {
+      void preferencesQuery.refetch();
+      void timezoneQuery.refetch();
+    },
+    formState,
+    savedState,
+    rawTimezone: timezoneQuery.data,
+    dirty,
+    isSaving,
+    setTimezone,
+    setBriefingFrequency,
+    setAlertsEnabled,
+    setStoreVerdictsEnabled,
+    discardChanges,
+    savePreferences,
+  };
+}

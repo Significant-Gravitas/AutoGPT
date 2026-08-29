@@ -1,0 +1,1011 @@
+"""Tests for run_sub_session + get_sub_session_result (queue-backed flow).
+
+Sub-AutoPilots are enqueued on the copilot_execution RabbitMQ queue and
+executed by any copilot_executor worker. The tools wait for completion
+by subscribing to ``stream_registry`` for the sub's ChatSession. These
+tests patch the three integration seams — ``enqueue_copilot_turn``,
+``wait_for_session_result``, and ``stream_registry.create_session``
+— to exercise the tool logic without needing RabbitMQ or Redis.
+"""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+
+from .get_sub_session_result import GetSubSessionResultTool
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    WorkspaceFileInfoData,
+)
+from .run_sub_session import (
+    MAX_SUB_SESSION_WAIT_SECONDS,
+    RunSubSessionTool,
+    apply_delegated_expert,
+    response_from_outcome,
+)
+
+
+def _session(
+    user_id: str = "u",
+    session_id: str = "s1",
+    expert_id: str | None = None,
+    origin: str | None = "interactive",
+) -> MagicMock:
+    sess = MagicMock()
+    sess.session_id = session_id
+    sess.user_id = user_id
+    sess.dry_run = False
+    sess.organization_id = None
+    sess.team_id = None
+    sess.metadata.llm_auth_provider = "platform"
+    sess.metadata.llm_credential_id = None
+    sess.metadata.origin = origin
+    sess.expert_id = expert_id
+    return sess
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_queue(monkeypatch):
+    """Patch the enqueue helpers + the stream-registry session creator at
+    the source modules (session_waiter / get_sub_session_result) so tests
+    don't need RabbitMQ or Redis. Returns a dict of the mocks so
+    individual tests can assert on them.
+    """
+    enqueue_turn = AsyncMock()
+    enqueue_cancel = AsyncMock()
+    create_session = AsyncMock()
+
+    # run_sub_session reaches enqueue_copilot_turn / create_session via
+    # session_waiter.run_copilot_turn_via_queue → schedule_turn → dispatch_turn.
+    # Patch at the source modules (executor.utils for the queue publish,
+    # stream_registry for the session-meta write) since neither
+    # session_waiter nor schedule_turn holds a re-bound reference anymore.
+    monkeypatch.setattr(
+        "backend.copilot.executor.utils.enqueue_copilot_turn",
+        enqueue_turn,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.enqueue_cancel_task",
+        enqueue_cancel,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.stream_registry.create_session",
+        create_session,
+    )
+    return {
+        "enqueue_turn": enqueue_turn,
+        "enqueue_cancel": enqueue_cancel,
+        "create_session": create_session,
+    }
+
+
+@pytest.fixture
+def mock_waiter(monkeypatch):
+    """Patch the queue-backed primitive and the lightweight waiter so
+    tests can drive outcome + result deterministically. Returns the
+    ``run_copilot_turn_via_queue`` mock (used by run_sub_session) and
+    the ``wait_for_session_result`` mock (used by get_sub_session_result)
+    wired to return ``("running", SessionResult())`` by default."""
+
+    turn_mock = AsyncMock(return_value=("running", SessionResult()))
+    result_mock = AsyncMock(return_value=("running", SessionResult()))
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.run_copilot_turn_via_queue",
+        turn_mock,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
+        result_mock,
+    )
+    # Single handle with both attrs for tests that only care about one.
+    turn_mock.result_mock = result_mock
+    return turn_mock
+
+
+@pytest.fixture(autouse=True)
+def stub_workspace_listing(monkeypatch):
+    """Stub the authoritative sub workspace-file listing for every test.
+
+    Default return is ``None`` so completed paths fall back to tool-call mining
+    and never touch the workspace DB. Tests that exercise the listing override
+    ``return_value``. A single mock backs both tool-module bindings so an
+    override applies wherever the listing is read.
+    """
+    listing = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.list_sub_workspace_files",
+        listing,
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.list_sub_workspace_files",
+        listing,
+    )
+    return listing
+
+
+@pytest.fixture
+def mock_model(monkeypatch):
+    """Patch the model-layer helpers the tools call for session CRUD +
+    ownership checks. The create side returns a fake ChatSession with a
+    fresh uuid each call."""
+    created: list[MagicMock] = []
+
+    async def fake_create(
+        user_id: str,
+        *,
+        dry_run: bool,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        llm_auth_provider: str = "platform",
+        llm_credential_id: str | None = None,
+        expert_id: str | None = None,
+        origin: str = "interactive",
+    ):
+        sess = MagicMock()
+        sess.session_id = f"inner-{len(created) + 1}"
+        sess.metadata.origin = origin
+        sess.user_id = user_id
+        sess.dry_run = dry_run
+        sess.organization_id = organization_id
+        sess.team_id = team_id
+        sess.metadata.llm_auth_provider = llm_auth_provider
+        sess.metadata.llm_credential_id = llm_credential_id
+        sess.expert_id = expert_id
+        sess.messages = []
+        created.append(sess)
+        return sess
+
+    async def fake_get(session_id: str):
+        for s in created:
+            if s.session_id == session_id:
+                return s
+        return None
+
+    # The tool modules bind these names at import time, so patch the
+    # local module bindings (not the source in backend.copilot.model).
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.create_chat_session", fake_create
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.get_sub_session_result.get_chat_session", fake_get
+    )
+    return {"created": created, "get": fake_get}
+
+
+# ---------------------------------------------------------------------------
+# RunSubSessionTool
+# ---------------------------------------------------------------------------
+
+
+class TestRunSubSession:
+    @pytest.mark.asyncio
+    async def test_missing_prompt_returns_error(self):
+        r = await RunSubSessionTool()._execute(
+            user_id="u", session=_session(), prompt=""
+        )
+        assert isinstance(r, ErrorResponse)
+
+    @pytest.mark.asyncio
+    async def test_no_user_returns_error(self):
+        r = await RunSubSessionTool()._execute(
+            user_id=None, session=_session(), prompt="hi"
+        )
+        assert isinstance(r, ErrorResponse)
+
+    @pytest.mark.asyncio
+    async def test_resume_with_other_users_session_id_rejected(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Ownership must be re-verified when the caller passes a resume id."""
+        foreign = MagicMock(session_id="alien-sess", user_id="not-caller", messages=[])
+
+        async def fake_get(session_id: str):
+            if session_id == "alien-sess":
+                return foreign
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="continue",
+            sub_autopilot_session_id="alien-sess",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "is not a session you own" in r.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_propagates_dry_run_to_sub(self, mock_queue, mock_waiter, mock_model):
+        """Fresh sub-session must inherit the parent's dry_run flag."""
+        parent = _session("alice")
+        parent.dry_run = True
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="hi",
+            wait_for_result=0,  # skip the wait helper for this assertion
+        )
+        assert mock_model["created"], "create_chat_session was never awaited"
+        assert mock_model["created"][0].dry_run is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("parent_origin", ["automation", "interactive"])
+    async def test_fresh_sub_is_always_an_automation(
+        self, parent_origin, mock_queue, mock_waiter, mock_model
+    ):
+        """A sub is machine-driven whatever opened it.
+
+        Its prompt is written by the parent model, not typed by the user, and
+        nothing restricts which tools it may call — so inheriting an
+        ``interactive`` origin would let a parent that read attacker-supplied
+        content reach the staffing tools one hop from the gate that refuses
+        them directly.
+        """
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin=parent_origin),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_model["created"], "create_chat_session was never awaited"
+        assert mock_model["created"][0].metadata.origin == "automation"
+
+    @pytest.mark.asyncio
+    async def test_fresh_sub_inherits_expert_scope(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        parent = _session("alice", expert_id="expert-a")
+
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert mock_model["created"][0].expert_id == "expert-a"
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_different_expert_scope(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        other_scope = _session("alice", "other-session", expert_id="expert-b")
+
+        async def fake_get(_session_id: str):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "current memory scope" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_mismatched_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """Resuming must hold the line the fresh-sub branch holds.
+
+        Subs are created as automations, so only a sub may be resumed as one.
+        Naming an interactive session the caller happens to own would run the
+        machine-authored prompt under the origin
+        ``autopilot_session_guard`` lets reach the staffing tools.
+        """
+        interactive_sub = _session("alice", "other-session", origin="interactive")
+
+        async def fake_get(_session_id: str):
+            return interactive_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="interactive"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "started by a person" in result.message
+        mock_queue["enqueue_turn"].assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_accepts_legacy_sub_without_origin(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """A sub started before ``origin`` shipped reads back as ``None``.
+
+        Every parent that stored a sub session id and re-feeds it holds one of
+        those, so refusing an unknown origin here would break live sub-sessions
+        to close a hole they never opened — the staffing guard is where an
+        unknown origin fails closed instead.
+        """
+        legacy_sub = _session("alice", "other-session", origin=None)
+        legacy_sub.messages = []
+
+        async def fake_get(_session_id: str):
+            return legacy_sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", origin="automation"),
+            prompt="continue",
+            sub_autopilot_session_id="other-session",
+            wait_for_result=0,
+        )
+
+        assert not isinstance(result, ErrorResponse)
+        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
+
+    @pytest.mark.asyncio
+    async def test_forwards_parent_permissions_to_queue(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        """The parent's CopilotPermissions must be passed through to the
+        queue primitive so the worker applies the same filter."""
+
+        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_current_permissions",
+            lambda: perms,
+        )
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        mock_waiter.assert_awaited_once()
+        assert mock_waiter.await_args.kwargs["permissions"] is perms
+
+    @pytest.mark.asyncio
+    async def test_wait_for_result_zero_returns_running(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """wait_for_result=0 still dispatches the job (so the sub starts)
+        but the primitive returns 'running' immediately because timeout=0,
+        and the tool surfaces that to the caller."""
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running"
+        assert r.sub_session_id == r.sub_autopilot_session_id == "inner-1"
+        assert r.sub_autopilot_session_link == "/copilot?sessionId=inner-1"
+        mock_waiter.assert_awaited_once()
+        assert mock_waiter.await_args.kwargs["timeout"] == 0
+
+    @pytest.mark.asyncio
+    async def test_wait_for_result_completed_returns_final_response(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """When the queue primitive returns 'completed' + a SessionResult,
+        the tool surfaces response_text + tool_calls directly — no DB
+        round-trip needed for the content."""
+
+        res = SessionResult()
+        res.response_text = "the answer"
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="foo",
+                input={"x": 1},
+                output="ok",
+                success=True,
+            )
+        ]
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.response == "the answer"
+        assert r.tool_calls is not None and len(r.tool_calls) == 1
+        assert r.tool_calls[0]["tool_name"] == "foo"
+        mock_waiter.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_completed_surfaces_workspace_file_manifest(
+        self, mock_queue, mock_waiter, mock_model, stub_workspace_listing
+    ):
+        """On completion run_sub_session reads the authoritative workspace
+        listing for the sub and surfaces it as sub_workspace_files."""
+
+        res = SessionResult()
+        res.response_text = "delivered in the docs, what's next?"
+        mock_waiter.return_value = ("completed", res)
+        stub_workspace_listing.return_value = [
+            WorkspaceFileInfoData(
+                file_id="file-1",
+                name="PLAN.md",
+                path="/sessions/inner-1/PLAN.md",
+                mime_type="text/markdown",
+                size_bytes=14563,
+            )
+        ]
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="audit the platform",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        stub_workspace_listing.assert_awaited_once_with("alice", "inner-1")
+        assert r.sub_workspace_files is not None
+        assert r.sub_workspace_files[0].path == "/sessions/inner-1/PLAN.md"
+        assert "workspace file" in (r.message or "")
+
+    @pytest.mark.asyncio
+    async def test_queued_outcome_surfaces_queued_status(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """When the shared primitive reports the target session already has
+        a turn running, the tool surfaces ``status='queued'`` so the LLM can
+        decide whether to poll or move on."""
+
+        queued_res = SessionResult(queued=True, pending_buffer_length=2)
+        mock_waiter.return_value = ("queued", queued_res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="please do another thing",
+            wait_for_result=0,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "queued"
+        assert r.sub_session_id == "inner-1"
+        assert "queued" in (r.message or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_wait_clamps_above_maximum(self, mock_queue, mock_waiter, mock_model):
+        """wait_for_result values above the cap are clamped before being
+        passed to the queue primitive."""
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="hi",
+            wait_for_result=MAX_SUB_SESSION_WAIT_SECONDS + 999,
+        )
+        mock_waiter.assert_awaited_once()
+        assert mock_waiter.await_args.kwargs["timeout"] == MAX_SUB_SESSION_WAIT_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# GetSubSessionResultTool
+# ---------------------------------------------------------------------------
+
+
+class TestGetSubSessionResult:
+    @pytest.mark.asyncio
+    async def test_missing_id_returns_error(self):
+        r = await GetSubSessionResultTool()._execute(
+            user_id="u", session=_session(), sub_session_id=""
+        )
+        assert isinstance(r, ErrorResponse)
+
+    @pytest.mark.asyncio
+    async def test_unknown_id_returns_error(self, monkeypatch):
+        async def none_get(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            none_get,
+        )
+        r = await GetSubSessionResultTool()._execute(
+            user_id="u", session=_session(), sub_session_id="missing"
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "No sub-session with id missing" in r.message
+
+    @pytest.mark.asyncio
+    async def test_other_user_cannot_access(self, monkeypatch):
+        """Cross-user lookups are indistinguishable from 'not found'."""
+        foreign = MagicMock(user_id="bob", expert_id=None, messages=[])
+
+        async def foreign_get(_sid):
+            return foreign
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            foreign_get,
+        )
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice", session=_session("alice"), sub_session_id="bobs-sess"
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "No sub-session" in r.message
+
+    @pytest.mark.asyncio
+    async def test_other_expert_scope_cannot_access(self, monkeypatch):
+        other_scope = _session("alice", "expert-b-session", expert_id="expert-b")
+        other_scope.messages = []
+
+        async def fake_get(_sid):
+            return other_scope
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+
+        result = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice", expert_id="expert-a"),
+            sub_session_id="expert-b-session",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "No sub-session" in result.message
+
+    @pytest.mark.asyncio
+    async def test_wait_returns_running(self, monkeypatch, mock_waiter):
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-7",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "running"
+        assert r.sub_session_id == "inner-7"
+        mock_waiter.result_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
+        """'completed' outcome surfaces the SessionResult directly."""
+
+        sub = MagicMock(
+            user_id="alice", expert_id=None, messages=[]
+        )  # not terminal-looking
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        res = SessionResult()
+        res.response_text = "done"
+        mock_waiter.result_mock.return_value = ("completed", res)
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-3",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.response == "done"
+
+    @pytest.mark.asyncio
+    async def test_already_terminal_skips_waiter(self, monkeypatch, mock_waiter):
+        """If the sub's last message is already terminal AND no turn is
+        in flight, the tool returns 'completed' without ever calling
+        wait_for_session_result — it rebuilds the response from the
+        persisted message instead."""
+        sub = MagicMock(user_id="alice", expert_id=None)
+        assistant = MagicMock()
+        assistant.role = "assistant"
+        assistant.content = "already done"
+        assistant.tool_calls = None
+        sub.messages = [assistant]
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-9",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.response == "already done"
+        mock_waiter.result_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_turn_in_flight_does_not_return_stale(
+        self, monkeypatch, mock_waiter
+    ):
+        """Regression for sentry r3105409601: on a resumed session whose
+        stream_registry status is 'running' (new turn is mid-flight) the
+        tool must NOT short-circuit to the prior turn's terminal message.
+        It subscribes to the stream like a normal running-session poll."""
+        # DB state reflects the PREVIOUS turn's terminal assistant message.
+        prior = MagicMock()
+        prior.role = "assistant"
+        prior.content = "OLD stale result"
+        prior.tool_calls = None
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[prior])
+
+        async def fake_get(_sid):
+            return sub
+
+        running_meta = MagicMock(status="running")
+
+        async def active_registry(_sid):
+            return running_meta
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            active_registry,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-11",
+            wait_if_running=30,
+        )
+        # The waiter must have been awaited — stale short-circuit was skipped.
+        mock_waiter.result_mock.assert_awaited_once()
+        assert isinstance(r, SubSessionStatusResponse)
+        # Default mock_waiter.result_mock.return_value = ("running", SessionResult())
+        assert r.status == "running"
+        # And crucially NOT the stale content.
+        assert r.response is None or r.response == ""
+
+    @pytest.mark.asyncio
+    async def test_cancel_publishes_cancel_event(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """cancel=true fans out a CancelCoPilotEvent and returns 'cancelled'
+        without waiting for the sub to finish (the worker will finalise)."""
+        sub = MagicMock(user_id="alice", expert_id=None, messages=[])
+
+        async def fake_get(_sid):
+            return sub
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-5",
+            cancel=True,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "cancelled"
+        mock_queue["enqueue_cancel"].assert_awaited_once_with("inner-5")
+        mock_waiter.result_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_terminal_path_surfaces_files_from_listing(
+        self, monkeypatch, mock_waiter, stub_workspace_listing
+    ):
+        """SECRT-2377 terminal-path fix: when the sub already finished (cold
+        poll, last message terminal) the waiter is skipped and the tool-call
+        log only holds the last message — yet the file manifest is still
+        populated from the authoritative workspace listing."""
+
+        sub = MagicMock(user_id="alice", expert_id=None)
+        assistant = MagicMock()
+        assistant.role = "assistant"
+        assistant.content = "done — see the docs I wrote"
+        assistant.tool_calls = None  # no write calls on the last message
+        sub.messages = [assistant]
+
+        async def fake_get(_sid):
+            return sub
+
+        async def no_active_session(_sid):
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
+        )
+        stub_workspace_listing.return_value = [
+            WorkspaceFileInfoData(
+                file_id="file-1",
+                name="AUDIT.md",
+                path="/sessions/inner-9/AUDIT.md",
+                mime_type="text/markdown",
+                size_bytes=16170,
+            )
+        ]
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-9",
+            wait_if_running=30,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        # Waiter skipped (terminal short-circuit) — the tool-call log is stale.
+        mock_waiter.result_mock.assert_not_awaited()
+        # ...but the manifest is still populated, from the workspace listing.
+        stub_workspace_listing.assert_awaited_once_with("alice", "inner-9")
+        assert r.sub_workspace_files is not None
+        assert r.sub_workspace_files[0].path == "/sessions/inner-9/AUDIT.md"
+        assert "workspace file" in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# SECRT-2377 — hollow response after delivering work via workspace files
+# ---------------------------------------------------------------------------
+
+
+class TestHollowResponseRepro:
+    """Deterministic repro for SECRT-2377.
+
+    A sub-AutoPilot that does its real work into workspace files and then
+    returns a short "delivered in three docs, what's next?" message finishes
+    ``COMPLETED`` with a hollow body. ``response_from_outcome`` surfaces only
+    ``response_text`` plus a raw tool-call log to the parent — it carries no
+    discoverable manifest of the files the sub wrote, and those files are
+    scoped to the sub's own session, so the parent silently loses the work
+    and re-does it.
+
+    The test exercises the pure ``response_from_outcome`` function (no queue,
+    Redis, or DB) and asserts the fixed contract: the completed response
+    exposes ``sub_workspace_files`` — a manifest of the files the sub created,
+    each with a cross-session ``read_path`` — so the parent can retrieve them.
+    """
+
+    @staticmethod
+    def _hollow_completed_result():
+        """A completed SessionResult mirroring the incident: 3 large files
+        written to the workspace, then a 227-token hollow final message."""
+
+        def _write_call(idx: int, name: str, size: int) -> ToolCallEntry:
+            # write_workspace_file's stream output is a WorkspaceWriteResponse
+            # JSON string carrying only a 200-char content_preview — never the
+            # full body. Its `path` is already session-qualified (the workspace
+            # manager resolves it on write). This is all the parent could mine
+            # from the tool log, and it is not the findings.
+            return ToolCallEntry(
+                tool_call_id=f"tc-{idx}",
+                tool_name="write_workspace_file",
+                input={"filename": name},
+                output=json.dumps(
+                    {
+                        "type": "workspace_file_written",
+                        "file_id": f"file-{idx}",
+                        "name": name,
+                        "path": f"/sessions/inner-1/{name}",
+                        "size_bytes": size,
+                        "content_preview": "A" * 200,
+                    }
+                ),
+                success=True,
+            )
+
+        res = SessionResult()
+        res.response_text = (
+            "Since the comprehensive audit has been completed and delivered "
+            "in three workspace documents, I'm ready to assist with the next "
+            "phase. What would you like me to do next?"
+        )
+        res.tool_calls = [
+            _write_call(1, "ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md", 16170),
+            _write_call(2, "MODEL_CHANGES_QUICK_REFERENCE.md", 6528),
+            _write_call(3, "EXACT_CODE_SNIPPETS.md", 14563),
+        ]
+        res.total_tokens = 22667
+        res.completion_tokens = 227
+        return res
+
+    def test_completed_status_is_surfaced(self):
+        """Sanity: the hollow result still reports COMPLETED — the failure
+        mode is invisible, which is exactly why it wastes tokens silently."""
+        r = response_from_outcome(
+            outcome="completed",
+            result=self._hollow_completed_result(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        # The body the parent reads is the hollow summary, nothing more.
+        assert "next phase" in (r.response or "")
+
+    def test_completed_response_exposes_workspace_files_written(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=self._hollow_completed_result(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=12.3,
+        )
+        # Fixed contract: the parent can discover the 3 files the sub wrote
+        # without scraping the raw tool log. Each path is session-qualified and
+        # ready to hand straight to read_workspace_file.
+        manifest = r.sub_workspace_files
+        assert manifest, "no workspace-file manifest surfaced to the parent"
+        by_path = {f.path: f for f in manifest}
+        assert set(by_path) == {
+            "/sessions/inner-1/ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md",
+            "/sessions/inner-1/MODEL_CHANGES_QUICK_REFERENCE.md",
+            "/sessions/inner-1/EXACT_CODE_SNIPPETS.md",
+        }
+        audit = by_path["/sessions/inner-1/ANTHROPIC_MODEL_AUDIT_claude-opus-4-8.md"]
+        assert audit.size_bytes == 16170
+        # The message nudges the parent toward the files so a hollow `response`
+        # isn't mistaken for an empty run.
+        assert "workspace file" in (r.message or "")
+
+    def test_no_manifest_when_sub_returned_inline(self):
+        """A sub that answered inline (no file writes) must not grow an empty
+        or noisy manifest — sub_workspace_files stays None."""
+
+        res = SessionResult()
+        res.response_text = "Here is the full answer, inline."
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="web_search",
+                input={"q": "x"},
+                output="some results",
+                success=True,
+            )
+        ]
+        r = response_from_outcome(
+            outcome="completed",
+            result=res,
+            inner_session_id="inner-2",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.sub_workspace_files is None
+        assert "workspace file" not in (r.message or "")
+
+
+# ---------------------------------------------------------------------------
+# actor parameter — response_from_outcome builds the message once instead of
+# relying on a post-hoc string substitution against its own wording.
+# ---------------------------------------------------------------------------
+
+
+class TestActorParameter:
+    def test_default_actor_is_sub_autopilot(self):
+        r = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+        )
+        assert r.message is not None and r.message.startswith("Sub-AutoPilot completed")
+
+    @pytest.mark.parametrize(
+        "outcome,expected_prefix",
+        [
+            ("running", "Bea is still running"),
+            ("failed", "Bea failed"),
+            ("completed", "Bea completed"),
+        ],
+    )
+    def test_actor_names_the_delegate_in_every_terminal_message(
+        self, outcome, expected_prefix
+    ):
+        r = response_from_outcome(
+            outcome=outcome,
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        assert r.message is not None and r.message.startswith(expected_prefix)
+
+    def test_apply_delegated_expert_is_a_no_op_once_actor_was_set(self):
+        """When the caller already passed the delegate's name as ``actor``,
+        apply_delegated_expert's message.replace("Sub-AutoPilot", ...) must
+        find nothing to substitute — the message was already built correctly
+        by response_from_outcome, not patched up afterwards."""
+        response = response_from_outcome(
+            outcome="completed",
+            result=SessionResult(),
+            inner_session_id="inner-1",
+            parent_session_id="parent-1",
+            elapsed=1.0,
+            actor="Bea",
+        )
+        expert = DelegatedExpertInfo(
+            id="expert-b", name="Bea", role="Ops lead", avatar_url=None, color="violet"
+        )
+        result = apply_delegated_expert(response, expert)
+        assert result.message == response.message
+        assert "Sub-AutoPilot" not in (result.message or "")

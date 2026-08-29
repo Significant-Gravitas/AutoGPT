@@ -1,0 +1,29 @@
+{
+    "category": [
+        "coding",
+        "general"
+    ],
+    "cutoff": 90,
+    "dependencies": [
+        "TestPasswordGenerator"
+    ],
+    "eval_id": "029c1e6f-2b36-451e-bca6-60063b827d2e",
+    "ground": {
+        "answer": "The correct python file is written and organizes the files accordingly",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create a file organizer.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "FileOrganizer",
+    "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH"
+}

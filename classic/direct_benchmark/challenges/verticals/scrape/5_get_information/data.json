@@ -1,0 +1,35 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestRevenueRetrieval"
+    ],
+    "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
+    "ground": {
+        "answer": "The twitter handles of the two hosts of Latent Space.",
+        "case_sensitive": false,
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "swyx",
+            "FanaHOVA"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve twitter handles given a vague description.",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "TestGetInformation",
+    "task": "Write the twitter handle of the two hosts of Latent Space to a file called output.txt"
+}
