@@ -1,3 +1,5 @@
+from backend.util.service import EXPOSED_FLAG
+
 from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
 
 
@@ -20,3 +22,16 @@ def test_bot_analytics_methods_registered() -> None:
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)
+
+
+def test_all_rpc_request_schemas_are_constructible() -> None:
+    manager = DatabaseManager()
+
+    for name, attr in vars(DatabaseManager).items():
+        if not getattr(attr, EXPOSED_FLAG, False):
+            continue
+
+        try:
+            manager._create_fastapi_endpoint(attr)
+        except Exception as exc:
+            raise AssertionError(f"RPC request schema failed for {name}") from exc

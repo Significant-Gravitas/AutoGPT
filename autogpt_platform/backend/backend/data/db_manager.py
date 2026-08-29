@@ -543,7 +543,6 @@ class DatabaseManager(AppService):
     promote_learned_notes = _(experts_learned_notes_db.promote_learned_notes)
     archive_notes_for_rules = _(experts_learned_notes_db.archive_notes_for_rules)
     persist_delegation_attempt = _(experts_work_items.persist_delegation_attempt)
-    create_work_item = _(experts_work_items.create_work_item)
     mark_work_started = _(experts_work_items.mark_work_started)
     report_work_item = _(experts_work_items.report_work_item)
     record_delegation_outcome = _(experts_work_items.record_delegation_outcome)
@@ -947,7 +946,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     promote_learned_notes = d.promote_learned_notes
     archive_notes_for_rules = d.archive_notes_for_rules
     persist_delegation_attempt = d.persist_delegation_attempt
-    create_work_item = d.create_work_item
     mark_work_started = d.mark_work_started
     report_work_item = d.report_work_item
     record_delegation_outcome = d.record_delegation_outcome
