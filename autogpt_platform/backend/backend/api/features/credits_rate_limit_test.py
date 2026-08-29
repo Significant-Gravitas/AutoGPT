@@ -170,15 +170,14 @@ async def test_fails_open_and_fast_when_redis_hangs(mocker):
     """A hung Redis must not hold the request: the limiter has a deadline and
     falls through instead of parking a worker slot for the retry ladder."""
 
-    async def never_returns() -> int:
+    async def never_returns(_key: str) -> int:
         await asyncio.sleep(60)
         return 1
 
-    mocker.patch.object(
-        rate_limit,
-        "_incr_window",
-        side_effect=lambda _key: never_returns(),
-    )
+    # Replace the function outright rather than mocking it: an AsyncMock whose
+    # side_effect returns a coroutine hands that coroutine back as the result
+    # instead of awaiting it, so the deadline would never be exercised.
+    mocker.patch.object(rate_limit, "_incr_window", new=never_returns)
     mocker.patch.object(rate_limit, "SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS", 0.05)
 
     loop = asyncio.get_running_loop()
