@@ -1010,6 +1010,7 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
         Security(requires_user),
         Depends(enforce_subscription_status_rate_limit),
     ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],

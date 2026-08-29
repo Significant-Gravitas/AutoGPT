@@ -1,27 +1,33 @@
 """Per-user rate limit for ``GET /api/credits/subscription``.
 
-The subscription-status endpoint is fetched on essentially every authenticated
-page load (PaywallGate wraps the app shell) and, on a cold cache, fans out to
-several Stripe reads per request. A per-user cap puts a hard ceiling on scripted
-clients hammering it, without affecting normal use: the frontend shares one
-React Query entry with a 60s ``staleTime``, so a real user — even with several
-tabs open and the occasional hard reload — stays around ~5-15 requests/minute.
+The subscription-status endpoint fans out to uncached Stripe reads per request
+and is fetched on every load of the billing page, so a scripted client can
+drive a lot of upstream traffic from one account. A per-user cap puts a hard
+ceiling on that without affecting normal use: the frontend shares one React
+Query entry with a 60s ``staleTime``, so a real user stays well under the cap.
 
-Fixed-window counter in Redis (``SET NX EX`` + ``INCR``), keyed per ``user_id``,
-fail-open on Redis brown-out. Mirrors ``backend/api/features/search/rate_limit``.
-A single key per check keeps it correct on the Redis cluster.
+Atomic fixed-window counter in Redis (Lua ``INCR`` + first-hit ``EXPIRE``),
+keyed per ``user_id``. A single key per check keeps it correct on the Redis
+cluster.
+
+Availability: this puts Redis in front of a billing read, so the check is
+strictly best-effort. It is bounded by a short deadline and **fails open** on
+any Redis trouble — being unable to prove a user is under their cap must never
+cost every user their billing status.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
 import fastapi
 from autogpt_libs.auth import get_user_id
+from redis.exceptions import RedisClusterException, RedisError
 
-from backend.data.redis_client import TRANSIENT_REDIS_ERRORS, get_redis_async
+from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +36,14 @@ logger = logging.getLogger(__name__)
 # Query entry plus 60s staleTime keep steady-state use near ~1/min per tab.
 SUBSCRIPTION_STATUS_WINDOW_SECONDS = 60
 SUBSCRIPTION_STATUS_MAX_REQUESTS = 60
+
+# Hard deadline on the whole Redis interaction. Without it "fail open" is not
+# "fail fast": a cold client runs redis-py's own connect retry ladder (and each
+# command its per-command retry), so during an outage a request would park an
+# ASGI worker slot for minutes instead of falling through. The limiter is
+# best-effort, so it gets one short budget and is skipped if Redis can't answer
+# inside it.
+SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS = 0.25
 
 # Atomic fixed-window counter: INCR the key, and set the TTL only on the INCR
 # that opened the window (count == 1). Doing both in one server-side script
@@ -43,6 +57,26 @@ if count == 1 then
 end
 return count
 """
+
+
+async def _incr_window(key: str) -> int:
+    """Run the atomic counter, returning the request's position in the window.
+
+    Split out so the connect and the command share one deadline in the caller.
+    Lua ARGV values are strings; ``EXPIRE`` coerces ``"60"`` back to an int. The
+    cast mirrors the other ``eval()`` call sites (e.g. ``copilot/dream/locks``):
+    the cluster client types ``eval()``'s return as ``str``.
+    """
+    redis = await get_redis_async()
+    return await cast(
+        Any,
+        redis.eval(
+            _INCR_OPEN_WINDOW,
+            1,
+            key,
+            str(SUBSCRIPTION_STATUS_WINDOW_SECONDS),
+        ),
+    )
 
 
 def _window_key(user_id: str, *, now: datetime) -> str:
@@ -62,29 +96,33 @@ async def enforce_subscription_status_rate_limit(
     returning fresh state) never trip it — FastAPI dependencies run for HTTP
     requests, not for direct function calls.
 
-    On a *transient* Redis failure (connection/timeout/cluster-down) this fails
-    *open* (logs and lets the call through): a Redis blip must never block the
-    billing status read for every user, which would be far worse than one
-    client briefly exceeding its cap. Non-transient errors are left to
-    propagate rather than silently disabling the limiter.
+    On any Redis trouble this fails *open* (logs and lets the call through): a
+    Redis blip must never block the billing status read for every user, which
+    would be far worse than one client briefly exceeding its cap. The whole
+    interaction is bounded by ``SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS`` so
+    an outage falls through fast instead of holding a worker slot.
+
+    ``RedisClusterException`` is caught explicitly: it does not inherit from
+    ``RedisError``, and ``SlotNotCoveredError`` (raised during a cluster
+    rolling restart / slot migration) would otherwise surface as a 500 — the
+    exact brown-out this fail-open exists for. Same reasoning as the comment in
+    ``backend/copilot/rate_limit.py``.
     """
     now = datetime.now(UTC)
     key = _window_key(user_id, now=now)
     try:
-        redis = await get_redis_async()
-        # Lua ARGV values are strings; EXPIRE coerces "60" back to an int. The
-        # cast mirrors the other eval() call sites (e.g. copilot/dream/locks):
-        # the cluster client types eval()'s return as str, so cast before await.
-        count = await cast(
-            Any,
-            redis.eval(
-                _INCR_OPEN_WINDOW,
-                1,
-                key,
-                str(SUBSCRIPTION_STATUS_WINDOW_SECONDS),
-            ),
+        count = await asyncio.wait_for(
+            _incr_window(key),
+            timeout=SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS,
         )
-    except TRANSIENT_REDIS_ERRORS as e:
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        asyncio.TimeoutError,
+        ValueError,
+    ) as e:
         logger.warning(
             "Subscription-status rate-limit check failed open for user %s: %s",
             user_id,
@@ -93,6 +131,17 @@ async def enforce_subscription_status_rate_limit(
         return
 
     if count > SUBSCRIPTION_STATUS_MAX_REQUESTS:
+        # Seconds left in this fixed window. Without Retry-After the client
+        # retries blind (React Query defaults to 3 retries), turning one block
+        # into several extra requests against the endpoint being protected.
+        retry_after = SUBSCRIPTION_STATUS_WINDOW_SECONDS - (
+            int(now.timestamp()) % SUBSCRIPTION_STATUS_WINDOW_SECONDS
+        )
+        logger.info(
+            "Subscription-status rate limit hit for user %s (count=%s)",
+            user_id,
+            count,
+        )
         raise fastapi.HTTPException(
             status_code=429,
             detail=(
@@ -100,4 +149,5 @@ async def enforce_subscription_status_rate_limit(
                 f"({SUBSCRIPTION_STATUS_MAX_REQUESTS} requests per "
                 f"{SUBSCRIPTION_STATUS_WINDOW_SECONDS}s). Try again shortly."
             ),
+            headers={"Retry-After": str(retry_after)},
         )

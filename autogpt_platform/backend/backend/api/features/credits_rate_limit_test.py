@@ -2,19 +2,58 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisClusterException, ResponseError
 
 from backend.api.features import credits_rate_limit as rate_limit
 
 
+class FakeRedis:
+    """Minimal Redis stand-in that actually interprets the limiter's Lua.
+
+    ``eval`` is mocked in most suites, which means the script — the only
+    non-trivial logic in the module — never runs. This executes the same
+    semantics (INCR, and EXPIRE only on the call that opened the window)
+    against real state, so a regression in the script (e.g. dropping the
+    EXPIRE branch, or refreshing the TTL on every hit) fails a test.
+    """
+
+    def __init__(self) -> None:
+        self.counters: dict[str, int] = {}
+        self.ttls: dict[str, int] = {}
+
+    async def eval(self, script: str, numkeys: int, key: str, ttl: str) -> int:
+        assert script == rate_limit._INCR_OPEN_WINDOW
+        assert numkeys == 1
+        count = self.counters.get(key, 0) + 1
+        self.counters[key] = count
+        if count == 1:
+            self.ttls[key] = int(ttl)
+        return count
+
+
 @pytest.fixture
 def fake_redis(mocker):
-    """Patch ``get_redis_async`` to return a MagicMock whose awaitable ``eval``
-    returns the current counter value, so each test can drive the count."""
+    """Patch ``get_redis_async`` to return a stateful fake whose ``eval``
+    executes the limiter's script semantics."""
+    redis = FakeRedis()
+    mocker.patch(
+        "backend.api.features.credits_rate_limit.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    )
+    return redis
+
+
+@pytest.fixture
+def mock_redis(mocker):
+    """Patch ``get_redis_async`` with a MagicMock whose ``eval`` return value
+    each test sets directly, for driving specific counts/errors."""
     redis = MagicMock()
     redis.eval = AsyncMock()
     mocker.patch(
@@ -25,76 +64,136 @@ def fake_redis(mocker):
 
 
 @pytest.mark.asyncio
-async def test_first_hit_runs_atomic_counter(fake_redis):
-    """The counter is a single atomic EVAL (INCR + conditional EXPIRE), so a
-    freshly-created key always gets its TTL in the same round-trip — there is
-    no window between creation and increment where the key could lack a TTL."""
-    fake_redis.eval.return_value = 1
+async def test_first_hit_sets_ttl(fake_redis):
+    """The window-opening request must set the TTL, or the key would never
+    expire and the user would stay blocked forever after hitting the cap."""
     await rate_limit.enforce_subscription_status_rate_limit("u1")
-    fake_redis.eval.assert_awaited_once()
-    args = fake_redis.eval.await_args.args
-    # eval(script, numkeys, key, ttl)
-    assert args[0] == rate_limit._INCR_OPEN_WINDOW
-    assert args[1] == 1
-    assert "u1" in args[2]
-    assert args[3] == str(rate_limit.SUBSCRIPTION_STATUS_WINDOW_SECONDS)
+    (key,) = fake_redis.ttls
+    assert "u1" in key
+    assert fake_redis.ttls[key] == rate_limit.SUBSCRIPTION_STATUS_WINDOW_SECONDS
+    assert fake_redis.counters[key] == 1
 
 
 @pytest.mark.asyncio
-async def test_at_limit_passes(fake_redis):
-    """Exactly MAX is still allowed — the cap is exclusive (count > MAX raises)."""
-    fake_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS
-    await rate_limit.enforce_subscription_status_rate_limit("u1")
+async def test_ttl_not_refreshed_on_later_hits(fake_redis):
+    """The window is fixed: later hits increment but must not extend the TTL,
+    otherwise a steady stream of requests would hold the window open."""
+    for _ in range(5):
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
+    (key,) = fake_redis.ttls
+    assert fake_redis.counters[key] == 5
+    # Exactly one key, whose TTL was written once when the window opened.
+    assert list(fake_redis.ttls.values()) == [
+        rate_limit.SUBSCRIPTION_STATUS_WINDOW_SECONDS
+    ]
 
 
 @pytest.mark.asyncio
-async def test_over_limit_raises_429(fake_redis):
-    """One past the cap raises HTTP 429 with a descriptive detail."""
-    fake_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+async def test_window_rolls_over(fake_redis, mocker):
+    """A later window uses a different key, so the count starts fresh."""
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    mocker.patch.object(rate_limit, "datetime", MagicMock(now=lambda tz: base))
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+
+    later = datetime(2026, 1, 1, 12, 1, 30, tzinfo=UTC)
+    mocker.patch.object(rate_limit, "datetime", MagicMock(now=lambda tz: later))
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+
+    assert len(fake_redis.counters) == 2
+    assert set(fake_redis.counters.values()) == {1}
+
+
+@pytest.mark.asyncio
+async def test_cap_is_enforced_over_a_real_sequence(fake_redis):
+    """Exactly MAX requests pass; the next one is rejected."""
+    for _ in range(rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS):
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
     with pytest.raises(fastapi.HTTPException) as exc_info:
         await rate_limit.enforce_subscription_status_rate_limit("u1")
     assert exc_info.value.status_code == 429
-    assert str(rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS) in str(
-        exc_info.value.detail
-    )
 
 
 @pytest.mark.asyncio
-async def test_fails_open_on_transient_redis_error(mocker):
-    """A transient Redis failure must not block the billing status read for
-    every user — fail open (no exception raised to the caller)."""
+async def test_over_limit_sets_retry_after(mock_redis):
+    """429 must carry Retry-After: without it clients retry blind and a single
+    block turns into several more requests against the endpoint."""
+    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
+    headers = exc_info.value.headers or {}
+    retry_after = int(headers["Retry-After"])
+    assert 0 < retry_after <= rate_limit.SUBSCRIPTION_STATUS_WINDOW_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_at_limit_passes(mock_redis):
+    """Exactly MAX is still allowed — the cap is exclusive (count > MAX raises)."""
+    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RedisConnectionError("connection refused"),
+        # Does not inherit from RedisError; raised during a cluster rolling
+        # restart / slot migration. Must not 500 the billing endpoint.
+        RedisClusterException("SlotNotCoveredError"),
+        ResponseError("MISCONF Redis is configured to save RDB snapshots"),
+        OSError("socket blew up"),
+    ],
+    ids=["connection", "cluster", "response", "os"],
+)
+@pytest.mark.asyncio
+async def test_fails_open_on_redis_errors_from_the_command(mock_redis, error):
+    """Every flavour of Redis trouble on an established client must fail open.
+
+    The client is cached per event loop, so in production the connect path
+    rarely runs — the real surface is ``eval`` raising mid-command.
+    """
+    mock_redis.eval.side_effect = error
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+
+
+@pytest.mark.asyncio
+async def test_fails_open_when_connect_fails(mocker):
+    """Trouble reaching Redis at all also fails open."""
     mocker.patch(
         "backend.api.features.credits_rate_limit.get_redis_async",
-        new=AsyncMock(side_effect=RedisConnectionError("redis down")),
+        new=AsyncMock(side_effect=RedisClusterException("cluster down")),
     )
     await rate_limit.enforce_subscription_status_rate_limit("u1")
 
 
 @pytest.mark.asyncio
-async def test_non_transient_error_propagates(mocker):
-    """A non-transient error (a bug, not a Redis blip) must surface rather than
-    silently disabling the limiter."""
-    mocker.patch(
-        "backend.api.features.credits_rate_limit.get_redis_async",
-        new=AsyncMock(side_effect=RuntimeError("programming error")),
+async def test_fails_open_and_fast_when_redis_hangs(mocker):
+    """A hung Redis must not hold the request: the limiter has a deadline and
+    falls through instead of parking a worker slot for the retry ladder."""
+
+    async def never_returns() -> int:
+        await asyncio.sleep(60)
+        return 1
+
+    mocker.patch.object(
+        rate_limit,
+        "_incr_window",
+        side_effect=lambda _key: never_returns(),
     )
-    with pytest.raises(RuntimeError):
-        await rate_limit.enforce_subscription_status_rate_limit("u1")
+    mocker.patch.object(rate_limit, "SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS", 0.05)
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+    assert loop.time() - started < 5
 
 
 @pytest.mark.asyncio
 async def test_per_user_keys_are_distinct(fake_redis):
     """The window key derives from ``user_id`` so two users' counters
     never collide."""
-    fake_redis.eval.return_value = 1
     await rate_limit.enforce_subscription_status_rate_limit("alice")
-    key_a = fake_redis.eval.await_args.args[2]
-
-    fake_redis.eval.reset_mock()
-    fake_redis.eval.return_value = 1
     await rate_limit.enforce_subscription_status_rate_limit("bob")
-    key_b = fake_redis.eval.await_args.args[2]
-
-    assert key_a != key_b
-    assert "alice" in key_a
-    assert "bob" in key_b
+    keys = sorted(fake_redis.counters)
+    assert len(keys) == 2
+    assert any("alice" in k for k in keys)
+    assert any("bob" in k for k in keys)
