@@ -38,6 +38,10 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useExpertLiveStateHealth", () => ({
+  useExpertLiveStateHealth: () => "live",
+}));
+
 vi.mock("@/app/api/__generated__/endpoints/brain-dump/brain-dump", () => ({
   useCompleteBrainDumpGreeting: () => ({ mutate: vi.fn() }),
 }));
