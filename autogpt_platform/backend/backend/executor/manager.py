@@ -1634,13 +1634,18 @@ class ExecutionProcessor:
                             execution_stats.cost += cost
                         # Check if we crossed the low balance threshold
                         billing_org_id = graph_exec.execution_context.organization_id
-                        user_ledger = not billing_org_id or (
-                            db_client.get_personal_org_owner(billing_org_id) is not None
+                        personal_owner_id = (
+                            db_client.get_personal_org_owner(billing_org_id)
+                            if billing_org_id
+                            else None
+                        )
+                        user_ledger = (
+                            not billing_org_id or personal_owner_id is not None
                         )
                         if user_ledger:
                             billing.handle_low_balance(
                                 db_client=db_client,
-                                user_id=graph_exec.user_id,
+                                user_id=personal_owner_id or graph_exec.user_id,
                                 current_balance=remaining_balance,
                                 transaction_cost=cost,
                             )

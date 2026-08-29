@@ -318,21 +318,29 @@ describe("OrganizationSettingsPage", () => {
     expect(screen.queryByTestId("org-invitations-section")).toBeNull();
   });
 
-  it("shows the solo note instead of members for a personal org", async () => {
+  it("supports members and invitations in a personal org", async () => {
     useOrgTeamStore.setState({ activeOrgID: PERSONAL_ORG.id });
     server.use(
       getGetV2GetOrganizationDetailsMockHandler(PERSONAL_ORG),
       getGetV2ListOrganizationMembersMockHandler([OWNER_MEMBER]),
+      getGetV2ListPendingInvitationsMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);
 
     await screen.findByTestId("org-profile-section");
-    expect(screen.queryByTestId("org-members-section")).toBeNull();
-    expect(screen.queryByTestId("org-danger-zone")).toBeNull();
+    expect(screen.getByTestId("org-danger-zone")).toBeDefined();
     expect(
-      screen.getByText(/Personal organizations have a single member/),
+      screen.getByText(/home organization.*cannot be deleted or transferred/i),
     ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Delete organization" }),
+    ).toBeNull();
+
+    await goToTab("Members");
+    expect(await screen.findByText("Members (1)")).toBeDefined();
+    await goToTab("Invitations");
+    expect(await screen.findByTestId("org-invitations-section")).toBeDefined();
   });
 
   it("sends an invitation from the invite form", async () => {
@@ -1120,18 +1128,22 @@ describe("OrganizationSettingsPage", () => {
     expect(screen.getByTestId("my-invitations-section")).toBeDefined();
   });
 
-  it("renders a personal org without tab chrome", async () => {
+  it("renders normal organization tabs for a personal org", async () => {
     useOrgTeamStore.setState({ activeOrgID: PERSONAL_ORG.id });
     server.use(
       getGetV2GetOrganizationDetailsMockHandler(PERSONAL_ORG),
       getGetV2ListOrganizationMembersMockHandler([OWNER_MEMBER]),
+      getGetV2ListPendingInvitationsMockHandler([]),
       getGetV2ListPendingInvitationsForCurrentUserMockHandler([]),
     );
     render(<OrganizationSettingsPage />);
 
     await screen.findByTestId("org-profile-section");
-    expect(screen.queryByRole("tablist")).toBeNull();
-    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("tablist")).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Members" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Invitations" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Teams" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "Billing" })).toBeDefined();
   });
 
   it("opens the Teams tab from a ?tab=teams deep link", async () => {

@@ -314,9 +314,10 @@ async def charge_reconciled_usage(
         # the USER ledger: no org context, or a personal org (which bills
         # the owner's wallet). Real-org deductions come from OrgBalance, so
         # the user's personal auto-top-up must not trigger for those.
-        user_ledger = not org_id or (
-            await db_client.get_personal_org_owner(org_id) is not None
+        personal_owner_id = (
+            await db_client.get_personal_org_owner(org_id) if org_id else None
         )
+        user_ledger = not org_id or personal_owner_id is not None
         if delta > 0 and user_ledger:
             # handle_low_balance is sync + does a blocking RPC; dispatch to
             # thread so we don't block the event loop. Rare path (threshold
@@ -324,7 +325,7 @@ async def charge_reconciled_usage(
             await asyncio.to_thread(
                 handle_low_balance,
                 get_db_client(),
-                node_exec.user_id,
+                personal_owner_id or node_exec.user_id,
                 remaining_balance,
                 delta,
             )

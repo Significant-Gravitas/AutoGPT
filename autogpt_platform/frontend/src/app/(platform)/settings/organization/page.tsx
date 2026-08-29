@@ -120,22 +120,6 @@ function OrganizationSettingsPageContent() {
     </div>
   );
 
-  // Personal orgs only have profile content, so a single-tab strip would be
-  // noise — render the profile directly, matching the pre-tabs layout.
-  if (org.is_personal) {
-    return (
-      <div className="flex flex-col gap-8 py-6">
-        {header}
-        <MyInvitationsSection />
-        <OrgProfileSection org={org} isAdmin={isAdmin} onSaved={refetchOrg} />
-        <Text variant="body" className="text-zinc-500">
-          Personal organizations have a single member. Create a team
-          organization from the switcher to invite others.
-        </Text>
-      </div>
-    );
-  }
-
   // Invitations is admin-only and Billing is billing-manager/owner-only, so a
   // member without that right never sees the tab. Fall back to General if they
   // land on a gated tab via a ?tab= deep link.

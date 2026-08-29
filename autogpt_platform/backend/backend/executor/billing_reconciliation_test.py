@@ -55,7 +55,9 @@ def _async_db_client(spend_credits_return: int = 0) -> MagicMock:
     """
     client = MagicMock()
     client.spend_credits = AsyncMock(return_value=spend_credits_return)
+    client.spend_org_credits = AsyncMock(return_value=spend_credits_return)
     client.get_credits = MagicMock(return_value=0)
+    client.get_personal_org_owner = AsyncMock(return_value=None)
     return client
 
 
@@ -170,6 +172,34 @@ async def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
     assert lb_args[1] == exec_entry.user_id
     assert lb_args[2] == 42
     assert lb_args[3] == 5
+
+
+@pytest.mark.asyncio
+async def test_personal_org_member_notifies_billing_owner(tmp_block_costs_override):
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id).model_copy(
+        update={"execution_context": ExecutionContext(organization_id="org-personal")}
+    )
+    db_client = _async_db_client(spend_credits_return=42)
+    db_client.get_personal_org_owner.return_value = "owner-user"
+
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+    ):
+        await charge_reconciled_usage(
+            exec_entry,
+            NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd"),
+        )
+
+    handle_lb.assert_called_once()
+    assert handle_lb.call_args.args[1] == "owner-user"
 
 
 @pytest.mark.asyncio
