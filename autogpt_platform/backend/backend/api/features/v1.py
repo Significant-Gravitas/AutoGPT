@@ -36,6 +36,9 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -1003,7 +1006,10 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
