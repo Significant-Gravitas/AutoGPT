@@ -67,6 +67,10 @@ def home_dependencies(mocker: MockerFixture):
         AsyncMock(return_value=[]),
     )
     mocker.patch(
+        "backend.api.features.home.service.graph_db.get_graph_names_by_ids",
+        AsyncMock(return_value={}),
+    )
+    mocker.patch(
         "backend.api.features.home.service.user_db.get_user_by_id",
         AsyncMock(return_value=None),
     )
@@ -362,6 +366,55 @@ async def test_activity_summary_hidden_when_flag_disabled(
     dashboard = await build_home_dashboard(user_id="user-1")
 
     assert dashboard.briefing.outcomes[0].title == "Agent task finished"
+
+
+@pytest.mark.asyncio
+async def test_graph_name_labels_a_run_with_no_library_row(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """A run whose graph never entered the library still has a name on the
+    graph itself; without that fallback the card reads "Agent task"."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=False),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.graph_db.get_graph_names_by_ids",
+        AsyncMock(return_value={"graph-1": "Flight booker"}),
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.briefing.outcomes[0].title == "Flight booker finished"
+    assert dashboard.briefing.outcomes[0].agent_name == "Flight booker"
+
+
+@pytest.mark.asyncio
+async def test_stored_placeholder_name_is_resolved_again_on_read(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """The 9am job stores whatever it could resolve then. Home re-resolves the
+    graph, so a row stamped with the placeholder stops showing it all day."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.graph_db.get_graph_names_by_ids",
+        AsyncMock(return_value={"graph-1": "Flight booker"}),
+    )
+    stored = _stored_briefing()
+    stored.run_items[0].agent_name = "Agent task"
+    stored.run_items[0].title = ""
+    _patch_stored_briefing(mocker, stored.model_dump(mode="json"))
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    assert dashboard.briefing.outcomes[0].title == "Flight booker finished"
 
 
 @pytest.mark.asyncio

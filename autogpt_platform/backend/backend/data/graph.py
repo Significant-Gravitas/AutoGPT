@@ -1326,6 +1326,22 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     )
 
 
+async def get_graph_names_by_ids(user_id: str, graph_ids: list[str]) -> dict[str, str]:
+    """Display name per graph, for callers labelling a known handful of runs.
+
+    Ascending version order means the newest row wins the dict slot, matching
+    what `get_graph_metadata` returns for a single graph.
+    """
+    if not graph_ids:
+        return {}
+
+    graphs = await AgentGraph.prisma().find_many(
+        where={"userId": user_id, "id": {"in": graph_ids}},
+        order={"version": "asc"},
+    )
+    return {graph.id: graph.name for graph in graphs if graph.name}
+
+
 async def get_graph(
     graph_id: str,
     version: int | None,

@@ -70,14 +70,30 @@ UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
 
 
 def agent_refs_by_graph(
-    experts: list[Expert], refs: list[LibraryAgentRef]
+    experts: list[Expert],
+    refs: list[LibraryAgentRef],
+    graph_names: dict[str, str] | None = None,
 ) -> dict[str, AgentRef]:
+    """Name (and library link, when there is one) per graph.
+
+    `graph_names` is the last resort: a run whose graph never made it into the
+    library — or whose library row was deleted — still has a name on the graph
+    itself, and without it the card headline degrades to "Agent task".
+    """
     agents = {
-        ref.graph_id: AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name, library_agent_id=ref.id
-        )
-        for ref in refs
+        graph_id: AgentRef(name=name, library_agent_id=None)
+        for graph_id, name in (graph_names or {}).items()
+        if name
     }
+    agents.update(
+        {
+            ref.graph_id: AgentRef(
+                name=ref.name or agents.get(ref.graph_id, UNKNOWN_AGENT).name,
+                library_agent_id=ref.id,
+            )
+            for ref in refs
+        }
+    )
     for expert in experts:
         for workflow in expert.workflows:
             if workflow.graph_id:

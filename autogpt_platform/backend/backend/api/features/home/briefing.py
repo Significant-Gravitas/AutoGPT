@@ -46,7 +46,9 @@ def compose_briefing(
         )
 
     generated_at = as_utc(persisted.generated_at)
-    anchored = [_outcome(item, expert_by_id) for item in persisted.run_items]
+    anchored = [
+        _outcome(item, expert_by_id, agent_by_graph) for item in persisted.run_items
+    ]
     anchored_ids = {outcome.id for outcome in anchored}
     fresh = [
         outcome
@@ -177,15 +179,18 @@ def _run_item(
 
 
 def _outcome(
-    item: BriefingRunItem, expert_by_id: dict[str, Expert]
+    item: BriefingRunItem,
+    expert_by_id: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef] | None = None,
 ) -> HomeBriefingOutcome:
     failed = item.status == "FAILED"
+    agent_name = _agent_name(item, agent_by_graph or {})
     # `error=None` because there is no error left to pass: the shared composer
     # already resolved it into `item.detail`. These fallbacks only cover an
     # item whose text fields are empty (a row older than them, or one the
     # activity gate scrubbed).
     fallback_title, fallback_detail = outcome_fallbacks(
-        item.agent_name, failed=failed, error=None
+        agent_name, failed=failed, error=None
     )
     return HomeBriefingOutcome(
         id=item.execution_id,
@@ -193,12 +198,22 @@ def _outcome(
         title=item.title or fallback_title,
         summary=item.detail or fallback_detail,
         expert=_expert(item, expert_by_id),
-        agent_name=item.agent_name,
+        agent_name=agent_name,
         occurred_at=as_utc_or_none(item.occurred_at),
         duration_seconds=item.duration_seconds,
         cost_cents=item.cost_cents,
         link=item.link,
     )
+
+
+def _agent_name(item: BriefingRunItem, agent_by_graph: dict[str, AgentRef]) -> str:
+    """A stored item keeps the name the 9am job resolved, which is the generic
+    placeholder whenever that job could not name the graph. Home resolves the
+    same graph again — off the graph row too — so the card stops saying "Agent
+    task" for a run that does have a name."""
+    if item.agent_name and item.agent_name != UNKNOWN_AGENT.name:
+        return item.agent_name
+    return agent_by_graph.get(item.graph_id, UNKNOWN_AGENT).name
 
 
 def _expert(

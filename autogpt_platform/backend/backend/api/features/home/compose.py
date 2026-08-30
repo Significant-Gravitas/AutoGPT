@@ -28,6 +28,7 @@ def compose_home_dashboard(
     reviews: list[PendingHumanReviewModel],
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     library_refs: list[LibraryAgentRef],
+    graph_names: dict[str, str] | None = None,
     cost_summary: UserExecutionCostSummary,
     credits_balance: int | None,
     timezone_name: str,
@@ -43,7 +44,7 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    agent_by_graph = agent_refs_by_graph(hired, library_refs)
+    agent_by_graph = agent_refs_by_graph(hired, library_refs, graph_names)
     graph_schedules = [
         schedule
         for schedule in schedules
