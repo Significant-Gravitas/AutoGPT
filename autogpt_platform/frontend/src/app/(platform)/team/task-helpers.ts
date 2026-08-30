@@ -166,3 +166,129 @@ function toMillis(value: Date | string): number | null {
   const millis = value instanceof Date ? value.getTime() : Date.parse(value);
   return Number.isNaN(millis) ? null : millis;
 }
+
+export interface TaskTreeRow {
+  task: DelegatedTask;
+  /** 1 for direct children of the drawer's task, +1 per level below. */
+  depth: number;
+}
+
+/** Order the drawer's flat descendant list as a depth-first tree.
+ *  Rows whose parent is missing from the list (pruned by the page cap)
+ *  surface at depth 1 rather than disappearing. */
+export function buildTaskTree(
+  rootId: string,
+  descendants: DelegatedTask[],
+): TaskTreeRow[] {
+  const byParent = new Map<string, DelegatedTask[]>();
+  const ids = new Set(descendants.map((task) => task.id));
+  for (const task of descendants) {
+    const parent =
+      task.parent_task_id && ids.has(task.parent_task_id)
+        ? task.parent_task_id
+        : rootId;
+    byParent.set(parent, [...(byParent.get(parent) ?? []), task]);
+  }
+
+  const rows: TaskTreeRow[] = [];
+  const seen = new Set<string>();
+  function walk(parentId: string, depth: number) {
+    for (const task of byParent.get(parentId) ?? []) {
+      if (seen.has(task.id)) continue;
+      seen.add(task.id);
+      rows.push({ task, depth });
+      walk(task.id, depth + 1);
+    }
+  }
+  walk(rootId, 1);
+  return rows;
+}
+
+export function getTimelineEvents(task: DelegatedTask) {
+  return (task.amendments ?? []).filter((amendment) =>
+    ["handoff", "escalation", "answer"].includes(amendment.kind ?? "note"),
+  );
+}
+
+export function getTimelineLabel(kind: string | undefined): string {
+  if (kind === "handoff") return "Handed off";
+  if (kind === "escalation") return "Asked you";
+  if (kind === "answer") return "You answered";
+  return "Note";
+}
+
+/** Who an activity row is *about* — drives the row's avatar. */
+export type TaskActor =
+  | { kind: "user" }
+  | { kind: "autopilot" }
+  | { kind: "expert"; name: string; avatarUrl: string | null };
+
+export interface TaskOriginEntry {
+  actor: TaskActor;
+  label: string;
+}
+
+/** How the task came to be, as the one or two hops that actually happened.
+ *  A `USER`-created task that lands on an expert came out of an Autopilot
+ *  thread (an expert's own session records `EXPERT` instead), so the routing
+ *  hop is spelled out rather than collapsed into "you asked <expert>".
+ *  The creator's *name* isn't on the payload — only an id — so expert- and
+ *  system-made tasks stay generic instead of guessing at one. */
+export function getTaskOriginEntries(task: DelegatedTask): TaskOriginEntry[] {
+  const owner = task.owner;
+  const expertActor: TaskActor = owner
+    ? { kind: "expert", name: owner.name, avatarUrl: owner.avatar_url }
+    : { kind: "autopilot" };
+
+  if (task.created_by_type === "USER") {
+    return [
+      { actor: { kind: "user" }, label: "You asked Autopilot" },
+      ...(owner
+        ? [
+            {
+              actor: { kind: "autopilot" } as TaskActor,
+              label: `Autopilot delegated to ${owner.name}`,
+            },
+          ]
+        : []),
+    ];
+  }
+
+  if (task.created_by_type === "EXPERT") {
+    return [
+      {
+        actor: expertActor,
+        label: owner
+          ? `An expert delegated to ${owner.name}`
+          : "An expert handed this to Autopilot",
+      },
+    ];
+  }
+
+  if (task.created_by_type === "SCHEDULE") {
+    return [
+      {
+        actor: expertActor,
+        label: owner
+          ? `A schedule opened this for ${owner.name}`
+          : "A schedule opened this for Autopilot",
+      },
+    ];
+  }
+
+  return [
+    {
+      actor: expertActor,
+      label: owner
+        ? `Autopilot delegated to ${owner.name}`
+        : "Autopilot picked this up itself",
+    },
+  ];
+}
+
+/** The copilot thread a task (or one of its escalations) came out of. */
+export function getSessionLink(sessionId: string | null | undefined) {
+  return sessionId
+    ? `/copilot?sessionId=${encodeURIComponent(sessionId)}`
+    : undefined;
+}

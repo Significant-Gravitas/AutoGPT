@@ -25,6 +25,7 @@ from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
+from .escalate_task import EscalateTaskTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -37,6 +38,7 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
+from .handoff_task import HandoffTaskTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
@@ -54,6 +56,7 @@ from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .report_task import ReportTaskTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -124,6 +127,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
+    "handoff_task": HandoffTaskTool(),
+    "escalate_task": EscalateTaskTool(),
+    "report_task": ReportTaskTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
@@ -213,6 +219,11 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # The task-spine tools ride the same gate: tasks only exist where
+    # delegation does, and both AutoPilot and expert sessions may hold one.
+    "handoff_task": "delegation",
+    "escalate_task": "delegation",
+    "report_task": "delegation",
     # Read-only, but it shares the same gate: with the flag off there is no
     # team to list.
     "list_team": "delegation",

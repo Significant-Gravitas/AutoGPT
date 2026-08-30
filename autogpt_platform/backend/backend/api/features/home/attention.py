@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.tasks.models import DelegatedTask, TaskAmendment
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -23,6 +24,7 @@ def compose_attention_items(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
+    tasks: list[DelegatedTask] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
@@ -33,6 +35,10 @@ def compose_attention_items(
         _question_attention(session, question, expert_by_id)
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
+    )
+    items.extend(
+        _escalation_attention(task, escalation)
+        for task, escalation in _open_escalations(tasks or [])
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -143,6 +149,58 @@ def _question_attention(
         primary_action=HomeAction(
             label="Answer",
             href=f"/copilot?sessionId={quote(session.session_id)}",
+        ),
+    )
+
+
+def _open_escalations(
+    tasks: list[DelegatedTask],
+) -> list[tuple[DelegatedTask, TaskAmendment]]:
+    """WAITING_USER tasks paired with their latest escalation question.
+
+    Answering flips the task back to WORKING, so only WAITING_USER rows can
+    carry a live question; a waiting task with no escalation entry (a legacy
+    or hand-edited row) has nothing to render and is skipped.
+    """
+    pairs = []
+    for task in tasks:
+        if task.status != "WAITING_USER":
+            continue
+        escalations = [a for a in task.amendments if a.kind == "escalation"]
+        if escalations:
+            pairs.append((task, escalations[-1]))
+    return pairs
+
+
+def _escalation_attention(
+    task: DelegatedTask, escalation: TaskAmendment
+) -> HomeAttentionItem:
+    """A task an expert parked on the user. Answering here resumes it, so the
+    card carries the question, the options, and the task id the frontend
+    posts the answer to."""
+    asker = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-escalation-{task.id}",
+        kind="task_escalation",
+        priority="high",
+        title=f"{asker} needs a decision on “{task.title}”",
+        description=_clip(escalation.question or escalation.note),
+        why_it_matters="The task is paused until you answer.",
+        expert=(
+            HomeExpert(
+                id=task.owner.id,
+                name=task.owner.name,
+                role=task.owner.role,
+                avatar_url=task.owner.avatar_url,
+            )
+            if task.owner
+            else None
+        ),
+        created_at=as_utc(escalation.at),
+        task_id=task.id,
+        options=escalation.options,
+        primary_action=HomeAction(
+            label="View task", href=f"/team?task={quote(task.id)}"
         ),
     )
 

@@ -3,20 +3,11 @@ import {
   getListExpertRunsMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import {
-  getCancelTaskMockHandler,
-  getGetTaskMockHandler,
-  getListTasksMockHandler,
-} from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
+import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import {
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@/tests/integrations/test-utils";
+import { render, screen, within } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -193,11 +184,8 @@ describe("Expert Tasks tab", () => {
     expect(requested).toContain("expert-maria");
   });
 
-  test("opens a detail drawer with the spec, outcome and linked run", async () => {
-    server.use(
-      getListTasksMockHandler([doneTask]),
-      getGetTaskMockHandler({ task: doneTask, children: [] }),
-    );
+  test("each task opens its own detail page", async () => {
+    server.use(getListTasksMockHandler([activeTask, doneTask]));
 
     render(<ExpertDetailPage />);
     await openTasksTab();
@@ -205,58 +193,14 @@ describe("Expert Tasks tab", () => {
     const history = within(
       await screen.findByRole("list", { name: "History tasks" }),
     );
-    await userEvent.click(history.getByRole("button", { name: "Open" }));
-
-    const drawer = within(await screen.findByRole("dialog"));
     expect(
-      drawer.getByText(/Posted to the blog and shared the link./),
-    ).toBeDefined();
-    expect(drawer.getByText(/Run Weekly Report with:/)).toBeDefined();
-    expect(drawer.getByText("Blog Publisher")).toBeDefined();
-    expect(drawer.getByRole("link", { name: "Open run" })).toBeDefined();
-  });
+      history.getByRole("link", { name: "Open" }).getAttribute("href"),
+    ).toBe("/team/tasks/task-done");
 
-  test("offers cancel on an open task but not on a finished one", async () => {
-    server.use(
-      getListTasksMockHandler([activeTask, doneTask]),
-      getGetTaskMockHandler({ task: doneTask, children: [] }),
-    );
-
-    render(<ExpertDetailPage />);
-    await openTasksTab();
-
-    const history = within(
-      await screen.findByRole("list", { name: "History tasks" }),
-    );
-    await userEvent.click(history.getByRole("button", { name: "Open" }));
-
-    const drawer = within(await screen.findByRole("dialog"));
-    expect(drawer.queryByRole("button", { name: "Cancel task" })).toBeNull();
-  });
-
-  test("cancels an open task through the drawer", async () => {
-    const cancelSpy = vi.fn(() => ({
-      task: makeTask({ status: "CANCELLED" }),
-      children: [],
-    }));
-    server.use(
-      getListTasksMockHandler([activeTask]),
-      getGetTaskMockHandler({ task: activeTask, children: [] }),
-      getCancelTaskMockHandler(cancelSpy),
-    );
-
-    render(<ExpertDetailPage />);
-    await openTasksTab();
-
-    const active = within(
-      await screen.findByRole("list", { name: "Active tasks" }),
-    );
-    await userEvent.click(active.getByRole("button", { name: "Open" }));
-
-    const drawer = within(await screen.findByRole("dialog"));
-    await userEvent.click(drawer.getByRole("button", { name: "Cancel task" }));
-
-    await waitFor(() => expect(cancelSpy).toHaveBeenCalled());
+    const active = within(screen.getByRole("list", { name: "Active tasks" }));
+    expect(
+      active.getByRole("link", { name: "Open" }).getAttribute("href"),
+    ).toBe("/team/tasks/task-active");
   });
 
   test("the whole page, tab included, is gone when the experts flag is off", () => {

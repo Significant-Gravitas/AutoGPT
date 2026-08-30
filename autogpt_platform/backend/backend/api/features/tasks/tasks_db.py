@@ -15,9 +15,11 @@ import prisma.types
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.data.db import transaction
 from backend.executor import utils as execution_utils
+from backend.util.exceptions import TaskDelegationRefusedError
 
 from .errors import DelegatedTaskNotFoundError
 from .models import (
+    MAX_TASK_DEPTH,
     MAX_TASKS_PER_PAGE,
     OPEN_TASK_STATUSES,
     TASK_OUTCOME_MAX_LENGTH,
@@ -96,9 +98,10 @@ async def list_open_tasks(
 
 
 async def get_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
-    """One task plus its direct children. Returns None when the task does not
-    exist or belongs to someone else — callers turn that into a 404 so the two
-    cases are indistinguishable from outside."""
+    """One task plus every task beneath it (flat, parented — the drawer nests
+    them client-side). Returns None when the task does not exist or belongs to
+    someone else — callers turn that into a 404 so the two cases are
+    indistinguishable from outside."""
     row = await prisma.models.DelegatedTask.prisma().find_first(
         where={"id": task_id, "userId": user_id},
         include=_TASK_INCLUDE,
@@ -106,17 +109,43 @@ async def get_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
     if row is None:
         return None
 
-    children = await prisma.models.DelegatedTask.prisma().find_many(
-        where={"parentTaskId": task_id, "userId": user_id},
-        include=_TASK_INCLUDE,
-        order={"createdAt": "asc"},
-        take=MAX_TASKS_PER_PAGE,
-    )
+    children = await _descendants(user_id, task_id)
     library_agents = await _library_agents_by_graph(user_id, [row, *children])
     return DelegatedTaskDetail(
         task=_to_model(row, library_agents),
         children=[_to_model(child, library_agents) for child in children],
     )
+
+
+async def get_delegated_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
+    """RPC-facing alias for :func:`get_task` — the DatabaseManager route and
+    the wrapped function must share a name, and ``get_task`` is too generic
+    to claim there."""
+    return await get_task(user_id, task_id)
+
+
+async def _descendants(user_id: str, task_id: str) -> list[prisma.models.DelegatedTask]:
+    """Every task under *task_id*, oldest first, capped at a page.
+
+    Level-by-level like ``_open_subtree_ids`` — depth is bounded at
+    ``MAX_TASK_DEPTH`` on write, but a read that trusts stored parent ids
+    must still not be able to spin on a corrupted cycle.
+    """
+    seen = {task_id}
+    collected: list[prisma.models.DelegatedTask] = []
+    frontier = [task_id]
+    while frontier and len(collected) < MAX_TASKS_PER_PAGE:
+        children = await prisma.models.DelegatedTask.prisma().find_many(
+            where={"parentTaskId": {"in": frontier}, "userId": user_id},
+            include=_TASK_INCLUDE,
+            order={"createdAt": "asc"},
+            take=MAX_TASKS_PER_PAGE,
+        )
+        fresh = [child for child in children if child.id not in seen]
+        frontier = [child.id for child in fresh]
+        seen.update(frontier)
+        collected.extend(fresh)
+    return collected[:MAX_TASKS_PER_PAGE]
 
 
 # The three RPC-exposed writers below MUST keep the same name as their
@@ -131,15 +160,26 @@ async def create_delegated_task(
     origin_session_id: str | None = None,
     created_by_type: TaskCreatedBy = "USER",
     created_by_id: str | None = None,
+    parent_task_id: str | None = None,
 ) -> DelegatedTask:
-    """Open a receipt for a delegation.
+    """Open a receipt for a delegation, as a root or under *parent_task_id*.
 
-    Phase 1 only ever creates roots, so ``rootTaskId`` is stamped with the
-    row's own id — a tree read is then one indexed lookup even before
-    handoff exists. Takes the literal ``created_by_type`` rather than the
-    Prisma enum so copilot (which calls this over RPC, Prisma-less) never
-    has to import ``prisma``.
+    A root stamps ``rootTaskId`` with its own id — a tree read is then one
+    indexed lookup. A subtask inherits the parent's root and ancestor trail,
+    after the delegation policy (no loops, bounded depth) has approved the
+    hop — raising :class:`TaskDelegationRefusedError` with a message the
+    calling agent can act on. Takes the literal ``created_by_type`` rather
+    than the Prisma enum so copilot (which calls this over RPC, Prisma-less)
+    never has to import ``prisma``.
     """
+    ancestors = [owner_id] if owner_id else []
+    root_task_id: str | None = None
+    if parent_task_id is not None:
+        parent = await _approve_subtask(user_id, parent_task_id, owner_id)
+        root_task_id = parent.rootTaskId or parent.id
+        trail = _ancestor_trail(parent)
+        ancestors = trail + [e for e in ancestors if e not in trail]
+
     row = await prisma.models.DelegatedTask.prisma().create(
         data={
             "userId": user_id,
@@ -150,13 +190,72 @@ async def create_delegated_task(
             "title": title[:TASK_TITLE_MAX_LENGTH],
             "spec": spec[:TASK_SPEC_MAX_LENGTH],
             "status": prisma.enums.DelegatedTaskStatus.QUEUED,
-            "ancestorExpertIds": [owner_id] if owner_id else [],
+            "ancestorExpertIds": ancestors,
+            "parentTaskId": parent_task_id,
+            "rootTaskId": root_task_id,
         }
     )
-    stamped = await prisma.models.DelegatedTask.prisma().update(
-        where={"id": row.id}, data={"rootTaskId": row.id}
+    if root_task_id is None:
+        stamped = await prisma.models.DelegatedTask.prisma().update(
+            where={"id": row.id}, data={"rootTaskId": row.id}
+        )
+        return _to_model(stamped or row, {})
+    return _to_model(row, {})
+
+
+async def _approve_subtask(
+    user_id: str, parent_task_id: str, owner_id: str | None
+) -> prisma.models.DelegatedTask:
+    """The parent row, if delegation policy allows hanging a subtask owned by
+    *owner_id* beneath it."""
+    parent = await prisma.models.DelegatedTask.prisma().find_first(
+        where={"id": parent_task_id, "userId": user_id}
     )
-    return _to_model(stamped or row, {})
+    if parent is None:
+        raise TaskDelegationRefusedError(
+            "The task this delegation belongs to no longer exists. "
+            "Escalate to the user with escalate_task instead."
+        )
+    if owner_id and owner_id in _ancestor_trail(parent):
+        raise TaskDelegationRefusedError(
+            "Delegation refused: that expert already holds this task further "
+            "up the chain, so delegating to them would loop. Escalate to the "
+            "user with escalate_task instead."
+        )
+    if await _task_depth(user_id, parent) >= MAX_TASK_DEPTH:
+        raise TaskDelegationRefusedError(
+            f"Delegation refused: this task tree is already "
+            f"{MAX_TASK_DEPTH} levels deep. Finish the work yourself or "
+            "escalate to the user with escalate_task instead."
+        )
+    return parent
+
+
+def _ancestor_trail(task: prisma.models.DelegatedTask) -> list[str]:
+    """Every expert the chain has passed through, current owner included."""
+    trail = list(task.ancestorExpertIds)
+    if task.ownerId and task.ownerId not in trail:
+        trail.append(task.ownerId)
+    return trail
+
+
+async def _task_depth(user_id: str, task: prisma.models.DelegatedTask) -> int:
+    """*task*'s depth in its tree (root = 1), walking the parent chain.
+
+    ``seen`` guards the walk: parent ids are trusted stored data, and a
+    corrupted cycle must terminate rather than spin.
+    """
+    depth = 1
+    seen = {task.id}
+    parent_id = task.parentTaskId
+    while parent_id and parent_id not in seen and depth <= MAX_TASK_DEPTH:
+        depth += 1
+        seen.add(parent_id)
+        parent = await prisma.models.DelegatedTask.prisma().find_first(
+            where={"id": parent_id, "userId": user_id}
+        )
+        parent_id = parent.parentTaskId if parent else None
+    return depth
 
 
 async def mark_delegated_task_working(user_id: str, task_id: str) -> bool:

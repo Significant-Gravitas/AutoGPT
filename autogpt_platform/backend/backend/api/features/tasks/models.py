@@ -24,6 +24,18 @@ TASK_TITLE_MAX_LENGTH = 200
 TASK_SPEC_MAX_LENGTH = 20_000
 TASK_OUTCOME_MAX_LENGTH = 2_000
 
+# How many times ownership may be swapped before the task must be finished
+# or escalated instead of passed around.
+MAX_TASK_HANDOFFS = 5
+
+# How deep a delegation tree may grow (root = depth 1). At the cap the agent
+# is told to escalate to the user rather than delegate further.
+MAX_TASK_DEPTH = 3
+
+TASK_QUESTION_MAX_LENGTH = 1_000
+TASK_ANSWER_MAX_LENGTH = 4_000
+MAX_TASK_QUESTION_OPTIONS = 6
+
 # Bounds the list endpoint so one user's history can't turn into an unbounded
 # scan; the Tasks tab pages by nothing else today.
 MAX_TASKS_PER_PAGE = 50
@@ -51,12 +63,26 @@ class TaskRunRef(BaseModel):
     link: str | None
 
 
+TaskAmendmentKind = Literal["note", "handoff", "escalation", "answer"]
+
+
 class TaskAmendment(BaseModel):
-    """A scope change recorded against a live task."""
+    """An event recorded against a live task: a scope note, a handoff
+    between experts, an escalation to the user, or the user's answer.
+    Stored in the append-only ``amendments`` Json column, so new kinds land
+    without a migration; ``kind`` defaults to ``note`` for phase-1 rows."""
 
     at: datetime
     by: str
     note: str
+    kind: TaskAmendmentKind = "note"
+    from_expert_id: str | None = None
+    to_expert_id: str | None = None
+    question: str | None = None
+    options: list[str] = []
+    # The session the escalating expert was working in — where the user's
+    # answer is delivered to resume the task.
+    session_id: str | None = None
 
 
 class DelegatedTask(BaseModel):
@@ -89,6 +115,22 @@ class DelegatedTaskDetail(BaseModel):
 
     task: DelegatedTask
     children: list[DelegatedTask]
+
+
+class AnswerTaskRequest(BaseModel):
+    """The user's reply to a task escalation, posted from Home's Needs You."""
+
+    answer: str = Field(min_length=1, max_length=TASK_ANSWER_MAX_LENGTH)
+
+    @field_validator("answer", mode="before")
+    @classmethod
+    def strip_answer(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Answer must not be blank")
+        return stripped
 
 
 class CreateTaskRequest(BaseModel):

@@ -660,6 +660,20 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
+
+### Task receipts (handoff / escalate / report)
+- Every delegation opens a task receipt the user can watch on their Team
+  page; the tool result carries its `task_id`.
+- If you are working a delegated task and the remaining work belongs to a
+  different teammate, transfer it with `handoff_task` (max 5 hops). If the
+  handoff conflicts, re-read the task and retry once.
+- If you are blocked on a decision only the user can make, call
+  `escalate_task` with ONE clear question (plus options when the choice is
+  enumerable) — never stall silently. If delegation is refused for a loop
+  or depth reason, escalate instead of trying another teammate.
+- When a delegated task you own is finished, close it with `report_task`
+  and a summary written for the person who asked. It is refused while
+  subtasks are still open.
 """
 
 

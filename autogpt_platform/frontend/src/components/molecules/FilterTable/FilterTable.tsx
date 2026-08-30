@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { InboxIcon, More02Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import Link from "next/link";
 import { KeyboardEvent, ReactNode, useState } from "react";
 
 export interface FilterTableColumn {
@@ -35,6 +36,8 @@ export interface FilterTableRow {
   /** Which filter chip bucket this row belongs to. */
   filterKey: string;
   cells: Record<string, ReactNode>;
+  /** Turns the row into a link so cmd-click and middle-click still work. */
+  href?: string;
   onClick?: () => void;
 }
 
@@ -51,6 +54,8 @@ export interface FilterTableProps {
   emptyText?: string;
   ariaLabel?: string;
   className?: string;
+  /** Rendered at the right end of the chip strip, after the overflow menu. */
+  actions?: ReactNode;
 }
 
 const DEFAULT_TRACK = "minmax(0,1fr)";
@@ -67,6 +72,7 @@ export function FilterTable({
   emptyIcon = InboxIcon,
   ariaLabel,
   className,
+  actions,
 }: FilterTableProps) {
   const [activeFilter, setActiveFilter] = useState(ALL_KEY);
   const gridTemplateColumns = columns
@@ -81,16 +87,18 @@ export function FilterTable({
 
   return (
     <div className={cn("w-full", className)}>
-      {filters.length > 0 && rows.length > 0 ? (
+      {(filters.length > 0 && rows.length > 0) || actions ? (
         <FilterChips
-          filters={[
-            { key: ALL_KEY, label: allLabel, icon: allIcon },
-            ...filters,
-          ]}
+          filters={
+            rows.length > 0
+              ? [{ key: ALL_KEY, label: allLabel, icon: allIcon }, ...filters]
+              : []
+          }
           rows={rows}
           activeFilter={activeFilter}
           maxVisible={maxVisibleFilters}
           onSelect={setActiveFilter}
+          actions={actions}
         />
       ) : null}
 
@@ -159,6 +167,7 @@ interface ChipsProps {
   activeFilter: string;
   maxVisible: number;
   onSelect: (key: string) => void;
+  actions?: ReactNode;
 }
 
 function FilterChips({
@@ -167,6 +176,7 @@ function FilterChips({
   activeFilter,
   maxVisible,
   onSelect,
+  actions,
 }: ChipsProps) {
   function countFor(key: string) {
     return key === ALL_KEY
@@ -199,7 +209,7 @@ function FilterChips({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label="More filters"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 data-[state=open]:bg-zinc-100"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors data-[state=open]:bg-zinc-100 hover:bg-zinc-100"
           >
             <Icon icon={More02Icon} size={14} />
           </DropdownMenuTrigger>
@@ -220,6 +230,8 @@ function FilterChips({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
+
+      {actions ? <div className="shrink-0">{actions}</div> : null}
     </div>
   );
 }
@@ -239,9 +251,7 @@ function FilterChip({ filter, count, active, onSelect }: ChipProps) {
       onClick={() => onSelect(filter.key)}
       className={cn(
         "flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-zinc-100 text-zinc-900"
-          : "text-zinc-500 hover:bg-zinc-50",
+        active ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:bg-zinc-50",
       )}
     >
       <ChipMarker filter={filter} active={active} />
@@ -295,7 +305,10 @@ function ChipMarker({ filter, active }: MarkerProps) {
   if (!filter.dot) return null;
 
   return (
-    <span className="size-1.5 rounded-full" style={{ background: filter.dot }} />
+    <span
+      className="size-1.5 rounded-full"
+      style={{ background: filter.dot }}
+    />
   );
 }
 
@@ -319,6 +332,21 @@ function CollapsibleRow({
     }
   }
 
+  const interactive = Boolean(row.href ?? row.onClick);
+  const rowClass = cn(
+    "grid transition-colors [&>*:not(:last-child)]:border-r-[0.5px] [&>*:not(:last-child)]:border-zinc-200",
+    interactive && "cursor-pointer hover:bg-zinc-50",
+  );
+  const cells = columns.map((column) => (
+    <span
+      key={column.key}
+      role="cell"
+      className="flex min-w-0 items-center px-3 py-[9px] text-zinc-900"
+    >
+      {row.cells[column.key]}
+    </span>
+  ));
+
   return (
     <div
       aria-hidden={!shown}
@@ -329,27 +357,31 @@ function CollapsibleRow({
       }}
     >
       <div className="overflow-hidden">
-        <div
-          role="row"
-          tabIndex={row.onClick && shown ? 0 : undefined}
-          onClick={row.onClick}
-          onKeyDown={handleKeyDown}
-          className={cn(
-            "grid transition-colors [&>*:not(:last-child)]:border-r-[0.5px] [&>*:not(:last-child)]:border-zinc-200",
-            row.onClick && "cursor-pointer hover:bg-zinc-50",
-          )}
-          style={{ gridTemplateColumns }}
-        >
-          {columns.map((column) => (
-            <span
-              key={column.key}
-              role="cell"
-              className="flex min-w-0 items-center px-3 py-[9px] text-zinc-900"
-            >
-              {row.cells[column.key]}
-            </span>
-          ))}
-        </div>
+        {row.href ? (
+          // A collapsed row is out of the a11y tree, so it also drops out of
+          // the tab order rather than being a focus stop behind an aria-hidden.
+          <Link
+            role="row"
+            href={row.href}
+            tabIndex={shown ? 0 : -1}
+            onClick={row.onClick}
+            className={rowClass}
+            style={{ gridTemplateColumns }}
+          >
+            {cells}
+          </Link>
+        ) : (
+          <div
+            role="row"
+            tabIndex={row.onClick && shown ? 0 : undefined}
+            onClick={row.onClick}
+            onKeyDown={handleKeyDown}
+            className={rowClass}
+            style={{ gridTemplateColumns }}
+          >
+            {cells}
+          </div>
+        )}
       </div>
     </div>
   );

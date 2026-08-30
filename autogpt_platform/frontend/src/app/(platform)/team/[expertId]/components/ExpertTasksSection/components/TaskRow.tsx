@@ -13,10 +13,9 @@ import {
 
 interface Props {
   task: DelegatedTask;
-  onOpen: () => void;
 }
 
-export function TaskRow({ task, onOpen }: Props) {
+export function TaskRow({ task }: Props) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3 ring-1 ring-inset ring-zinc-200">
       <div className="min-w-0">
@@ -35,7 +34,12 @@ export function TaskRow({ task, onOpen }: Props) {
           </Text>
         </div>
       </div>
-      <Button variant="secondary" size="small" onClick={onOpen}>
+      <Button
+        as="NextLink"
+        href={`/team/tasks/${task.id}`}
+        variant="secondary"
+        size="small"
+      >
         Open
       </Button>
     </div>

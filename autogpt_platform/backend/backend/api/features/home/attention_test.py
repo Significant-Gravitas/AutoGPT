@@ -4,6 +4,11 @@ from prisma.enums import ReviewStatus
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.tasks.models import (
+    DelegatedTask,
+    TaskAmendment,
+    TaskExpertRef,
+)
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
@@ -406,3 +411,79 @@ def test_one_session_asking_twice_yields_one_item() -> None:
 
     assert len(items) == 1
     assert items[0].description == "latest question only"
+
+
+def _waiting_task(**overrides) -> DelegatedTask:
+    values = {
+        "id": "task-1",
+        "title": "Draft the launch email",
+        "spec": "spec",
+        "status": "WAITING_USER",
+        "acceptance": "PENDING",
+        "created_by_type": "USER",
+        "created_by_id": "user",
+        "owner": TaskExpertRef(
+            id="expert", name="Ada", avatar_url=None, role="Assistant"
+        ),
+        "parent_task_id": None,
+        "root_task_id": "task-1",
+        "origin_session_id": "session-1",
+        "ancestor_expert_ids": ["expert"],
+        "handoff_count": 0,
+        "revision_count": 0,
+        "spend_total": 0,
+        "outcome_summary": None,
+        "amendments": [
+            TaskAmendment(
+                at=NOW - timedelta(minutes=5),
+                by="expert",
+                note="Ship to staging or prod?",
+                kind="escalation",
+                question="Ship to staging or prod?",
+                options=["Staging", "Prod"],
+                session_id="worker-session",
+            )
+        ],
+        "created_at": NOW - timedelta(hours=1),
+        "updated_at": NOW - timedelta(minutes=5),
+        "runs": [],
+    }
+    values.update(overrides)
+    return DelegatedTask(**values)
+
+
+def test_task_escalation_becomes_an_answerable_card() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=100,
+        tasks=[_waiting_task()],
+    )
+
+    assert [item.kind for item in items] == ["task_escalation"]
+    item = items[0]
+    assert item.task_id == "task-1"
+    assert item.options == ["Staging", "Prod"]
+    assert "Ship to staging or prod?" in item.description
+    assert item.expert is not None and item.expert.name == "Ada"
+    assert item.primary_action.href == "/team?task=task-1"
+
+
+def test_non_waiting_and_question_less_tasks_render_no_card() -> None:
+    """A WORKING task has nothing to answer, and a WAITING_USER row without
+    an escalation entry (legacy or hand-edited) has nothing to render."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=100,
+        tasks=[
+            _waiting_task(id="task-2", status="WORKING"),
+            _waiting_task(id="task-3", amendments=[]),
+        ],
+    )
+
+    assert items == []

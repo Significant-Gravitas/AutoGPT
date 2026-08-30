@@ -76,6 +76,7 @@ def compose_home_dashboard(
             schedules=schedules,
             credits_balance=credits_balance,
             questions=questions,
+            tasks=open_tasks,
         ),
         briefing=compose_briefing(
             now=now,

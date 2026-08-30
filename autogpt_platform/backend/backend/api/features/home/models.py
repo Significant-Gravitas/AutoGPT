@@ -20,7 +20,9 @@ class HomeAction(BaseModel):
 
 class HomeAttentionItem(BaseModel):
     id: str
-    kind: Literal["approval", "setup", "paused", "credits", "question"]
+    kind: Literal[
+        "approval", "setup", "paused", "credits", "question", "task_escalation"
+    ]
     priority: Literal["high", "normal"]
     title: str
     description: str
@@ -32,6 +34,10 @@ class HomeAttentionItem(BaseModel):
     review: PendingHumanReviewModel | None = None
     primary_action: HomeAction
     secondary_action: HomeAction | None = None
+    # task_escalation only: the task the answer posts to, plus the one-click
+    # options the escalating expert offered (free text is always allowed).
+    task_id: str | None = None
+    options: list[str] = []
 
 
 class HomeBriefingOutcome(BaseModel):

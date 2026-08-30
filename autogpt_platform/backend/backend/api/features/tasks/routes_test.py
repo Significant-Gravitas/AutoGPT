@@ -27,6 +27,7 @@ from backend.api.features.tasks.models import (
     TaskExpertRef,
 )
 from backend.api.features.tasks.routes import router
+from backend.util.exceptions import TaskDelegationRefusedError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -216,3 +217,97 @@ def test_cancel_task_returns_404_for_another_users_task(
 
     assert response.status_code == 404
     mock_cancel.assert_awaited_once_with(test_user_id, "someone-elses-task")
+
+
+# ─── answer ────────────────────────────────────────────────────────────
+
+
+def test_answer_task_resumes_the_worker_session(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    task = _make_task(status="WORKING")
+    mock_answer = mocker.patch(
+        "backend.api.features.tasks.routes.task_actions.answer_delegated_task",
+        new_callable=AsyncMock,
+        return_value=(task, "worker-session-1"),
+    )
+    mock_queue = mocker.patch(
+        "backend.api.features.tasks.routes.queue_user_message",
+        new_callable=AsyncMock,
+        return_value=mocker.Mock(turn_in_flight=False),
+    )
+    mock_schedule = mocker.patch(
+        "backend.api.features.tasks.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+        return_value="turn-1",
+    )
+
+    response = client.post("/tasks/task-1/answer", json={"answer": "Staging"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "WORKING"
+    mock_answer.assert_awaited_once_with(test_user_id, "task-1", answer="Staging")
+    assert mock_queue.await_args.kwargs["session_id"] == "worker-session-1"
+    schedule_kwargs = mock_schedule.await_args.kwargs
+    assert schedule_kwargs["session_id"] == "worker-session-1"
+    assert schedule_kwargs["user_id"] == test_user_id
+    assert "Staging" in schedule_kwargs["message"]
+
+
+def test_answer_task_injects_into_a_running_turn_without_scheduling(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.tasks.routes.task_actions.answer_delegated_task",
+        new_callable=AsyncMock,
+        return_value=(_make_task(status="WORKING"), "worker-session-1"),
+    )
+    mocker.patch(
+        "backend.api.features.tasks.routes.queue_user_message",
+        new_callable=AsyncMock,
+        return_value=mocker.Mock(turn_in_flight=True),
+    )
+    mock_schedule = mocker.patch(
+        "backend.api.features.tasks.routes.schedule_chat_turn",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/tasks/task-1/answer", json={"answer": "Prod"})
+
+    assert response.status_code == 200
+    mock_schedule.assert_not_awaited()
+
+
+def test_answer_task_404s_when_the_task_is_missing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.tasks.routes.task_actions.answer_delegated_task",
+        new_callable=AsyncMock,
+        side_effect=DelegatedTaskNotFoundError("task-9"),
+    )
+
+    response = client.post("/tasks/task-9/answer", json={"answer": "Hi"})
+
+    assert response.status_code == 404
+
+
+def test_answer_task_409s_when_the_task_is_not_waiting(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.tasks.routes.task_actions.answer_delegated_task",
+        new_callable=AsyncMock,
+        side_effect=TaskDelegationRefusedError("This task is not waiting."),
+    )
+
+    response = client.post("/tasks/task-1/answer", json={"answer": "Hi"})
+
+    assert response.status_code == 409
+
+
+def test_answer_task_rejects_a_blank_answer() -> None:
+    response = client.post("/tasks/task-1/answer", json={"answer": "   "})
+
+    assert response.status_code == 422

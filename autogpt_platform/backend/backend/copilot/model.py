@@ -145,6 +145,13 @@ class ChatSessionMetadata(BaseModel):
     # expert can tell "this is now mine" from "report back to whoever asked".
     handed_off_from_expert_id: str | None = None
 
+    # The DelegatedTask this session is working on, set by
+    # ``delegate_to_expert`` when it opens the receipt. Task context for the
+    # task tools: a further delegation from this session becomes a subtask
+    # of it, and ``escalate_task`` records this session as the one the
+    # user's answer should resume.
+    delegated_task_id: str | None = None
+
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per
     # session, latest wins.
@@ -484,6 +491,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        delegated_task_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -504,6 +512,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                delegated_task_id=delegated_task_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1302,6 +1311,7 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    delegated_task_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1326,6 +1336,8 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        delegated_task_id: The DelegatedTask receipt this session was opened
+            to work on — task context for subtask creation and escalation.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1352,6 +1364,7 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        delegated_task_id=delegated_task_id,
     )
 
     # Create in database first - fail fast if this fails

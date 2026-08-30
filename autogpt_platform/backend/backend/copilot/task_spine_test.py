@@ -6,12 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.task_spine import (
     _describe_run,
     fail_task,
     mark_task_working,
     open_task_for_run,
+    settle_task_for_turn,
 )
 
 _MODULE = "backend.copilot.task_spine"
@@ -113,6 +114,114 @@ async def test_fail_task_swallows_rpc_failure():
 
     with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
         await fail_task("user-1", "task-1", "reason")
+
+
+def _worker_session(
+    task_id: str = "task-1", expert_id: str | None = "expert-1"
+) -> ChatSession:
+    session = _session(expert_id=expert_id)
+    session.metadata.delegated_task_id = task_id
+    return session
+
+
+def _settle_client(status: str = "WORKING", owner_id: str | None = "expert-1"):
+    client = _client()
+    task = MagicMock(status=status)
+    task.owner = MagicMock(id=owner_id) if owner_id else None
+    client.get_delegated_task = AsyncMock(return_value=MagicMock(task=task))
+    client.report_delegated_task = AsyncMock()
+    return client
+
+
+@pytest.mark.asyncio
+async def test_settle_reports_done_with_final_assistant_answer():
+    client = _settle_client()
+    session = _worker_session()
+    fresh = _session(expert_id="expert-1")
+    fresh.messages = [
+        ChatMessage(role="user", content="build it"),
+        ChatMessage(role="assistant", content="  Landing page\nshipped.  "),
+    ]
+
+    with (
+        patch(f"{_MODULE}.get_database_manager_async_client", return_value=client),
+        patch(f"{_MODULE}.get_chat_session", AsyncMock(return_value=fresh)),
+    ):
+        await settle_task_for_turn("user-1", session, error_message=None)
+
+    args = client.report_delegated_task.call_args
+    assert args.args == ("user-1", "task-1")
+    assert args.kwargs["outcome_summary"] == "Landing page shipped."
+
+
+@pytest.mark.asyncio
+async def test_settle_failed_turn_closes_receipt_as_failed():
+    client = _settle_client()
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn(
+            "user-1", _worker_session(), error_message="LLM exploded"
+        )
+
+    kwargs = client.close_delegated_task.call_args.kwargs
+    assert kwargs["succeeded"] is False
+    assert "LLM exploded" in kwargs["outcome_summary"]
+    client.report_delegated_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["WAITING_USER", "DONE", "FAILED", "CANCELLED"])
+async def test_settle_leaves_non_working_receipts_alone(status: str):
+    client = _settle_client(status=status)
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn("user-1", _worker_session(), error_message=None)
+
+    client.report_delegated_task.assert_not_awaited()
+    client.close_delegated_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settle_skips_receipt_handed_off_to_another_owner():
+    client = _settle_client(owner_id="expert-2")
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn("user-1", _worker_session(), error_message=None)
+
+    client.report_delegated_task.assert_not_awaited()
+    client.close_delegated_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settle_leaves_cancelled_turns_to_the_cancel_route():
+    client = _settle_client()
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn(
+            "user-1", _worker_session(), error_message="Operation cancelled"
+        )
+
+    client.get_delegated_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settle_without_receipt_makes_no_rpc_calls():
+    client = _settle_client()
+    session = _session(expert_id="expert-1")
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn("user-1", session, error_message=None)
+
+    client.get_delegated_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settle_swallows_rpc_failure():
+    client = _settle_client()
+    client.get_delegated_task.side_effect = RuntimeError("rpc down")
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await settle_task_for_turn("user-1", _worker_session(), error_message=None)
 
 
 def test_describe_run_lists_inputs_and_truncates():

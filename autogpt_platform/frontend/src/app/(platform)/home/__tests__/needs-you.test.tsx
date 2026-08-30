@@ -237,3 +237,79 @@ test("offers no approve or decline on a question", async () => {
     screen.queryByRole("button", { name: /Decline: Maria has a question/ }),
   ).toBeNull();
 });
+
+const escalationItem: HomeAttentionItem = {
+  id: "task-escalation-task-1",
+  kind: "task_escalation",
+  priority: "high",
+  title: "Maria needs a decision on “Launch email”",
+  description: "Ship to staging or prod?",
+  why_it_matters: "The task is paused until you answer.",
+  expert: maria,
+  created_at: NOW,
+  task_id: "task-1",
+  options: ["Staging", "Prod"],
+  primary_action: { label: "View task", href: "/team?task=task-1" },
+};
+
+function mockAnswerEndpoint(answerRequests: unknown[]) {
+  server.use(
+    http.post("/api/proxy/api/tasks/task-1/answer", async ({ request }) => {
+      answerRequests.push(await request.json());
+      return HttpResponse.json({
+        id: "task-1",
+        title: "Launch email",
+        spec: "spec",
+        status: "WORKING",
+        acceptance: "PENDING",
+        created_by_type: "USER",
+        created_by_id: "user-1",
+        owner: maria,
+        parent_task_id: null,
+        root_task_id: "task-1",
+        origin_session_id: "session-1",
+        ancestor_expert_ids: ["maria"],
+        handoff_count: 0,
+        revision_count: 0,
+        spend_total: 0,
+        outcome_summary: null,
+        amendments: [],
+        created_at: NOW.toISOString(),
+        updated_at: NOW.toISOString(),
+        runs: [],
+      });
+    }),
+  );
+}
+
+test("answers a task escalation with a one-click option", async () => {
+  const user = userEvent.setup();
+  const answerRequests: unknown[] = [];
+  mockDashboard([escalationItem]);
+  mockAnswerEndpoint(answerRequests);
+
+  render(<HomePage />);
+
+  await user.click(await screen.findByRole("button", { name: "Staging" }));
+
+  await waitFor(() => expect(answerRequests).toHaveLength(1));
+  expect(answerRequests[0]).toEqual({ answer: "Staging" });
+});
+
+test("posts a typed answer to the task escalation", async () => {
+  const user = userEvent.setup();
+  const answerRequests: unknown[] = [];
+  mockDashboard([escalationItem]);
+  mockAnswerEndpoint(answerRequests);
+
+  render(<HomePage />);
+
+  const input = await screen.findByRole("textbox", { name: "Your answer" });
+  await user.type(input, "Staging first, prod on Friday");
+  await user.click(screen.getByRole("button", { name: "Answer" }));
+
+  await waitFor(() => expect(answerRequests).toHaveLength(1));
+  expect(answerRequests[0]).toEqual({
+    answer: "Staging first, prod on Friday",
+  });
+});

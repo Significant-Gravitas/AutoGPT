@@ -15,6 +15,7 @@ import {
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
 import { ExpertChangeCard, ExpertChangeCardSkeleton } from "./ExpertCards";
+import { RoutingCard, RoutingConfirmCard } from "./RoutingCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -266,6 +267,14 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
         row.tool === "delegate_to_expert" ||
         row.tool === "handoff_to_expert" ||
         !!(output && asObject(output.expert));
+      // The router's uncertain path: a proposal awaiting the user's Accept —
+      // nothing was sent, so there is no sub-session to card.
+      if (output && str(output, "type") === "delegation_confirmation")
+        return <RoutingConfirmCard output={output} />;
+      // A delegation that opened a task receipt gets the routing card (who,
+      // which task, drawer link) instead of the generic sub-session strip.
+      if (output && str(output, "status") && str(output, "task_id"))
+        return <RoutingCard output={output} />;
       if (output && str(output, "status"))
         return <SubSessionCard output={output} minimal={delegated} />;
       // A blocking delegate has no output while the teammate works — show

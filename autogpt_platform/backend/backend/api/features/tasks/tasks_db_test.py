@@ -6,15 +6,17 @@ and the cancel cascade (which walks the tree with several statements).
 """
 
 import uuid
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.models
 import pytest
 
-from backend.api.features.tasks import tasks_db
+from backend.api.features.tasks import task_actions, tasks_db
 from backend.api.features.tasks.errors import DelegatedTaskNotFoundError
 from backend.data.user import get_or_create_user
+from backend.util.exceptions import TaskDelegationRefusedError, TaskUpdateConflictError
 from backend.util.test import SpinTestServer
 
 
@@ -283,3 +285,208 @@ async def test_cancel_survives_an_execution_that_refuses_to_stop(
         detail = await tasks_db.cancel_task(owner.id, task.id)
 
     assert detail.task.status == "CANCELLED"
+
+
+# ─── phase 2: delegation policy, handoff, escalate, report ─────────────
+
+
+async def _seed_expert(user_id: str, name: str) -> prisma.models.Expert:
+    return await prisma.models.Expert.prisma().create(
+        data={
+            "ownerUserId": user_id,
+            "name": f"{name} {uuid.uuid4().hex[:8]}",
+            "role": f"{name}'s role",
+            "identity": f"You are {name}.",
+        }
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_subtask_delegation_back_to_an_ancestor_is_refused(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    root = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    with pytest.raises(TaskDelegationRefusedError, match="loop"):
+        await tasks_db.create_delegated_task(
+            owner.id,
+            title="Back to Alice",
+            spec="spec",
+            owner_id=alice.id,
+            parent_task_id=root.id,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_subtask_tree_depth_is_capped(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    cara = await _seed_expert(owner.id, "Cara")
+    dave = await _seed_expert(owner.id, "Dave")
+
+    root = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+    child = await tasks_db.create_delegated_task(
+        owner.id, title="Child", spec="spec", owner_id=bob.id, parent_task_id=root.id
+    )
+    grandchild = await tasks_db.create_delegated_task(
+        owner.id,
+        title="Grandchild",
+        spec="spec",
+        owner_id=cara.id,
+        parent_task_id=child.id,
+    )
+
+    assert child.root_task_id == root.id
+    assert grandchild.root_task_id == root.id
+    assert grandchild.ancestor_expert_ids == [alice.id, bob.id, cara.id]
+    with pytest.raises(TaskDelegationRefusedError, match="levels deep"):
+        await tasks_db.create_delegated_task(
+            owner.id,
+            title="Too deep",
+            spec="spec",
+            owner_id=dave.id,
+            parent_task_id=grandchild.id,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_handoff_swaps_owner_and_records_the_hop(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    task = await task_actions.handoff_delegated_task(
+        owner.id,
+        created.id,
+        to_expert_id=bob.id,
+        note="Needs Bob's integrations.",
+        expected_updated_at=created.updated_at,
+    )
+
+    assert task.owner is not None and task.owner.id == bob.id
+    assert task.handoff_count == 1
+    assert task.ancestor_expert_ids == [alice.id, bob.id]
+    assert [a.kind for a in task.amendments] == ["handoff"]
+    assert task.amendments[0].from_expert_id == alice.id
+    assert task.amendments[0].to_expert_id == bob.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_handoff_is_refused_after_the_cap(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+    await prisma.models.DelegatedTask.prisma().update(
+        where={"id": created.id}, data={"handoffCount": 5}
+    )
+    row = await prisma.models.DelegatedTask.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert row is not None
+
+    with pytest.raises(TaskDelegationRefusedError, match="changed hands"):
+        await task_actions.handoff_delegated_task(
+            owner.id,
+            created.id,
+            to_expert_id=bob.id,
+            note="One hop too many.",
+            expected_updated_at=row.updatedAt,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_handoff_with_a_stale_read_is_a_retryable_conflict(
+    server: SpinTestServer,
+):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    stale = created.updated_at - timedelta(minutes=1)
+    with pytest.raises(TaskUpdateConflictError):
+        await task_actions.handoff_delegated_task(
+            owner.id,
+            created.id,
+            to_expert_id=bob.id,
+            note="Racing hop.",
+            expected_updated_at=stale,
+        )
+
+    row = await prisma.models.DelegatedTask.prisma().find_unique(
+        where={"id": created.id}
+    )
+    assert row is not None
+    assert row.ownerId == alice.id
+    assert row.handoffCount == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_report_is_refused_while_subtasks_are_open(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    root = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+    child = await tasks_db.create_delegated_task(
+        owner.id, title="Child", spec="spec", owner_id=bob.id, parent_task_id=root.id
+    )
+
+    with pytest.raises(TaskDelegationRefusedError, match="open subtask"):
+        await task_actions.report_delegated_task(
+            owner.id, root.id, outcome_summary="All done."
+        )
+
+    await prisma.models.DelegatedTask.prisma().update(
+        where={"id": child.id},
+        data={"status": prisma.enums.DelegatedTaskStatus.CANCELLED},
+    )
+    task = await task_actions.report_delegated_task(
+        owner.id, root.id, outcome_summary="All done."
+    )
+    assert task.status == "DONE"
+    assert task.outcome_summary == "All done."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_escalate_then_answer_round_trip(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    escalated = await task_actions.escalate_delegated_task(
+        owner.id,
+        created.id,
+        question="Ship to staging or prod?",
+        options=["Staging", "Prod"],
+        session_id="worker-session-1",
+    )
+    assert escalated.status == "WAITING_USER"
+    assert escalated.amendments[-1].kind == "escalation"
+    assert escalated.amendments[-1].options == ["Staging", "Prod"]
+
+    task, worker_session_id = await task_actions.answer_delegated_task(
+        owner.id, created.id, answer="Staging"
+    )
+    assert task.status == "WORKING"
+    assert worker_session_id == "worker-session-1"
+    assert task.amendments[-1].kind == "answer"
+    assert task.amendments[-1].note == "Staging"

@@ -4,6 +4,7 @@ import {
   MessageQuestionIcon,
   PauseIcon,
   Settings02Icon,
+  Task01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { useState } from "react";
@@ -12,6 +13,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { AttentionRowActions } from "./AttentionRowActions";
+import { EscalationAnswer } from "./EscalationAnswer";
 
 interface Props {
   item: HomeAttentionItem;
@@ -25,6 +27,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
   paused: PauseIcon,
   credits: CoinsDollarIcon,
   question: MessageQuestionIcon,
+  task_escalation: Task01Icon,
 };
 
 const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
@@ -33,6 +36,7 @@ const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
   paused: "Paused",
   credits: "Credits",
   question: "Question",
+  task_escalation: "Task question",
 };
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
@@ -87,6 +91,9 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
                 {item.why_it_matters}
               </span>
             </div>
+            {item.kind === "task_escalation" && item.task_id ? (
+              <EscalationAnswer item={item} />
+            ) : null}
           </div>
         </div>
 

@@ -286,10 +286,19 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
         )
     if exclude_expert_id is None:
         return (
-            "When a request clearly matches an expert's domain, you may hand "
-            "it off with `delegate_to_expert(expert_id=..., prompt=...)` or "
-            "suggest opening that expert's thread — either way, tell the "
-            "user which expert is handling it. Never delegate silently."
+            "Route each request before answering it:\n"
+            "(a) Clearly matches one expert's role, skills, or workflows → "
+            "delegate with `delegate_to_expert(expert_id=..., prompt=...)` "
+            "and confirm to the user in one short line ('Sent to <name>.') "
+            "with what you asked for. Never delegate silently.\n"
+            "(b) Plausibly matches but you are unsure who — or whether — to "
+            "involve → call `delegate_to_expert` with "
+            "`require_confirmation=true` for your best pick, and ask the "
+            "user ONE confirm question. Do not send work while unsure.\n"
+            "(c) No expert fits, or it is quick and general → handle it "
+            "yourself.\n"
+            "Judge the match on the roster above; never guess at skills an "
+            "expert does not list."
         )
     return (
         "These are your teammates. When a task needs their skills or "
@@ -306,8 +315,12 @@ def _team_line(expert: Expert) -> str:
     )
     if not workflow_names:
         workflow_names = "none installed"
+    skills = ", ".join(
+        escape_prompt_xml_tags(skill) for skill in expert.skills if skill.strip()
+    )
+    skills_part = f"; skills: {skills}" if skills else ""
     return (
         f"- {escape_prompt_xml_tags(expert.name)} — "
-        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
-        f"installed workflows: {workflow_names}"
+        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id})"
+        f"{skills_part}; installed workflows: {workflow_names}"
     )

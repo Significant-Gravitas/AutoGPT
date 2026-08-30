@@ -4,7 +4,6 @@ import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { TaskDetailDrawer } from "../../../components/TaskDetailDrawer/TaskDetailDrawer";
 import { TaskRow } from "./components/TaskRow";
 import { useExpertTasksSection } from "./useExpertTasksSection";
 
@@ -14,16 +13,8 @@ interface Props {
 }
 
 export function ExpertTasksSection({ expertId, enabled }: Props) {
-  const {
-    activeTasks,
-    historyTasks,
-    isLoading,
-    isError,
-    refetch,
-    openTaskId,
-    openTask,
-    closeTask,
-  } = useExpertTasksSection({ expertId, enabled });
+  const { activeTasks, historyTasks, isLoading, isError, refetch } =
+    useExpertTasksSection({ expertId, enabled });
 
   if (isLoading) {
     return (
@@ -59,16 +50,12 @@ export function ExpertTasksSection({ expertId, enabled }: Props) {
         title="Active"
         tasks={activeTasks}
         emptyText="Nothing in flight right now."
-        onOpen={openTask}
       />
       <TaskGroup
         title="History"
         tasks={historyTasks}
         emptyText="No finished tasks yet."
-        onOpen={openTask}
       />
-
-      <TaskDetailDrawer taskId={openTaskId} onClose={closeTask} />
     </section>
   );
 }
@@ -77,10 +64,9 @@ interface GroupProps {
   title: string;
   tasks: DelegatedTask[];
   emptyText: string;
-  onOpen: (taskId: string) => void;
 }
 
-function TaskGroup({ title, tasks, emptyText, onOpen }: GroupProps) {
+function TaskGroup({ title, tasks, emptyText }: GroupProps) {
   return (
     <div className="flex flex-col gap-2.5">
       <Text variant="small" className="font-medium text-zinc-900">
@@ -94,7 +80,7 @@ function TaskGroup({ title, tasks, emptyText, onOpen }: GroupProps) {
         <ul className="flex flex-col gap-3" aria-label={`${title} tasks`}>
           {tasks.map((task) => (
             <li key={task.id}>
-              <TaskRow task={task} onOpen={() => onOpen(task.id)} />
+              <TaskRow task={task} />
             </li>
           ))}
         </ul>

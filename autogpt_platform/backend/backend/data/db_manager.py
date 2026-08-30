@@ -48,7 +48,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
-from backend.api.features.tasks import tasks_db
+from backend.api.features.tasks import task_actions, tasks_db
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
@@ -541,6 +541,12 @@ class DatabaseManager(AppService):
     create_delegated_task = _(tasks_db.create_delegated_task)
     mark_delegated_task_working = _(tasks_db.mark_delegated_task_working)
     close_delegated_task = _(tasks_db.close_delegated_task)
+    # Phase 2: the copilot task tools (handoff / escalate / report) and the
+    # task lookup they validate against.
+    get_delegated_task = _(tasks_db.get_delegated_task)
+    handoff_delegated_task = _(task_actions.handoff_delegated_task)
+    escalate_delegated_task = _(task_actions.escalate_delegated_task)
+    report_delegated_task = _(task_actions.report_delegated_task)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -940,6 +946,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_delegated_task = d.create_delegated_task
     mark_delegated_task_working = d.mark_delegated_task_working
     close_delegated_task = d.close_delegated_task
+    get_delegated_task = d.get_delegated_task
+    handoff_delegated_task = d.handoff_delegated_task
+    escalate_delegated_task = d.escalate_delegated_task
+    report_delegated_task = d.report_delegated_task
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question

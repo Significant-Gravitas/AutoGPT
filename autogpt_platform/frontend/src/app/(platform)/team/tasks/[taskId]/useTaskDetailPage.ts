@@ -8,15 +8,16 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Args {
-  taskId: string | null;
+  taskId: string;
+  enabled: boolean;
 }
 
-export function useTaskDetailDrawer({ taskId }: Args) {
+export function useTaskDetailPage({ taskId, enabled }: Args) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const detailQuery = useGetTask(taskId ?? "", {
-    query: { select: (res) => okData(res) ?? null, enabled: Boolean(taskId) },
+  const detailQuery = useGetTask(taskId, {
+    query: { select: (res) => okData(res) ?? null, enabled },
   });
 
   const { mutate: cancelTask, isPending: isCancelling } = useCancelTask({
@@ -36,11 +37,11 @@ export function useTaskDetailDrawer({ taskId }: Args) {
   return {
     task: detailQuery.data?.task ?? null,
     children: detailQuery.data?.children ?? [],
-    isLoading: Boolean(taskId) && detailQuery.isLoading,
-    isError: detailQuery.isError,
-    cancel: () => {
-      if (taskId) cancelTask({ taskId });
-    },
+    isLoading: enabled && detailQuery.isLoading,
+    isError:
+      detailQuery.isError || (detailQuery.isFetched && !detailQuery.data?.task),
+    refetch: () => detailQuery.refetch(),
+    cancel: () => cancelTask({ taskId }),
     isCancelling,
   };
 }

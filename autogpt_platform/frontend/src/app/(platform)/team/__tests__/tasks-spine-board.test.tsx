@@ -5,10 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV2ListLibraryAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import {
-  getGetTaskMockHandler,
-  getListTasksMockHandler,
-} from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
+import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
@@ -185,20 +182,23 @@ describe("team board on the task spine", () => {
     ).toBeDefined();
   });
 
-  test("clicking a row opens the task detail drawer", async () => {
-    server.use(getGetTaskMockHandler({ task: autopilotTask, children: [] }));
+  test("every row links to its own task page", async () => {
     const user = userEvent.setup();
     render(<TeamPage />);
 
     await user.click(await screen.findByRole("tab", { name: "All tasks" }));
     const table = await screen.findByRole("table", { name: "Delegated tasks" });
 
-    await user.click(
-      within(table).getByRole("row", { name: /Summarise this week's runs/ }),
-    );
-
-    const drawer = within(await screen.findByRole("dialog"));
-    expect(drawer.getByText("Summary posted.")).toBeDefined();
+    expect(
+      within(table)
+        .getByRole("row", { name: /Summarise this week's runs/ })
+        .getAttribute("href"),
+    ).toBe("/team/tasks/task-autopilot");
+    expect(
+      within(table)
+        .getByRole("row", { name: /Draft the weekly report/ })
+        .getAttribute("href"),
+    ).toBe("/team/tasks/task-active");
   });
 
   test("spine board reads /api/tasks and leaves the per-expert runs fan-out alone", async () => {

@@ -23,7 +23,7 @@ import {
   getTaskFilterKey,
   getTaskOrbVariant,
 } from "../../../task-helpers";
-import { TaskDetailDrawer } from "../../TaskDetailDrawer/TaskDetailDrawer";
+import { RefreshButton } from "../../RefreshButton";
 import { TaskStatusChip } from "../../TaskStatusChip/TaskStatusChip";
 import { useDelegatedTasksBoard } from "./useDelegatedTasksBoard";
 
@@ -58,15 +58,8 @@ const COLUMNS = [
  *  across the whole team — including Autopilot work, which the run-based
  *  board can't see because it only fans out per hired expert. */
 export function DelegatedTasksBoard({ enabled }: Props) {
-  const {
-    tasks,
-    isLoading,
-    isError,
-    refetch,
-    openTaskId,
-    openTask,
-    closeTask,
-  } = useDelegatedTasksBoard({ enabled });
+  const { tasks, isLoading, isError, refetch, isRefreshing } =
+    useDelegatedTasksBoard({ enabled });
 
   if (isLoading) {
     return (
@@ -97,15 +90,16 @@ export function DelegatedTasksBoard({ enabled }: Props) {
         maxVisibleFilters={3}
         emptyIcon={TaskDone01Icon}
         emptyText="Nothing delegated yet. Ask an expert (or Autopilot) to do something and it will show up here."
+        actions={
+          <RefreshButton onRefresh={refetch} isRefreshing={isRefreshing} />
+        }
         rows={tasks.map((task) => ({
           id: task.id,
           filterKey: getTaskFilterKey(task),
-          onClick: () => openTask(task.id),
+          href: `/team/tasks/${task.id}`,
           cells: buildCells(task),
         }))}
       />
-
-      <TaskDetailDrawer taskId={openTaskId} onClose={closeTask} />
     </section>
   );
 }
@@ -116,7 +110,11 @@ function OwnerCell({ owner }: { owner: DelegatedTask["owner"] }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
       {owner ? (
-        <ExpertAvatar name={owner.name} avatarUrl={owner.avatar_url} size={20} />
+        <ExpertAvatar
+          name={owner.name}
+          avatarUrl={owner.avatar_url}
+          size={20}
+        />
       ) : (
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 ring-1 ring-inset ring-zinc-200">
           <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-3" />

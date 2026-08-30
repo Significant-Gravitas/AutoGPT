@@ -155,6 +155,24 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Handed over:",
     subject: (input) => quoted(input, "prompt", 45),
   },
+  handoff_task: {
+    category: "agent",
+    running: "Transferring the task",
+    done: "Task transferred",
+    subject: (input) => quoted(input, "note", 45),
+  },
+  escalate_task: {
+    category: "agent",
+    running: "Escalating to you:",
+    done: "Waiting on you:",
+    subject: (input) => quoted(input, "question", 45),
+  },
+  report_task: {
+    category: "agent",
+    running: "Wrapping up the task",
+    done: "Task reported done",
+    subject: (input) => quoted(input, "outcome_summary", 45),
+  },
   hire_expert: {
     category: "team",
     running: "Drafting a hire",

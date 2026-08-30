@@ -14394,6 +14394,54 @@
         }
       }
     },
+    "/api/tasks/{task_id}/answer": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "Answer Task",
+        "description": "Answer a task escalation. The task returns to WORKING and the answer\nis delivered into the escalating expert's session, resuming the work.",
+        "operationId": "answer_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AnswerTaskRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DelegatedTask" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Task not found" },
+          "409": { "description": "Task is not waiting on an answer" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks/{task_id}/cancel": {
       "post": {
         "tags": ["v2", "tasks", "tasks", "private"],
@@ -15777,6 +15825,20 @@
         "title": "AgentsFoundResponse",
         "description": "Response for find_agent tool."
       },
+      "AnswerTaskRequest": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": ["answer"],
+        "title": "AnswerTaskRequest",
+        "description": "The user's reply to a task escalation, posted from Home's Needs You."
+      },
       "ApiResponse": {
         "properties": {
           "answer": { "type": "string", "title": "Answer" },
@@ -17106,6 +17168,10 @@
           "handed_off_from_expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
+          },
+          "delegated_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated Task Id"
           },
           "pending_question": {
             "anyOf": [
@@ -21043,7 +21109,14 @@
           "id": { "type": "string", "title": "Id" },
           "kind": {
             "type": "string",
-            "enum": ["approval", "setup", "paused", "credits", "question"],
+            "enum": [
+              "approval",
+              "setup",
+              "paused",
+              "credits",
+              "question",
+              "task_escalation"
+            ],
             "title": "Kind"
           },
           "priority": {
@@ -21087,6 +21160,16 @@
               { "$ref": "#/components/schemas/HomeAction" },
               { "type": "null" }
             ]
+          },
+          "task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Task Id"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options",
+            "default": []
           }
         },
         "type": "object",
@@ -25033,7 +25116,9 @@
           "expert_soul_updated",
           "expert_change_proposed",
           "expert_change_applied",
-          "team_roster"
+          "team_roster",
+          "task_update",
+          "delegation_confirmation"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -26972,12 +27057,40 @@
         "properties": {
           "at": { "type": "string", "format": "date-time", "title": "At" },
           "by": { "type": "string", "title": "By" },
-          "note": { "type": "string", "title": "Note" }
+          "note": { "type": "string", "title": "Note" },
+          "kind": {
+            "type": "string",
+            "enum": ["note", "handoff", "escalation", "answer"],
+            "title": "Kind",
+            "default": "note"
+          },
+          "from_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "From Expert Id"
+          },
+          "to_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "To Expert Id"
+          },
+          "question": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Question"
+          },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          }
         },
         "type": "object",
         "required": ["at", "by", "note"],
         "title": "TaskAmendment",
-        "description": "A scope change recorded against a live task."
+        "description": "An event recorded against a live task: a scope note, a handoff\nbetween experts, an escalation to the user, or the user's answer.\nStored in the append-only ``amendments`` Json column, so new kinds land\nwithout a migration; ``kind`` defaults to ``note`` for phase-1 rows."
       },
       "TaskDecompositionResponse": {
         "properties": {
