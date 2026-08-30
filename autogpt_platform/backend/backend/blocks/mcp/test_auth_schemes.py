@@ -178,10 +178,6 @@ async def test_store_manual_credential(
             "backend.api.features.mcp.routes.validate_url_host",
             new_callable=AsyncMock,
         ),
-        patch(
-            "backend.api.features.mcp.routes._validate_manual_mcp_credential",
-            new_callable=AsyncMock,
-        ),
         patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
     ):
         create_credential = AsyncMock()

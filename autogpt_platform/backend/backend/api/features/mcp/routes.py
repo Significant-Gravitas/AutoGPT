@@ -424,35 +424,6 @@ class MCPStoreTokenRequest(BaseModel):
     )
 
 
-async def _validate_manual_mcp_credential(server_url: str, authorization: str) -> None:
-    """Verify a manual credential before replacing anything in storage."""
-    client = MCPClient(server_url, auth_token=authorization)
-    try:
-        await client.initialize()
-    except HTTPClientError as e:
-        if e.status_code in (401, 403):
-            raise fastapi.HTTPException(
-                status_code=401,
-                detail="The MCP server rejected this credential.",
-            ) from e
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f"Could not validate the MCP credential: {e}",
-        ) from e
-    except MCPClientError as e:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail=f"Could not validate the MCP credential: {e}",
-        ) from e
-    except Exception as e:
-        raise fastapi.HTTPException(
-            status_code=502,
-            detail="Could not validate the MCP credential with the server.",
-        ) from e
-    finally:
-        await client.close()
-
-
 @router.post(
     "/token",
     # Keep the existing summary so generated clients retain their current method name.
@@ -484,9 +455,6 @@ async def mcp_store_token(
     # Normalize URL so trailing-slash variants match existing credentials.
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
-
-    # An invalid replacement must never overwrite a working credential.
-    await _validate_manual_mcp_credential(server_url, authorization)
 
     # Reuse existing user-owned IDs so saved graphs keep resolving their
     # credential references after a manual token rotation.

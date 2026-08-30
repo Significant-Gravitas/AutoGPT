@@ -13,7 +13,7 @@ import pytest_asyncio
 from autogpt_libs.auth import get_user_id
 from pydantic import SecretStr
 
-from backend.api.features.mcp.routes import _validate_manual_mcp_credential, router
+from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
 from backend.util.request import HTTPClientError
@@ -489,34 +489,7 @@ class TestOAuthCallback:
         assert "token exchange failed" in response.json()["detail"].lower()
 
 
-class TestManualCredentialValidation:
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_rejected_credential_is_401_and_closes_client(self):
-        with patch("backend.api.features.mcp.routes.MCPClient") as client_cls:
-            mcp_client = client_cls.return_value
-            mcp_client.initialize = AsyncMock(
-                side_effect=HTTPClientError("Unauthorized", status_code=401)
-            )
-            mcp_client.close = AsyncMock()
-
-            with pytest.raises(fastapi.HTTPException) as exc_info:
-                await _validate_manual_mcp_credential(
-                    "https://mcp.example.com/mcp", "Bearer wrong-token"
-                )
-
-        assert exc_info.value.status_code == 401
-        mcp_client.close.assert_awaited_once()
-
-
 class TestStoreToken:
-    @pytest.fixture(autouse=True)
-    def _mock_credential_validation(self):
-        with patch(
-            "backend.api.features.mcp.routes._validate_manual_mcp_credential",
-            new_callable=AsyncMock,
-        ) as validate:
-            yield validate
-
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_success(self, client):
         with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
@@ -685,32 +658,6 @@ class TestStoreToken:
         )
         assert all(cred.scopes == ["existing-scope"] for cred in updated_creds)
         mock_cm.store.delete_creds_by_id.assert_not_awaited()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_store_token_rejects_before_mutation_when_validation_fails(
-        self, client, _mock_credential_validation
-    ):
-        _mock_credential_validation.side_effect = fastapi.HTTPException(
-            status_code=401,
-            detail="The MCP server rejected this credential.",
-        )
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
-            mock_cm.store.get_creds_by_provider = AsyncMock()
-            mock_cm.create = AsyncMock()
-            mock_cm.update = AsyncMock()
-
-            response = await client.post(
-                "/token",
-                json={
-                    "server_url": "https://mcp.example.com/mcp",
-                    "token": "wrong-token",
-                },
-            )
-
-        assert response.status_code == 401
-        mock_cm.store.get_creds_by_provider.assert_not_awaited()
-        mock_cm.create.assert_not_awaited()
-        mock_cm.update.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_does_not_mutate_managed_matching_credential(
