@@ -17,10 +17,7 @@ export function ExpertSchedulesSection({
 }: Props) {
   return (
     <section>
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-          Schedules
-        </div>
+      <div className="mb-2.5 flex items-center justify-end gap-2 empty:mb-0">
         {lastRunLabel ? (
           <span className="text-xs text-zinc-500">{lastRunLabel}</span>
         ) : null}

@@ -34,6 +34,8 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     : [];
 
   const [isFireOpen, setIsFireOpen] = useState(false);
+  const [isSoulOpen, setIsSoulOpen] = useState(false);
+  const [soulDrawerKey, setSoulDrawerKey] = useState(0);
 
   const { mutate: resumeSchedules, isPending: isResuming } =
     useResumeExpertSchedules({
@@ -65,6 +67,15 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     setIsFireOpen(false);
   }
 
+  function openSoul() {
+    setIsSoulOpen(true);
+    setSoulDrawerKey((current) => current + 1);
+  }
+
+  function closeSoul() {
+    setIsSoulOpen(false);
+  }
+
   return {
     expert,
     isLoading: enabled && (expertQuery.isLoading || schedulesQuery.isLoading),
@@ -82,5 +93,9 @@ export function useExpertDetailPage({ expertId, enabled }: Args) {
     isFireOpen,
     openFire,
     closeFire,
+    isSoulOpen,
+    soulDrawerKey,
+    openSoul,
+    closeSoul,
   };
 }

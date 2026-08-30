@@ -26,7 +26,9 @@ export function SpendMeter({ spent, budget, muted }: Props) {
       aria-valuemax={budget}
       aria-valuetext={valueText}
       className={cn(
-        "flex h-4 w-full items-stretch gap-[3px]",
+        // Segments are `flex-1`, so the gap is what sets their width — a wider
+        // gap thins each tick without changing how many there are.
+        "flex h-4 w-full items-stretch gap-[5px]",
         muted && "opacity-50",
       )}
     >

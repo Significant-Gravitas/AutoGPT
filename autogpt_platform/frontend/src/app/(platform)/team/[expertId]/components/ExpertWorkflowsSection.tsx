@@ -21,10 +21,7 @@ export function ExpertWorkflowsSection({
 }: Props) {
   return (
     <section>
-      <div className="mb-2.5 flex items-center justify-between">
-        <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-          Workflows
-        </div>
+      <div className="mb-2.5 flex items-center justify-end">
         <Button
           variant="ghost"
           size="small"

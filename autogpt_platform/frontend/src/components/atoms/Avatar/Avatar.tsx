@@ -165,12 +165,18 @@ export function AvatarImage({
 
 export type AvatarFallbackProps = React.HTMLAttributes<HTMLSpanElement> & {
   size?: number;
+  /**
+   * Fills the whole box instead of drawing a circle inside it, so a wrapper
+   * with a smaller radius can clip the marble to a rounded square.
+   */
+  square?: boolean;
 };
 
 export function AvatarFallback({
   className,
   children,
   size: _size, // accepted for API compatibility; currently not used
+  square = false,
   ...props
 }: AvatarFallbackProps): JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
@@ -198,7 +204,7 @@ export function AvatarFallback({
         name={name}
         variant="marble"
         colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
-        square={false}
+        square={square}
       />
     </span>
   );

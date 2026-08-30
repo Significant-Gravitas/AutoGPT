@@ -438,15 +438,14 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 - **MANDATORY:** You MUST run `gh auth status` before EVER calling
   `connect_integration(provider="github")`. If it shows `Logged in`,
   proceed directly — no integration connection needed. Never skip this check.
-- If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
-  authentication error (e.g. "authentication required", "could not read
-  Username", or exit code 128), THEN call
-  `connect_integration(provider="github")` to surface the GitHub credentials
-  setup card so the user can connect their account. Once connected, retry
-  the operation.
-- For operations that need broader access (e.g. private org repos, GitHub
-  Actions), pass the required scopes: e.g.
-  `connect_integration(provider="github", scopes=["repo", "read:org"])`.
+- A `gh auth status` scope warning (e.g. "missing required scope 'read:org'")
+  with a token present is NOT "not logged in". Treat auth as working and
+  verify with a real operation: `git ls-remote <repo-url>`. Surface
+  `connect_integration` ONLY on an actual 401/403/authentication-required from
+  clone/push/ls-remote — never because of a scope warning or a non-zero exit
+  from `gh auth status` alone.
+- When requesting scopes via `connect_integration`, request the minimum needed
+  for the task (private repo push = `repo` only).
 """
 
 

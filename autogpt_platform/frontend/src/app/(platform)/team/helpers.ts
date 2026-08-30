@@ -9,6 +9,18 @@ import { formatDistanceToNow } from "date-fns";
  *  up with the text inside them instead of with the card edge. */
 export const SECTION_INSET_CLASS = "px-5";
 
+/** Cancels an inherited `SECTION_INSET_CLASS`, for card grids that should keep
+ *  running to the container edge inside an inset parent. */
+export const SECTION_OUTSET_CLASS = "-mx-5";
+
+/** The Button atom is pill-shaped by default; team actions sit in rows and read
+ *  better squared off. */
+export const ACTION_BUTTON_CLASS = "!rounded-xl";
+
+/** The `outline` variant's zinc-700 border is too heavy at this size, so team
+ *  actions soften it while keeping the hover lift. */
+export const OUTLINE_ACTION_BUTTON_CLASS = `${ACTION_BUTTON_CLASS} !border-zinc-200 hover:!border-zinc-300`;
+
 interface PodGroup {
   pod: ExpertPod;
   experts: Expert[];
@@ -156,4 +168,71 @@ function nextRunMs(schedule: GraphExecutionJobInfo) {
   if (!schedule.next_run_time) return Number.POSITIVE_INFINITY;
   const t = new Date(schedule.next_run_time).valueOf();
   return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+export type TeamFilter = "all" | "scheduled" | "needs-setup" | "paused";
+
+interface FilterExpertsArgs {
+  experts: Expert[];
+  query: string;
+  filter: TeamFilter;
+  schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
+}
+
+/** Narrows the roster by free-text (name or role) and by the toolbar's filter.
+ *  Both are applied together, so an empty result can mean either. */
+export function filterExperts({
+  experts,
+  query,
+  filter,
+  schedulesForExpert,
+}: FilterExpertsArgs) {
+  const needle = query.trim().toLowerCase();
+  return experts.filter((expert) => {
+    const haystack = `${expert.name} ${expert.role}`.toLowerCase();
+    if (needle && !haystack.includes(needle)) return false;
+    if (filter === "scheduled") return schedulesForExpert(expert).length > 0;
+    if (filter === "needs-setup")
+      return getNeedsSetupCount(expert, schedulesForExpert(expert)) > 0;
+    if (filter === "paused") return Boolean(expert.schedules_paused_at);
+    return true;
+  });
+}
+
+interface AutopilotSummaryArgs {
+  experts: Expert[];
+  schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
+}
+
+/** The two things a daily user wants off the Autopilot card: what fires next
+ *  across the whole team, and how much is stuck waiting on them. */
+export function getAutopilotSummary({
+  experts,
+  schedulesForExpert,
+}: AutopilotSummaryArgs) {
+  const allSchedules = experts.flatMap(schedulesForExpert);
+  const nextSchedule = allSchedules
+    .filter((schedule) => Boolean(schedule.next_run_time))
+    .sort((a, b) => nextRunMs(a) - nextRunMs(b))[0];
+
+  const pausedCount = experts.filter((expert) =>
+    Boolean(expert.schedules_paused_at),
+  ).length;
+  const needsSetupCount = experts.reduce(
+    (total, expert) =>
+      total + getNeedsSetupCount(expert, schedulesForExpert(expert)),
+    0,
+  );
+
+  return {
+    nextRun: nextSchedule
+      ? {
+          name: nextSchedule.name,
+          when: formatDistanceToNow(new Date(nextSchedule.next_run_time!), {
+            addSuffix: true,
+          }),
+        }
+      : null,
+    attentionCount: pausedCount + needsSetupCount,
+  };
 }

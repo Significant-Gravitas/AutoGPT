@@ -162,6 +162,10 @@ afterEach(() => {
   pushMock.mockReset();
 });
 
+async function openTab(name: string) {
+  await userEvent.click(await screen.findByRole("tab", { name }));
+}
+
 describe("ExpertDetailPage", () => {
   test("renders the expert profile with workflows and schedule state", async () => {
     render(<ExpertDetailPage />);
@@ -171,8 +175,11 @@ describe("ExpertDetailPage", () => {
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
+
+    await openTab("Skills");
     expect(screen.getByText("Content strategy")).toBeDefined();
 
+    await openTab("Workflows");
     const workflowRows = screen.getAllByTestId("expert-workflow-row");
     expect(workflowRows).toHaveLength(2);
     expect(within(workflowRows[0]).getByText("Content Calendar")).toBeDefined();
@@ -186,7 +193,7 @@ describe("ExpertDetailPage", () => {
   test("lists the expert's schedules with edit and delete actions", async () => {
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Schedules");
     const row = await screen.findByTestId("schedule-row");
     expect(row.getAttribute("data-schedule-id")).toBe("sched-1");
     expect(screen.getByRole("button", { name: /Edit schedule/ })).toBeDefined();
@@ -199,6 +206,7 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
+    await openTab("Schedules");
     fireEvent.click(await screen.findByTestId("schedule-delete-button"));
     fireEvent.click(await screen.findByTestId("schedule-confirm-delete"));
 
@@ -210,8 +218,8 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
-    expect(screen.getByText(/No schedules yet/)).toBeDefined();
+    await openTab("Schedules");
+    expect(await screen.findByText(/No schedules yet/)).toBeDefined();
   });
 
   test("shows the expert's recent work with honest status chips", async () => {
@@ -219,7 +227,7 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Work");
     const workList = await screen.findByRole("list", { name: "Expert work" });
     expect(within(workList).getByText("Weekly Report")).toBeDefined();
     expect(within(workList).getByText("Completed")).toBeDefined();
@@ -234,7 +242,7 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Work");
     await screen.findByRole("list", { name: "Expert work" });
 
     fireEvent.click(screen.getByRole("button", { name: /Needs review \(1\)/ }));
@@ -247,7 +255,7 @@ describe("ExpertDetailPage", () => {
   test("shows an empty work message when there is no completed work", async () => {
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Work");
     expect(await screen.findByText(/No completed work yet/)).toBeDefined();
   });
 
@@ -265,6 +273,7 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
+    await openTab("Work");
     expect(
       await screen.findByText("We could not load this expert's recent work."),
     ).toBeDefined();
@@ -291,7 +300,7 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
-  test("fires the expert from the header menu and returns to the team page", async () => {
+  test("fires the expert from the settings tab and returns to the team page", async () => {
     const archiveSpy = vi.fn();
     server.use(
       getGetExpertDetachPreviewMockHandler({
@@ -303,13 +312,8 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
-    fireEvent.pointerDown(screen.getByTestId("expert-detail-actions"), {
-      button: 0,
-    });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
-    );
+    await openTab("Settings");
+    fireEvent.click(await screen.findByTestId("expert-fire-button"));
 
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     expect(
