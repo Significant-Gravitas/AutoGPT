@@ -12,9 +12,10 @@ interface Props {
 
 /** Forks per flag so only the active board's queries ever fire: the spine
  *  board is one `/api/tasks` read, the legacy board fans out one
- *  `list_expert_runs` call per hired expert. */
+ *  `list_expert_runs` call per hired expert. Rides the experts flag — the
+ *  fail-closed default keeps LD-less environments on the legacy board. */
 export function AllTasksSection({ experts, enabled }: Props) {
-  const isTaskSpineEnabled = useGetFlag(Flag.TASK_SPINE);
+  const isTaskSpineEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
   if (isTaskSpineEnabled) {
     return <DelegatedTasksBoard enabled={enabled} />;

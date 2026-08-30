@@ -13,11 +13,7 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowLeft02Icon,
   Briefcase01Icon,
@@ -50,7 +46,7 @@ const MAIN_CLASS =
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
-  { value: "tasks", label: "Tasks", icon: CheckListIcon, flagged: true },
+  { value: "tasks", label: "Tasks", icon: CheckListIcon },
   { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
@@ -76,7 +72,6 @@ export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const isTaskSpineEnabled = useGetFlag(Flag.TASK_SPINE);
   const {
     expert,
     isLoading,
@@ -153,32 +148,28 @@ export default function ExpertDetailPage() {
 
       <TabsLine defaultValue="basics">
         <TabsLineList flush className="overflow-x-auto">
-          {TABS.filter((tab) => !("flagged" in tab) || isTaskSpineEnabled).map(
-            (tab) => (
-              <TabsLineTrigger
-                key={tab.value}
-                value={tab.value}
-                className="gap-2"
-              >
-                <Icon icon={tab.icon} size={16} />
-                {tab.label}
-              </TabsLineTrigger>
-            ),
-          )}
+          {TABS.map((tab) => (
+            <TabsLineTrigger
+              key={tab.value}
+              value={tab.value}
+              className="gap-2"
+            >
+              <Icon icon={tab.icon} size={16} />
+              {tab.label}
+            </TabsLineTrigger>
+          ))}
         </TabsLineList>
 
         <TabsLineContent value="basics">
           <ExpertAboutSection text={expert.bio || expert.identity} />
         </TabsLineContent>
 
-        {isTaskSpineEnabled ? (
-          <TabsLineContent value="tasks">
-            <ExpertTasksSection
-              expertId={expert.id}
-              enabled={Boolean(enabled) && ready}
-            />
-          </TabsLineContent>
-        ) : null}
+        <TabsLineContent value="tasks">
+          <ExpertTasksSection
+            expertId={expert.id}
+            enabled={Boolean(enabled) && ready}
+          />
+        </TabsLineContent>
 
         <TabsLineContent value="work">
           <ExpertWorkSection

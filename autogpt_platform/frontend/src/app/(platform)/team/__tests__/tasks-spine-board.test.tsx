@@ -14,7 +14,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
-let taskSpineEnabled = true;
+// The board rides the experts flag. useGetFlag is what the AllTasksSection
+// fork reads; useFlagStatus is what gates the page — mocking them separately
+// models LaunchDarkly answering the page gate while useGetFlag still resolves
+// its fail-closed default.
+let expertsFlagEnabled = true;
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -24,8 +28,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === "task-spine"
-        ? taskSpineEnabled
+      flag === "hire-experts"
+        ? expertsFlagEnabled
         : actual.useGetFlag(flag as never),
     useFlagStatus: (flag: string) =>
       flag === "hire-experts"
@@ -112,7 +116,7 @@ const autopilotTask = makeTask({
 });
 
 beforeEach(() => {
-  taskSpineEnabled = true;
+  expertsFlagEnabled = true;
   server.use(
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
@@ -162,8 +166,8 @@ describe("team board on the task spine", () => {
     expect(requested.some((path) => path.includes("/runs"))).toBe(false);
   });
 
-  test("flag off keeps the run-based board and never touches /api/tasks", async () => {
-    taskSpineEnabled = false;
+  test("unresolved flag falls back to the run-based board and never touches /api/tasks", async () => {
+    expertsFlagEnabled = false;
     const user = userEvent.setup();
     render(<TeamPage />);
     const requested: string[] = [];

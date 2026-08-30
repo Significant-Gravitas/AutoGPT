@@ -56,15 +56,15 @@ const ONBOARDING_FLAGS = [
   Flag.AUTOGPT_NEW_LAYOUT,
 ] as const;
 
-describe("task spine flag default fails closed", () => {
+describe("expert flag default fails closed", () => {
   beforeEach(() => {
     Object.keys(process.env)
       .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
       .forEach((k) => delete process.env[k]);
   });
 
-  it("resolves TASK_SPINE to false when LaunchDarkly has not answered, keeping the Tasks tab and task cards hidden", () => {
-    const { result } = renderHook(() => useGetFlag(Flag.TASK_SPINE));
+  it("resolves HIRE_EXPERTS to false when LaunchDarkly has not answered, keeping the team and task-receipt surfaces hidden", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
     expect(result.current).toBe(false);
   });
 });

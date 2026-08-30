@@ -22,8 +22,8 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
-const { taskSpineEnabled } = vi.hoisted(() => ({
-  taskSpineEnabled: { value: true },
+const { expertsFlag } = vi.hoisted(() => ({
+  expertsFlag: { enabled: true },
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -35,12 +35,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     ...actual,
     useFlagStatus: (flag: string) =>
       flag === "hire-experts"
-        ? { enabled: true, ready: true }
+        ? { enabled: expertsFlag.enabled, ready: true }
         : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) =>
-      flag === "task-spine"
-        ? taskSpineEnabled.value
-        : actual.useGetFlag(flag as never),
   };
 });
 
@@ -132,7 +128,7 @@ const doneTask = makeTask({
 });
 
 beforeEach(() => {
-  taskSpineEnabled.value = true;
+  expertsFlag.enabled = true;
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
@@ -141,7 +137,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  taskSpineEnabled.value = true;
+  expertsFlag.enabled = true;
 });
 
 async function openTasksTab() {
@@ -263,13 +259,10 @@ describe("Expert Tasks tab", () => {
     await waitFor(() => expect(cancelSpy).toHaveBeenCalled());
   });
 
-  test("hides the tab entirely when the flag is off", async () => {
-    taskSpineEnabled.value = false;
+  test("the whole page, tab included, is gone when the experts flag is off", () => {
+    expertsFlag.enabled = false;
     server.use(getListTasksMockHandler([activeTask]));
 
-    render(<ExpertDetailPage />);
-
-    await screen.findByRole("tab", { name: /basics/i });
-    expect(screen.queryByRole("tab", { name: /tasks/i })).toBeNull();
+    expect(() => render(<ExpertDetailPage />)).toThrow("NEXT_NOT_FOUND");
   });
 });
