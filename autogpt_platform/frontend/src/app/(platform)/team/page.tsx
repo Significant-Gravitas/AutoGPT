@@ -10,7 +10,6 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   KanbanIcon,
@@ -28,15 +27,11 @@ import { PodBoard } from "./components/PodBoard/PodBoard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
-import {
-  SECTION_INSET_CLASS,
-  SECTION_OUTSET_CLASS,
-  TEAM_GRID_CLASS,
-} from "./helpers";
+import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
-  "mx-auto min-h-screen w-full max-w-[1180px] space-y-6 px-4 pb-20 pt-8 sm:px-6 lg:px-8";
+  "mx-auto min-h-screen w-full max-w-[1180px] space-y-6 pb-20 pt-8";
 
 const TABS = [
   { value: "overview", label: "Team Overview", icon: UserGroupIcon },
@@ -104,12 +99,7 @@ export default function TeamPage() {
 
   return (
     <main className={MAIN_CLASS}>
-      <div
-        className={cn(
-          "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
-          SECTION_INSET_CLASS,
-        )}
-      >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Icon icon={UserGroupIcon} size={22} className="text-zinc-950" />
@@ -130,10 +120,7 @@ export default function TeamPage() {
         />
       ) : null}
 
-      {/* The inset lives on the root so the tab list's bottom border starts
-          under the first tab rather than running out to the container edge;
-          the panels below cancel it so their cards stay full-bleed. */}
-      <TabsLine defaultValue="overview" className={SECTION_INSET_CLASS}>
+      <TabsLine defaultValue="overview">
         <TabsLineList
           flush
           className="overflow-x-auto"
@@ -151,10 +138,7 @@ export default function TeamPage() {
           ))}
         </TabsLineList>
 
-        <TabsLineContent
-          value="overview"
-          className={cn("space-y-6", SECTION_OUTSET_CLASS)}
-        >
+        <TabsLineContent value="overview" className="space-y-6">
           <TeamRoster
             isLoading={isLoading}
             experts={hiredExperts}
@@ -167,7 +151,7 @@ export default function TeamPage() {
           ) : null}
         </TabsLineContent>
 
-        <TabsLineContent value="pods" className={SECTION_OUTSET_CLASS}>
+        <TabsLineContent value="pods">
           <PodBoard
             isLoading={isLoading}
             podGroups={podGroups}
@@ -176,7 +160,7 @@ export default function TeamPage() {
           />
         </TabsLineContent>
 
-        <TabsLineContent value="tasks" className={SECTION_OUTSET_CLASS}>
+        <TabsLineContent value="tasks">
           <AllTasksSection
             experts={hiredExperts}
             enabled={Boolean(enabled) && ready}
