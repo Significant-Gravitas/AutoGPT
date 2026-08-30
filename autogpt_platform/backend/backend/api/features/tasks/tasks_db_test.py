@@ -118,7 +118,7 @@ async def test_close_task_ignores_another_users_task(server: SpinTestServer):
     task = await _seed_task(owner.id)
 
     assert (
-        await tasks_db.close_task(
+        await tasks_db.close_delegated_task(
             intruder.id, task.id, succeeded=True, outcome_summary="stolen"
         )
         is None
@@ -136,7 +136,7 @@ async def test_close_task_ignores_another_users_task(server: SpinTestServer):
 async def test_create_task_stamps_itself_as_its_own_root(server: SpinTestServer):
     owner = await _create_seed_user()
 
-    task = await tasks_db.create_task(
+    task = await tasks_db.create_delegated_task(
         owner.id, title="Weekly Report", spec="Run it", origin_session_id=None
     )
 
@@ -156,10 +156,10 @@ async def test_close_task_returns_the_origin_session_once(server: SpinTestServer
         where={"id": task.id}, data={"originSessionId": session.id}
     )
 
-    first = await tasks_db.close_task(
+    first = await tasks_db.close_delegated_task(
         owner.id, task.id, succeeded=True, outcome_summary="All done.", spend=120
     )
-    second = await tasks_db.close_task(
+    second = await tasks_db.close_delegated_task(
         owner.id, task.id, succeeded=True, outcome_summary="All done again."
     )
 
@@ -178,7 +178,7 @@ async def test_close_task_does_not_resurrect_a_cancelled_task(server: SpinTestSe
     task = await _seed_task(owner.id, status=prisma.enums.DelegatedTaskStatus.CANCELLED)
 
     assert (
-        await tasks_db.close_task(
+        await tasks_db.close_delegated_task(
             owner.id, task.id, succeeded=True, outcome_summary="late"
         )
         is None

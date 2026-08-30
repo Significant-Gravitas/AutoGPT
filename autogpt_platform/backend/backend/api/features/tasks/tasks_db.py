@@ -119,7 +119,10 @@ async def get_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
     )
 
 
-async def create_task(
+# The three RPC-exposed writers below MUST keep the same name as their
+# DatabaseManager attribute: the AppService route is the attribute name but
+# the generated client calls the *function* name, so a mismatch 404s.
+async def create_delegated_task(
     user_id: str,
     *,
     title: str,
@@ -156,7 +159,7 @@ async def create_task(
     return _to_model(stamped or row, {})
 
 
-async def mark_working(user_id: str, task_id: str) -> bool:
+async def mark_delegated_task_working(user_id: str, task_id: str) -> bool:
     """QUEUED → WORKING once the run is actually accepted by the executor."""
     updated = await prisma.models.DelegatedTask.prisma().update_many(
         where={
@@ -169,7 +172,7 @@ async def mark_working(user_id: str, task_id: str) -> bool:
     return updated > 0
 
 
-async def close_task(
+async def close_delegated_task(
     user_id: str,
     task_id: str,
     *,

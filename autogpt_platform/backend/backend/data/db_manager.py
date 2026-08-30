@@ -538,9 +538,9 @@ class DatabaseManager(AppService):
     # ============ Task Spine ============ #
     # Exposed so the Prisma-less copilot executor can open a receipt when a
     # chat turn starts a run, and the graph executor can close it.
-    create_delegated_task = _(tasks_db.create_task)
-    mark_delegated_task_working = _(tasks_db.mark_working)
-    close_delegated_task = _(tasks_db.close_task)
+    create_delegated_task = _(tasks_db.create_delegated_task)
+    mark_delegated_task_working = _(tasks_db.mark_delegated_task_working)
+    close_delegated_task = _(tasks_db.close_delegated_task)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
