@@ -315,6 +315,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Tavily Map](block-integrations/tavily/map.md#tavily-map) | Maps a website's structure with Tavily, discovering its URLs without extracting content |
 | [Tavily Search](block-integrations/tavily/search.md#tavily-search) | Searches the web using Tavily's AI-native search API |
 | [Validate Emails](block-integrations/zerobounce/validate_emails.md#validate-emails) | Validate emails |
+| [Xquik Search Tweets](block-integrations/xquik/search.md#xquik-search-tweets) | Searches public X posts through Xquik without requiring an X developer account |
 
 ## Social Media and Content
 
@@ -424,7 +425,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Twitter Remove List Member](block-integrations/twitter/list_members.md#twitter-remove-list-member) | This block removes a specified user from a Twitter List owned by the authenticated user |
 | [Twitter Remove Retweet](block-integrations/twitter/retweet.md#twitter-remove-retweet) | This block removes a retweet on Twitter |
 | [Twitter Retweet](block-integrations/twitter/retweet.md#twitter-retweet) | This block retweets a tweet on Twitter |
-| [Twitter Search Recent Tweets](block-integrations/twitter/manage.md#twitter-search-recent-tweets) | This block searches all public Tweets in Twitter history |
+| [Twitter Search Recent Tweets](block-integrations/twitter/manage.md#twitter-search-recent-tweets) | This block searches public Tweets from the last 7 days |
 | [Twitter Search Spaces](block-integrations/twitter/search_spaces.md#twitter-search-spaces) | This block searches for Twitter Spaces based on specified terms |
 | [Twitter Unfollow List](block-integrations/twitter/list_follows.md#twitter-unfollow-list) | This block unfollows a specified Twitter list for the authenticated user |
 | [Twitter Unfollow User](block-integrations/twitter/follows.md#twitter-unfollow-user) | This block unfollows a specified Twitter user |

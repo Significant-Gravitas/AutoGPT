@@ -8110,6 +8110,29 @@ files = [
 ]
 
 [[package]]
+name = "x-twitter-scraper"
+version = "0.11.2"
+description = "Python SDK for Twitter search, followers, webhooks & X automation through Xquik. Not affiliated with X Corp."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "x_twitter_scraper-0.11.2-py3-none-any.whl", hash = "sha256:a50a8eb07aac27414b7a627897ac3092be2f48f23ad8d2e3f8b1110a7fa13d11"},
+    {file = "x_twitter_scraper-0.11.2.tar.gz", hash = "sha256:a21ae8a077ef24daccf0dfb471bd2ab9a45749d2091dfb3241247624fe0ab3d3"},
+]
+
+[package.dependencies]
+anyio = ">=3.5.0,<5"
+distro = ">=1.7.0,<2"
+httpx = ">=0.23.0,<1"
+pydantic = ">=1.9.0,<3"
+sniffio = "*"
+typing-extensions = ">=4.14,<5"
+
+[package.extras]
+aiohttp = ["aiohttp (>=3.14.1)", "httpx-aiohttp (>=0.1.9)"]
+
+[[package]]
 name = "xattr"
 version = "1.3.0"
 description = "Python wrapper for extended filesystem attributes"
@@ -8659,4 +8682,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "e8bab234faec1b6b792df40152f60681295cdfaa7aed30344a4b94b4df7775c9"
+content-hash = "118e85a7ae82d0aff0ea48e9cebd6e54ecd234d4c81303e98aee9a8406d58709"

@@ -168,4 +168,5 @@
 * [Video Narration](block-integrations/video/narration.md)
 * [Video Text Overlay](block-integrations/video/text_overlay.md)
 * [Wolfram LLM API](block-integrations/wolfram/llm_api.md)
+* [Xquik Search](block-integrations/xquik/search.md)
 * [Zerobounce Validate Emails](block-integrations/zerobounce/validate_emails.md)
