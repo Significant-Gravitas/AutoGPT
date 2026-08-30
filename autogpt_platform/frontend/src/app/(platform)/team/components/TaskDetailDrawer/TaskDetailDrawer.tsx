@@ -21,7 +21,7 @@ import {
   getStatusLabel,
   getStatusVariant,
   isOpenTask,
-} from "../../helpers";
+} from "../../task-helpers";
 import { useTaskDetailDrawer } from "./useTaskDetailDrawer";
 
 interface Props {

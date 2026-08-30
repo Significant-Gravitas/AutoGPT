@@ -9,14 +9,14 @@ import {
   formatSpend,
   getStatusLabel,
   getStatusVariant,
-} from "../../../../task-helpers";
+} from "../../../task-helpers";
 
 interface Props {
   task: DelegatedTask;
   onOpen: () => void;
 }
 
-export function TaskRow({ task, onOpen }: Props) {
+export function DelegatedTaskRow({ task, onOpen }: Props) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3 ring-1 ring-inset ring-zinc-200">
       <div className="min-w-0">
@@ -24,6 +24,9 @@ export function TaskRow({ task, onOpen }: Props) {
           {task.title}
         </p>
         <div className="mt-1 flex items-center gap-2">
+          <Text variant="small" className="text-zinc-500">
+            {task.owner ? task.owner.name : "Autopilot"}
+          </Text>
           <Badge variant={getStatusVariant(task.status)} size="small">
             {getStatusLabel(task.status)}
           </Badge>

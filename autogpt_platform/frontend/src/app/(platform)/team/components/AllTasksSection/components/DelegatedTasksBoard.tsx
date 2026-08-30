@@ -4,16 +4,18 @@ import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { TaskDetailDrawer } from "../../../components/TaskDetailDrawer/TaskDetailDrawer";
-import { TaskRow } from "./components/TaskRow";
-import { useExpertTasksSection } from "./useExpertTasksSection";
+import { TaskDetailDrawer } from "../../TaskDetailDrawer/TaskDetailDrawer";
+import { DelegatedTaskRow } from "./DelegatedTaskRow";
+import { useDelegatedTasksBoard } from "./useDelegatedTasksBoard";
 
 interface Props {
-  expertId: string;
   enabled: boolean;
 }
 
-export function ExpertTasksSection({ expertId, enabled }: Props) {
+/** The task-spine version of the team board: every DelegatedTask receipt
+ *  across the whole team — including Autopilot work, which the run-based
+ *  board can't see because it fans out per hired expert. */
+export function DelegatedTasksBoard({ enabled }: Props) {
   const {
     activeTasks,
     historyTasks,
@@ -23,7 +25,7 @@ export function ExpertTasksSection({ expertId, enabled }: Props) {
     openTaskId,
     openTask,
     closeTask,
-  } = useExpertTasksSection({ expertId, enabled });
+  } = useDelegatedTasksBoard({ enabled });
 
   if (isLoading) {
     return (
@@ -37,8 +39,8 @@ export function ExpertTasksSection({ expertId, enabled }: Props) {
   if (isError) {
     return (
       <ErrorCard
-        context="this expert's tasks"
-        hint="We could not load what this expert has been asked to do."
+        context="your team's tasks"
+        hint="We could not load what your team has been asked to do."
         onRetry={refetch}
       />
     );
@@ -47,14 +49,14 @@ export function ExpertTasksSection({ expertId, enabled }: Props) {
   if (activeTasks.length === 0 && historyTasks.length === 0) {
     return (
       <Text variant="body" className="text-zinc-500">
-        Nothing delegated yet. Ask this expert to do something and it will show
-        up here.
+        Nothing delegated yet. Ask an expert (or Autopilot) to do something and
+        it will show up here.
       </Text>
     );
   }
 
   return (
-    <section className="flex flex-col gap-6">
+    <section aria-label="All tasks" className="flex flex-col gap-6">
       <TaskGroup
         title="Active"
         tasks={activeTasks}
@@ -94,7 +96,7 @@ function TaskGroup({ title, tasks, emptyText, onOpen }: GroupProps) {
         <ul className="flex flex-col gap-3" aria-label={`${title} tasks`}>
           {tasks.map((task) => (
             <li key={task.id}>
-              <TaskRow task={task} onOpen={() => onOpen(task.id)} />
+              <DelegatedTaskRow task={task} onOpen={() => onOpen(task.id)} />
             </li>
           ))}
         </ul>
