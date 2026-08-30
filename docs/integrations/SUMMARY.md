@@ -75,6 +75,7 @@
 * [Firecrawl Map](block-integrations/firecrawl/map.md)
 * [Firecrawl Scrape](block-integrations/firecrawl/scrape.md)
 * [Firecrawl Search](block-integrations/firecrawl/search.md)
+* [Gandr Text To Speech](block-integrations/gandr/text_to_speech.md)
 * [Generic Webhook Triggers](block-integrations/generic_webhook/triggers.md)
 * [GitHub Checks](block-integrations/github/checks.md)
 * [GitHub CI](block-integrations/github/ci.md)
