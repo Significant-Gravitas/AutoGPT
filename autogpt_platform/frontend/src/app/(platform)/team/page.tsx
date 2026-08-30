@@ -102,8 +102,8 @@ export default function TeamPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Icon icon={UserGroupIcon} size={22} className="text-zinc-950" />
-            <Text variant="h4">Team</Text>
+            <Icon icon={UserGroupIcon} size={18} className="text-zinc-950" />
+            <Text variant="h5">Team</Text>
           </div>
           <Text variant="body" className="max-w-prose text-zinc-600">
             Autopilot and your hired experts, ready to work.

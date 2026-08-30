@@ -289,6 +289,12 @@ const config = {
           from: { transform: "scaleY(0)" },
           to: { transform: "scaleY(1)" },
         },
+        // One lattice dot swelling out of its resting ink and sinking back.
+        // Per-cell delays turn nine copies of this into a travelling wave.
+        "orb-wave": {
+          "0%, 56%, 100%": { opacity: "0.3", transform: "scale(1)" },
+          "28%": { opacity: "1", transform: "scale(1.18)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -311,6 +317,7 @@ const config = {
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        "orb-wave": "orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both",
       },
       transitionDuration: {
         "400": "400ms",

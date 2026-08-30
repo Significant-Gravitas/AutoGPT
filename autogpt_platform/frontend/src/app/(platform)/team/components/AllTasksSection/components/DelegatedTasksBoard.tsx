@@ -1,20 +1,30 @@
 "use client";
 
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
-import { Badge } from "@/components/atoms/Badge/Badge";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { FilterTable } from "@/components/molecules/FilterTable/FilterTable";
 import {
+  Clock01Icon,
+  DollarCircleIcon,
+  Progress02Icon,
+  Task01Icon,
+  TaskDone01Icon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
+import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
+import {
+  TASK_FILTER_ALL_ICON,
   TASK_TABLE_FILTERS,
   formatElapsed,
   formatSpend,
-  getStatusLabel,
-  getStatusVariant,
   getTaskFilterKey,
+  getTaskOrbVariant,
 } from "../../../task-helpers";
 import { TaskDetailDrawer } from "../../TaskDetailDrawer/TaskDetailDrawer";
+import { TaskStatusChip } from "../../TaskStatusChip/TaskStatusChip";
 import { useDelegatedTasksBoard } from "./useDelegatedTasksBoard";
 
 interface Props {
@@ -22,11 +32,26 @@ interface Props {
 }
 
 const COLUMNS = [
-  { key: "task", label: "Task name", width: "minmax(0,1.4fr)" },
-  { key: "owner", label: "Owner", width: "minmax(0,0.9fr)" },
-  { key: "status", label: "Status", width: "minmax(0,0.8fr)" },
-  { key: "age", label: "Age", width: "minmax(0,0.5fr)" },
-  { key: "spend", label: "Spend", width: "minmax(0,0.5fr)" },
+  {
+    key: "task",
+    label: "Task name",
+    icon: Task01Icon,
+    width: "minmax(0,1.4fr)",
+  },
+  { key: "owner", label: "Owner", icon: UserIcon, width: "minmax(0,0.9fr)" },
+  {
+    key: "status",
+    label: "Status",
+    icon: Progress02Icon,
+    width: "minmax(0,0.8fr)",
+  },
+  { key: "age", label: "When", icon: Clock01Icon, width: "minmax(0,0.6fr)" },
+  {
+    key: "spend",
+    label: "Spend",
+    icon: DollarCircleIcon,
+    width: "minmax(0,0.5fr)",
+  },
 ];
 
 /** The task-spine version of the team board: every DelegatedTask receipt
@@ -62,21 +87,16 @@ export function DelegatedTasksBoard({ enabled }: Props) {
     );
   }
 
-  if (tasks.length === 0) {
-    return (
-      <Text variant="body" className="text-zinc-500">
-        Nothing delegated yet. Ask an expert (or Autopilot) to do something and
-        it will show up here.
-      </Text>
-    );
-  }
-
   return (
     <section aria-label="All tasks">
       <FilterTable
         ariaLabel="Delegated tasks"
         columns={COLUMNS}
         filters={TASK_TABLE_FILTERS}
+        allIcon={TASK_FILTER_ALL_ICON}
+        maxVisibleFilters={3}
+        emptyIcon={TaskDone01Icon}
+        emptyText="Nothing delegated yet. Ask an expert (or Autopilot) to do something and it will show up here."
         rows={tasks.map((task) => ({
           id: task.id,
           filterKey: getTaskFilterKey(task),
@@ -90,20 +110,39 @@ export function DelegatedTasksBoard({ enabled }: Props) {
   );
 }
 
+/** A null owner means Autopilot did the work itself, which the copilot thread
+ *  header also marks with the AutoGPT logo rather than a generated avatar. */
+function OwnerCell({ owner }: { owner: DelegatedTask["owner"] }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {owner ? (
+        <ExpertAvatar name={owner.name} avatarUrl={owner.avatar_url} size={20} />
+      ) : (
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 ring-1 ring-inset ring-zinc-200">
+          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-3" />
+        </span>
+      )}
+      <span className="truncate text-zinc-500">
+        {owner ? owner.name : "Autopilot"}
+      </span>
+    </span>
+  );
+}
+
 function buildCells(task: DelegatedTask) {
   return {
     task: (
       <span className="truncate font-medium text-zinc-900">{task.title}</span>
     ),
-    owner: (
-      <span className="truncate text-zinc-500">
-        {task.owner ? task.owner.name : "Autopilot"}
-      </span>
-    ),
+    owner: <OwnerCell owner={task.owner} />,
     status: (
-      <Badge variant={getStatusVariant(task.status)} size="small">
-        {getStatusLabel(task.status)}
-      </Badge>
+      <TaskStatusChip
+        status={task.status}
+        orbVariant={getTaskOrbVariant(task.id)}
+        accentClassName={
+          task.owner ? getExpertAccent(task.owner.role).icon : undefined
+        }
+      />
     ),
     age: (
       <span className="whitespace-nowrap tabular-nums text-zinc-500">

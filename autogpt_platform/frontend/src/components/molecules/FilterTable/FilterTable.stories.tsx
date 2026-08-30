@@ -1,4 +1,12 @@
 import { Badge } from "@/components/atoms/Badge/Badge";
+import {
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  DashboardSquare01Icon,
+  Progress02Icon,
+  Task01Icon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { FilterTable } from "./FilterTable";
 
@@ -12,16 +20,31 @@ export default meta;
 type Story = StoryObj<typeof FilterTable>;
 
 const columns = [
-  { key: "task", label: "Task name", width: "minmax(0,1.3fr)" },
-  { key: "date", label: "Date", width: "minmax(0,0.6fr)" },
-  { key: "status", label: "Status", width: "minmax(0,0.95fr)" },
-  { key: "owner", label: "Owner", width: "minmax(0,0.9fr)" },
+  {
+    key: "task",
+    label: "Task name",
+    icon: Task01Icon,
+    width: "minmax(0,1.3fr)",
+  },
+  { key: "date", label: "Date", icon: Clock01Icon, width: "minmax(0,0.6fr)" },
+  {
+    key: "status",
+    label: "Status",
+    icon: Progress02Icon,
+    width: "minmax(0,0.95fr)",
+  },
+  { key: "owner", label: "Owner", icon: UserIcon, width: "minmax(0,0.9fr)" },
 ];
 
 const filters = [
-  { key: "todo", label: "To do", dot: "#f09a2f" },
-  { key: "progress", label: "In Progress", dot: "#16a6c7" },
-  { key: "done", label: "Completed", dot: "#25a878" },
+  { key: "todo", label: "To do", icon: Clock01Icon, dot: "#f09a2f" },
+  { key: "progress", label: "In Progress", icon: Loading03Icon, dot: "#16a6c7" },
+  {
+    key: "done",
+    label: "Completed",
+    icon: CheckmarkCircle02Icon,
+    dot: "#25a878",
+  },
 ];
 
 function statusBadge(status: "todo" | "progress" | "done") {
@@ -80,7 +103,24 @@ const rows = [
 ];
 
 export const Default: Story = {
-  args: { columns, filters, rows, ariaLabel: "Tasks" },
+  args: {
+    columns,
+    filters,
+    rows,
+    allIcon: DashboardSquare01Icon,
+    ariaLabel: "Tasks",
+  },
+};
+
+export const WithFilterOverflow: Story = {
+  args: {
+    columns,
+    filters,
+    rows,
+    allIcon: DashboardSquare01Icon,
+    maxVisibleFilters: 2,
+    ariaLabel: "Tasks",
+  },
 };
 
 export const WithoutFilters: Story = {
