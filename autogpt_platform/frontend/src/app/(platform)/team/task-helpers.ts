@@ -33,6 +33,22 @@ export function isOpenTask(task: DelegatedTask): boolean {
   return OPEN_STATUSES.includes(task.status);
 }
 
+/** Filter-chip buckets for task tables; dot colors mirror the badge
+ *  variants the status cells render with. */
+export const TASK_TABLE_FILTERS = [
+  { key: "active", label: "Active", dot: "#3b82f6" },
+  { key: "waiting", label: "Needs you", dot: "#f59e0b" },
+  { key: "done", label: "Done", dot: "#10b981" },
+  { key: "failed", label: "Failed", dot: "#ef4444" },
+  { key: "cancelled", label: "Cancelled", dot: "#a1a1aa" },
+];
+
+export function getTaskFilterKey(task: DelegatedTask): string {
+  if (task.status === "WAITING_USER") return "waiting";
+  if (isOpenTask(task)) return "active";
+  return task.status.toLowerCase();
+}
+
 export function getStatusLabel(status: DelegatedTaskStatus): string {
   return STATUS_LABELS[status];
 }

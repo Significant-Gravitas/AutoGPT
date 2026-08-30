@@ -5,11 +5,19 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV2ListLibraryAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
-import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
+import {
+  getGetTaskMockHandler,
+  getListTasksMockHandler,
+} from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
@@ -132,23 +140,65 @@ afterEach(() => {
 });
 
 describe("team board on the task spine", () => {
-  test("All tasks shows delegated receipts split into Active and History", async () => {
+  test("All tasks renders every receipt as a table row", async () => {
     const user = userEvent.setup();
     render(<TeamPage />);
 
     await user.click(await screen.findByRole("tab", { name: "All tasks" }));
 
-    const active = await screen.findByRole("list", { name: "Active tasks" });
-    expect(within(active).getByText("Draft the weekly report")).toBeDefined();
-    expect(within(active).getByText("Maria")).toBeDefined();
+    const table = await screen.findByRole("table", { name: "Delegated tasks" });
+    const workingRow = within(table).getByRole("row", {
+      name: /Draft the weekly report/,
+    });
+    expect(within(workingRow).getByText("Maria")).toBeDefined();
+    expect(within(workingRow).getByText("Working")).toBeDefined();
+    expect(within(workingRow).getByText("$2.50")).toBeDefined();
 
-    const history = screen.getByRole("list", { name: "History tasks" });
-    expect(
-      within(history).getByText("Summarise this week's runs"),
-    ).toBeDefined();
     // Autopilot work has no owning expert; the run-based board could never
     // show it because it only fans out per hired expert.
-    expect(within(history).getByText("Autopilot")).toBeDefined();
+    const doneRow = within(table).getByRole("row", {
+      name: /Summarise this week's runs/,
+    });
+    expect(within(doneRow).getByText("Autopilot")).toBeDefined();
+  });
+
+  test("status chips filter the table", async () => {
+    const user = userEvent.setup();
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "All tasks" }));
+    const table = await screen.findByRole("table", { name: "Delegated tasks" });
+
+    await user.click(screen.getByRole("button", { name: /Active 1/ }));
+
+    // Filtered-out rows collapse and go aria-hidden, so they vanish from the
+    // accessibility tree while the matching row stays.
+    await waitFor(() =>
+      expect(
+        within(table).queryByRole("row", {
+          name: /Summarise this week's runs/,
+        }),
+      ).toBeNull(),
+    );
+    expect(
+      within(table).getByRole("row", { name: /Draft the weekly report/ }),
+    ).toBeDefined();
+  });
+
+  test("clicking a row opens the task detail drawer", async () => {
+    server.use(getGetTaskMockHandler({ task: autopilotTask, children: [] }));
+    const user = userEvent.setup();
+    render(<TeamPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "All tasks" }));
+    const table = await screen.findByRole("table", { name: "Delegated tasks" });
+
+    await user.click(
+      within(table).getByRole("row", { name: /Summarise this week's runs/ }),
+    );
+
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getByText("Summary posted.")).toBeDefined();
   });
 
   test("spine board reads /api/tasks and leaves the per-expert runs fan-out alone", async () => {
@@ -160,7 +210,7 @@ describe("team board on the task spine", () => {
     });
 
     await user.click(await screen.findByRole("tab", { name: "All tasks" }));
-    await screen.findByRole("list", { name: "Active tasks" });
+    await screen.findByRole("table", { name: "Delegated tasks" });
 
     expect(requested.some((path) => path.endsWith("/api/tasks"))).toBe(true);
     expect(requested.some((path) => path.includes("/runs"))).toBe(false);
