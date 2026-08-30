@@ -1,4 +1,7 @@
+from typing import Literal
+
 from backend.api.features.experts.models import Expert
+from backend.api.features.tasks.models import DelegatedTask
 from backend.copilot.briefing.outcome import as_utc_or_none, run_link
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
@@ -15,14 +18,16 @@ def compose_active_tasks(
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    open_tasks: list[DelegatedTask] | None = None,
 ) -> list[HomeActiveTask]:
     active = [
         execution
         for execution in executions
         if execution.status in {ExecutionStatus.RUNNING, ExecutionStatus.QUEUED}
     ]
+    task_by_id = {task.id: task for task in open_tasks or []}
     return [
-        _active_task(execution, expert_by_id, agent_by_graph)
+        _active_task(execution, expert_by_id, agent_by_graph, task_by_id)
         for execution in active[:_MAX_ACTIVE]
     ]
 
@@ -31,12 +36,17 @@ def _active_task(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    task_by_id: dict[str, DelegatedTask],
 ) -> HomeActiveTask:
     agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
+    # A run started through the task spine already carries the user's own
+    # words for what it is doing; the agent's name is only the fallback for
+    # runs that predate the spine or start outside a delegation.
+    task = task_by_id.get(execution.delegated_task_id or "")
     return HomeActiveTask(
         id=execution.id,
-        title=agent.name,
-        status="running" if execution.status == ExecutionStatus.RUNNING else "queued",
+        title=task.title if task else agent.name,
+        status=_active_status(execution, task),
         expert=(
             to_home_expert(expert_by_id[execution.expert_id])
             if execution.expert_id in expert_by_id
@@ -45,6 +55,16 @@ def _active_task(
         started_at=as_utc_or_none(execution.started_at),
         link=run_link(agent.library_agent_id, execution.id),
     )
+
+
+def _active_status(
+    execution: GraphExecutionMeta, task: DelegatedTask | None
+) -> Literal["running", "queued"]:
+    """The card has two states, so WAITING_USER folds into "queued" — the
+    task is open but nothing is moving until the user answers."""
+    if task is not None:
+        return "running" if task.status == "WORKING" else "queued"
+    return "running" if execution.status == ExecutionStatus.RUNNING else "queued"
 
 
 def compose_upcoming_tasks(

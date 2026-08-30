@@ -147,6 +147,7 @@ model User {
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
   ExpertPods           ExpertPod[]
+  DelegatedTasks       DelegatedTask[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -549,6 +550,7 @@ model ChatSession {
 
   SharedChatFiles  SharedChatFile[]
   ChatLinkedShares ChatLinkedShare[]
+  DelegatedTasks   DelegatedTask[]
 
   // Single compound index covers (a) the cap-count (count by userId +
   // chatStatus), (b) the queue-list ORDER BY updatedAt asc, AND (c) the
@@ -1021,6 +1023,7 @@ model Expert {
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
+  DelegatedTasks  DelegatedTask[]
 
   // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
   podId String?
@@ -1128,6 +1131,99 @@ model ExpertPod {
 
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+// Who asked for the work. USER = a person typed it into a chat, EXPERT =
+// another expert delegated it, SCHEDULE = a cron/trigger fired it, DREAM =
+// the dream pass proposed it.
+enum TaskCreatedByType {
+  USER
+  EXPERT
+  SCHEDULE
+  DREAM
+}
+
+enum DelegatedTaskStatus {
+  QUEUED
+  WORKING
+  WAITING_USER
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum DelegatedTaskAcceptance {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// The receipt for a piece of expert work: who asked, who owns it, what was
+// asked for, what came back, and what it cost. One row per delegation, so
+// chat turns, schedules and (later) expert-to-expert handoffs all land in
+// the same ledger instead of being reconstructed from executions.
+model DelegatedTask {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Tenancy. Every read path filters on this — the owning expert is not a
+  // sufficient guard because experts can be archived and re-read by id.
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The expert doing the work. Null = Autopilot, mirroring
+  // ChatSession.expertId nullability. SetNull so archiving an expert keeps
+  // its receipts readable.
+  ownerId String?
+  Owner   Expert? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Delegation tree. rootTaskId points at the top of the chain (self for a
+  // root task) so a whole tree is one indexed read rather than a recursive
+  // walk. Phase 1 only ever writes roots; the columns exist so handoff can
+  // land without a migration.
+  parentTaskId String?
+  ParentTask   DelegatedTask?  @relation("DelegatedTaskTree", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  ChildTasks   DelegatedTask[] @relation("DelegatedTaskTree")
+  rootTaskId   String?
+
+  // The chat session the task was born in; outcome messages are delivered
+  // back here. Null for schedule/dream-created tasks.
+  originSessionId String?
+  OriginSession   ChatSession? @relation(fields: [originSessionId], references: [id], onDelete: SetNull)
+
+  createdByType TaskCreatedByType
+  // Free-form id of the creator, interpreted per createdByType (user id,
+  // expert id, schedule id). Not a foreign key: the referent lives in a
+  // different table per type.
+  createdById   String?
+
+  title String
+  spec  String
+
+  status         DelegatedTaskStatus     @default(QUEUED)
+  outcomeSummary String?
+  acceptance     DelegatedTaskAcceptance @default(PENDING)
+
+  // Every expert the task passed through, oldest first. Lets the UI show a
+  // handoff trail and lets cycle detection run without walking the tree.
+  ancestorExpertIds String[] @default([])
+  handoffCount      Int      @default(0)
+  revisionCount     Int      @default(0)
+
+  // Credits (100 = $1) burned by this task's executions.
+  spendTotal Int @default(0)
+
+  // Append-only log of scope changes: [{at, by, note}]. Json so a scope
+  // edit doesn't need a migration or a second table.
+  amendments Json @default("[]")
+
+  Executions AgentGraphExecution[]
+
+  @@index([ownerId, status])
+  @@index([rootTaskId])
+  @@index([originSessionId])
+  @@index([userId, status])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1245,6 +1341,12 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // The delegation this run was started to satisfy. Null for runs that
+  // predate the task spine or are started outside a delegation (e.g. a
+  // manual run from the library).
+  delegatedTaskId String?
+  DelegatedTask   DelegatedTask? @relation(fields: [delegatedTaskId], references: [id], onDelete: SetNull)
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
@@ -1295,6 +1397,7 @@ model AgentGraphExecution {
   @@index([expertId, createdAt])
   @@index([shareToken])
   @@index([parentGraphExecutionId])
+  @@index([delegatedTaskId])
   @@index([teamId, isDeleted, createdAt])
   @@index([organizationId])
 }

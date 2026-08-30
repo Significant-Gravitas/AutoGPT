@@ -22,6 +22,12 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  // Surfaces the DelegatedTask "receipts" built in phase 1 of the task
+  // spine: the Tasks tab on an expert, its detail drawer, and the inline
+  // task card in chat. Off hides all three; the tasks themselves are
+  // still written, so flipping it on shows real history rather than an
+  // empty surface.
+  TASK_SPINE = "task-spine",
   // Reveals the notification-preferences card on /settings/account. The card
   // is built but its design is still being reworked, so it ships dark and is
   // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
@@ -71,6 +77,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.TASK_SPINE]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
@@ -140,6 +147,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.HIRE_EXPERTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.TASK_SPINE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_SPINE;
     case Flag.SETTINGS_NOTIFICATIONS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.ONBOARDING_BRAIN_DUMP:

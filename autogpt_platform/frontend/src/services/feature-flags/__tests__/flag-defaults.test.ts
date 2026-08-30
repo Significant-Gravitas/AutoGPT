@@ -56,6 +56,19 @@ const ONBOARDING_FLAGS = [
   Flag.AUTOGPT_NEW_LAYOUT,
 ] as const;
 
+describe("task spine flag default fails closed", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it("resolves TASK_SPINE to false when LaunchDarkly has not answered, keeping the Tasks tab and task cards hidden", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.TASK_SPINE));
+    expect(result.current).toBe(false);
+  });
+});
+
 describe("onboarding flag defaults fail closed", () => {
   beforeEach(() => {
     Object.keys(process.env)

@@ -52,6 +52,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.tasks.routes as tasks_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -455,6 +456,7 @@ app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
+app.include_router(tasks_routes.router, tags=["v2", "tasks"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(

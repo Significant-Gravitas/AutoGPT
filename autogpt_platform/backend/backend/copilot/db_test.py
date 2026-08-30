@@ -1257,3 +1257,84 @@ async def test_append_expert_run_message_creates_session_when_none_exists() -> N
     assert result == "sess-new"
     assert created.call_args.kwargs["expert_id"] == "e1"
     assert add_message.call_args.kwargs["session_id"] == "sess-new"
+
+
+# ---------- append_message_to_session ----------
+
+
+@pytest.mark.asyncio
+async def test_append_message_to_session_dedupes_on_message_id() -> None:
+    from backend.copilot.db import append_message_to_session
+
+    find_unique = AsyncMock(return_value=_make_msg(sequence=1))
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+    ):
+        result = await append_message_to_session(
+            user_id="u1", session_id="sess-1", content="done", message_id="m1"
+        )
+
+    assert result is None
+    add_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_append_message_to_session_rejects_foreign_session() -> None:
+    """The caller is the executor holding an id off the task row; ownership
+    must be re-checked here or a stale/forged session id would let one user's
+    outcome land in another user's chat."""
+    from backend.copilot.db import append_message_to_session
+
+    find_unique = AsyncMock(return_value=None)
+    count = AsyncMock(return_value=0)
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(PrismaChatSession, "prisma", return_value=AsyncMock(count=count)),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+    ):
+        result = await append_message_to_session(
+            user_id="u1", session_id="sess-other", content="done", message_id="m1"
+        )
+
+    assert result is None
+    add_message.assert_not_awaited()
+    assert count.call_args.kwargs["where"] == {"id": "sess-other", "userId": "u1"}
+
+
+@pytest.mark.asyncio
+async def test_append_message_to_session_writes_assistant_message() -> None:
+    from backend.copilot.db import append_message_to_session
+
+    find_unique = AsyncMock(return_value=None)
+    count = AsyncMock(return_value=1)
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(PrismaChatSession, "prisma", return_value=AsyncMock(count=count)),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=5)),
+    ):
+        result = await append_message_to_session(
+            user_id="u1",
+            session_id="sess-1",
+            content="done",
+            message_id="m1",
+            metadata={"kind": "delegated_task"},
+        )
+
+    assert result == "sess-1"
+    call_kwargs = add_message.call_args.kwargs
+    assert call_kwargs["session_id"] == "sess-1"
+    assert call_kwargs["role"] == "assistant"
+    assert call_kwargs["sequence"] == 5
+    assert call_kwargs["message_id"] == "m1"
+    assert call_kwargs["metadata"] == {"kind": "delegated_task"}

@@ -9,6 +9,7 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.task_spine import fail_task, mark_task_working, open_task_for_run
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -899,6 +900,15 @@ class RunAgentTool(BaseTool):
 
             org_id, team_id = await get_user_default_team(user_id)
 
+        # A dry run is a simulation, not delegated work — it gets no receipt.
+        task_id = (
+            None
+            if dry_run
+            else await open_task_for_run(
+                user_id, session, agent_name=library_agent.name, inputs=inputs
+            )
+        )
+
         try:
             execution = await execution_utils.add_graph_execution(
                 graph_id=library_agent.graph_id,
@@ -910,8 +920,11 @@ class RunAgentTool(BaseTool):
                 team_id=team_id,
                 preset_id=preset_id,
                 expert_id=session.expert_id,
+                delegated_task_id=task_id,
             )
         except GraphValidationError as e:
+            if task_id:
+                await fail_task(user_id, task_id, "The run could not be started.")
             return self._handle_graph_validation_race(
                 error=e,
                 graph=graph,
@@ -919,6 +932,9 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
                 action_verb="running",
             )
+
+        if task_id:
+            await mark_task_working(user_id, task_id)
 
         # Track successful run (dry runs don't count against the session limit)
         if not dry_run:

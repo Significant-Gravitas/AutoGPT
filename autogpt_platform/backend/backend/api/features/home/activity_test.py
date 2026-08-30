@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
+from backend.api.features.tasks.models import DelegatedTask, TaskStatus
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserDailyCost, UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -114,6 +115,68 @@ def test_active_task_falls_back_when_the_graph_is_unknown() -> None:
 
     assert tasks[0].title == "Agent task"
     assert tasks[0].link is None
+
+
+def test_active_task_prefers_the_delegated_tasks_own_title() -> None:
+    execution = _execution(exec_id="run", status=ExecutionStatus.RUNNING, ended_at=NOW)
+    execution.delegated_task_id = "task-1"
+
+    tasks = compose_active_tasks(
+        [execution], {}, TRIAGE, [_delegated_task(status="WORKING")]
+    )
+
+    assert tasks[0].title == "Draft the weekly report"
+    assert tasks[0].status == "running"
+
+
+def test_active_task_reports_a_waiting_task_as_queued() -> None:
+    """The run is still RUNNING to the executor, but nothing moves until the
+    user answers — the card must not claim work is in progress."""
+    execution = _execution(exec_id="run", status=ExecutionStatus.RUNNING, ended_at=NOW)
+    execution.delegated_task_id = "task-1"
+
+    tasks = compose_active_tasks(
+        [execution], {}, TRIAGE, [_delegated_task(status="WAITING_USER")]
+    )
+
+    assert tasks[0].status == "queued"
+
+
+def test_active_task_ignores_a_task_that_is_not_this_runs() -> None:
+    execution = _execution(exec_id="run", status=ExecutionStatus.RUNNING, ended_at=NOW)
+    execution.delegated_task_id = "task-1"
+
+    tasks = compose_active_tasks(
+        [execution], {}, TRIAGE, [_delegated_task(task_id="other-task")]
+    )
+
+    assert tasks[0].title == "Inbox triage"
+
+
+def _delegated_task(
+    *, task_id: str = "task-1", status: TaskStatus = "WORKING"
+) -> DelegatedTask:
+    return DelegatedTask(
+        id=task_id,
+        title="Draft the weekly report",
+        spec="spec",
+        status=status,
+        acceptance="PENDING",
+        created_by_type="USER",
+        created_by_id="user",
+        owner=None,
+        parent_task_id=None,
+        root_task_id=task_id,
+        origin_session_id=None,
+        ancestor_expert_ids=[],
+        handoff_count=0,
+        revision_count=0,
+        spend_total=0,
+        outcome_summary=None,
+        amendments=[],
+        created_at=NOW,
+        updated_at=NOW,
+    )
 
 
 def _graph_job(job_id: str, next_run: str) -> GraphExecutionJobInfo:

@@ -85,6 +85,14 @@ def home_dependencies(mocker: MockerFixture):
         "backend.api.features.home.service.briefing_db.get_briefing_for_date",
         AsyncMock(return_value=None),
     )
+    mocker.patch(
+        "backend.api.features.home.service.tasks_db.list_open_tasks",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.overseer_db.list_recent_failed_tasks",
+        AsyncMock(return_value=[]),
+    )
     # The flag-gated sources must be mocked even though the gates default to
     # off: several tests patch `service.is_feature_enabled` module-wide to
     # True, which opens these gates too. Left unmocked, they then run real

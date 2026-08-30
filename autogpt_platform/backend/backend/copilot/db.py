@@ -1397,6 +1397,59 @@ async def append_expert_run_message(
     return session_id
 
 
+async def append_message_to_session(
+    user_id: str,
+    session_id: str,
+    content: str,
+    message_id: str,
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
+    """Post an assistant message into one *specific* session.
+
+    The task spine's outcome delivery: a run started from a chat belongs
+    back in that chat, not in whatever thread happens to be the expert's
+    most recent one (which is what ``append_expert_run_message`` picks).
+    Ownership is re-checked here because the caller is the executor, which
+    only knows the id off the task row.
+
+    Deduplicates on *message_id* (deterministic per event at the caller), so
+    executor retries and double-fires never produce duplicate posts. Returns
+    the session id the message landed in, or None when deduped or the
+    session isn't the user's.
+    """
+    existing = await PrismaChatMessage.prisma().find_unique(where={"id": message_id})
+    if existing is not None:
+        return None
+
+    owned = await PrismaChatSession.prisma().count(
+        where={"id": session_id, "userId": user_id}
+    )
+    if owned == 0:
+        return None
+
+    async def write_with_fresh_sequence() -> None:
+        await add_chat_message(
+            session_id=session_id,
+            role="assistant",
+            sequence=await get_next_sequence(session_id),
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+
+    # Same Redis NX lock as append_expert_run_message: the sequence read +
+    # insert must not interleave with a concurrent turn writer picking the
+    # same sequence and PK-colliding on (sessionId, sequence).
+    async with _get_session_lock(session_id):
+        try:
+            await write_with_fresh_sequence()
+        except UniqueViolationError as e:
+            if is_duplicate_chat_message_id_error(e):
+                return None
+            await write_with_fresh_sequence()
+    return session_id
+
+
 async def append_plain_session_message(
     user_id: str,
     content: str,

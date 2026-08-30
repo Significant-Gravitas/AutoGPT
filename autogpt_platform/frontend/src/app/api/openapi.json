@@ -14272,6 +14272,167 @@
         }
       }
     },
+    "/api/tasks": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "List Tasks",
+        "description": "The caller's delegated tasks, newest first.",
+        "operationId": "list_tasks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Only tasks owned by this expert",
+              "title": "Expert Id"
+            },
+            "description": "Only tasks owned by this expert"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "QUEUED",
+                    "WORKING",
+                    "WAITING_USER",
+                    "DONE",
+                    "FAILED",
+                    "CANCELLED"
+                  ],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
+              "description": "Only this status",
+              "title": "Status"
+            },
+            "description": "Only this status"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/DelegatedTask" },
+                  "title": "Response List Tasks"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "Get Task",
+        "description": "One task with its direct children, for the detail drawer.",
+        "operationId": "get_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DelegatedTaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Task not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "Cancel Task",
+        "description": "Cancel the task and every open task beneath it, stopping the runs they\nwere driving. Already-terminal tasks are left alone, so this is safe to\nretry.",
+        "operationId": "cancel_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DelegatedTaskDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Task not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/transfers": {
       "get": {
         "tags": ["v2", "transfers", "transfers"],
@@ -18209,6 +18370,127 @@
         "title": "DecompositionStepModel",
         "description": "A single step in a decomposed agent-building plan."
       },
+      "DelegatedTask": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title" },
+          "spec": { "type": "string", "title": "Spec" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "WORKING",
+              "WAITING_USER",
+              "DONE",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "acceptance": {
+            "type": "string",
+            "enum": ["PENDING", "ACCEPTED", "REJECTED"],
+            "title": "Acceptance"
+          },
+          "created_by_type": {
+            "type": "string",
+            "enum": ["USER", "EXPERT", "SCHEDULE", "DREAM"],
+            "title": "Created By Type"
+          },
+          "created_by_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Id"
+          },
+          "owner": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskExpertRef" },
+              { "type": "null" }
+            ]
+          },
+          "parent_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Task Id"
+          },
+          "root_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Root Task Id"
+          },
+          "origin_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin Session Id"
+          },
+          "ancestor_expert_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Ancestor Expert Ids"
+          },
+          "handoff_count": { "type": "integer", "title": "Handoff Count" },
+          "revision_count": { "type": "integer", "title": "Revision Count" },
+          "spend_total": { "type": "integer", "title": "Spend Total" },
+          "outcome_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Outcome Summary"
+          },
+          "amendments": {
+            "items": { "$ref": "#/components/schemas/TaskAmendment" },
+            "type": "array",
+            "title": "Amendments"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "runs": {
+            "items": { "$ref": "#/components/schemas/TaskRunRef" },
+            "type": "array",
+            "title": "Runs",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "spec",
+          "status",
+          "acceptance",
+          "created_by_type",
+          "created_by_id",
+          "owner",
+          "parent_task_id",
+          "root_task_id",
+          "origin_session_id",
+          "ancestor_expert_ids",
+          "handoff_count",
+          "revision_count",
+          "spend_total",
+          "outcome_summary",
+          "amendments",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DelegatedTask"
+      },
+      "DelegatedTaskDetail": {
+        "properties": {
+          "task": { "$ref": "#/components/schemas/DelegatedTask" },
+          "children": {
+            "items": { "$ref": "#/components/schemas/DelegatedTask" },
+            "type": "array",
+            "title": "Children"
+          }
+        },
+        "type": "object",
+        "required": ["task", "children"],
+        "title": "DelegatedTaskDetail",
+        "description": "A task plus one level of children — enough for the detail drawer's\ntimeline without recursing the whole delegation tree."
+      },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
         "type": "object",
@@ -19937,6 +20219,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "delegated_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated Task Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20118,6 +20404,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "delegated_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated Task Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20222,6 +20512,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "delegated_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated Task Id"
           },
           "stats": {
             "anyOf": [
@@ -26674,6 +26968,17 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TaskAmendment": {
+        "properties": {
+          "at": { "type": "string", "format": "date-time", "title": "At" },
+          "by": { "type": "string", "title": "By" },
+          "note": { "type": "string", "title": "Note" }
+        },
+        "type": "object",
+        "required": ["at", "by", "note"],
+        "title": "TaskAmendment",
+        "description": "A scope change recorded against a live task."
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -26706,6 +27011,64 @@
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
+      "TaskExpertRef": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "role": { "type": "string", "title": "Role" }
+        },
+        "type": "object",
+        "required": ["id", "name", "avatar_url", "role"],
+        "title": "TaskExpertRef",
+        "description": "The expert a task is owned by. Null owner = Autopilot."
+      },
+      "TaskRunRef": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "agent_name": { "type": "string", "title": "Agent Name" },
+          "status": { "type": "string", "title": "Status" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "library_agent_id",
+          "agent_name",
+          "status",
+          "started_at",
+          "ended_at",
+          "link"
+        ],
+        "title": "TaskRunRef",
+        "description": "One execution started to satisfy the task."
       },
       "TeamMemberResponse": {
         "properties": {

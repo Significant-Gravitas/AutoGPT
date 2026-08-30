@@ -1244,6 +1244,7 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    delegated_task_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1444,6 +1445,7 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            delegated_task_id=delegated_task_id,
         )
 
         logger.info(
@@ -1491,6 +1493,7 @@ async def add_graph_execution(
             # Same recovery rule as org/team: explicit param on create,
             # persisted row on resume/requeue.
             expert_id=expert_id or graph_exec.expert_id,
+            delegated_task_id=delegated_task_id or graph_exec.delegated_task_id,
         )
     elif expert_id:
         # Expert tenancy is authoritative even for caller-supplied contexts.

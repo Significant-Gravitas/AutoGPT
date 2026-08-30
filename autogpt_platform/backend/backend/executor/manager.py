@@ -82,7 +82,7 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import activity_events, billing, expert_posts
+from . import activity_events, billing, expert_posts, task_outcomes
 from .activity_status_generator import (
     INSUFFICIENT_BALANCE_GUIDANCE,
     generate_activity_status_for_execution,
@@ -1080,6 +1080,12 @@ class ExecutionProcessor:
             # or behind a deep link. The run is scored for the Briefing when
             # its terminal stats are written, just below.
             expert_posts.handle_expert_run_post(
+                db_client, graph_exec, exec_meta.status, exec_stats
+            )
+            # Closes the delegation receipt and answers in the session the
+            # run was asked for from — distinct from the expert-thread post
+            # above, which targets the expert's latest thread instead.
+            task_outcomes.handle_task_outcome(
                 db_client, graph_exec, exec_meta.status, exec_stats
             )
             activity_events.handle_run_completed(

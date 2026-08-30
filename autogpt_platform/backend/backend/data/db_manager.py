@@ -48,6 +48,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
+from backend.api.features.tasks import tasks_db
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
@@ -534,6 +535,13 @@ class DatabaseManager(AppService):
     count_active_experts = _(experts_db.count_active_experts)
     count_raised_experts = _(experts_db.count_raised_experts)
 
+    # ============ Task Spine ============ #
+    # Exposed so the Prisma-less copilot executor can open a receipt when a
+    # chat turn starts a run, and the graph executor can close it.
+    create_delegated_task = _(tasks_db.create_task)
+    mark_delegated_task_working = _(tasks_db.mark_working)
+    close_delegated_task = _(tasks_db.close_task)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -546,6 +554,7 @@ class DatabaseManager(AppService):
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
+    append_message_to_session = _(chat_db.append_message_to_session)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
@@ -652,7 +661,11 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
+    append_message_to_session = _(d.append_message_to_session)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
+
+    # Task spine (executor completion hook)
+    close_delegated_task = _(d.close_delegated_task)
 
     # Activity events (executor completion hook)
     create_activity_event = _(d.create_activity_event)
@@ -920,7 +933,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
     append_expert_run_message = d.append_expert_run_message
+    append_message_to_session = d.append_message_to_session
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
+
+    # ============ Task Spine ============ #
+    create_delegated_task = d.create_delegated_task
+    mark_delegated_task_working = d.mark_delegated_task_working
+    close_delegated_task = d.close_delegated_task
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question

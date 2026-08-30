@@ -35,6 +35,8 @@ import {
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
+import { TaskCard } from "../TaskCard/TaskCard";
+import { getTaskCardMetadata } from "../TaskCard/helpers";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
@@ -504,20 +506,42 @@ export function ChatMessagesContainer({
             </div>
           )}
           {messages.map((message, messageIndex) => {
+            const messageText = message.parts
+              .filter(
+                (p): p is Extract<typeof p, { type: "text" }> =>
+                  p.type === "text",
+              )
+              .map((p) => p.text)
+              .join(" ");
+
+            // A task-outcome post closes a delegation the user asked for in
+            // this very thread, so it gets its own card rather than the
+            // run-post one (which describes a run, not the receipt).
+            const taskMetadata = getTaskCardMetadata(message.metadata);
+            if (taskMetadata) {
+              return (
+                <Message
+                  from={message.role}
+                  key={message.id}
+                  data-message-id={message.id}
+                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                >
+                  <MessageContent className="group-[.is-assistant]:bg-transparent">
+                    <TaskCard
+                      metadata={taskMetadata}
+                      preview={toPreview(messageText)}
+                    />
+                  </MessageContent>
+                </Message>
+              );
+            }
+
             // A run-post rides structured metadata — render a compact WorkCard
             // instead of the raw markdown wall (legacy posts have no metadata
             // and fall through to normal rendering).
             const runMetadata = getWorkRunMetadata(message.metadata);
             if (runMetadata) {
-              const preview = toPreview(
-                message.parts
-                  .filter(
-                    (p): p is Extract<typeof p, { type: "text" }> =>
-                      p.type === "text",
-                  )
-                  .map((p) => p.text)
-                  .join(" "),
-              );
+              const preview = toPreview(messageText);
               return (
                 <Message
                   from={message.role}
