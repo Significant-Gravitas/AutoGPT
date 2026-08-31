@@ -246,6 +246,25 @@ async def test_refresh_keeps_the_old_token_when_none_is_returned() -> None:
 
 
 @pytest.mark.asyncio
+async def test_refresh_keeps_the_old_id_token_when_none_is_returned() -> None:
+    payload = {"access_token": "at", "refresh_token": "new-refresh"}
+    with _patch_post(_FakeResponse(200, payload)):
+        tokens = await refresh_access_token(
+            SecretStr("old-refresh"),
+            current_id_token=SecretStr("old-id"),
+        )
+    assert tokens.id_token.get_secret_value() == "old-id"
+
+
+@pytest.mark.asyncio
+async def test_refresh_reports_a_safe_error_without_any_id_token() -> None:
+    payload = {"access_token": "at", "refresh_token": "new-refresh"}
+    with _patch_post(_FakeResponse(200, payload)):
+        with pytest.raises(CodexAuthError, match="omitted the ID token"):
+            await refresh_access_token(SecretStr("old-refresh"))
+
+
+@pytest.mark.asyncio
 async def test_refresh_prefers_a_rotated_token_when_one_arrives() -> None:
     payload = {"id_token": "id", "access_token": "at", "refresh_token": "new-refresh"}
     with _patch_post(_FakeResponse(200, payload)):

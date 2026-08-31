@@ -24,6 +24,7 @@ from backend.integrations.codex.chatgpt_auth import (
     request_device_code,
 )
 from backend.integrations.codex.credential_codec import (
+    bundle_from_credentials,
     checkpoint_credentials_from_bundle,
     credentials_from_bundle,
 )
@@ -102,7 +103,18 @@ class CodexDeviceAuthHandler(BaseDeviceAuthHandler):
     ) -> OAuth2Credentials:
         if credentials.refresh_token is None:
             raise CodexAuthError("ChatGPT credential has no refresh token")
-        tokens = await refresh_access_token(credentials.refresh_token)
+        current_id_token = None
+        try:
+            current_id_token = bundle_from_credentials(credentials).tokens.id_token
+        except CodexAuthBundleError:
+            # A fresh ID token can repair legacy or damaged provider state. If
+            # the provider omits one too, refresh_access_token reports a normal
+            # auth failure instead of leaking a Pydantic validation error.
+            pass
+        tokens = await refresh_access_token(
+            credentials.refresh_token,
+            current_id_token=current_id_token,
+        )
         # Refresh in place so the credential keeps its id, title and any other
         # caller-owned fields; only the token material is replaced.
         try:

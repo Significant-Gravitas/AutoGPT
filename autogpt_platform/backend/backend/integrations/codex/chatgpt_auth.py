@@ -227,7 +227,11 @@ async def exchange_authorization_code(
     return ChatGPTTokens.model_validate(response.json())
 
 
-async def refresh_access_token(refresh_token: SecretStr) -> ChatGPTTokens:
+async def refresh_access_token(
+    refresh_token: SecretStr,
+    *,
+    current_id_token: SecretStr | None = None,
+) -> ChatGPTTokens:
     """Exchange a refresh token. OpenAI rotates it, so persist what comes back."""
     response = await Requests(
         raise_for_status=False, retry_max_attempts=_AUTH_RETRY_ATTEMPTS
@@ -248,6 +252,13 @@ async def refresh_access_token(refresh_token: SecretStr) -> ChatGPTTokens:
     # A refresh that omits a new refresh token means the existing one stands.
     if not payload.get("refresh_token"):
         payload["refresh_token"] = refresh_token.get_secret_value()
+    # OIDC refresh responses are allowed to omit a new ID token. Keep the
+    # current one in that case; it carries the ChatGPT account identity needed
+    # to rebuild the persisted auth bundle.
+    if not payload.get("id_token"):
+        if current_id_token is None:
+            raise CodexAuthError("ChatGPT refresh response omitted the ID token")
+        payload["id_token"] = current_id_token.get_secret_value()
     return ChatGPTTokens.model_validate(payload)
 
 
