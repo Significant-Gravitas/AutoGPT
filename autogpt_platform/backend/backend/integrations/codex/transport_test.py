@@ -1,10 +1,13 @@
 import asyncio
+import concurrent.futures
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.codex import transport as transport_module
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.credential_codec import credentials_from_bundle
 from backend.integrations.codex.transport import (
@@ -30,6 +33,44 @@ def _credentials(*, legacy: bool = False) -> OAuth2Credentials:
     if legacy:
         return credentials.model_copy(update={"refresh_strategy": "provider_runtime"})
     return credentials
+
+
+def test_transport_singleton_initializes_once_across_worker_threads() -> None:
+    first_constructor_entered = threading.Event()
+    release_first_constructor = threading.Event()
+    construction_count = 0
+    constructed: list[object] = []
+
+    def construct(**_kwargs):
+        nonlocal construction_count
+        construction_count += 1
+        instance = object()
+        constructed.append(instance)
+        if construction_count == 1:
+            first_constructor_entered.set()
+            assert release_first_constructor.wait(timeout=2)
+        return instance
+
+    with (
+        patch.object(transport_module, "_transport", None),
+        patch.object(transport_module, "Settings", return_value=MagicMock()),
+        patch.object(transport_module, "CodexTransport", side_effect=construct),
+        concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        first = pool.submit(transport_module.get_codex_transport)
+        assert first_constructor_entered.wait(timeout=1)
+        second = pool.submit(transport_module.get_codex_transport)
+
+        with pytest.raises(concurrent.futures.TimeoutError):
+            second.result(timeout=0.05)
+
+        release_first_constructor.set()
+        first_result = first.result(timeout=1)
+        second_result = second.result(timeout=1)
+
+    assert construction_count == 1
+    assert first_result is constructed[0]
+    assert second_result is first_result
 
 
 @pytest.mark.asyncio

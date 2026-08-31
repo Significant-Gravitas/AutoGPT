@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import cast
@@ -367,16 +368,19 @@ async def _no_tools(call: CodexDynamicToolCall) -> CodexDynamicToolResult:
 
 
 _transport: CodexTransport | None = None
+_transport_lock = threading.Lock()
 
 
 def get_codex_transport() -> CodexTransport:
     global _transport
     if _transport is None:
-        config = Settings().config
-        _transport = CodexTransport(
-            invocation_timeout_seconds=config.codex_invocation_timeout_seconds,
-            copilot_turn_timeout_seconds=config.codex_copilot_turn_timeout_seconds,
-            copilot_tool_timeout_seconds=config.codex_copilot_tool_timeout_seconds,
-            login_timeout_seconds=config.codex_login_timeout_seconds,
-        )
+        with _transport_lock:
+            if _transport is None:
+                config = Settings().config
+                _transport = CodexTransport(
+                    invocation_timeout_seconds=config.codex_invocation_timeout_seconds,
+                    copilot_turn_timeout_seconds=config.codex_copilot_turn_timeout_seconds,
+                    copilot_tool_timeout_seconds=config.codex_copilot_tool_timeout_seconds,
+                    login_timeout_seconds=config.codex_login_timeout_seconds,
+                )
     return _transport
