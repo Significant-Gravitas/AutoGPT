@@ -644,11 +644,15 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("does not render the retired schedules drawer button on the chip", () => {
+  it("opens the session activity card when the chip is clicked", async () => {
+    flagState.values["artifacts"] = true;
     server.use(
       getGetExpertMockHandler(mariaExpert),
       getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
+    }));
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -656,42 +660,48 @@ describe("ChatMessagesContainer — expert identity", () => {
         error={undefined}
         isLoading={false}
         expertIdentity={mariaIdentity}
+        sessionID="session-1"
+        canOpenActivity
       />,
     );
 
-    expect(screen.getByTestId("expert-thread-header")).toBeDefined();
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Open session activity/ }),
+    );
+
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(true);
+    expect(panel.activeTab).toBe("files");
   });
 
-  it("does not read the fired expert's detail record for the schedules button", async () => {
-    let expertDetailRequests = 0;
+  it("stays a passive label in hosts that never mount the activity card", async () => {
+    flagState.values["artifacts"] = true;
+    let workspaceFileRequests = 0;
     server.use(
-      http.get("*/api/experts/expert-maria", () => {
-        expertDetailRequests += 1;
-        return HttpResponse.json(
-          { detail: "Expert not found" },
-          { status: 404 },
-        );
+      getGetExpertMockHandler(mariaExpert),
+      http.get("*/api/workspace/files", () => {
+        workspaceFileRequests += 1;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
+    // Same live sessionId the builder and memory panels pass — only the host's
+    // canOpenActivity separates them from the copilot chat.
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
         status="ready"
         error={undefined}
         isLoading={false}
-        expertIdentity={{
-          ...mariaIdentity,
-          isArchived: true,
-          readOnlyReason: "fired",
-        }}
+        expertIdentity={mariaIdentity}
+        sessionID="session-1"
       />,
     );
 
-    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
-    expect(expertDetailRequests).toBe(0);
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(
+      within(header).queryByRole("button", { name: /Open session activity/ }),
+    ).toBeNull();
+    expect(workspaceFileRequests).toBe(0);
   });
 
   it("wears the Autopilot identity on plain sessions", () => {
@@ -706,7 +716,6 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     const header = screen.getByTestId("expert-thread-header");
     expect(header.textContent).toContain("Autopilot");
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 

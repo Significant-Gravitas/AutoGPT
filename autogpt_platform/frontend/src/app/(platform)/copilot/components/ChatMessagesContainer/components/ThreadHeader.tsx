@@ -26,6 +26,10 @@ interface Props {
   /** Powers the chip's file/run counters and its click-through to the
    *  session activity card. Without it the chip is a passive label. */
   sessionId?: string | null;
+  /** Set only by the host that actually mounts the activity card. The other
+   *  hosts pass a real sessionId too, so the flag cannot be inferred — and
+   *  without it the chip would open a card that isn't there. */
+  canOpenActivity?: boolean;
   /** The new layout floats the sidebar and workspace-files controls over the
    *  chat's top-left corner below `lg`; the chip clears them. */
   hasFloatingControls?: boolean;
@@ -43,15 +47,19 @@ export function ThreadHeader({
   expertIdentity,
   readOnly,
   sessionId = null,
+  canOpenActivity = false,
   hasFloatingControls = false,
 }: Props) {
   const name = expertIdentity?.name ?? "Autopilot";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  // The activity card only mounts in the copilot chat behind the artifacts
-  // flag, so everywhere else (share viewer, builder/memory panels) the chip
-  // stays a passive label and fetches nothing.
-  const isInteractive = Boolean(isArtifactsEnabled && !readOnly && sessionId);
+  // Only the copilot chat mounts the activity card. The builder and memory
+  // panels pass a live sessionId and aren't read-only, so without the host's
+  // own say-so the chip would render a button whose click writes panel state
+  // and fetches a file list for a card that never appears.
+  const isInteractive = Boolean(
+    canOpenActivity && isArtifactsEnabled && !readOnly && sessionId,
+  );
   const toggleContextPanelTab = useCopilotUIStore(
     (s) => s.toggleContextPanelTab,
   );
@@ -62,6 +70,19 @@ export function ThreadHeader({
   const runCount = runs.length;
   const scheduleCount = schedules.length;
   const showIntegrations = expertIdentity != null && !expertIdentity.isArchived;
+
+  // The chip's own aria-label replaces its contents for screen readers, so
+  // every count has to be spelled out here or it is simply never announced.
+  const counters = isInteractive
+    ? [
+        { icon: File02Icon, count: fileCount, noun: "file" },
+        { icon: PlayIcon, count: runCount, noun: "run" },
+        { icon: ClockIcon, count: scheduleCount, noun: "schedule" },
+      ].filter((counter) => counter.count > 0)
+    : [];
+  const spokenCounts = counters
+    .map(({ count, noun }) => `${count} ${noun}${count === 1 ? "" : "s"}`)
+    .join(", ");
 
   const chipContent = (
     <>
@@ -74,24 +95,15 @@ export function ThreadHeader({
       <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
         {name}
       </span>
-      {isInteractive && fileCount > 0 && (
-        <span className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500">
-          <Icon icon={File02Icon} className="size-3.5" />
-          {fileCount}
+      {counters.map(({ icon, count, noun }) => (
+        <span
+          key={noun}
+          className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500"
+        >
+          <Icon icon={icon} className="size-3.5" aria-hidden />
+          {count}
         </span>
-      )}
-      {isInteractive && runCount > 0 && (
-        <span className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500">
-          <Icon icon={PlayIcon} className="size-3.5" />
-          {runCount}
-        </span>
-      )}
-      {isInteractive && scheduleCount > 0 && (
-        <span className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500">
-          <Icon icon={ClockIcon} className="size-3.5" />
-          {scheduleCount}
-        </span>
-      )}
+      ))}
     </>
   );
 
@@ -113,7 +125,11 @@ export function ThreadHeader({
                 {isInteractive ? (
                   <button
                     type="button"
-                    aria-label={`${name} — open session files and runs`}
+                    aria-label={
+                      spokenCounts
+                        ? `${name}, ${role}. ${spokenCounts}. Open session activity`
+                        : `${name}, ${role}. Open session activity`
+                    }
                     onClick={() => toggleContextPanelTab("files")}
                     className="-my-1 -ml-1.5 flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-1.5 transition-colors hover:bg-zinc-100/80"
                   >
