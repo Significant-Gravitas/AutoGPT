@@ -403,6 +403,29 @@ describe("ConnectionPicker", () => {
     expect(screen.queryByText("Your ChatGPT plan")).toBeNull();
   });
 
+  it("keeps named models visible on a locked connection", async () => {
+    mockOffers([
+      offer(),
+      locked({
+        tiers: [
+          tier("standard", "Balanced", "gpt-5.6-terra"),
+          tier("advanced", "Advanced", "gpt-5.6-sol"),
+        ],
+      }),
+    ]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on/ }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Balanced: gpt-5.6-terra · Advanced: gpt-5.6-sol",
+      ),
+    ).toBeDefined();
+  });
+
   it("does not offer a locked connection as something to pick", async () => {
     // Rendering it as a radio would invite a click that cannot take effect.
     mockOffers([offer(), locked()]);
