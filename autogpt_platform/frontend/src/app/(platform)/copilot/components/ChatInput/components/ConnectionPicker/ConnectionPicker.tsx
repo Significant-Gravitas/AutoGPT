@@ -164,56 +164,56 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
             the chip remains visible. */}
         {(!connectionLocked || onlyOfferIsLocked) &&
           (offers.length > 1 || onlyOfferIsLocked) && (
-          <>
-            <SectionLabel>Runs on</SectionLabel>
-            <div
-              role="radiogroup"
-              aria-label="Connection this chat runs on"
-              onKeyDown={(event) => {
-                const to = nextRovingValue(
-                  connectionOptions,
-                  active?.offer_id ?? "",
-                  event.key,
-                );
-                if (to === null) return;
-                event.preventDefault();
-                const target = offers.find((o) => o.offer_id === to);
-                if (target) chooseConnection(target);
-                event.currentTarget
-                  .querySelector<HTMLElement>(`[data-offer="${to}"]`)
-                  ?.focus();
-              }}
-            >
-              {offers.map((offer) => (
-                <ChoiceRow
-                  key={offer.offer_id}
-                  offerId={offer.offer_id}
-                  tabIndex={rovingTabIndex(
+            <>
+              <SectionLabel>Runs on</SectionLabel>
+              <div
+                role="radiogroup"
+                aria-label="Connection this chat runs on"
+                onKeyDown={(event) => {
+                  const to = nextRovingValue(
                     connectionOptions,
-                    { value: offer.offer_id },
                     active?.offer_id ?? "",
-                  )}
-                  title={offer.display_name}
-                  subtitle={offerSubtitle(offer)}
-                  badge={isLinkedAccount(offer) ? "Connected" : undefined}
-                  notes={[tierSummary(offer), ...offer.limitations].filter(
-                    Boolean,
-                  )}
-                  isSelected={offer.offer_id === active?.offer_id}
-                  onSelect={() => chooseConnection(offer)}
-                  lock={
-                    offer.lock_reason
-                      ? {
-                          reason: offer.lock_reason,
-                          href: offer.unlock_href ?? null,
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          </>
-        )}
+                    event.key,
+                  );
+                  if (to === null) return;
+                  event.preventDefault();
+                  const target = offers.find((o) => o.offer_id === to);
+                  if (target) chooseConnection(target);
+                  event.currentTarget
+                    .querySelector<HTMLElement>(`[data-offer="${to}"]`)
+                    ?.focus();
+                }}
+              >
+                {offers.map((offer) => (
+                  <ChoiceRow
+                    key={offer.offer_id}
+                    offerId={offer.offer_id}
+                    tabIndex={rovingTabIndex(
+                      connectionOptions,
+                      { value: offer.offer_id },
+                      active?.offer_id ?? "",
+                    )}
+                    title={offer.display_name}
+                    subtitle={offerSubtitle(offer)}
+                    badge={isLinkedAccount(offer) ? "Connected" : undefined}
+                    notes={[tierSummary(offer), ...offer.limitations].filter(
+                      Boolean,
+                    )}
+                    isSelected={offer.offer_id === active?.offer_id}
+                    onSelect={() => chooseConnection(offer)}
+                    lock={
+                      offer.lock_reason
+                        ? {
+                            reason: offer.lock_reason,
+                            href: offer.unlock_href ?? null,
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
         {showTiers && (
           <>
