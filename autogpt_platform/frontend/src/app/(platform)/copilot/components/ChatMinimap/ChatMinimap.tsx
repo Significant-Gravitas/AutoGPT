@@ -57,10 +57,10 @@ export function ChatMinimap({ messages }: Props) {
           >
             <motion.div
               className={cn(
-                "h-[3px] w-[26px] origin-left rounded-full transition-colors duration-150",
+                "h-[6px] w-[26px] origin-left rounded-full transition-colors duration-150",
                 tickColor(hovered === null ? null : Math.abs(index - hovered)),
               )}
-              initial={{ scale: 0.4 }}
+              initial={{ scale: 0.6 }}
               animate={{ scale: tickScale(index, hovered) }}
               transition={reducedMotion ? { duration: 0 } : TICK_SPRING}
             />
