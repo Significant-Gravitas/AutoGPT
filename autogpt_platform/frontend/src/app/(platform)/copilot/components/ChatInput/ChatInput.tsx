@@ -1,5 +1,4 @@
 import {
-  PromptInputBody,
   PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -360,9 +359,11 @@ export function ChatInput({
             {recipientPicker}
             {!hasSession && <LLMRouteSelector />}
           </InputGroupAddon>
-          <PromptInputBody
+          {/* Must be a real flex item: `order`/`w-full` are ignored on a
+              `display: contents` box, which is what PromptInputBody was. */}
+          <div
             className={cn(
-              "relative block",
+              "relative",
               isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
@@ -388,7 +389,7 @@ export function ChatInput({
                 />
               </div>
             )}
-          </PromptInputBody>
+          </div>
           <InputGroupAddon
             align="inline-end"
             className="order-none ml-auto gap-1 py-1 pr-1.5"

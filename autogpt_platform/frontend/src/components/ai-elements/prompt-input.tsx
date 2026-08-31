@@ -4,9 +4,10 @@
  * Adapted from AI SDK Elements `prompt-input` component.
  * @see https://elements.ai-sdk.dev/components/prompt-input
  *
- * Stripped down to only the sub-components used by the copilot ChatInput:
- * PromptInput, PromptInputBody, PromptInputTextarea, PromptInputFooter,
- * PromptInputTools, PromptInputButton, PromptInputSubmit.
+ * Stripped down to the sub-components the copilot ChatInput builds on:
+ * PromptInput, PromptInputTextarea, PromptInputButton, PromptInputSubmit.
+ * The composer lays out its own rows, so the Body/Footer/Tools wrappers no
+ * longer live here.
  */
 
 import type { ChatStatus } from "ai";
@@ -21,7 +22,6 @@ import type {
 
 import {
   InputGroup,
-  InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
@@ -83,16 +83,6 @@ export function PromptInput({
       <InputGroup className="overflow-hidden">{children}</InputGroup>
     </form>
   );
-}
-
-// ============================================================================
-// PromptInputBody — content wrapper
-// ============================================================================
-
-export type PromptInputBodyProps = HTMLAttributes<HTMLDivElement>;
-
-export function PromptInputBody({ className, ...props }: PromptInputBodyProps) {
-  return <div className={cn("contents", className)} {...props} />;
 }
 
 // ============================================================================
@@ -178,46 +168,6 @@ export function PromptInputTextarea({
       onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
-      {...props}
-    />
-  );
-}
-
-// ============================================================================
-// PromptInputFooter — bottom bar
-// ============================================================================
-
-export type PromptInputFooterProps = Omit<
-  ComponentProps<typeof InputGroupAddon>,
-  "align"
->;
-
-export function PromptInputFooter({
-  className,
-  ...props
-}: PromptInputFooterProps) {
-  return (
-    <InputGroupAddon
-      align="block-end"
-      className={cn("justify-between gap-1", className)}
-      {...props}
-    />
-  );
-}
-
-// ============================================================================
-// PromptInputTools — left-side button group
-// ============================================================================
-
-export type PromptInputToolsProps = HTMLAttributes<HTMLDivElement>;
-
-export function PromptInputTools({
-  className,
-  ...props
-}: PromptInputToolsProps) {
-  return (
-    <div
-      className={cn("flex min-w-0 items-center gap-1", className)}
       {...props}
     />
   );

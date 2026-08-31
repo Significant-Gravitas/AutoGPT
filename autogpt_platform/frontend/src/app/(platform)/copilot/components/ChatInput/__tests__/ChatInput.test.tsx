@@ -117,12 +117,6 @@ vi.mock("../useVoiceRecording", () => ({
 }));
 
 vi.mock("@/components/ai-elements/prompt-input", () => ({
-  PromptInputBody: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PromptInputFooter: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
   PromptInputSubmit: ({
     disabled,
     status,
@@ -166,9 +160,6 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
       />
     );
   },
-  PromptInputTools: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="tools">{children}</div>
-  ),
   PromptInputButton: ({
     children,
     onClick,
