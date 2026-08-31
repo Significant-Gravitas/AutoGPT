@@ -6736,7 +6736,8 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
+          },
+          "429": { "description": "Rate limit exceeded" }
         },
         "security": [
           {
