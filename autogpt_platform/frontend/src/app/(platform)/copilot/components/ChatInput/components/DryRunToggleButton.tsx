@@ -40,17 +40,14 @@ export function DryRunToggleButton({
             aria-pressed={isDryRun}
             onClick={onToggle}
             className={cn(
-              "inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium transition-colors hover:bg-zinc-100",
+              "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
               isDryRun
                 ? "text-amber-600 hover:text-amber-700"
                 : "text-zinc-500 hover:text-zinc-700",
             )}
             aria-label={ariaLabel}
           >
-            <Icon icon={FlaskConicalIcon} size={14} />
-            <span className="hidden sm:inline">
-              {isDryRun ? "Test mode enabled" : "Enable test mode"}
-            </span>
+            <Icon icon={FlaskConicalIcon} size={16} />
           </button>
         </TooltipTrigger>
         <TooltipContent>{tooltip}</TooltipContent>

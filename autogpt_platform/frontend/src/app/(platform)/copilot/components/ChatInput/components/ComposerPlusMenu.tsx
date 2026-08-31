@@ -60,7 +60,7 @@ export function ComposerPlusMenu({
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
-              "border-transparent bg-transparent text-zinc-600 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-800",
+              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
               disabled && "opacity-40",
             )}
           >

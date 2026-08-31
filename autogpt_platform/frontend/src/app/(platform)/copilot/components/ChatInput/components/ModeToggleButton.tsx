@@ -40,11 +40,11 @@ export function ModeToggleButton({
       : "Switch to Extended Thinking mode";
 
   function getIcon() {
-    if (pinned) return <Icon icon={LockIcon} size={14} />;
+    if (pinned) return <Icon icon={LockIcon} size={16} />;
     return isExtended ? (
-      <Icon icon={BrainIcon} size={14} />
+      <Icon icon={BrainIcon} size={16} />
     ) : (
-      <Icon icon={FlashIcon} size={14} />
+      <Icon icon={FlashIcon} size={16} />
     );
   }
 
@@ -58,15 +58,12 @@ export function ModeToggleButton({
             aria-disabled={pinned}
             onClick={onToggle}
             className={cn(
-              "inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+              "inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
               pinned && "cursor-not-allowed opacity-70 hover:bg-transparent",
             )}
             aria-label={ariaLabel}
           >
             {getIcon()}
-            <span className="hidden sm:inline">
-              {pinned || isExtended ? "Thinking" : "Fast"}
-            </span>
           </button>
         </TooltipTrigger>
         <TooltipContent>{tooltipText}</TooltipContent>

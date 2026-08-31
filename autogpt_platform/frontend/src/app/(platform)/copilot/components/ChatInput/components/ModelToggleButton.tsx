@@ -38,13 +38,10 @@ export function ModelToggleButton({
             type="button"
             aria-pressed={isAdvanced}
             onClick={onToggle}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
             aria-label={ariaLabel}
           >
-            <Icon icon={CpuIcon} size={14} />
-            <span className="hidden sm:inline">
-              {isAdvanced ? "Advanced" : "Balanced"}
-            </span>
+            <Icon icon={CpuIcon} size={16} />
           </button>
         </TooltipTrigger>
         <TooltipContent>{tooltip}</TooltipContent>

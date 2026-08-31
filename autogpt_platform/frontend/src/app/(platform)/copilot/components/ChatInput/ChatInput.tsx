@@ -330,7 +330,7 @@ export function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
