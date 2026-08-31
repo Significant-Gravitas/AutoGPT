@@ -50,7 +50,7 @@ from backend.copilot.model_router import (
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
-from backend.copilot.segments import session_segment, stamp_segment
+from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
@@ -4628,6 +4628,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     codex_gateway: CodexAnthropicGateway | None = None
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
+    turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -6011,7 +6012,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             stamp_segment(
                 session.messages,
                 pre_turn_message_count,
-                session_segment(session),
+                turn_segment,
             )
             try:
                 await asyncio.shield(upsert_chat_session(session))
@@ -6338,6 +6339,19 @@ def _canonical_model(model: str) -> str:
 
 def _same_model(a: str, b: str | None) -> bool:
     return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _sdk_serving_segment(
+    credential_lease: CredentialLease | PooledCodexRuntimeLease | None,
+) -> Segment:
+    """The immutable route that actually serves this SDK turn."""
+    if credential_lease is None:
+        return Segment("platform", None, is_segment_zero=False)
+    return Segment(
+        "codex",
+        credential_lease.credentials.id,
+        is_segment_zero=False,
+    )
 
 
 def _stamp_turn_messages(
