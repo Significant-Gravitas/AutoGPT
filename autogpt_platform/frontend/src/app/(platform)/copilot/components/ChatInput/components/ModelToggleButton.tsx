@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
-import { cn } from "@/lib/utils";
 import { CpuIcon } from "@hugeicons/core-free-icons";
 import type { CopilotLlmModel } from "../../../store";
 
@@ -39,12 +38,7 @@ export function ModelToggleButton({
             type="button"
             aria-pressed={isAdvanced}
             onClick={onToggle}
-            className={cn(
-              "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-              isAdvanced
-                ? "text-emerald-500"
-                : "text-sky-600 hover:text-sky-700",
-            )}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
             aria-label={ariaLabel}
           >
             <Icon icon={CpuIcon} size={14} />

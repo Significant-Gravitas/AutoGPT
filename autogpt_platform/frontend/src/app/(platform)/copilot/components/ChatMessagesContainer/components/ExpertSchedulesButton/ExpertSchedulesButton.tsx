@@ -1,9 +1,15 @@
 "use client";
 
 import { EditScheduleModal } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedScheduleView/components/EditScheduleModal/EditScheduleModal";
-import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { GraphScheduleListItem } from "@/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { useExpertSchedulesButton } from "./useExpertSchedulesButton";
 
 interface Props {
@@ -16,18 +22,27 @@ export function ExpertSchedulesButton({ expertId, expertName }: Props) {
 
   if (schedules.length === 0) return null;
 
+  const scheduledLabel = `${schedules.length === 1 ? "workflow" : "workflows"} scheduled`;
+
   return (
     <>
-      <Button
-        variant="secondary"
-        size="small"
-        className="ml-auto shrink-0"
-        data-testid="expert-schedules-button"
-        onClick={() => setIsOpen(true)}
-      >
-        {schedules.length} {schedules.length === 1 ? "workflow" : "workflows"}{" "}
-        scheduled
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-testid="expert-schedules-button"
+            onClick={() => setIsOpen(true)}
+            className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <Icon icon={Clock01Icon} className="size-3.5" />
+            {schedules.length}
+            <span className="sr-only">{` ${scheduledLabel}`}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {schedules.length} {scheduledLabel}
+        </TooltipContent>
+      </Tooltip>
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetContent
           side="right"

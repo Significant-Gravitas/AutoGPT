@@ -58,9 +58,8 @@ export function ModeToggleButton({
             aria-disabled={pinned}
             onClick={onToggle}
             className={cn(
-              "ml-2 inline-flex h-9 min-w-[6rem] items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
-              isExtended ? "text-purple-500" : "text-orange-600",
-              pinned && "cursor-not-allowed opacity-70 hover:bg-white",
+              "inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+              pinned && "cursor-not-allowed opacity-70 hover:bg-transparent",
             )}
             aria-label={ariaLabel}
           >

@@ -242,9 +242,8 @@ export function ChatInput({
     isTranscribing,
   });
 
-  // The composer restyle (flat card, chips relocated into the tray
-  // below) ships with the brain-dump experience; off keeps the original
-  // glowing composer with pill toggles in the footer.
+  // The brain-dump experience relocates the mode/model/dry-run chips into
+  // the tray below the card; off keeps them as pills in the footer.
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -330,16 +329,9 @@ export function ChatInput({
       )}
       <InputGroup
         className={cn(
-          isBrainDumpEnabled
-            ? "relative z-10 overflow-hidden border-neutral-200 shadow-none has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
-            : [
-                "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-                "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
-              ],
+          "relative z-10 overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
-            (isBrainDumpEnabled
-              ? "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"
-              : "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"),
+            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
         <FileChips
@@ -415,7 +407,7 @@ export function ChatInput({
             )}
           </PromptInputTools>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
