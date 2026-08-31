@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -172,3 +173,25 @@ async def test_cancelling_stops_the_loop() -> None:
             await login.wait()
 
     assert clock.slept == []
+
+
+@pytest.mark.asyncio
+async def test_cancelling_interrupts_an_in_flight_poll() -> None:
+    started = asyncio.Event()
+    never = asyncio.Event()
+
+    async def blocked_poll(_device_auth_id: str, _user_code: str):
+        started.set()
+        await never.wait()
+
+    login = _login(_Clock())
+    with patch(
+        "backend.integrations.codex.device_login.poll_device_code",
+        new=blocked_poll,
+    ):
+        waiting = asyncio.create_task(login.wait())
+        await started.wait()
+        await login.cancel()
+
+        with pytest.raises(CodexAuthError, match="canceled"):
+            await asyncio.wait_for(waiting, timeout=0.1)

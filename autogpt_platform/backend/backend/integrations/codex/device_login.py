@@ -9,6 +9,7 @@ to ``auth.openai.com``.
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Awaitable, TypeVar
 
 from backend.integrations.codex.chatgpt_auth import (
     ChatGPTDeviceCode,
@@ -28,6 +29,7 @@ from backend.integrations.codex.models import (
 logger = logging.getLogger(__name__)
 
 _MAX_INTERVAL_SECONDS = 60
+_T = TypeVar("_T")
 
 
 class CodexHttpDeviceLogin:
@@ -63,8 +65,8 @@ class CodexHttpDeviceLogin:
             if self._now().timestamp() >= deadline:
                 raise CodexAuthError("ChatGPT sign-in expired before it was approved")
 
-            result = await poll_device_code(
-                self._device.device_auth_id, self._device.user_code
+            result = await self._unless_canceled(
+                poll_device_code(self._device.device_auth_id, self._device.user_code)
             )
 
             if result.status == "approved":
@@ -81,7 +83,30 @@ class CodexHttpDeviceLogin:
             # Never sleep past the deadline: doing so reports the expiry up to a
             # full interval after it actually happened.
             remaining = deadline - self._now().timestamp()
-            await self._sleep(min(interval, max(remaining, 0)))
+            await self._unless_canceled(self._sleep(min(interval, max(remaining, 0))))
+
+    async def _unless_canceled(self, operation: Awaitable[_T]) -> _T:
+        """Run one poll/sleep while letting cancel interrupt it immediately."""
+        operation_task = asyncio.ensure_future(operation)
+        canceled_task = asyncio.create_task(self._canceled.wait())
+        try:
+            done, _ = await asyncio.wait(
+                (operation_task, canceled_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if canceled_task in done:
+                operation_task.cancel()
+                raise CodexAuthError("ChatGPT sign-in was canceled")
+            return await operation_task
+        finally:
+            if not operation_task.done():
+                operation_task.cancel()
+            canceled_task.cancel()
+            await asyncio.gather(
+                operation_task,
+                canceled_task,
+                return_exceptions=True,
+            )
 
     async def _complete(self, result) -> CodexLoginCompletion:
         assert result.authorization_code and result.code_verifier
