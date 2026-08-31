@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.config import ChatConfig
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
