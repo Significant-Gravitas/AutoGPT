@@ -142,6 +142,7 @@ describe("AIConnectionsSection", () => {
 
     expect(await screen.findByText("ChatGPT")).toBeDefined();
     expect(screen.queryByText("Connected")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
   });
 
   it("treats a disconnected account snapshot as requiring reconnect", async () => {

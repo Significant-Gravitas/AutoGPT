@@ -73,6 +73,7 @@ export function AIConnectionsSection() {
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}
               onManage={
+                connection.credential_id &&
                 connection.auth_method === "chatgpt_oauth"
                   ? () => setManaging(connection)
                   : undefined
