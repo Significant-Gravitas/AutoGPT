@@ -518,11 +518,14 @@ describe("ConnectionPicker", () => {
     // control: the connection row's own summary also mentions Advanced.
     const tierGroup = screen.getByRole("radiogroup", { name: "Model tier" });
     expect(within(tierGroup).getByText(/opus-5/)).toBeDefined();
-    // Named, but not offered as a choice that cannot happen.
-    expect(
-      within(tierGroup).queryByRole("radio", { name: /Advanced/ }),
-    ).toBeNull();
-    expect(within(tierGroup).getAllByRole("radio")).toHaveLength(1);
+    // It remains a member of the radiogroup for assistive technology, but is
+    // exposed as disabled rather than offered as a choice that can happen.
+    const lockedTier = within(tierGroup).getByRole("radio", {
+      name: /Advanced/,
+    });
+    expect(lockedTier.getAttribute("aria-disabled")).toBe("true");
+    expect(lockedTier.getAttribute("aria-checked")).toBe("false");
+    expect(within(tierGroup).getAllByRole("radio")).toHaveLength(2);
   });
 
   it("reports a failure rather than inventing a connection", async () => {
