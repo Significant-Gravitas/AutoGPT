@@ -1630,6 +1630,7 @@ class _InterruptedAttempt:
         display_msg: str,
         *,
         retryable: bool,
+        failure: dict[str, Any] | None = None,
     ) -> list[StreamBaseResponse]:
         """Re-attach partial + synthetic tool_result rows + error marker.
 
@@ -1648,7 +1649,12 @@ class _InterruptedAttempt:
             session.messages.extend(self.partial)
             self.partial = []
         events = _flush_orphan_tool_uses_to_session(session, state)
-        _append_error_marker(session, display_msg, retryable=retryable)
+        _append_error_marker(
+            session,
+            display_msg,
+            retryable=retryable,
+            failure=failure,
+        )
         return events
 
 
@@ -5672,6 +5678,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 interrupted, attempts_exhausted, transient_exhausted, stream_err
             )
             if failure is not None:
+                provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
                     state.adapter._end_text_if_open(cleanup_events)
@@ -5681,6 +5688,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         state,
                         failure.display_msg,
                         retryable=failure.retryable,
+                        failure=(
+                            provider_failure.as_part() if provider_failure else None
+                        ),
                     )
                 )
                 for response in cleanup_events:
@@ -5778,7 +5788,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # so this is a no-op for those and only kicks in for unhandled errors
         # that bypass the retry-loop handlers entirely.
         if not ended_with_stream_error:
-            interrupted.finalize(session, state, display_msg, retryable=is_transient)
+            interrupted.finalize(
+                session,
+                state,
+                display_msg,
+                retryable=is_transient,
+                failure=(
+                    codex_gateway.last_failure.as_part()
+                    if codex_gateway and codex_gateway.last_failure
+                    else None
+                ),
+            )
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
