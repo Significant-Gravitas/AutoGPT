@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
+import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import { fileItemToArtifactRef } from "./components/FilesTab/helpers";
 import {
   useSessionFiles,
@@ -43,11 +44,17 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
   const { generated } = useSessionFiles(sessionId);
   const lastGenerated = getLastGeneratedFile(generated);
+  const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
   const isArtifactsOpen = isOpen && activeTab === "artifacts";
   // An open artifact preview and the artifacts tab are both faces of the
   // right sidebar, so the toggle reads active for either and is the one
   // control that closes them — the panel carries no close button.
   const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
+
+  // The open activity card already lists the same file, so the labeled
+  // button floating above it is pure duplication — the card's rows are the
+  // way in while it shows.
+  if (isFilesCardOpen) return null;
 
   function handleSidebarToggle() {
     if (hasArtifact) {
@@ -88,9 +95,9 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
         className={cn(
           // Sized and stroked like the sidebar's nav icons so the chat's
           // top-right control reads as the same family.
-          "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:!bg-zinc-200 active:scale-[0.97] motion-reduce:transition-none",
+          "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none",
           lastGenerated ? "h-8 gap-1.5 px-2" : "size-8",
-          isRightSidebarOpen && "bg-zinc-200/70",
+          isRightSidebarOpen && "bg-zinc-100",
         )}
       >
         <Icon
