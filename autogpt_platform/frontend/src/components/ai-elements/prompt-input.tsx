@@ -134,6 +134,24 @@ export function PromptInputTextarea({
     if (textareaRef.current) autoResize(textareaRef.current);
   }, [value]);
 
+  // Width changes rewrap the same text — a narrowing viewport, or a panel
+  // opening beside the composer — so the box must re-measure without the
+  // value moving. Only width is acted on: autoResize sets the height itself,
+  // so reacting to height would loop.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    let lastWidth = -1;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      autoResize(el);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       autoResize(e.currentTarget);
