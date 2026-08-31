@@ -19,6 +19,7 @@ import { AIConnectionsSection } from "../AIConnectionsSection";
 function platform(isDefault: boolean): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
+    auth_provider: "platform",
     provider_family: "autogpt",
     display_name: "Self-hosted chat",
     auth_method: "deployment",
@@ -50,6 +51,7 @@ function platform(isDefault: boolean): AIConnectionOffer {
 function chatgpt(isDefault: boolean, id = "cred-1"): AIConnectionOffer {
   return {
     offer_id: `codex:${id}`,
+    auth_provider: "codex",
     provider_family: "openai",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",

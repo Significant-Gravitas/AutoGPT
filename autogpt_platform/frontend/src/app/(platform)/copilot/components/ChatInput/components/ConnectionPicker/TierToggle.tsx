@@ -89,15 +89,18 @@ export function TierToggle({ segments, value, onSelect }: Props) {
 }
 
 /**
- * A tier the plan excludes. Not a radio: choosing it is not among the things
- * that can happen, so it shows the barrier and leaves the action to the line
- * below, which has room to say what the barrier is.
+ * A tier the plan excludes. It remains a disabled radio so assistive
+ * technology receives a complete account of the radiogroup, while the line
+ * below has room to explain the barrier.
  */
 function LockedSegment({ segment }: { segment: Segment }) {
   return (
     <span
-      aria-disabled
+      role="radio"
+      aria-checked={false}
+      aria-disabled="true"
       aria-label={`${segment.label} — ${segment.lock?.reason ?? "unavailable"}`}
+      tabIndex={-1}
       className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-muted-foreground/70"
     >
       <Icon icon={LockIcon} size={11} aria-hidden className="flex-none" />
