@@ -263,6 +263,8 @@ async def test_write_to_returns_file_ref_and_diff(tool, session):
     assert written["filename"] == "agent.json"
     assert written["overwrite"] is True
     assert b'\n  "nodes"' in written["content"]  # pretty-printed
+    # Tool-to-tool handoff file — must stay hidden from the CoPilot Files tab.
+    assert written["metadata"]["internal"] is True
 
 
 @pytest.mark.asyncio
