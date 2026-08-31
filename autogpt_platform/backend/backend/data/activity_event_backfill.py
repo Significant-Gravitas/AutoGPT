@@ -35,7 +35,9 @@ async def backfill_file_events(dry_run: bool = False) -> int:
         files = await prisma.models.UserWorkspaceFile.prisma().find_many(
             where={"isDeleted": False},
             include={"Workspace": True},
-            order={"createdAt": "asc"},
+            # id as tiebreaker: createdAt is not unique, and skip-based pages
+            # over a non-deterministic order can drop rows on the boundary.
+            order=[{"createdAt": "asc"}, {"id": "asc"}],
             take=_BATCH_SIZE,
             skip=skip,
         )

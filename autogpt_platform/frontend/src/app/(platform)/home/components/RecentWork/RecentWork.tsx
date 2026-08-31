@@ -50,7 +50,7 @@ export function RecentWork({ dashboard, className }: Props) {
         <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
           {groups.map((group) => (
             <WorkGroup
-              key={`${group.actor.name}-${group.session_id ?? "none"}`}
+              key={group.items[0]?.id ?? group.actor.name}
               group={group}
               timezone={dashboard.timezone}
             />
