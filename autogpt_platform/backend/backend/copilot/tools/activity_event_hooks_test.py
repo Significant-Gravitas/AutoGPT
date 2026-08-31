@@ -29,15 +29,20 @@ def _make_session(expert_id: str | None = None) -> ChatSession:
     )
 
 
-def test_write_workspace_file_reports_file_event() -> None:
-    result = WorkspaceWriteResponse(
+def _write_response(path: str) -> WorkspaceWriteResponse:
+    return WorkspaceWriteResponse(
+        message="File written",
         file_id="file-1",
         name="draft.md",
-        path="/sessions/s1/draft.md",
+        path=path,
         mime_type="text/markdown",
         size_bytes=42,
         download_url="workspace://file-1#text/markdown",
     )
+
+
+def test_write_workspace_file_reports_file_event() -> None:
+    result = _write_response("/sessions/s1/draft.md")
 
     draft = WriteWorkspaceFileTool().activity_event(
         session=_make_session(), result=result, filename="draft.md"
@@ -52,14 +57,7 @@ def test_write_workspace_file_reports_file_event() -> None:
 
 
 def test_write_with_overwrite_reports_update() -> None:
-    result = WorkspaceWriteResponse(
-        file_id="file-1",
-        name="draft.md",
-        path="/draft.md",
-        mime_type="text/markdown",
-        size_bytes=42,
-        download_url="workspace://file-1#text/markdown",
-    )
+    result = _write_response("/draft.md")
 
     draft = WriteWorkspaceFileTool().activity_event(
         session=_make_session(), result=result, filename="draft.md", overwrite=True
@@ -83,6 +81,7 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
     tool = RunBlockTool()
     session = _make_session()
     with_provider = BlockOutputResponse(
+        message="Block executed",
         block_id="block-1",
         block_name="Send Email",
         outputs={},
@@ -104,6 +103,7 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
 
 def test_schedule_followup_reports_schedule_event() -> None:
     result = ScheduleCreatedResponse(
+        message="Follow-up scheduled",
         schedule_id="sched-1",
         next_run_time="2026-08-29T07:00:00+00:00",
         is_recurring=True,

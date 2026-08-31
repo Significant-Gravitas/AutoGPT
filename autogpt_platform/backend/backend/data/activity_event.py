@@ -5,6 +5,7 @@ read by the Home "Recent work" feed. Emitters must swallow their own
 failures — recording the work can never be allowed to break the work.
 """
 
+import enum
 from datetime import datetime
 from typing import Any, Literal, cast
 
@@ -45,6 +46,11 @@ class ActivityEvent(ActivityEventDraft):
 
     @classmethod
     def from_db(cls, row: prisma.models.ActivityEvent) -> "ActivityEvent":
+        # Depending on client generation settings the enum column comes back
+        # as a real enum locally but a plain string in the service process.
+        raw_category = row.category
+        if isinstance(raw_category, enum.Enum):
+            raw_category = raw_category.value
         return cls(
             id=row.id,
             user_id=row.userId,
@@ -55,7 +61,7 @@ class ActivityEvent(ActivityEventDraft):
             graph_exec_id=row.graphExecId,
             node_exec_id=row.nodeExecId,
             schedule_id=row.scheduleId,
-            category=cast(ActivityEventCategory, row.category.value),
+            category=cast(ActivityEventCategory, raw_category),
             event_type=row.eventType,
             provider=row.provider,
             object_id=row.objectId,
