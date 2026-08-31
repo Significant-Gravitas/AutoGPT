@@ -48,7 +48,9 @@ class _RawResponse:
         self._events = events
         self.headers = headers
 
-    def parse(self):
+    async def parse(self):
+        # Match openai.AsyncAPIResponse.parse: callers must await the method,
+        # which then returns the AsyncStream for an SSE response.
         async def stream():
             for event in self._events:
                 yield event
