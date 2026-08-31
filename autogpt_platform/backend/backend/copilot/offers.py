@@ -23,10 +23,7 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     settings,
 )
-from backend.integrations.codex.access import (
-    CODEX_MINIMUM_PLAN_ERROR,
-    has_codex_access_for_discovery,
-)
+from backend.integrations.codex.access import CODEX_MINIMUM_PLAN_ERROR, has_codex_access
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
@@ -116,7 +113,18 @@ async def _locked_codex_offer(
     if not _is_hosted():
         # Self-host grants the entitlement outright; there is nothing to sell.
         return None
-    if await has_codex_access_for_discovery(user_id):
+    try:
+        entitled = await has_codex_access(user_id)
+    except Exception:
+        # A missing upsell is harmless; falsely telling an already-entitled
+        # user to buy a plan during an entitlement outage is not.
+        logger.warning(
+            "Unable to resolve Codex entitlement for user %s; hiding upsell",
+            user_id,
+            exc_info=True,
+        )
+        return None
+    if entitled:
         # Entitled but unconnected: the settings page owns that invitation.
         return None
     if not await is_feature_enabled(Flag.CHAT_CONNECTION_UPSELL, user_id):

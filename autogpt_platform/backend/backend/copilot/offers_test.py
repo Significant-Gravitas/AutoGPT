@@ -230,7 +230,7 @@ def _upsell(
 ) -> None:
     mocker.patch.object(
         offers,
-        "has_codex_access_for_discovery",
+        "has_codex_access",
         new=AsyncMock(return_value=entitled),
     )
     mocker.patch.object(offers, "is_feature_enabled", new=AsyncMock(return_value=flag))
@@ -292,6 +292,20 @@ async def test_being_entitled_but_unconnected_is_not_an_upsell(
     # connect belongs on the settings page, not in the composer.
     _mock_transports(mocker, [_transport("platform", None)])
     _upsell(mocker, entitled=True)
+
+    assert _locked(await get_connection_offers("user")) == []
+
+
+@pytest.mark.asyncio
+async def test_entitlement_outage_does_not_show_a_false_upsell(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(mocker, [_transport("platform", None)])
+    mocker.patch.object(
+        offers,
+        "has_codex_access",
+        new=AsyncMock(side_effect=RuntimeError("entitlement unavailable")),
+    )
 
     assert _locked(await get_connection_offers("user")) == []
 

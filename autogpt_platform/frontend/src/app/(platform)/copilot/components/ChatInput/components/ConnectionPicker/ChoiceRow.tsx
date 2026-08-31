@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { DropdownMenuItem } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import Link from "next/link";
 import { PiLockSimple as LockIcon } from "react-icons/pi";
 
@@ -109,12 +110,12 @@ function LockedRow({ title, subtitle, lock }: LockedProps) {
           {lock.reason}
         </span>
         {lock.href && (
-          <Link
-            href={lock.href}
-            className="mt-1 text-[11px] font-medium text-primary underline underline-offset-2"
+          <DropdownMenuItem
+            asChild
+            className="mt-1 h-auto w-fit cursor-pointer p-0 text-[11px] font-medium text-primary underline underline-offset-2 focus:bg-transparent focus:text-primary"
           >
-            See plans
-          </Link>
+            <Link href={lock.href}>See plans</Link>
+          </DropdownMenuItem>
         )}
       </span>
     </div>

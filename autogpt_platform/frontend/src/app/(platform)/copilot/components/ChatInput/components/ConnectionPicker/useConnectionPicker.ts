@@ -59,6 +59,9 @@ export function useConnectionPicker() {
     setTier: setCopilotLlmModel,
     showTiers: tiersAreDistinct(active),
     isLoading: query.isLoading,
-    isError: query.isError,
+    // React Query can retain the last successful offers while a background
+    // refetch fails. Keep that usable snapshot visible; the error state is
+    // only terminal when there is nothing to render.
+    isError: query.isError && offers.length === 0,
   };
 }
