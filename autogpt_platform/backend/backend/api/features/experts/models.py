@@ -106,6 +106,19 @@ class ExpertIdentity(BaseModel):
     is_archived: bool
 
 
+class ExpertCredentialRef(BaseModel):
+    """One integration credential an expert is allowed to use.
+
+    ``title``/``type`` are read from the owner's live credential rather than
+    stored on the grant, so a renamed credential renames everywhere at once.
+    """
+
+    credential_id: str
+    provider: str
+    title: str
+    type: str
+
+
 class Expert(BaseModel):
     id: str
     name: str

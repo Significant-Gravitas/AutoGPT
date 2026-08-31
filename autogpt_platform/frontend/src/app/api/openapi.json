@@ -6180,6 +6180,154 @@
         }
       }
     },
+    "/api/experts/{expert_id}/credentials": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Credentials",
+        "description": "The integrations this expert is allowed to use.",
+        "operationId": "list_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response List Expert Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Grant Expert Credentials",
+        "operationId": "grant_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCredentialsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Grant Expert Credentials"
+                }
+              }
+            }
+          },
+          "400": { "description": "Unknown credential" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/credentials/{credential_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Revoke Expert Credential",
+        "operationId": "revoke_expert_credential",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Credential Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Revoke Expert Credential"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/detach-preview": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -19094,6 +19242,18 @@
         ],
         "title": "Expert"
       },
+      "ExpertCredentialRef": {
+        "properties": {
+          "credential_id": { "type": "string", "title": "Credential Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": { "type": "string", "title": "Title" },
+          "type": { "type": "string", "title": "Type" }
+        },
+        "type": "object",
+        "required": ["credential_id", "provider", "title", "type"],
+        "title": "ExpertCredentialRef",
+        "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
+      },
       "ExpertDetachPreview": {
         "properties": {
           "schedule_names": {
@@ -19603,6 +19763,20 @@
         "type": "object",
         "title": "GlobalSearchResponse",
         "description": "Top-N hits bucketed by item type.\n\nFor a non-empty query this contains hybrid-search results.\nFor an empty query this contains the most-recently-updated items\nper bucket (cached per-user with a short TTL)."
+      },
+      "GrantCredentialsRequest": {
+        "properties": {
+          "credential_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Credential Ids"
+          }
+        },
+        "type": "object",
+        "required": ["credential_ids"],
+        "title": "GrantCredentialsRequest"
       },
       "Graph": {
         "properties": {

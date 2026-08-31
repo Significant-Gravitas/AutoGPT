@@ -3,6 +3,7 @@ import fastapi
 from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator
 
+from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
@@ -11,6 +12,7 @@ from backend.api.features.experts.models import (
     MAX_RAISE_ATTACHMENTS,
     WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
+    ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
     ExpertPod,
@@ -280,6 +282,67 @@ async def list_expert_runs(
     type for the Work surface's typed viewer."""
     try:
         return await experts_db.list_expert_runs(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+class GrantCredentialsRequest(BaseModel):
+    credential_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+@router.get(
+    "/{expert_id}/credentials",
+    operation_id="list_expert_credentials",
+    responses={404: {"description": "Expert not found"}},
+)
+async def list_expert_credentials(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertCredentialRef]:
+    """The integrations this expert is allowed to use."""
+    try:
+        return await expert_credentials.list_expert_credentials(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.post(
+    "/{expert_id}/credentials",
+    operation_id="grant_expert_credentials",
+    responses={
+        404: {"description": "Expert not found"},
+        400: {"description": "Unknown credential"},
+    },
+)
+async def grant_expert_credentials(
+    expert_id: str,
+    request: GrantCredentialsRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertCredentialRef]:
+    try:
+        return await expert_credentials.grant_expert_credentials(
+            user_id, expert_id, request.credential_ids
+        )
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete(
+    "/{expert_id}/credentials/{credential_id}",
+    operation_id="revoke_expert_credential",
+    responses={404: {"description": "Expert not found"}},
+)
+async def revoke_expert_credential(
+    expert_id: str,
+    credential_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[ExpertCredentialRef]:
+    try:
+        return await expert_credentials.revoke_expert_credential(
+            user_id, expert_id, credential_id
+        )
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
