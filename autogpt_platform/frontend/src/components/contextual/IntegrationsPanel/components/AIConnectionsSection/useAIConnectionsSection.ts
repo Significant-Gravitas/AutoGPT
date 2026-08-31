@@ -45,7 +45,7 @@ export function useAIConnectionsSection() {
     return accountByCredentialId.get(transport.credential_id);
   }
 
-  const { mutateAsync: setDefault, isPending: isSaving } =
+  const { mutate: setDefault, isPending: isSaving } =
     usePutV2SetDefaultChatTransport({
       mutation: {
         onSuccess: () => {
@@ -70,9 +70,9 @@ export function useAIConnectionsSection() {
     ? transportKey(connections.find((t) => t.default)!)
     : null;
 
-  async function chooseDefault(transport: ChatTransportResponse) {
+  function chooseDefault(transport: ChatTransportResponse) {
     if (transport.default) return;
-    await setDefault({
+    setDefault({
       data: {
         auth_provider: transport.auth_provider,
         credential_id: transport.credential_id,
