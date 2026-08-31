@@ -543,9 +543,7 @@ class TestAdvancedTierEntitlement:
     async def test_entitled_reports_what_the_service_said(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
-        mocker.patch.object(
-            offers, "has_entitlement", new=AsyncMock(return_value=True)
-        )
+        mocker.patch.object(offers, "has_entitlement", new=AsyncMock(return_value=True))
         assert await advanced_tier_entitled(USER_ID) is True
 
         mocker.patch.object(
