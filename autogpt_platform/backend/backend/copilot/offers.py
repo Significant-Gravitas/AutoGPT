@@ -16,7 +16,11 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.engine import resolve_use_sdk
-from backend.copilot.model_router import ROUTE_SURFACE_CODEX, resolve_model_route
+from backend.copilot.model_router import (
+    ROUTE_SURFACE_CODEX,
+    ModelMode,
+    resolve_model_route,
+)
 from backend.copilot.transports import (
     ChatTransportResponse,
     get_chat_transports,
@@ -24,10 +28,7 @@ from backend.copilot.transports import (
     settings,
 )
 from backend.data import llm_registry
-from backend.integrations.codex.access import (
-    CODEX_MINIMUM_PLAN_ERROR,
-    has_codex_access,
-)
+from backend.integrations.codex.access import CODEX_MINIMUM_PLAN_ERROR, has_codex_access
 from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
@@ -189,7 +190,7 @@ async def _locked_codex_offer(
 
 
 async def _platform_tier_models(
-    mode: str, user_id: str, config: ChatConfig
+    mode: ModelMode, user_id: str, config: ChatConfig
 ) -> dict[CopilotLLMModel, str | None]:
     """Resolve each tier against the engine this user's turns will run on.
 

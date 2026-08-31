@@ -609,6 +609,7 @@ def test_every_response_type_survives_the_relay():
         "they would be dropped on the executor → Redis → rest_server relay"
     )
 
+
 class TestEveryPartSurvivesReplay:
     """A part the registry cannot reconstruct never reaches the client.
 
@@ -620,10 +621,7 @@ class TestEveryPartSurvivesReplay:
     """
 
     def test_provider_failure_is_reconstructed(self) -> None:
-        from backend.copilot.response_model import (
-            ResponseType,
-            StreamProviderFailure,
-        )
+        from backend.copilot.response_model import ResponseType, StreamProviderFailure
         from backend.copilot.stream_registry import _reconstruct_chunk
 
         chunk = _reconstruct_chunk(

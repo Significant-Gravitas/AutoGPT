@@ -23,6 +23,9 @@ class Segment:
     """The connection one turn ran on, and where that answer came from."""
 
     __slots__ = ("auth_provider", "credential_id", "is_segment_zero")
+    auth_provider: CopilotLlmAuthProvider
+    credential_id: str | None
+    is_segment_zero: bool
 
     def __init__(
         self,
