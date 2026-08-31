@@ -8,7 +8,6 @@ engine-level codes that knows nothing about expired logins or spent quotas.
 
 from datetime import UTC, datetime
 
-
 from backend.copilot.markers import provider_failure_of
 from backend.copilot.model import ChatSession
 from backend.copilot.provider_failure import ProviderFailureKind, classify
