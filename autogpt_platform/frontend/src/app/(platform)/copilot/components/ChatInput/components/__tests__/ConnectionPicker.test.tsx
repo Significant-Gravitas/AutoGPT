@@ -350,6 +350,22 @@ describe("ConnectionPicker", () => {
     expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
   });
 
+  it("keeps a locked-only offer visible", async () => {
+    mockOffers([locked()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Runs on Choose connection/ }),
+    );
+
+    expect(
+      await screen.findByText(
+        "A Max plan or higher is required to use ChatGPT.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+  });
+
   it("spends a locked row on the benefit, not on a plan the user may lack", async () => {
     mockOffers([offer(), locked()]);
 

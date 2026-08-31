@@ -74,10 +74,17 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     );
   }
 
-  // Nothing left to decide: either the tiers resolve to one model and the
-  // connection is settled, or there is a single connection and its tiers are
-  // the same model.
-  if (!showTiers && (connectionLocked || offers.length === 1)) return null;
+  // Nothing left to decide when the one offer can actually run. A locked-only
+  // offer still needs this control so the user can see why it is unavailable
+  // and follow its unlock link.
+  const onlyOfferIsLocked =
+    offers.length === 1 && Boolean(offers[0]?.lock_reason);
+  if (
+    !showTiers &&
+    (connectionLocked || (offers.length === 1 && !onlyOfferIsLocked))
+  ) {
+    return null;
+  }
 
   const label = connectionLocked
     ? tierName(active, tier)
