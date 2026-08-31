@@ -1981,42 +1981,17 @@ def test_create_session_rejects_builder_graph_id_with_expert_id(
     mock_create.assert_not_called()
 
 
-class TestStreamChatRequestModeValidation:
-    """Pydantic-level validation of the ``mode`` field on StreamChatRequest."""
+class TestStreamChatRequestLegacyMode:
+    """Old clients may still send ``mode`` after the server stopped using it."""
 
-    def test_rejects_invalid_mode_value(self) -> None:
-        """Any string outside the Literal set must raise ValidationError."""
-        from pydantic import ValidationError
-
+    @pytest.mark.parametrize(
+        "legacy_mode", ["fast", "extended_thinking", "turbo", None]
+    )
+    def test_legacy_mode_is_ignored(self, legacy_mode: str | None) -> None:
         from backend.api.features.chat.routes import StreamChatRequest
 
-        with pytest.raises(ValidationError):
-            StreamChatRequest(message="hi", mode="turbo")  # type: ignore[arg-type]
-
-    def test_accepts_fast_mode(self) -> None:
-        from backend.api.features.chat.routes import StreamChatRequest
-
-        req = StreamChatRequest(message="hi", mode="fast")
-        assert req.mode == "fast"
-
-    def test_accepts_extended_thinking_mode(self) -> None:
-        from backend.api.features.chat.routes import StreamChatRequest
-
-        req = StreamChatRequest(message="hi", mode="extended_thinking")
-        assert req.mode == "extended_thinking"
-
-    def test_accepts_none_mode(self) -> None:
-        """``mode=None`` is valid (server decides via feature flags)."""
-        from backend.api.features.chat.routes import StreamChatRequest
-
-        req = StreamChatRequest(message="hi", mode=None)
-        assert req.mode is None
-
-    def test_mode_defaults_to_none_when_omitted(self) -> None:
-        from backend.api.features.chat.routes import StreamChatRequest
-
-        req = StreamChatRequest(message="hi")
-        assert req.mode is None
+        req = StreamChatRequest(message="hi", mode=legacy_mode)  # type: ignore[call-arg]
+        assert "mode" not in req.model_dump()
 
 
 # ─── Pending message queue (when a turn is already in flight) ─────────

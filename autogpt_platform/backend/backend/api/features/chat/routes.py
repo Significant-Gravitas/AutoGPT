@@ -22,11 +22,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import (
-    ChatConfig,
-    CopilotLlmAuthProvider,
-    CopilotLLMModel,
-)
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
