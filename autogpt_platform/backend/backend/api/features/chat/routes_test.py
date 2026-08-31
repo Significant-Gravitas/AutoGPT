@@ -10,11 +10,11 @@ import pytest
 import pytest_mock
 from pydantic import SecretStr
 
-from backend.copilot.offers import EntitlementUnavailable
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
