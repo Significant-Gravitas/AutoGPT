@@ -31,7 +31,7 @@ export function StackSection({ title, icon, count, action, children }: Props) {
         </Text>
         {action && <div className="ml-auto flex items-center">{action}</div>}
       </div>
-      <div className="rounded-lg bg-white/90 px-3 py-2 backdrop-blur smooth-shadow-ring-sm">
+      <div className="rounded-lg bg-white/90 px-3 py-1 backdrop-blur smooth-shadow-ring-sm">
         {children}
       </div>
     </section>
