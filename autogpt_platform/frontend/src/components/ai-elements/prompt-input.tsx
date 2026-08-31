@@ -32,7 +32,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Children, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Children,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
@@ -119,8 +125,12 @@ export function PromptInputTextarea({
     onHeightChangeRef.current?.(el.scrollHeight);
   }
 
-  // Resize when value changes externally (e.g. cleared after send)
-  useEffect(() => {
+  // Resize when value changes externally (e.g. a guided prompt dropped in,
+  // or cleared after send). Runs before paint: typing resizes synchronously
+  // in handleChange, but a value set from outside would otherwise paint one
+  // frame at the old height — visible as a jump when the host restyles
+  // itself around a now-multiline box.
+  useLayoutEffect(() => {
     if (textareaRef.current) autoResize(textareaRef.current);
   }, [value]);
 
